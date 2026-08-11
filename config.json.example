@@ -1,0 +1,11 @@
+{
+  "sap_server": [
+    {
+      "sid": "E4G",
+      "host": "e4g-host.example.com",
+      "user": "root",
+      "key": null,
+      "password": "changeme"
+    }
+  ]
+}
