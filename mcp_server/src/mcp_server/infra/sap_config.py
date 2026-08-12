@@ -20,6 +20,13 @@ class SapServerConfig(BaseModel):
     user: str = "root"
     key: str | None = None
     password: str | None = None
+    # HANA SQL port connection, separate from the SSH details above -
+    # optional, since not every capability needs direct DB access. None
+    # of these fields means "no HANA access configured for this SID."
+    hana_host: str | None = None
+    hana_port: int = 30015
+    hana_user: str | None = None
+    hana_password: str | None = None
 
 
 class AppConfig(BaseModel):

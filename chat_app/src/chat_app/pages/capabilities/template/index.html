@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MCP capabilities</title>
+  <link rel="stylesheet" href="{{ url_for('capabilities.static', filename='styles.css') }}">
+</head>
+<body>
+  <a class="back-link" href="/chat">← Back to chat</a>
+  <h1>MCP server capabilities</h1>
+  <p class="sub">{{ tools|length }} tools, {{ resources|length }} resources — fetched live from the MCP server just now.</p>
+
+  {% if error %}
+  <div class="error">Could not reach the MCP server: {{ error }}</div>
+  {% endif %}
+
+  <h2>Tools</h2>
+  <p class="section-sub">Actions the model decides to invoke, with arguments.</p>
+
+  {% for tool in tools %}
+  <div class="tool" id="tool-{{ tool.name }}">
+    <div class="tool-header" onclick="document.getElementById('tool-{{ tool.name }}').classList.toggle('open')">
+      <div>
+        <span class="badge badge-tool">tool</span>
+        <div class="tool-title">{{ tool.title }}</div>
+        <div class="tool-name">{{ tool.name }}</div>
+        <div class="tool-desc">{{ tool.description or "No description" }}</div>
+      </div>
+    </div>
+    <div class="tool-body">
+      <form onsubmit="return runTool(event, '{{ tool.name }}')">
+        {% set props = (tool.input_schema or {}).get('properties', {}) %}
+        {% if props %}
+          {% for field_name, field_schema in props.items() %}
+          <label for="{{ tool.name }}-{{ field_name }}">{{ field_name }}{% if field_schema.description %} — {{ field_schema.description }}{% endif %}</label>
+          <input type="text" id="{{ tool.name }}-{{ field_name }}" name="{{ field_name }}"
+                 placeholder="{{ field_schema.type or 'string' }}">
+          {% endfor %}
+        {% else %}
+          <p class="tool-desc">No input parameters.</p>
+        {% endif %}
+        <button type="submit">Run</button>
+      </form>
+      <pre class="result" style="display:none"></pre>
+    </div>
+  </div>
+  {% endfor %}
+  {% if not tools %}
+  <p class="empty">No tools registered.</p>
+  {% endif %}
+
+  <h2>Resources</h2>
+  <p class="section-sub">Read-only, URI-addressed data — browsed and read directly, no model decision needed.</p>
+
+  {% for resource in resources %}
+  {% set resource_idx = loop.index %}
+  <div class="tool" id="resource-{{ resource_idx }}">
+    <div class="tool-header" onclick="document.getElementById('resource-{{ resource_idx }}').classList.toggle('open')">
+      <div>
+        <span class="badge badge-resource">resource</span>
+        <div class="tool-title">{{ resource.title }}</div>
+        <div class="tool-name">{{ resource.uri_template }}</div>
+        <div class="tool-desc">{{ resource.description or "No description" }}</div>
+      </div>
+    </div>
+    <div class="tool-body">
+      <form onsubmit="return readResourceForm(event, {{ resource.uri_template|tojson }}, {{ resource.params|tojson }})">
+        {% if resource.params %}
+          {% for param in resource.params %}
+          <label for="resource-{{ resource_idx }}-{{ param }}">{{ param }}</label>
+          <input type="text" id="resource-{{ resource_idx }}-{{ param }}" name="{{ param }}" placeholder="{{ param }}">
+          {% endfor %}
+        {% else %}
+          <p class="tool-desc">No parameters — this resource has a fixed URI.</p>
+        {% endif %}
+        <button type="submit">Read</button>
+      </form>
+      <pre class="result" style="display:none"></pre>
+    </div>
+  </div>
+  {% endfor %}
+  {% if not resources %}
+  <p class="empty">No resources registered.</p>
+  {% endif %}
+
+  <script src="{{ url_for('capabilities.static', filename='script.js') }}"></script>
+</body>
+</html>

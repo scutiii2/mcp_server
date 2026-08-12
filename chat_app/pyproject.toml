@@ -9,11 +9,13 @@ dependencies = [
     "pydantic==2.13.4",
     "pydantic_core==2.46.4",
     "openai==2.43.0",
+    "anthropic>=0.40",
     "python-dotenv==1.2.2",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+sap-ai-hub = ["sap-ai-sdk-gen>=6.6.0"]
 
 [project.scripts]
 sap-chat-app = "chat_app.run:main"

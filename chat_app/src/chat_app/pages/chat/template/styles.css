@@ -1,0 +1,14 @@
+body { font-family: -apple-system, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+.toprow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
+.selectors { display: flex; gap: 6px; }
+a.caps-link { font-size: 13px; color: #666; }
+select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+select option:disabled { color: #aaa; }
+#model.hidden { display: none; }
+#log { min-height: 300px; border: 1px solid #e2e2e2; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+.msg { margin-bottom: 12px; white-space: pre-wrap; }
+.msg.user { font-weight: 500; }
+.msg.system { color: #999; font-size: 12px; font-style: italic; white-space: normal; margin-bottom: 4px; }
+#row { display: flex; gap: 8px; }
+#q { flex: 1; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
+button { padding: 8px 16px; border: none; background: #1a1a1a; color: white; border-radius: 6px; cursor: pointer; }
