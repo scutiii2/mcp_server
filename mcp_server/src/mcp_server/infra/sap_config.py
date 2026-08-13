@@ -56,6 +56,29 @@ class SapServerConfig(BaseModel):
     # capabilities/kernel/domain.py's module docstring for why this
     # assumption was preserved rather than redesigned.
     kernel_dir: str | None = None
+    # SAP ASE (Sybase) connection details - used only by the Conversion
+    # category's case-sensitivity duplicate-key check, which queries the
+    # ASE database via isql over SSH, not sapcontrol/HANA SQL. ase_host
+    # and ase_os_user both fall back to pashost/sapadm respectively when
+    # unset, matching the legacy config's own fallback behavior.
+    ase_host: str | None = None
+    ase_servername: str | None = None
+    ase_dbname: str | None = None
+    ase_user: str | None = None
+    ase_password: str | None = None
+    ase_os_user: str | None = None
+    # Sybase/ASE connection details, used only by the conversion
+    # duplicate-key-check tool (isql over SSH, not a real DB driver -
+    # matches the legacy approach exactly). Genuinely distinct from the
+    # HANA SQL-port fields above - this is an entirely different DB
+    # engine, queried via a CLI tool over SSH rather than any client
+    # library, confirmed against the real config.json's E4G entry.
+    ase_host: str | None = None
+    ase_servername: str | None = None
+    ase_dbname: str | None = None
+    ase_user: str | None = None
+    ase_password: str | None = None
+    ase_os_user: str | None = None
 
 
 class RfcServerConfig(BaseModel):

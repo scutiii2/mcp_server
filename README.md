@@ -43,7 +43,11 @@ mcp_server/                        MCP tool server (port 8010)
 │   │   │   ├── contract.py
 │   │   │   ├── domain.py
 │   │   │   └── tool.py
-│   │   └── kernel/                  kernel update — Windows-local file dependency, see its docstring
+│   │   ├── kernel/                  kernel update — Windows-local file dependency, see its docstring
+│   │   │   ├── contract.py
+│   │   │   ├── domain.py
+│   │   │   └── tool.py
+│   │   └── conversion/              dup-key scan (isql over SSH) + scan-progress polling
 │   │       ├── contract.py
 │   │       ├── domain.py
 │   │       └── tool.py
@@ -59,6 +63,7 @@ mcp_server/                        MCP tool server (port 8010)
     ├── test_health_domain.py      domain tests — run_command mocked + real tmp_path file I/O
     ├── test_jobs_domain.py        domain tests — fake RFC connection object, no pyrfc needed
     ├── test_kernel_domain.py      pure helpers + validation phase — NOT full orchestration, see its docstring
+    ├── test_conversion_domain.py  pure SQL-building/parsing tested exhaustively + one mocked full scan
     └── test_job_history_domain.py domain tests — HanaClient mocked, no real DB connection
 
 chat_app/                          Flask chat + capabilities browser (port 5009)
@@ -478,11 +483,42 @@ exactly the kind of edit that produces this failure mode.
   local rather than refactored into a shared helper, partly to match
   that legacy structure and partly to avoid touching Control's
   already-verified polling code for this pass.
-- The other three legacy tool categories (rename,
-  conversion, provisioning) haven't been started — see
-  `mcp_server_copy/mcp_server.py` for the full list of 47 legacy tools.
-  Each needs its own `capabilities/<name>/` (or `resources/<name>/`)
-  folder following the same contract/domain/tool pattern.
+- Conversion is fully implemented — `get_scan_progress_tool`,
+  `check_case_sensitivity_duplicates_tool`. Uses `isql` over SSH against
+  Sybase/ASE (a CLI tool, not a real DB driver — matches the legacy
+  approach exactly), with a genuine parallel/sequential batch-processing
+  choice (`DUP_CHECK_USE_PARALLEL`, real `threading.Thread` worker pool)
+  faithfully preserved. One disclosed, deliberate simplification: the
+  legacy `check_case_sensitivity_duplicates` wrapped its entire body in a
+  `DualStream` class that monkey-patches `sys.stdout`/`sys.stderr` to
+  mirror every `print()` call into a buffer, then returned
+  `captured_output + "\n" + final_result` — meaning the tool's actual
+  response was prefixed with every debug line from a scan that can run
+  for many minutes across hundreds of SSH round-trips. The legacy code
+  even still has literal `"[EMERGENCY-1]"` through `"[EMERGENCY-4]"`
+  debug markers next to a comment reading `"ALL EXISTING CODE (from your
+  function)"` — this reads as leftover incident-debugging scaffolding,
+  not deliberate design, and globally redirecting `sys.stdout`/`stderr`
+  is genuinely unsafe in a server process that may be mid-flight on
+  other requests concurrently. This port keeps `print()` for local
+  console visibility during a long scan, but the tool's actual return
+  value is the clean final report only.
+- Rename (7 tools) was explicitly skipped for now — its real logic lives
+  entirely in ~1,000 lines of untouched legacy Flask code
+  (`routes/sapren_bp.py` + `routes/sapren_otp.py`: a checkpoint/resume
+  job runner plus a full OTP email flow), not in `mcp_server.py` itself.
+  Every one of its 7 MCP tools is a thin `_flask_get`/`_flask_post`
+  callback into that subsystem. Porting it means building an entire new
+  Flask job-orchestration layer in `chat_app` first — the first category
+  in this whole port that isn't primarily `mcp_server` work. Revisit
+  this category specifically before assuming Rename is covered by the
+  "same pattern as everything else" note below.
+- The other two legacy tool categories (provisioning, plus Rename above)
+  haven't been started — see `mcp_server_copy/mcp_server.py` for the
+  full list of 47 legacy tools. Each needs its own `capabilities/<name>/`
+  (or `resources/<name>/`) folder following the same contract/domain/
+  tool pattern used everywhere else in this port — except Rename, which
+  doesn't fit that pattern at all (see above).
 - No auth on `/capabilities` or `/chat` yet — add the same
   `requires_basic_auth` pattern used in the migrated Flask app before
   exposing this beyond localhost.

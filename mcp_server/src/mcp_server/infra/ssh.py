@@ -205,3 +205,25 @@ def sftp_upload_dir(host: str, user: str, password: str, local_dir: str, remote_
     finally:
         sftp.close()
         client.close()
+
+
+def sftp_write_file(host: str, user: str, key: str | None, password: str | None, remote_path: str, content: str) -> None:
+    """Write a single small text file to the remote host over SFTP -
+    faithful port of the legacy _sftp_write, used by conversion's
+    duplicate-key-check tool to stage generated SQL scripts before
+    running them with isql. Distinct from sftp_upload_dir above (which
+    recursively uploads a whole local directory) - this writes one string
+    to one remote path, no local file involved at all."""
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        if key:
+            client.connect(hostname=host, username=user, key_filename=key, timeout=10, look_for_keys=False, allow_agent=False)
+        else:
+            client.connect(hostname=host, username=user, password=password, timeout=10, look_for_keys=False, allow_agent=False)
+        sftp = client.open_sftp()
+        with sftp.file(remote_path, "w") as f:
+            f.write(content)
+        sftp.close()
+    finally:
+        client.close()

@@ -47,6 +47,8 @@ _OVERRIDES: dict[str, str] = {
     "get_longest_completed_jobs_tool": "Get Longest Completed Jobs",
     "get_job_trend_analysis_tool": "Job Trend Analysis",
     "apply_kernel_update_tool": "Apply Kernel Update",
+    "get_scan_progress_tool": "Get Scan Progress",
+    "check_case_sensitivity_duplicates_tool": "Check Case-Sensitivity Duplicates",
 }
 
 
