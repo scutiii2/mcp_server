@@ -88,4 +88,5 @@ def test_api_providers_reflects_availability(client, monkeypatch):
     assert response.status_code == 200
     data = {p["id"]: p["available"] for p in response.get_json()}
     # "auto" is available too here, since at least one real provider (openai) is.
-    assert data == {"auto": True, "openai": True, "claude": False, "sap_ai_hub": False}
+    # "ollama" is always True - no API key needed, see ollama_provider.py.
+    assert data == {"auto": True, "openai": True, "claude": False, "sap_ai_hub": False, "ollama": True}

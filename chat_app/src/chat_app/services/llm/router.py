@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from chat_app.services.llm import claude_provider, cooldown, openai_provider, sap_ai_hub_provider
+from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider, sap_ai_hub_provider
 from chat_app.services.llm.base import ChatResult, ProviderSpec
 
 
@@ -18,6 +18,7 @@ _PROVIDERS: dict[str, ProviderSpec] = {
     openai_provider.PROVIDER.id: openai_provider.PROVIDER,
     claude_provider.PROVIDER.id: claude_provider.PROVIDER,
     sap_ai_hub_provider.PROVIDER.id: sap_ai_hub_provider.PROVIDER,
+    ollama_provider.PROVIDER.id: ollama_provider.PROVIDER,
 }
 
 # First entry tried first. Change this order to change which provider
@@ -26,6 +27,12 @@ _PROVIDERS: dict[str, ProviderSpec] = {
 # underlying models OpenAI/Claude already offer directly, with more
 # setup overhead (tenant-specific deployments) - reorder if your
 # organization's policy prefers routing everything through SAP AI Core.
+#
+# ollama_provider is deliberately NOT in this list - see its module
+# docstring for why. It's still fully selectable manually from the
+# provider dropdown (list_providers() below shows every entry in
+# _PROVIDERS regardless of AUTOMATIC_ORDER); it just never gets picked
+# silently on your behalf.
 AUTOMATIC_ORDER: list[str] = [
     openai_provider.PROVIDER.id,
     claude_provider.PROVIDER.id,
@@ -53,9 +60,13 @@ def list_providers() -> list[dict[str, Any]]:
     """Live availability, not a static list - reflects both whichever API
     keys are actually set right now and whether a provider is mid rate-limit
     cooldown from a previous request. "Automatic" is listed first and is
-    available whenever at least one real provider is."""
+    available whenever at least one AUTOMATIC_ORDER provider is - NOT
+    whenever any registered provider is. Those aren't the same set:
+    ollama_provider is registered (so it's manually selectable) but
+    deliberately excluded from AUTOMATIC_ORDER (see its module
+    docstring), so it being available must not make "Automatic" claim
+    to be available too - _pick_automatic() would never actually try it."""
     entries = []
-    any_available = False
     for provider in _PROVIDERS.values():
         remaining = cooldown.seconds_remaining(provider.id)
         reason = None
@@ -63,13 +74,11 @@ def list_providers() -> list[dict[str, Any]]:
             reason = "rate_limited"
         elif not provider.has_api_key():
             reason = "missing_key"
-        available = provider.is_available()
-        any_available = any_available or available
         entries.append(
             {
                 "id": provider.id,
                 "label": provider.label,
-                "available": available,
+                "available": provider.is_available(),
                 "reason": reason,
                 "cooldown_seconds_remaining": int(remaining),
                 "models": [{"id": m.id, "label": m.label} for m in provider.models],
@@ -77,11 +86,12 @@ def list_providers() -> list[dict[str, Any]]:
             }
         )
 
+    any_automatic_available = any(_PROVIDERS[provider_id].is_available() for provider_id in AUTOMATIC_ORDER)
     automatic_entry = {
         "id": AUTOMATIC_ID,
         "label": AUTOMATIC_LABEL,
-        "available": any_available,
-        "reason": None if any_available else "none_available",
+        "available": any_automatic_available,
+        "reason": None if any_automatic_available else "none_available",
         "cooldown_seconds_remaining": 0,
         "models": [],
         "default_model_id": "",

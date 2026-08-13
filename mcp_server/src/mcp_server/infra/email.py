@@ -33,17 +33,23 @@ from email.mime.text import MIMEText
 from mcp_server.infra.sap_config import EmailConfig
 
 
-def send_email(config: EmailConfig, subject: str, body_html: str) -> None:
+def send_email(config: EmailConfig, subject: str, body_html: str, *, to: list[str] | None = None) -> None:
+    """``to`` defaults to ``config.to`` (kernel's existing behavior,
+    unchanged) - pass it explicitly to target a different audience, e.g.
+    user_provisioning sending to ``config.approver_emails`` or directly to
+    a newly-created user's own address, neither of which should go to
+    whoever's watching kernel-update notifications."""
+    recipients = to if to is not None else config.to
     message = MIMEMultipart("alternative")
     message["Subject"] = subject
     message["From"] = config.from_address
-    message["To"] = ", ".join(config.to)
+    message["To"] = ", ".join(recipients)
     message.attach(MIMEText(body_html, "html"))
 
     with smtplib.SMTP(config.smtp_server, config.smtp_port, timeout=15) as server:
         server.starttls()
         server.login(config.from_address, config.password)
-        server.sendmail(config.from_address, config.to, message.as_string())
+        server.sendmail(config.from_address, recipients, message.as_string())
 
 
 def build_maintenance_started_email(sid: str, action: str, servers: list[str]) -> str:
@@ -73,5 +79,40 @@ def build_kernel_update_email(kernel_results: list[dict[str, str]]) -> str:
         <tr style="background:#eee;"><th>SID</th><th>Host</th><th>Old Kernel</th><th>New Kernel</th><th>Status</th></tr>
         {rows}
       </table>
+    </body></html>
+    """
+
+
+def build_user_creation_approval_email(
+    *, sid: str, user_id: str, full_name: str, roles: list[str], requested_by: str, approve_url: str,
+) -> str:
+    role_items = "".join(f"<li>{r}</li>" for r in roles) or "<li><em>none requested</em></li>"
+    return f"""
+    <html><body style="font-family: sans-serif;">
+      <h2>🔐 SAP User Creation — Approval Needed</h2>
+      <p><b>System:</b> {sid}</p>
+      <p><b>New user ID:</b> {user_id} ({full_name})</p>
+      <p><b>Requested by:</b> {requested_by}</p>
+      <p><b>Roles requested:</b></p>
+      <ul>{role_items}</ul>
+      <p>
+        <a href="{approve_url}"
+           style="display:inline-block;padding:10px 18px;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:6px;">
+          Review request
+        </a>
+      </p>
+      <p style="color:#888;font-size:12px;">This link expires in 72 hours and can only be used once.</p>
+    </body></html>
+    """
+
+
+def build_new_user_welcome_email(*, sid: str, user_id: str, full_name: str, initial_password: str) -> str:
+    return f"""
+    <html><body style="font-family: sans-serif;">
+      <h2>👋 Your SAP account is ready</h2>
+      <p>Hi {full_name},</p>
+      <p>An SAP account has been created for you on <b>{sid}</b>.</p>
+      <p><b>User ID:</b> {user_id}<br><b>Initial password:</b> {initial_password}</p>
+      <p>You'll be required to change this password the first time you log on.</p>
     </body></html>
     """

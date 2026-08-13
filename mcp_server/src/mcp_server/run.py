@@ -26,6 +26,11 @@ from mcp_server.capabilities.health import tool as health_tool  # noqa: F401,E40
 from mcp_server.capabilities.jobs import tool as jobs_tool  # noqa: F401,E402
 from mcp_server.capabilities.kernel import tool as kernel_tool  # noqa: F401,E402
 from mcp_server.capabilities.monitoring import tool as monitoring_tool  # noqa: F401,E402
+from mcp_server.capabilities.user_provisioning import tool as user_provisioning_tool  # noqa: F401,E402
+from mcp_server.capabilities.user_provisioning.approval_routes import (  # noqa: E402
+    approve_and_execute,
+    show_approval_page,
+)
 from mcp_server.resources.job_history import resource as job_history_resource  # noqa: F401,E402
 
 
@@ -59,7 +64,15 @@ def main() -> None:
         print(f"    - {name}")
     print(f"  Resources: {resource_count}")
 
-    uvicorn.run(mcp.streamable_http_app(), host=settings.host, port=settings.port)
+    app = mcp.streamable_http_app()
+    # Plain HTTP routes, deliberately NOT MCP tools - see
+    # capabilities/user_provisioning/approval_routes.py's module
+    # docstring for why the execute step must only be reachable this way.
+    app.add_route("/approvals/user-provisioning/{token}", show_approval_page, methods=["GET"])
+    app.add_route("/approvals/user-provisioning/{token}", approve_and_execute, methods=["POST"])
+    print(f"  Approvals: http://{settings.host}:{settings.port}/approvals/user-provisioning/<token>")
+
+    uvicorn.run(app, host=settings.host, port=settings.port)
 
 
 if __name__ == "__main__":

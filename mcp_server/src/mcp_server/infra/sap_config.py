@@ -104,6 +104,12 @@ class EmailConfig(BaseModel):
     from_address: str = Field(alias="from")
     password: str
     to: list[str] = []
+    # Separate audience from `to` above (kernel-update watchers) -
+    # user_provisioning's approval-request emails go here instead, so the
+    # two don't get mixed. Empty by default; capabilities that need this
+    # should fail with a clear "not configured" message, not silently
+    # send nowhere.
+    approver_emails: list[str] = []
 
     model_config = {"populate_by_name": True}
 

@@ -1,11 +1,15 @@
 # SAP AIOps — greenfield scaffold
 
 Two independent Python packages, one MCP tool server and one Flask chat
-app, talking over HTTP. This is a starter skeleton, not a finished system —
-the Control category (`get_available_sids`, `stop_sap_system`,
-`start_sap_system`) is built end-to-end as a faithful, full-fidelity port
-of the legacy multi-tier landscape orchestration, so you have a working
-pattern to copy for the rest.
+app, talking over HTTP. **32 of the legacy codebase's 47 tools are
+ported, across 7 full categories**: Control, Monitoring, Dumps, Health,
+Jobs, Kernel, Conversion. Two categories (Rename — 7 tools, Provisioning
+— 8 tools) are deliberately not started; see "Known gaps" below for why
+each one specifically was set aside, since both hit genuine architectural
+walls this scaffold doesn't have an established pattern for yet, rather
+than just being unstarted busywork. One capability outside the legacy
+47 - `user_provisioning`, approval-gated SAP user creation - has also
+been added; see "New capabilities" below.
 
 ## Layout
 
@@ -20,8 +24,9 @@ mcp_server/                        MCP tool server (port 8010)
 │   │   ├── ssh.py                  SSH client + run_command() (bare exec_command, monitoring's style)
 │   │   ├── sap_config.py           config loader — SapServerConfig (SSH+HANA+landscape), RfcServerConfig (RFC)
 │   │   ├── db.py                   HANA client — DB-API 2.0, mirrors ssh.py's context-manager shape
-│   │   ├── rfc.py                  pyrfc.Connection wrapper + shared RfcConnection Protocol — see optional [rfc] extra
-│   │   └── email.py                 SMTP notifications — genuinely new, stdlib only, see its docstring
+│   │   ├── rfc.py                  pyrfc.Connection wrapper + shared RfcConnection Protocol — see optional [rfc] extra; any OPTIONS.TEXT built from caller input MUST escape single quotes first (RFC_READ_TABLE injection - see user_provisioning/domain.py's _escape_rfc_literal)
+│   │   ├── email.py                 SMTP notifications — genuinely new, stdlib only, see its docstring
+│   │   └── pending_requests.py      SQLite store for approval-gated / resumable requests — shared, not user_provisioning-only
 │   ├── capabilities/               Tools — actions the model deliberately invokes
 │   │   ├── control/                 get_available_sids, stop/start_sap_system — multi-tier landscape
 │   │   │   ├── contract.py
@@ -47,10 +52,15 @@ mcp_server/                        MCP tool server (port 8010)
 │   │   │   ├── contract.py
 │   │   │   ├── domain.py
 │   │   │   └── tool.py
-│   │   └── conversion/              dup-key scan (isql over SSH) + scan-progress polling
+│   │   ├── conversion/              dup-key scan (isql over SSH) + scan-progress polling
+│   │   │   ├── contract.py
+│   │   │   ├── domain.py
+│   │   │   └── tool.py
+│   │   └── user_provisioning/       NEW capability, not from the legacy 47 — approval-gated SAP user creation
 │   │       ├── contract.py
 │   │       ├── domain.py
-│   │       └── tool.py
+│   │       ├── tool.py              only request_sap_user_creation_tool — see "New capabilities" below
+│   │       └── approval_routes.py   plain GET/POST HTTP routes, deliberately NOT an @mcp.tool()
 │   └── resources/                  Resources — read-only, URI-addressed, browsable data
 │       └── job_history/
 │           ├── contract.py         Pydantic request/result models
@@ -64,7 +74,9 @@ mcp_server/                        MCP tool server (port 8010)
     ├── test_jobs_domain.py        domain tests — fake RFC connection object, no pyrfc needed
     ├── test_kernel_domain.py      pure helpers + validation phase — NOT full orchestration, see its docstring
     ├── test_conversion_domain.py  pure SQL-building/parsing tested exhaustively + one mocked full scan
-    └── test_job_history_domain.py domain tests — HanaClient mocked, no real DB connection
+    ├── test_job_history_domain.py domain tests — HanaClient mocked, no real DB connection
+    ├── test_pending_requests.py   real tmp_path SQLite file, no mocking — pure stdlib, no pydantic/mcp needed
+    └── test_user_provisioning_domain.py  domain tests — fake RFC connection, send_email mocked
 
 chat_app/                          Flask chat + capabilities browser (port 5009)
 ├── pyproject.toml
@@ -72,8 +84,8 @@ chat_app/                          Flask chat + capabilities browser (port 5009)
 │   ├── conftest.py                 Flask app/test-client fixtures, resets cooldown state per test
 │   ├── test_chat_routes.py         /chat, /api/chat, /api/providers, router mocked
 │   ├── test_capabilities_routes.py /capabilities routes, list_tools/call_tool mocked
-│   ├── test_llm_providers.py       schema reshaping + availability + cooldown per provider
-│   ├── test_router.py              dispatch, availability-gating, cooldown-blocking
+│   ├── test_llm_providers.py       schema reshaping + availability + cooldown per provider (4 providers now)
+│   ├── test_router.py              dispatch, availability-gating, cooldown-blocking, AUTOMATIC_ORDER exclusion
 │   └── test_cooldown.py            the tracker itself, in isolation
 └── src/chat_app/
     ├── run.py                     entrypoint — python -m chat_app.run
@@ -87,15 +99,16 @@ chat_app/                          Flask chat + capabilities browser (port 5009)
     │       ├── openai_provider.py   OpenAI Responses API — function_call / parameters
     │       ├── claude_provider.py   Anthropic Messages API — tool_use / input_schema
     │       ├── sap_ai_hub_provider.py  SAP AI Core proxy — Chat-Completions function-wrapped shape
-    │       ├── router.py           availability check + dispatch, only file that imports all three
+    │       ├── ollama_provider.py   NEW — local Ollama via its OpenAI-compatible endpoint, manual-select only (not in AUTOMATIC_ORDER)
+    │       ├── router.py           availability check + dispatch, only file that imports all four providers
     │       └── cooldown.py         process-wide rate-limit tracking, shared across requests
     └── pages/                      one self-contained folder per page — routes + its own template/
         ├── chat/
         │   ├── routes.py           /chat page + /api/chat + /api/providers
         │   └── template/
-        │       ├── index.html      structure only — links styles.css/script.js via url_for
-        │       ├── styles.css
-        │       └── script.js
+        │       ├── index.html      structure — links styles.css/script.js, loads marked.js + DOMPurify from cdnjs
+        │       ├── styles.css      redesigned — left-rail message layout extending /capabilities' badge palette
+        │       └── script.js       redesigned — real markdown rendering, loading state, try/catch around fetch()
         └── capabilities/
             ├── routes.py           /capabilities — the tool browser
             └── template/
@@ -244,25 +257,32 @@ first if something doesn't work as expected.
 ## Multi-provider chat, Automatic selection, and rate-limit cooldown
 
 `/chat` shows a provider dropdown: **Automatic** (selected by default),
-**ChatGPT**, **Claude**, and **SAP AI Hub**. Each is grayed out per-option
-for one of three reasons, all driven live by `GET /api/providers`:
+**ChatGPT**, **Claude**, **SAP AI Hub**, and **Local (Ollama)**. Each is
+grayed out per-option for one of three reasons, all driven live by
+`GET /api/providers`:
 
 - **No API key** — that provider's env var isn't set. Static, checked via
   each provider's `has_api_key()`. For SAP AI Hub specifically this means
   all four `AICORE_*` vars, not just one — see its own section below.
+  Ollama has no equivalent at all — `has_api_key()` is unconditionally
+  `True` there, since a local Ollama instance has no auth by default; see
+  its own section below for what "available" actually means for it.
 - **Rate-limited** — a previous call to that provider got a real 429 from
   its SDK (`openai.RateLimitError` / `anthropic.RateLimitError` — SAP AI
-  Hub does NOT have this wired up, see below), caught in that provider's
-  `run_chat()`, which starts a cooldown in `services/llm/cooldown.py`
-  using the server's own `Retry-After` header when present, or a 60s
-  default otherwise. The dropdown polls `/api/providers` every 15s and
-  re-enables the option automatically once the cooldown expires — no page
-  reload needed.
-- **Nothing available** (Automatic only) — every real provider is either
-  missing a key or cooling down.
+  Hub and Ollama do NOT have this wired up, see their own sections),
+  caught in that provider's `run_chat()`, which starts a cooldown in
+  `services/llm/cooldown.py` using the server's own `Retry-After` header
+  when present, or a 60s default otherwise. The dropdown polls
+  `/api/providers` every 15s and re-enables the option automatically once
+  the cooldown expires — no page reload needed.
+- **Nothing available** (Automatic only) — every provider *in
+  `AUTOMATIC_ORDER`* is either missing a key or cooling down. Note this
+  is deliberately NOT "every registered provider" — see Ollama's section
+  below for why that distinction matters and a real bug it exposed.
 
 **Automatic** (`router.AUTOMATIC_ORDER`, currently
-`["openai", "claude", "sap_ai_hub"]`) tries each provider in that order
+`["openai", "claude", "sap_ai_hub"]` — Ollama is deliberately NOT in this
+list, see its own section below) tries each provider in that order
 and dispatches to the first one that's genuinely usable right now — key
 present *and* not in cooldown. If ChatGPT hits a rate limit mid-session,
 the very next message automatically falls through to Claude with no
@@ -332,6 +352,113 @@ docstring for the full reasoning, including the caveat that it won't work
 correctly if this ever runs behind multiple worker processes without a
 shared cache.
 
+### Local (Ollama) — manual-select only, and two real bugs found building it
+
+`ollama_provider.py` talks to a local (or LAN) Ollama instance via its
+OpenAI Chat-Completions-compatible endpoint (`/v1/chat/completions`),
+reusing the `openai` package already in `chat_app`'s dependencies rather
+than adding a separate SDK. Deliberately the OLDER Chat-Completions shape
+(same as `sap_ai_hub_provider.py`), not `openai_provider.py`'s newer
+Responses API shape — Ollama's own docs describe `/v1/responses` support
+as still preliminary, while Chat-Completions (including tool calling) is
+the mature, long-documented path.
+
+No API key concept at all — Ollama has no auth by default, so
+`has_api_key()`/`is_available()` are unconditionally `True`. That also
+means, unlike every other provider, there's no live reachability check:
+an unreachable Ollama host (wrong `OLLAMA_BASE_URL`, LAN down, box off)
+shows as "available" in the dropdown and only surfaces as an error at
+actual chat time, the same way a technically-present-but-broken API key
+would for any other provider.
+
+**Two config knobs, both env vars, neither obvious:**
+
+- `OLLAMA_BASE_URL` — point this at your Ollama host's actual LAN
+  address, NOT `localhost`, whenever `chat_app` and Ollama run on
+  different machines (e.g. Ollama on a NAS/homelab box like ZimaOS).
+  Ollama itself also binds to `127.0.0.1` only by default — it needs
+  `OLLAMA_HOST=0.0.0.0` (or equivalent) set on the Ollama side too, or
+  no amount of correct config on the `chat_app` side will reach it.
+- `OLLAMA_MODELS` — same "parse from env, not hardcoded" pattern as
+  `SAP_AI_HUB_MODELS`, but with a **different separator on purpose**:
+  `"model_id=Label,model_id=Label"`, using `=` where SAP AI Hub's version
+  of this same pattern uses `:`. That's not an inconsistency — it's a fix
+  for a real bug found while testing this provider: Ollama model IDs
+  already contain a colon themselves (the `name:tag` format, e.g.
+  `qwen2.5:3b`), so reusing `:` as the id/label separator too made
+  `qwen2.5:3b:My Label` genuinely ambiguous — it silently truncated the
+  id to `qwen2.5`, losing the tag, which then 404'd against Ollama since
+  `qwen2.5` alone was never a pulled model. Covered by a dedicated
+  regression test (`test_ollama_models_parsed_preserves_the_tag_colon_in_model_id`)
+  so this can't quietly come back.
+
+**Deliberately excluded from `AUTOMATIC_ORDER`.** Ollama's own template
+for the default model (`llama3.2:1b`) does have genuine tool-calling
+support — that part isn't guesswork — but every independent guide on
+Ollama tool-calling agrees small models are the least reliable at
+producing well-formed `tool_calls` JSON, and most already call 3B
+unreliable for production use; 1B (the default) and 3B (a common
+step-up, e.g. `qwen2.5:3b`) are both below or at that line. Manual-select
+only, so a flaky local model can never silently become what answers a
+real SAP question under "Automatic."
+
+**That exclusion exposed a second real bug**, in `router.py` itself, not
+`ollama_provider.py`: `list_providers()` used to compute whether
+"Automatic" should show as available from *every registered provider*,
+not just the ones `_pick_automatic()` actually tries. That distinction
+was invisible before — the three original providers were both
+"registered" and "in `AUTOMATIC_ORDER`," the same set. Ollama is
+registered (so it's manually selectable) but excluded from
+`AUTOMATIC_ORDER` on purpose, and is always `is_available() == True` —
+so without the fix, "Automatic" would have claimed to be available the
+moment Ollama existed, even with zero real providers configured, then
+failed anyway the instant it was actually picked. Fixed by computing
+Automatic's availability from `AUTOMATIC_ORDER` specifically; covered by
+`test_list_providers_automatic_ignores_providers_outside_automatic_order`.
+
+No rate-limit cooldown wiring here either, same reasoning as SAP AI
+Hub's: local inference doesn't 429 the way a cloud API does.
+
+## Chat page: markdown rendering, loading state, and a new external dependency
+
+`pages/chat/template/` was redesigned from a plain-text log into a real
+message layout, extending `/capabilities`' existing color language
+(blue = tool/action, green = resource/data) as a left-edge rail per
+message role rather than inventing an unrelated palette.
+
+**Assistant responses now render as real markdown**, not raw text.
+Previously `appendMsg()` set `.textContent` directly, so a model
+response formatted as a markdown list showed up as literal `- ` dashes
+with no structure. `script.js` now loads
+[`marked`](https://marked.js.org/) and
+[`DOMPurify`](https://github.com/cure53/DOMPurify) from cdnjs (pinned
+versions, see `index.html`) and does
+`DOMPurify.sanitize(marked.parse(text))` before setting `innerHTML`.
+**The `DOMPurify` step is not optional polish** — `marked`'s own docs
+say explicitly that it does not sanitize its own output, and this is
+LLM-generated text landing in `innerHTML`; skipping it would be a live
+XSS vector. `renderMarkdown()` falls back to plain `.textContent` if
+either script failed to load (offline, CDN blocked, etc.) rather than
+throwing — a failure mode this page didn't have before it had any
+external JS dependency. User and system messages are still rendered as
+plain text on purpose (never run through `marked`) — there's no reason
+to interpret what you typed, or a short system notice, as markdown.
+
+**A real loading state, where there was none before.** The old `send()`
+had no visual feedback at all between hitting Send and the response
+arriving, and — worse — no `try`/`catch` around `fetch()`, so a genuine
+crash (`chat_app` down, MCP server unreachable) was indistinguishable
+from "still thinking": both just hung silently forever. Now: the input
+and Send button disable during a request (also prevents a double-send),
+a message rotates through a small pool of phrases (`THINKING_MESSAGES`
+in `script.js`) every 3s so a long wait doesn't look frozen, and after
+15s it switches to an explicit "still working — this can take longer
+with local models" note. A network-level failure or non-2xx response
+now surfaces as a clear `⚠️ Request failed: ...` message instead of
+hanging; a normal provider-level error (missing key, rate limit, a
+model 404 from Ollama) still comes back as a `200` + `❌ ...` response
+string exactly as before, unaffected by any of this.
+
 ## What this deliberately avoids from the legacy codebase
 
 - No module-level mutable globals (`CACHED_DUMPS`-style state) for
@@ -364,6 +491,86 @@ top-level name in module `X`, and separately checks for duplicate
 top-level `def` names in the same file. Run both after any edit that
 moves code between functions, not just after adding new files — that's
 exactly the kind of edit that produces this failure mode.
+
+## New capabilities — beyond the 47 legacy tools
+
+Everything above this section is a port. `user_provisioning` is not — it
+has no legacy source, and it's structurally different from every ported
+tool in one specific way: it's **approval-gated**, not immediate.
+
+`request_sap_user_creation_tool` (the only thing the chat LLM can call)
+validates a user-creation request against the target system - checks the
+user doesn't already exist, checks every requested PFCG role actually
+exists (`RFC_READ_TABLE` against `USR02`/`AGR_DEFINE`, same pattern
+`jobs/`/`dumps/` already use) - and, if that passes, stores a pending
+request and emails the configured approver(s) a link. **It never creates
+a real SAP account by itself.**
+
+The actual `BAPI_USER_CREATE1` + `BAPI_USER_ACTGROUPS_ASSIGN` +
+`BAPI_TRANSACTION_COMMIT` sequence only runs when a human clicks
+"approve" on that emailed link - a plain GET/POST pair
+(`capabilities/user_provisioning/approval_routes.py`) mounted directly
+onto the same Starlette app `mcp.streamable_http_app()` already serves
+(see `run.py`), deliberately **not** an `@mcp.tool()`. If the execute
+step were a tool, anyone in a chat session could call it directly with a
+guessed or leaked token and skip approval entirely - the whole point of
+the two-phase design is that only someone who received the emailed link
+can trigger the real creation. The GET only ever renders a confirmation
+page and never executes anything (corporate email scanners routinely
+pre-fetch links in inbound mail to check for malware, which would
+silently "approve" a request via a side-effecting GET before a human
+ever saw it) - only the POST from a button press actually runs the BAPI
+sequence.
+
+The gap between "request" and "approval" can be hours or days, and has
+to survive a process restart, so it isn't in-memory state like
+`cooldown.py`'s rate limits - it's `infra/pending_requests.py`, a new
+shared SQLite store (stdlib `sqlite3`, same "reach for stdlib first"
+choice as `email.py`). Deliberately **not** user_provisioning-specific:
+this project's own "Known gaps" section already flags that Rename needs
+its own checkpoint/resume job runner - same underlying need, built once
+here so it's cheaper to reuse there later, not a Rename-specific
+solution disguised as a generic one.
+
+Config additions needed for this capability:
+
+- `config.json`'s `"sap"` section needs an RFC entry for the target SID
+  (same as Jobs/Dumps already require).
+- `config.json`'s `"email"` section needs `approver_emails` - a new
+  field, deliberately separate from the existing `to` list, so
+  user-creation approvals don't land in the same inbox as kernel-update
+  watchers. The new user's own welcome email (with their initial
+  password) goes to neither list - it's sent directly to
+  `payload["email"]`. `send_email()` in `infra/email.py` gained an
+  optional `to=` override to support all three genuinely different
+  audiences (kernel watchers, provisioning approvers, one specific new
+  user) sharing a single `EmailConfig`/SMTP connection.
+- `MCP_PUBLIC_BASE_URL` (`mcp_server/.env`) - the hostname the approval
+  email's link points at. Defaults to `http://127.0.0.1:8010`, which
+  will not resolve from an approver's actual inbox in any real
+  deployment - set this to your real VPN/reverse-proxy address.
+
+**Honest caveats, same spirit as elsewhere in this README:** the
+`BAPI_USER_CREATE1` structure field names (`ADDRESS`, `LOGONDATA`,
+`PASSWORD.BAPIPWD`) are SAP's standard, widely documented names for this
+BAPI but not runtime-verified against your specific ECC/S4HANA release
+in this sandbox - first place to check on a field-not-found-style RFC
+error. Mounting extra routes onto `mcp.streamable_http_app()`'s returned
+object via Starlette's `add_route()` is written to Starlette's stable
+public API but likewise not confirmed against your installed `mcp==1.28.0`
+here. There is **no authentication** on the approval route - matches the
+already-disclosed gap on `/capabilities`/`/chat` above; the "approved
+by" field on the confirmation page is a self-reported name, not a
+verified identity. Fine to start with, worth revisiting before this runs
+anywhere beyond localhost/VPN.
+
+OSS ID/S-user registration (also shown in the original capability list)
+is deliberately **not** part of this - real S-user provisioning isn't
+API-automatable in most orgs (it goes through SAP's own Support Portal,
+tied to your company's S-user administrator and customer number), and
+what it should concretely trigger here wasn't settled yet. Easy to add
+as a field on `RequestSapUserCreation` later without touching anything
+already built.
 
 ## Known gaps in this scaffold
 
@@ -510,15 +717,25 @@ exactly the kind of edit that produces this failure mode.
   Every one of its 7 MCP tools is a thin `_flask_get`/`_flask_post`
   callback into that subsystem. Porting it means building an entire new
   Flask job-orchestration layer in `chat_app` first — the first category
-  in this whole port that isn't primarily `mcp_server` work. Revisit
-  this category specifically before assuming Rename is covered by the
-  "same pattern as everything else" note below.
-- The other two legacy tool categories (provisioning, plus Rename above)
-  haven't been started — see `mcp_server_copy/mcp_server.py` for the
-  full list of 47 legacy tools. Each needs its own `capabilities/<name>/`
-  (or `resources/<name>/`) folder following the same contract/domain/
-  tool pattern used everywhere else in this port — except Rename, which
-  doesn't fit that pattern at all (see above).
+  in this whole port that isn't primarily `mcp_server` work.
+- Provisioning (8 tools) was also explicitly skipped — its real logic
+  lives in a 2,174-line orchestrator (`mcp_swpm_orchestrator_AUTO.py`)
+  automating real SAP Software Provisioning Manager "shell copy"
+  migrations (`orchestrate_shell_copy_export_automated` alone is 341
+  lines). Every tool in it runs as a **background thread**, returning
+  immediately with a `__LOG_FILE__{path}` marker for a caller to poll
+  separately, while the actual multi-hour SWPM export/install runs async
+  and writes live progress to a log file — an architecture pattern
+  nothing else in this 32-tool port uses (every other tool here is
+  synchronous request/response). It also assumes Windows-local `.SAR`/
+  `.SUM` staging, same as Kernel, plus its own RFC usage for client
+  export steps. Porting this faithfully means designing a background-job
+  execution model for this MCP server first, not just adding another
+  `capabilities/<name>/` folder to the existing pattern.
+- Neither Rename nor Provisioning fit the "same contract/domain/tool
+  pattern as everything else" note that applies to every other category
+  in this port — see their entries above for why each specifically was
+  set aside, rather than treating both as generically "not started yet."
 - No auth on `/capabilities` or `/chat` yet — add the same
   `requires_basic_auth` pattern used in the migrated Flask app before
   exposing this beyond localhost.

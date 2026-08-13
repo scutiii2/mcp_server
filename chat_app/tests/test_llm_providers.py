@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from chat_app.services.llm import claude_provider, cooldown, openai_provider, sap_ai_hub_provider
+from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider, sap_ai_hub_provider
 
 
 def _fake_tool():
@@ -203,3 +203,107 @@ def test_openai_rate_limit_error_starts_a_cooldown(monkeypatch):
 
     assert cooldown.is_in_cooldown("openai") is True
     assert cooldown.seconds_remaining("openai") <= 5
+
+
+def test_ollama_tool_schemas_use_function_wrapped_shape():
+    """Same Chat-Completions function-wrapped shape as sap_ai_hub_provider.py -
+    Ollama's OpenAI-compat layer speaks that wire format, not
+    openai_provider.py's newer Responses-API one."""
+    with patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[_fake_tool()]):
+        schemas = ollama_provider._tool_schemas()
+
+    assert schemas == [
+        {
+            "type": "function",
+            "function": {
+                "name": "stop_sap_system_tool",
+                "description": "Stop a SAP system by SID.",
+                "parameters": {"type": "object", "properties": {"sid": {"type": "string"}}},
+            },
+        }
+    ]
+
+
+def test_ollama_has_no_api_key_requirement():
+    """No API key concept at all for a local, unauthenticated Ollama
+    instance - always True, unlike every other provider here."""
+    assert ollama_provider.has_api_key() is True
+    assert ollama_provider.is_available() is True
+
+
+def test_ollama_base_url_defaults_to_localhost(monkeypatch):
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    assert ollama_provider._base_url() == "http://localhost:11434/v1"
+
+
+def test_ollama_base_url_reads_env_override(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://192.168.1.50:11434/v1")
+    assert ollama_provider._base_url() == "http://192.168.1.50:11434/v1"
+
+
+def test_ollama_models_parsed_from_env():
+    import os
+
+    old = os.environ.get("OLLAMA_MODELS")
+    try:
+        os.environ["OLLAMA_MODELS"] = "llama3.2:1b=Tiny local,qwen2.5:3b=Bigger local"
+        models = ollama_provider._parse_models_from_env()
+    finally:
+        if old is None:
+            os.environ.pop("OLLAMA_MODELS", None)
+        else:
+            os.environ["OLLAMA_MODELS"] = old
+
+    assert [m.id for m in models] == ["llama3.2:1b", "qwen2.5:3b"]
+    assert [m.label for m in models] == ["Tiny local", "Bigger local"]
+
+
+def test_ollama_models_parsed_preserves_the_tag_colon_in_model_id():
+    """Regression test for the exact bug found while testing this
+    provider: Ollama model IDs contain a colon themselves (name:tag), so
+    a ":"-separated id/label format truncates "qwen2.5:3b" down to just
+    "qwen2.5" and loses the tag - which then 404s against Ollama, since
+    "qwen2.5" alone isn't a pulled model. "=" as the separator avoids
+    the collision entirely."""
+    import os
+
+    old = os.environ.get("OLLAMA_MODELS")
+    try:
+        os.environ["OLLAMA_MODELS"] = "qwen2.5:3b=Qwen 2.5 3B (local)"
+        models = ollama_provider._parse_models_from_env()
+    finally:
+        if old is None:
+            os.environ.pop("OLLAMA_MODELS", None)
+        else:
+            os.environ["OLLAMA_MODELS"] = old
+
+    assert len(models) == 1
+    assert models[0].id == "qwen2.5:3b"  # NOT "qwen2.5" - the tag must survive
+    assert models[0].label == "Qwen 2.5 3B (local)"
+
+
+def test_ollama_models_parsed_falls_back_to_id_when_label_omitted():
+    import os
+
+    old = os.environ.get("OLLAMA_MODELS")
+    try:
+        os.environ["OLLAMA_MODELS"] = "qwen2.5:3b"
+        models = ollama_provider._parse_models_from_env()
+    finally:
+        if old is None:
+            os.environ.pop("OLLAMA_MODELS", None)
+        else:
+            os.environ["OLLAMA_MODELS"] = old
+
+    assert models == [ollama_provider.ModelOption(id="qwen2.5:3b", label="qwen2.5:3b")]
+
+
+def test_ollama_not_in_automatic_order():
+    """The one behavioral guarantee this provider's whole design rests
+    on - see its module docstring and router.py's comment on
+    AUTOMATIC_ORDER for why a small local model must never be silently
+    picked for a real SAP question."""
+    from chat_app.services.llm import router
+
+    assert "ollama" not in router.AUTOMATIC_ORDER
+    assert "ollama" in router._PROVIDERS  # still registered - manually selectable

@@ -62,6 +62,26 @@ def test_list_providers_automatic_unavailable_when_nothing_is(monkeypatch):
     assert providers["auto"]["reason"] == "none_available"
 
 
+def test_list_providers_automatic_ignores_providers_outside_automatic_order(monkeypatch):
+    """Regression test: ollama_provider is always available() (no API
+    key needed - see its module docstring) but deliberately excluded
+    from AUTOMATIC_ORDER. Before this fix, list_providers() computed
+    "Automatic"'s availability from every registered provider, so adding
+    ollama would have made "auto" claim to be available even with every
+    real provider unconfigured - even though _pick_automatic() would
+    still raise, since it only ever loops over AUTOMATIC_ORDER."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for var in ("AICORE_CLIENT_ID", "AICORE_CLIENT_SECRET", "AICORE_AUTH_URL", "AICORE_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+    providers = {p["id"]: p for p in router.list_providers()}
+
+    assert providers["ollama"]["available"] is True  # confirms the premise of this test
+    assert providers["auto"]["available"] is False
+    assert providers["auto"]["reason"] == "none_available"
+
+
 def test_list_providers_reports_rate_limited_reason(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     cooldown.start_cooldown("openai", seconds=45)

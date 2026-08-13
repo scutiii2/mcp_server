@@ -7,5 +7,23 @@
       "key": null,
       "password": "changeme"
     }
-  ]
+  ],
+  "sap": [
+    {
+      "sid": "E4G",
+      "ashost": "e4g-host.example.com",
+      "sysnr": "00",
+      "client": "100",
+      "user": "RFC_USER",
+      "passwd": "changeme"
+    }
+  ],
+  "email": {
+    "smtp_server": "smtp.example.com",
+    "smtp_port": 587,
+    "from": "sap-aiops@example.com",
+    "password": "changeme",
+    "to": ["basis-team@example.com"],
+    "approver_emails": ["sap-security-lead@example.com"]
+  }
 }
