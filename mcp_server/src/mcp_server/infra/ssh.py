@@ -1,10 +1,10 @@
 """One SSH client for the whole server.
 
-The legacy codebase had at least three separate SSH-connect implementations
-(``_ssh`` in mcp_server.py, ``_ssh_connect_raw`` in sapren_bp.py, plus inline
-paramiko calls in admin_bp.py) with slightly different auth-fallback order
-and retry behavior in each. Centralizing it here means every domain function
-gets identical, tested connection handling for free.
+Every capability that needs a remote shell goes through this module, so
+connection handling, auth-fallback order, and timeout behavior are
+identical everywhere and tested once. Resist adding a second
+paramiko-connecting code path elsewhere - that's how you end up with
+three implementations that each retry slightly differently.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class SSHClient:
 
     Usage:
         with SSHClient(host, user, key=key_path, password=password) as ssh:
-            result = ssh.run("systemctl status sapinit")
+            result = ssh.run("systemctl status nginx")
     """
 
     def __init__(
@@ -105,14 +105,16 @@ class SSHClient:
     def run_login_shell(self, command: str, shell: str = "bash") -> SSHCommandResult:
         """Run a command through an actual login shell, not a bare
         exec_command(). A raw exec_command() doesn't source any profile,
-        so unqualified commands like `sapcontrol` fail with "command not
-        found" for SAP admin users whose PATH is set up by their shell
-        rc file. Classic SAP application-server admin users (sidadm, e.g.
-        e4gadm) conventionally use /bin/csh for exactly this reason;
-        HANA admins and general-purpose accounts use /bin/bash. Pass
-        whichever is correct for the connecting user - domain code should
-        know which tier (DB vs ASCS/PAS/AAS) it's targeting rather than
-        this method trying to guess from the username."""
+        so an unqualified command fails with "command not found" whenever
+        the target binary is only on PATH because the user's shell rc
+        file put it there - common for service accounts that ship their
+        own environment setup.
+
+        ``shell`` picks which login shell to wrap with, since that isn't
+        guessable from the username: pass "csh" for accounts whose
+        environment lives in .cshrc, "bash" (the default) otherwise.
+        Domain code knows which kind of account it's connecting as; this
+        method deliberately doesn't try to infer it."""
         if shell == "csh":
             wrapped = f'/bin/csh -c "{command}"'
         else:
@@ -139,24 +141,20 @@ def run_command(
     timeout: int = 30,
 ) -> tuple[bool, str, str]:
     """Bare exec_command (no login-shell wrapping), returning
-    (connected, stdout, stderr). Port of the legacy mcp_server.py's
-    ``_ssh()`` helper, used throughout the monitoring tools.
+    (connected, stdout, stderr) - a one-shot convenience wrapper for
+    domain code that doesn't need to hold a connection open.
 
-    "connected" reflects whether the SSH connection+command execution
-    completed without raising - it does NOT check the remote command's
-    own exit code (the legacy function didn't either), so a command that
-    ran but printed only to stderr still reports connected=True with the
-    text in stderr rather than stdout.
+    "connected" reflects whether the SSH connection and command execution
+    completed without raising. It does NOT check the remote command's own
+    exit code, so a command that ran but printed only to stderr still
+    reports connected=True with the text in stderr rather than stdout. Use
+    ``SSHClient`` directly if you need the exit status.
 
-    Distinct from ``SSHClient.run_login_shell()``: that wraps the command
-    in an actual login shell, needed for sidadm users whose PATH depends
-    on .cshrc/.profile (used by capabilities/control/). This runs the
-    bare command directly, matching what the legacy monitoring tools
-    actually did - it works because paramiko's exec_command on many SSH
-    server configs still resolves enough PATH for sapcontrol to be found,
-    even without full login-shell semantics. If a specific tool turns out
-    to need login-shell wrapping in your environment, use
-    ``SSHClient.run_login_shell()`` directly at that call site instead.
+    Distinct from ``SSHClient.run_login_shell()``, which wraps the command
+    in an actual login shell. Prefer this one by default - it's cheaper
+    and quotes nothing - and switch to ``run_login_shell()`` at the
+    specific call site where a command turns out to need the profile
+    sourced to be found on PATH.
     """
     try:
         with SSHClient(host, user, key=key, password=password, command_timeout=timeout) as ssh:
@@ -168,11 +166,14 @@ def run_command(
 
 def sftp_upload_dir(host: str, user: str, password: str, local_dir: str, remote_dir: str) -> int:
     """Recursively upload local_dir's contents into remote_dir over SFTP,
-    password auth. Faithful port of the legacy _sftp_upload_dir - one-off
-    connection (not reusing SSHClient, since that's exec-focused and this
-    needs an SFTP channel instead), used only by kernel updates to push
-    extracted .SAR contents from the Windows machine running this server
-    to the remote SAP host. Returns the number of files uploaded.
+    password auth. Returns the number of files uploaded.
+
+    Opens its own one-off connection rather than reusing ``SSHClient``,
+    which is exec-focused and never opens an SFTP channel. Note this
+    means the local machine running the MCP server needs the files
+    already staged on its own filesystem - a capability built on this is
+    tied to wherever this process runs, unlike one that only needs
+    network reach to the remote host.
     """
     import os
 
@@ -209,11 +210,10 @@ def sftp_upload_dir(host: str, user: str, password: str, local_dir: str, remote_
 
 def sftp_write_file(host: str, user: str, key: str | None, password: str | None, remote_path: str, content: str) -> None:
     """Write a single small text file to the remote host over SFTP -
-    faithful port of the legacy _sftp_write, used by conversion's
-    duplicate-key-check tool to stage generated SQL scripts before
-    running them with isql. Distinct from sftp_upload_dir above (which
-    recursively uploads a whole local directory) - this writes one string
-    to one remote path, no local file involved at all."""
+    useful for staging a generated script before running it with
+    ``SSHClient.run()``. Distinct from ``sftp_upload_dir`` above (which
+    recursively uploads a whole local directory): this writes one string
+    to one remote path, with no local file involved at all."""
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:

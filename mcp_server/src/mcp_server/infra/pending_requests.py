@@ -1,18 +1,18 @@
 """Durable store for approval-gated / resumable multi-step requests.
 
-Some capabilities can't complete inside a single synchronous tool call -
-user_provisioning's SAP user creation should only execute after a human
-approver clicks a link in an email, which might happen hours or days
-after the original chat request. That gap has to survive independently
-of any chat session and any process restart, so it can't be an in-memory
-dict the way cooldown.py's rate-limit state can (see that file's
-docstring for why losing that on restart is fine - losing a pending
-approval on restart is not).
+Some capabilities can't complete inside a single synchronous tool call.
+Anything a human has to approve first - where the tool validates the
+request, emails someone a link, and only executes when that link is
+clicked - has a gap of hours or days in the middle. So does any
+long-running job that needs to resume from a checkpoint after a crash.
+That gap has to survive independently of any chat session and any
+process restart, so it can't be an in-memory dict the way the chat app's
+rate-limit cooldown state can (losing a cooldown on restart is fine;
+losing a pending approval is not).
 
-Deliberately generic, not user_provisioning-specific: the README already
-flags that Rename needs its own "checkpoint/resume job runner" - same
-underlying need. One shared store here means that's cheaper to build
-later, not more entangled with this feature.
+Deliberately capability-agnostic: ``capability`` is just a label on the
+row and ``payload`` is opaque JSON, so one store serves every such
+workflow rather than each growing its own table.
 
 SQLite (stdlib ``sqlite3``) rather than a new dependency - same
 "reach for stdlib first" choice already made for infra/email.py. Not
@@ -72,11 +72,11 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 def create(db_path: Path, capability: str, payload: dict[str, Any], *, ttl_hours: int = 72) -> str:
     """Persist a new pending request and return its (unguessable) token.
 
-    ``secrets.token_urlsafe`` - not ``uuid4`` - deliberately: this token
-    is the entire access control for the approval link (see
-    approval_routes.py's module docstring for why execution is gated on
-    "possession of this token", not any real auth), so it needs to be
-    cryptographically unguessable, not just statistically unique.
+    ``secrets.token_urlsafe`` - not ``uuid4`` - deliberately: in the
+    emailed-approval-link pattern this exists for, possession of the
+    token IS the authorization to execute. That makes it a credential,
+    so it has to be cryptographically unguessable, not merely unique the
+    way a UUID is.
     """
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
