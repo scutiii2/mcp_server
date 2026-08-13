@@ -2,8 +2,10 @@
 
 Two independent Python packages, one MCP tool server and one Flask chat
 app, talking over HTTP. This is a starter skeleton, not a finished system —
-one real tool (`stop_sap_system`) is built end-to-end through all three
-layers so you have a working pattern to copy for the rest.
+the Control category (`get_available_sids`, `stop_sap_system`,
+`start_sap_system`) is built end-to-end as a faithful, full-fidelity port
+of the legacy multi-tier landscape orchestration, so you have a working
+pattern to copy for the rest.
 
 ## Layout
 
@@ -15,14 +17,36 @@ mcp_server/                        MCP tool server (port 8010)
 │   ├── server.py                  shared FastMCP instance
 │   ├── config.py                  settings (config path, host, port)
 │   ├── infra/                     shared across both capabilities/ and resources/
-│   │   ├── ssh.py                  SSH client
-│   │   ├── sap_config.py           config loader — SapServerConfig now carries HANA fields too
-│   │   └── db.py                   HANA client — DB-API 2.0, mirrors ssh.py's context-manager shape
+│   │   ├── ssh.py                  SSH client + run_command() (bare exec_command, monitoring's style)
+│   │   ├── sap_config.py           config loader — SapServerConfig (SSH+HANA+landscape), RfcServerConfig (RFC)
+│   │   ├── db.py                   HANA client — DB-API 2.0, mirrors ssh.py's context-manager shape
+│   │   ├── rfc.py                  pyrfc.Connection wrapper + shared RfcConnection Protocol — see optional [rfc] extra
+│   │   └── email.py                 SMTP notifications — genuinely new, stdlib only, see its docstring
 │   ├── capabilities/               Tools — actions the model deliberately invokes
-│   │   └── control/
-│   │       ├── contract.py         Pydantic request/result models
-│   │       ├── domain.py           pure business logic, no MCP/paramiko imports
-│   │       └── tool.py             thin @mcp.tool() wrapper — only place the decorator appears
+│   │   ├── control/                 get_available_sids, stop/start_sap_system — multi-tier landscape
+│   │   │   ├── contract.py
+│   │   │   ├── domain.py
+│   │   │   └── tool.py
+│   │   ├── monitoring/              all 13 monitoring tools
+│   │   │   ├── contract.py
+│   │   │   ├── domain.py
+│   │   │   └── tool.py
+│   │   ├── dumps/                   all 3 dump tools — RFC-based (SNAP table), not SSH or HANA SQL
+│   │   │   ├── contract.py
+│   │   │   ├── domain.py
+│   │   │   └── tool.py
+│   │   ├── health/                  system health assessment + maintenance mode
+│   │   │   ├── contract.py
+│   │   │   ├── domain.py
+│   │   │   └── tool.py
+│   │   ├── jobs/                    all 7 job tools — RFC-based (BAPI_XBP_* + TBTCO)
+│   │   │   ├── contract.py
+│   │   │   ├── domain.py
+│   │   │   └── tool.py
+│   │   └── kernel/                  kernel update — Windows-local file dependency, see its docstring
+│   │       ├── contract.py
+│   │       ├── domain.py
+│   │       └── tool.py
 │   └── resources/                  Resources — read-only, URI-addressed, browsable data
 │       └── job_history/
 │           ├── contract.py         Pydantic request/result models
@@ -30,6 +54,11 @@ mcp_server/                        MCP tool server (port 8010)
 │           └── resource.py         thin @mcp.resource() wrapper — only place that decorator appears
 └── tests/
     ├── test_control_domain.py     domain tests — no SSH, no MCP, no network
+    ├── test_monitoring_domain.py  domain tests — run_command mocked with real sapcontrol-shaped CSV
+    ├── test_dumps_domain.py       domain tests — fake RFC connection object, no pyrfc needed
+    ├── test_health_domain.py      domain tests — run_command mocked + real tmp_path file I/O
+    ├── test_jobs_domain.py        domain tests — fake RFC connection object, no pyrfc needed
+    ├── test_kernel_domain.py      pure helpers + validation phase — NOT full orchestration, see its docstring
     └── test_job_history_domain.py domain tests — HanaClient mocked, no real DB connection
 
 chat_app/                          Flask chat + capabilities browser (port 5009)
@@ -312,6 +341,25 @@ shared cache.
   and the capabilities page see — one Pydantic schema, one description,
   everywhere.
 
+## Verification practices used while porting
+
+`py_compile` only catches syntax errors — it does NOT catch a function
+being imported under a name that doesn't actually exist in the target
+module. That gap let a real structural bug through once during this
+port: an edit to `monitoring/domain.py` accidentally dropped a function's
+`def` line, silently merging its body as dead, unreachable code inside
+the *previous* function — syntactically valid, so `py_compile` reported
+success, but `debug_raw_process_list_tool` would have called a function
+that no longer existed.
+
+Caught by a small AST-based script (not committed as a file here, but
+worth keeping around if you continue this work) that, for every file:
+walks every `from mcp_server.X import Y` and confirms `Y` is actually a
+top-level name in module `X`, and separately checks for duplicate
+top-level `def` names in the same file. Run both after any edit that
+moves code between functions, not just after adding new files — that's
+exactly the kind of edit that produces this failure mode.
+
 ## Known gaps in this scaffold
 
 - Only `job_history` is implemented as a resource, and it's the only
@@ -322,10 +370,119 @@ shared cache.
   but its actual query behavior against a real HANA instance is
   untested here; only the domain logic is unit-tested with a mocked
   `HanaClient`.
-- Only `stop_sap_system` is implemented; the other eight legacy tool
-  categories (monitoring, jobs, kernel, rename, conversion, provisioning,
-  etc.) still need their own `capabilities/<name>/` folder following the
-  same pattern.
+- Control is fully implemented (`get_available_sids`, `stop_sap_system`,
+  `start_sap_system`) — multi-tier landscape orchestration (DB → ASCS →
+  PAS → additional app servers), idempotency checks, and GREEN/DOWN
+  polling all faithfully ported from `sap_operations.py`. One disclosed
+  adaptation: the legacy version streamed progress to a polled temp log
+  file; this blocks synchronously and returns the accumulated log in one
+  response instead, since MCP tool calls are request/response, not a
+  background job.
+- Monitoring is fully implemented — all 13 tools (`list_sap_systems`,
+  `check_work_process_errors`, `get_work_process_breakdown` with its full
+  3-tier fallback chain, `debug_raw_process_list`, `get_sap_process_list`,
+  `get_sap_process_status`, `get_sap_system_health`, `get_kernel_version`
+  with its sapcontrol → disp+work fallback, `check_disk_usage`,
+  `find_largest_files`, `check_cpu_usage`, `check_memory_usage`,
+  `get_hana_status`). One disclosed fix: the legacy `get_sap_system_health`
+  indexed `sap_srv["pashost"]` etc. with no None-check after the SID
+  lookup — an unhandled SID would raise a raw `TypeError` there instead of
+  a clean error message like every other monitoring tool returns; fixed
+  here since it's clearly an oversight, not intended behavior.
+- Dumps is fully implemented — `get_abap_dumps_tool`, `analyze_latest_dump_tool`,
+  `analyze_abap_dump_tool`. RFC-based (SNAP table via `RFC_READ_TABLE`),
+  needs the `[rfc]` optional dependency group (`pyrfc`, which itself
+  needs SAP's proprietary NW RFC SDK — not a plain `pip install`). Three
+  disclosed bugs found and fixed in the legacy `analyze_latest_dump`: it
+  called `Connection(**cfg)` with `Connection` never imported anywhere
+  reachable (guaranteed `NameError`), indexed a dict key (`"seqno"`) that
+  never existed on that dict (guaranteed `KeyError`), and re-ran
+  `analyze_dump_text()` on an already-analyzed result (type mismatch,
+  and redundant). The function had never successfully executed once —
+  rewritten to do what it clearly intended. One *cosmetic*, non-crashing
+  bug (`SEQNO=` always renders blank in `get_abap_dumps_tool`'s report,
+  since the display code reads a dict key — `'seqno'` — the data never
+  populates) was preserved faithfully rather than silently fixed, since
+  it never crashes, unlike the disclosed fixes above.
+- Health is fully implemented — `get_system_health_tool`,
+  `get_maintenance_status_tool`, `set_maintenance_mode_tool`. The seven
+  health-scoring helpers (`_health_icon` through `_health_score`) are
+  faithful ports. `get_system_health_tool` is the largest disclosed
+  deviation in this whole port so far — not a bug fix, a **completion**:
+  the legacy `get_system_health` does real SSH work to gather all eight
+  health components (CPU, memory, disk, SAP PAS, SAP ASCS, database,
+  connectivity, kernel) and computes an overall status and health score
+  from all eight, but its display-formatting code only ever appends the
+  header, CPU, and Memory sections to the output — Disk/SAP-PAS/SAP-ASCS/
+  Database/Connectivity/Kernel are silently never formatted — and the
+  function has **no `return` statement at all** (confirmed via raw byte
+  inspection, not a rendering artifact — it falls straight into the next
+  tool's `@mcp.tool()` decorator). Every real call would do 6+ SSH
+  round-trips and then implicitly return `None`. The six missing sections
+  in this port are written fresh, following the exact formatting
+  convention the CPU/Memory sections already establish — not ported from
+  source that doesn't exist, clearly marked in `domain.py` where the
+  legacy source's content ends and the completion begins.
+- Jobs is fully implemented — `get_job_failures_tool`, `get_job_log_tool`,
+  `reschedule_job_tool`, `get_long_running_jobs_tool`, `get_completed_jobs_tool`,
+  `get_longest_completed_jobs_tool`, `get_job_trend_analysis_tool`.
+  RFC-based (`BAPI_XBP_*` for failures/log/reschedule, `TBTCO` via
+  `RFC_READ_TABLE` for the rest), same `[rfc]` optional dependency group
+  as Dumps. `infra/rfc.py`'s `RfcConnection` Protocol is now shared
+  between Dumps and Jobs rather than each defining its own copy. Two
+  disclosed behavioral notes (neither a crash, so neither silently
+  "fixed" without saying so): `get_long_running_jobs`'s actual RFC filter
+  is `STATUS <> 'A'` (not-aborted, last 7 days) — broader than its name
+  and description ("STATUS='ACTIVE'") suggest, but not wrong, just
+  under-documented; and `get_job_trend_analysis`'s legacy tool wrapper
+  never checked for an `ERROR` status from the RFC call — only
+  `NO_DATA`/`INSUFFICIENT_DATA` — so a real RFC failure would have fallen
+  through to formatting a misleading empty-looking report instead of
+  showing the actual error. That second one *was* fixed, matching the
+  "clean error message" standard every other tool in this port follows.
+- Kernel is fully implemented — `apply_kernel_update_tool`. The most
+  architecturally unusual tool in this port, and the biggest single
+  `domain.py` (500+ lines). Two things it does that every other tool in
+  this scaffold avoids, both preserved per the explicit "full fidelity"
+  decision for this category:
+  1. **It assumes the MCP server process itself runs on Windows with
+     local filesystem access** — it shells out to a local `SAPCAR.exe`
+     (`subprocess.run`) to extract `.SAR` kernel files staged on a local
+     drive, then SFTP-pushes the extracted files to the remote SAP host.
+     Every other tool only needs network/SSH access *to* SAP hosts; this
+     one needs to physically run on a specific prepared machine. Not
+     redesigned to run remotely.
+  2. **Two email notifications, now genuinely working for the first
+     time.** The legacy code tried `from app import send_email,
+     build_kernel_update_email` — neither function exists anywhere in
+     the entire legacy codebase (confirmed by searching the whole tree),
+     so every call has always raised `ImportError`, been silently
+     caught, logged, and continued. This kernel-update tool has never
+     actually sent an email, in any run, ever. `infra/email.py` is a
+     fresh design (stdlib `smtplib`, no new dependency) against the
+     `"email"` section already present in a real `config.json`
+     (`smtp_server`, `smtp_port`, `from`, `password`, `to`) — there was
+     no original implementation to port from, so the subject
+     lines/HTML/wording are new choices, not faithful ports. A failed
+     send is logged into the report but never aborts the update,
+     matching the legacy code's evident (if never-working) intent.
+
+  One more disclosed inconsistency, preserved rather than silently
+  "fixed": `wait_for_green_blocking`'s DB branch connects using the
+  default `sapadm` user, not `hanaadm`, unlike `trigger_start_db`'s
+  explicit `hanaadm`+bash elsewhere in the same file. Both exist in the
+  legacy code as-is. This category also duplicates polling logic
+  (wait-for-down/wait-for-green) that `capabilities/control/domain.py`
+  already has its own version of — this mirrors a real duplication
+  already present in the legacy `sap_operations.py` itself, and was kept
+  local rather than refactored into a shared helper, partly to match
+  that legacy structure and partly to avoid touching Control's
+  already-verified polling code for this pass.
+- The other three legacy tool categories (rename,
+  conversion, provisioning) haven't been started — see
+  `mcp_server_copy/mcp_server.py` for the full list of 47 legacy tools.
+  Each needs its own `capabilities/<name>/` (or `resources/<name>/`)
+  folder following the same contract/domain/tool pattern.
 - No auth on `/capabilities` or `/chat` yet — add the same
   `requires_basic_auth` pattern used in the migrated Flask app before
   exposing this beyond localhost.

@@ -7,6 +7,8 @@ from chat_app.services.tool_titles import title_for
 
 def test_override_is_used_when_present():
     assert title_for("stop_sap_system_tool") == "Stop SAP System"
+    assert title_for("start_sap_system_tool") == "Start SAP System"
+    assert title_for("get_available_sids_tool") == "Get Available SIDs"
 
 
 def test_auto_generated_fallback_strips_tool_suffix_and_title_cases():

@@ -11,7 +11,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class AdditionalAppServer(BaseModel):
+    host: str
+    instance: str
 
 
 class SapServerConfig(BaseModel):
@@ -27,10 +32,70 @@ class SapServerConfig(BaseModel):
     hana_port: int = 30015
     hana_user: str | None = None
     hana_password: str | None = None
+    # Multi-tier landscape fields, for orchestrating stop/start across the
+    # DB/ASCS/PAS/additional-app-server topology via sapcontrol - genuinely
+    # different from hana_host/hana_port/hana_user/hana_password above,
+    # which are for direct HANA SQL-port queries (job_history resource),
+    # not SSH-based sapcontrol commands against the DB instance. All tiers
+    # share the single top-level `password` field for SSH auth - only the
+    # OS username differs per tier (sapadm vs hanaadm) - matching the
+    # legacy config's actual shape (confirmed against a real config.json).
+    dbhost: str | None = None
+    ascshost: str | None = None
+    pashost: str | None = None
+    sapadm: str | None = None
+    hanaadm: str | None = None
+    db_nr: str | None = None
+    ascs_nr: str | None = None
+    pas_nr: str | None = None
+    additional_app_servers: list[AdditionalAppServer] = []
+    # Windows-local path where kernel .SAR files are staged - used only by
+    # the kernel-update tool, which (faithfully, per the legacy design)
+    # assumes the MCP server process itself runs on Windows with local
+    # filesystem access, not just network access to the SAP hosts. See
+    # capabilities/kernel/domain.py's module docstring for why this
+    # assumption was preserved rather than redesigned.
+    kernel_dir: str | None = None
+
+
+class RfcServerConfig(BaseModel):
+    sid: str
+    ashost: str
+    sysnr: str = "00"
+    client: str = "000"
+    user: str
+    passwd: str
+    lang: str = "EN"
+
+
+class EmailConfig(BaseModel):
+    """SMTP settings for email notifications - a FOURTH config section
+    ("email" in config.json), genuinely new functionality (see
+    infra/email.py's module docstring - the legacy send_email/
+    build_kernel_update_email it was meant to call never existed anywhere
+    in the codebase). Field names match the "email" section already
+    present in a real config.json, not invented here."""
+
+    smtp_server: str
+    smtp_port: int = 587
+    from_address: str = Field(alias="from")
+    password: str
+    to: list[str] = []
+
+    model_config = {"populate_by_name": True}
 
 
 class AppConfig(BaseModel):
     sap_server: list[SapServerConfig] = []
+    # A THIRD, separate config section - "sap" in config.json, not
+    # "sap_server". Holds SAP RFC (Remote Function Call) connection
+    # details, genuinely distinct from both the SSH fields above and the
+    # HANA SQL-port fields: RFC talks to the SAP application server's own
+    # gateway port using SAP's own protocol, authenticating as an SAP
+    # user/client/password (not an OS user), used for ABAP-level data
+    # access (dumps, jobs) that SSH/HANA-SQL can't reach directly.
+    sap: list[RfcServerConfig] = []
+    email: EmailConfig | None = None
 
 
 def load_config(path: Path) -> AppConfig:
@@ -42,3 +107,8 @@ def load_config(path: Path) -> AppConfig:
 def find_sap_server(sid: str, config: AppConfig) -> SapServerConfig | None:
     sid_upper = sid.upper()
     return next((server for server in config.sap_server if server.sid.upper() == sid_upper), None)
+
+
+def find_rfc_server(sid: str, config: AppConfig) -> RfcServerConfig | None:
+    sid_upper = sid.upper()
+    return next((server for server in config.sap if server.sid.upper() == sid_upper), None)

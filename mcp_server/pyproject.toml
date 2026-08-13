@@ -15,6 +15,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# pyrfc requires SAP's proprietary NW RFC SDK to even install - not a
+# plain pip package the way hdbcli is; you need SAP's compiled library
+# files, gated behind SAP support portal access. Named "rfc" rather than
+# "dumps" specifically since other RFC-based categories (Jobs) will need
+# the same dependency.
+rfc = ["pyrfc>=3.3"]
 
 [project.scripts]
 sap-mcp-server = "mcp_server.run:main"

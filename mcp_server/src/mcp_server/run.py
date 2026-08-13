@@ -20,6 +20,11 @@ from mcp_server.server import mcp  # noqa: E402
 # list calls. Add each new capability's tool/resource module here as
 # it's built.
 from mcp_server.capabilities.control import tool as control_tool  # noqa: F401,E402
+from mcp_server.capabilities.dumps import tool as dumps_tool  # noqa: F401,E402
+from mcp_server.capabilities.health import tool as health_tool  # noqa: F401,E402
+from mcp_server.capabilities.jobs import tool as jobs_tool  # noqa: F401,E402
+from mcp_server.capabilities.kernel import tool as kernel_tool  # noqa: F401,E402
+from mcp_server.capabilities.monitoring import tool as monitoring_tool  # noqa: F401,E402
 from mcp_server.resources.job_history import resource as job_history_resource  # noqa: F401,E402
 
 
