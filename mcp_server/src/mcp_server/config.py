@@ -13,25 +13,23 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Settings:
-    config_path: Path = Path(os.getenv("SAP_CONFIG_PATH", "config.json"))
-    # Relative to CWD by default, matching config_path's same deliberate
-    # fragility (see infra/sap_config.py's load_config docstring) - kept
-    # consistent rather than fixed only here. Configurable so tests don't
-    # need to write real files into the sandbox's CWD.
-    maintenance_path: Path = Path(os.getenv("SAP_MAINTENANCE_PATH", "maintenance.json"))
+    config_path: Path = Path(os.getenv("CONFIG_PATH", "config.json"))
     host: str = os.getenv("MCP_HOST", "0.0.0.0")
     port: int = int(os.getenv("MCP_PORT", "8010"))
-    # SQLite file backing infra/pending_requests.py - same relative-to-CWD
-    # default fragility as config_path/maintenance_path above, kept
-    # consistent rather than fixed only here.
-    pending_requests_path: Path = Path(os.getenv("SAP_PENDING_REQUESTS_PATH", "pending_requests.db"))
-    # The URL an approval email's link points at. Deliberately NOT derived
-    # from host/port above - `host` is a bind address (0.0.0.0 is not a
-    # real client-reachable hostname), while this needs to be whatever
-    # address actually resolves from an approver's inbox (a VPN hostname,
-    # a reverse-proxy address, etc). Defaults to localhost so this at
-    # least works out of the box for local testing; override for any real
-    # deployment.
+    # SQLite file backing infra/pending_requests.py - relative to CWD by
+    # default (kept fragile-by-default rather than fixed only here).
+    # Backs any approval-gated / resumable capability you add later, not
+    # tied to any specific tool.
+    pending_requests_path: Path = Path(os.getenv("PENDING_REQUESTS_PATH", "pending_requests.db"))
+    # The URL an approval email's link would point at, for any future
+    # approval-gated capability built on infra/pending_requests.py +
+    # infra/email.py. Deliberately NOT derived from host/port above -
+    # `host` is a bind address (0.0.0.0 is not a real client-reachable
+    # hostname), while this needs to be whatever address actually
+    # resolves from an approver's inbox (a VPN hostname, a
+    # reverse-proxy address, etc). Defaults to localhost so this at
+    # least works out of the box for local testing; override for any
+    # real deployment.
     public_base_url: str = os.getenv("MCP_PUBLIC_BASE_URL", "http://127.0.0.1:8010")
 
 

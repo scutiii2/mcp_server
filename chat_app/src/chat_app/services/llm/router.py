@@ -10,23 +10,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider, sap_ai_hub_provider
+from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
 from chat_app.services.llm.base import ChatResult, ProviderSpec
 
 
 _PROVIDERS: dict[str, ProviderSpec] = {
     openai_provider.PROVIDER.id: openai_provider.PROVIDER,
     claude_provider.PROVIDER.id: claude_provider.PROVIDER,
-    sap_ai_hub_provider.PROVIDER.id: sap_ai_hub_provider.PROVIDER,
     ollama_provider.PROVIDER.id: ollama_provider.PROVIDER,
 }
 
 # First entry tried first. Change this order to change which provider
-# "Automatic" prefers when more than one is available. SAP AI Hub is
-# listed last by default since it typically proxies to the same
-# underlying models OpenAI/Claude already offer directly, with more
-# setup overhead (tenant-specific deployments) - reorder if your
-# organization's policy prefers routing everything through SAP AI Core.
+# "Automatic" prefers when more than one is available.
 #
 # ollama_provider is deliberately NOT in this list - see its module
 # docstring for why. It's still fully selectable manually from the
@@ -36,7 +31,6 @@ _PROVIDERS: dict[str, ProviderSpec] = {
 AUTOMATIC_ORDER: list[str] = [
     openai_provider.PROVIDER.id,
     claude_provider.PROVIDER.id,
-    sap_ai_hub_provider.PROVIDER.id,
 ]
 
 AUTOMATIC_ID = "auto"

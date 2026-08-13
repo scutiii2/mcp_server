@@ -1,0 +1,9 @@
+{
+  "email": {
+    "smtp_server": "smtp.example.com",
+    "smtp_port": 587,
+    "from": "notifications@example.com",
+    "password": "changeme",
+    "to": ["team@example.com"]
+  }
+}
