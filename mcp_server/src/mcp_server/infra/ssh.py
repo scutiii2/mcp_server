@@ -1,18 +1,67 @@
 """One SSH client for the whole server.
 
 Every capability that needs a remote shell goes through this module, so
-connection handling, auth-fallback order, and timeout behavior are
-identical everywhere and tested once. Resist adding a second
-paramiko-connecting code path elsewhere - that's how you end up with
-three implementations that each retry slightly differently.
+connection handling, auth-fallback order, host-key verification, and
+timeout behavior are identical everywhere and tested once. Resist adding
+a second paramiko-connecting code path elsewhere - that's how you end up
+with three implementations that each retry slightly differently and only
+two of which check host keys.
+
+**Host keys are verified.** Unknown ones are rejected, against
+``settings.ssh_known_hosts`` (your normal ``~/.ssh/known_hosts`` by
+default, so hosts you've already reached from this machine just work).
+The reason this matters isn't really first-contact interception, it's the
+second connection onward: with verification off, a host key that
+*changed* - the actual signal that something is wrong - is accepted in
+silence. Set ``SSH_HOST_KEY_POLICY=auto`` to trust-on-first-use instead;
+it records what it accepts, so a lab machine can be enrolled that way and
+then switched back to rejecting.
 """
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
+from pathlib import Path
 from types import TracebackType
 
 import paramiko
+
+from mcp_server.config import settings
+
+
+def _new_client(
+    *,
+    known_hosts: Path | str | None = None,
+    host_key_policy: str | None = None,
+) -> paramiko.SSHClient:
+    """A paramiko client with host-key verification already set up.
+
+    Every connect path in this module goes through here - the point is
+    that there's nowhere left to accidentally omit the policy.
+    """
+    policy_name = (host_key_policy or settings.ssh_host_key_policy).strip().lower()
+    if policy_name not in {"reject", "auto"}:
+        raise ValueError(
+            f"Unknown SSH_HOST_KEY_POLICY {policy_name!r} - expected 'reject' or 'auto'."
+        )
+
+    path = Path(known_hosts) if known_hosts is not None else settings.ssh_known_hosts
+    client = paramiko.SSHClient()
+
+    if policy_name == "auto" and not path.exists():
+        # Create it so paramiko has somewhere to persist what it accepts -
+        # load_host_keys() is what tells the client which file to write
+        # back to, and it raises if the file is missing.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    if path.exists():
+        client.load_host_keys(str(path))
+
+    client.set_missing_host_key_policy(
+        paramiko.AutoAddPolicy() if policy_name == "auto" else paramiko.RejectPolicy()
+    )
+    return client
 
 
 @dataclass
@@ -43,6 +92,8 @@ class SSHClient:
         password: str | None = None,
         connect_timeout: int = 10,
         command_timeout: int = 30,
+        known_hosts: Path | str | None = None,
+        host_key_policy: str | None = None,
     ) -> None:
         self.host = host
         self.user = user
@@ -50,11 +101,14 @@ class SSHClient:
         self.password = password
         self.connect_timeout = connect_timeout
         self.command_timeout = command_timeout
+        self.known_hosts = known_hosts
+        self.host_key_policy = host_key_policy
         self._client: paramiko.SSHClient | None = None
 
     def __enter__(self) -> "SSHClient":
-        self._client = paramiko.SSHClient()
-        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self._client = _new_client(
+            known_hosts=self.known_hosts, host_key_policy=self.host_key_policy
+        )
         self._connect()
         return self
 
@@ -90,8 +144,20 @@ class SSHClient:
             except Exception as error:  # noqa: BLE001
                 last_error = error
 
+        # Deliberately not just "auth failed": with host-key verification
+        # on, the most likely first-run failure is an unknown host key,
+        # and calling that an auth problem sends you off checking
+        # passwords for no reason.
+        hint = ""
+        if isinstance(last_error, paramiko.SSHException) and "known_hosts" in str(last_error):
+            hint = (
+                f" The host key for {self.host} is not in "
+                f"{self.known_hosts or settings.ssh_known_hosts}. Add it "
+                f"(ssh-keyscan, or connect once with the ssh client), or set "
+                f"SSH_HOST_KEY_POLICY=auto to trust on first use."
+            )
         raise ConnectionError(
-            f"SSH auth failed for {self.user}@{self.host}: {last_error}"
+            f"SSH connection to {self.user}@{self.host} failed: {last_error}.{hint}"
         )
 
     def run(self, command: str) -> SSHCommandResult:
@@ -114,11 +180,20 @@ class SSHClient:
         guessable from the username: pass "csh" for accounts whose
         environment lives in .cshrc, "bash" (the default) otherwise.
         Domain code knows which kind of account it's connecting as; this
-        method deliberately doesn't try to infer it."""
+        method deliberately doesn't try to infer it.
+
+        ``command`` is shell-quoted before being embedded. The previous
+        version interpolated it into a double-quoted string, where
+        ``$(...)``, backticks, ``\\`` and ``"`` all escape the wrapper and
+        run as separate commands. That is reachable input, not theoretical:
+        tool arguments here originate from an LLM, which may be
+        summarizing a log file or a web page an attacker controls. Quoting
+        makes the whole string one argument no matter what's in it."""
+        quoted = shlex.quote(command)
         if shell == "csh":
-            wrapped = f'/bin/csh -c "{command}"'
+            wrapped = f"/bin/csh -c {quoted}"
         else:
-            wrapped = f'/bin/bash -lc "{command}"'
+            wrapped = f"/bin/bash -lc {quoted}"
         return self.run(wrapped)
 
     def __exit__(
@@ -177,8 +252,7 @@ def sftp_upload_dir(host: str, user: str, password: str, local_dir: str, remote_
     """
     import os
 
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client = _new_client()
     client.connect(hostname=host, username=user, password=password, timeout=15, look_for_keys=False, allow_agent=False)
     sftp = client.open_sftp()
     try:
@@ -214,8 +288,7 @@ def sftp_write_file(host: str, user: str, key: str | None, password: str | None,
     ``SSHClient.run()``. Distinct from ``sftp_upload_dir`` above (which
     recursively uploads a whole local directory): this writes one string
     to one remote path, with no local file involved at all."""
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client = _new_client()
     try:
         if key:
             client.connect(hostname=host, username=user, key_filename=key, timeout=10, look_for_keys=False, allow_agent=False)

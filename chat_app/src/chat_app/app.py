@@ -32,6 +32,7 @@ from jinja2 import FileSystemLoader, PrefixLoader
 from chat_app.config import settings
 from chat_app.pages.capabilities.routes import capabilities_bp
 from chat_app.pages.chat.routes import chat_bp
+from chat_app.security import install_security
 
 
 PAGES_DIR = Path(__file__).parent / "pages"
@@ -40,6 +41,9 @@ PAGES_DIR = Path(__file__).parent / "pages"
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = settings.secret_key
+    # Before the blueprints, so it's obvious this covers every route they
+    # register rather than being something each page opts into.
+    install_security(app)
     app.register_blueprint(chat_bp)
     app.register_blueprint(capabilities_bp)
 

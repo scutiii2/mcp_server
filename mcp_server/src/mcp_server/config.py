@@ -11,26 +11,58 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _env(name: str, default: str) -> str:
+    """os.getenv, but an empty value counts as unset.
+
+    ``os.getenv`` returns "" for a variable that's present but blank, so a
+    commented-out-by-emptying line in .env (``SSH_KNOWN_HOSTS=``) would
+    override the default with an empty string rather than leave it alone -
+    which for a path means Path(""), i.e. the current directory. Blank
+    almost always means "I didn't set this".
+    """
+    value = os.getenv(name)
+    return value if value else default
+
+
 @dataclass(frozen=True)
 class Settings:
-    config_path: Path = Path(os.getenv("CONFIG_PATH", "config.json"))
-    host: str = os.getenv("MCP_HOST", "0.0.0.0")
-    port: int = int(os.getenv("MCP_PORT", "8010"))
+    config_path: Path = Path(_env("CONFIG_PATH", "config.json"))
+    # Loopback by default, deliberately. This server has no authentication
+    # of its own: anything that can reach the port can call every
+    # registered tool with arbitrary arguments, and the Flask app is not
+    # in that path, so no amount of auth over there protects this. Binding
+    # to 0.0.0.0 exposes that to the whole network, which should be a
+    # decision someone makes on purpose rather than a default they
+    # inherit. Override MCP_HOST only once something in front of it
+    # (reverse proxy, VPN, firewall) is doing the authenticating.
+    host: str = _env("MCP_HOST", "127.0.0.1")
+    port: int = int(_env("MCP_PORT", "8010"))
     # SQLite file backing infra/pending_requests.py - relative to CWD by
     # default (kept fragile-by-default rather than fixed only here).
-    # Backs any approval-gated / resumable capability you add later, not
-    # tied to any specific tool.
-    pending_requests_path: Path = Path(os.getenv("PENDING_REQUESTS_PATH", "pending_requests.db"))
-    # The URL an approval email's link would point at, for any future
-    # approval-gated capability built on infra/pending_requests.py +
-    # infra/email.py. Deliberately NOT derived from host/port above -
-    # `host` is a bind address (0.0.0.0 is not a real client-reachable
-    # hostname), while this needs to be whatever address actually
-    # resolves from an approver's inbox (a VPN hostname, a
-    # reverse-proxy address, etc). Defaults to localhost so this at
-    # least works out of the box for local testing; override for any
+    # Backs any approval-gated / resumable capability, not tied to any
+    # specific tool.
+    pending_requests_path: Path = Path(_env("PENDING_REQUESTS_PATH", "pending_requests.db"))
+    # The URL an approval email's link points at. Deliberately NOT derived
+    # from host/port above - `host` is a bind address (127.0.0.1 and
+    # 0.0.0.0 are both meaningless from someone else's inbox), while this
+    # needs to be whatever address actually resolves for an approver (a
+    # VPN hostname, a reverse-proxy address, etc). Defaults to localhost
+    # so this works out of the box for local testing; override for any
     # real deployment.
-    public_base_url: str = os.getenv("MCP_PUBLIC_BASE_URL", "http://127.0.0.1:8010")
+    public_base_url: str = _env("MCP_PUBLIC_BASE_URL", "http://127.0.0.1:8010")
+    # known_hosts file used to verify SSH host keys. Defaults to the same
+    # one the ssh command-line client uses, so hosts you've already
+    # connected to from this machine are trusted without extra setup.
+    ssh_known_hosts: Path = Path(
+        _env("SSH_KNOWN_HOSTS", str(Path.home() / ".ssh" / "known_hosts"))
+    )
+    # "reject" (default) or "auto". Rejecting an unknown host key is the
+    # point of having known_hosts at all: it's what makes a
+    # machine-in-the-middle visible, and - more importantly in practice -
+    # what makes a host key that *changed* an error instead of a silent
+    # accept. "auto" trusts whatever key answers first and records it,
+    # which is fine for a throwaway lab and wrong everywhere else.
+    ssh_host_key_policy: str = _env("SSH_HOST_KEY_POLICY", "reject")
 
 
 settings = Settings()

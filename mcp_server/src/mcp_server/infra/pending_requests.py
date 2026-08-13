@@ -131,3 +131,36 @@ def mark_executed(db_path: Path, token: str, *, approved_by: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def claim(db_path: Path, token: str, *, approved_by: str) -> bool:
+    """Atomically move a request from pending to executed. True if we won.
+
+    The difference from ``mark_executed`` is the ``status = 'pending'``
+    condition, which makes this a compare-and-set rather than a blind
+    write. Checking "is it still pending?" and then updating would be two
+    statements with a gap between them, and the whole point of this table
+    is guarding actions that must not happen twice - a double-clicked
+    approval link is the ordinary case, not an exotic one.
+
+    Expiry is enforced here too, not only by callers. A caller that
+    forgets to check ``is_expired`` should get a refusal rather than a
+    quietly-honoured stale approval - this is the last gate before an
+    irreversible action, so it does its own checking. Timestamps are
+    stored as ISO-8601 UTC, which compares correctly as text.
+
+    Callers should treat False as "already handled, or no longer valid"
+    and stop, without performing the action.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "UPDATE pending_requests SET status = 'executed', approved_by = ?, executed_at = ? "
+            "WHERE token = ? AND status = 'pending' AND expires_at > ?",
+            (approved_by, now, token, now),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()

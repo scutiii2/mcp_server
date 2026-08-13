@@ -74,7 +74,37 @@ def test_api_chat_catches_unexpected_errors(client):
         response = client.post("/api/chat", json={"question": "hello"})
 
     assert response.status_code == 200
-    assert "MCP server unreachable" in response.get_json()["response"]
+    assert "Something went wrong" in response.get_json()["response"]
+
+
+def test_api_chat_does_not_leak_unexpected_exception_text(client, caplog):
+    """An unplanned exception's text is written for a traceback reader -
+    paths, hostnames, sometimes credentials - and this response goes into
+    a chat transcript and back to the model. The detail belongs in the
+    log, reachable by the reference id shown to the user."""
+    boom = RuntimeError("connect failed: postgres://admin:hunter2@10.0.0.5:5432")
+    with patch("chat_app.services.llm.router.run_chat", side_effect=boom):
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    body = response.get_json()["response"]
+    assert "hunter2" not in body
+    assert "10.0.0.5" not in body
+    # ...but it is recoverable, via the reference the user is given.
+    reference = body.rsplit("reference ", 1)[1].rstrip(".")
+    assert reference in caplog.text
+    assert "hunter2" in caplog.text
+
+
+def test_api_chat_still_shows_curated_provider_errors_verbatim(client):
+    """Messages the router wrote for a human ("Claude is not configured")
+    contain no internals and are far more useful than a reference id."""
+    with patch(
+        "chat_app.services.llm.router.run_chat",
+        side_effect=ValueError("Claude is not configured (missing API key)"),
+    ):
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    assert "Claude is not configured (missing API key)" in response.get_json()["response"]
 
 
 def test_api_providers_reflects_availability(client, monkeypatch):

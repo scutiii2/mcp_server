@@ -52,7 +52,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +76,12 @@ class EmailConfig:
     from_address: str
     password: str
     to: list[str]
+    # Who receives approval requests for gated capabilities. Kept separate
+    # from `to` on purpose: general notifications and "press this button
+    # to let something irreversible happen" are different audiences, and
+    # the second one is a standing authorization list. Defaults to `to`
+    # when unset, so the split is available without being mandatory.
+    approver_emails: list[str] = field(default_factory=list)
 
 
 def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:
@@ -165,14 +171,22 @@ def load_email_config(config_path: Path) -> EmailConfig:
     def required(key: str) -> Any:
         return _require(section, key, section_name="email", config_path=config_path)
 
-    recipients = required("to")
-    if isinstance(recipients, str):
-        recipients = [recipients]
+    def as_address_list(value: Any) -> list[str]:
+        # A bare string is the obvious thing to write for one recipient,
+        # and iterating it character-by-character would be a nasty way to
+        # find out otherwise.
+        if isinstance(value, str):
+            value = [value]
+        return [str(address) for address in value]
+
+    recipients = as_address_list(required("to"))
+    approvers = as_address_list(section.get("approver_emails", recipients))
 
     return EmailConfig(
         smtp_server=str(required("smtp_server")),
         smtp_port=int(required("smtp_port")),
         from_address=str(required("from")),
         password=str(required("password")),
-        to=[str(address) for address in recipients],
+        to=recipients,
+        approver_emails=approvers,
     )

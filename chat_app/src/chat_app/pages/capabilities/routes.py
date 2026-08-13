@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import re
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template
 
+from chat_app.security import json_body
 from chat_app.services.mcp_client import (
     call_tool,
     list_resource_templates,
@@ -110,7 +111,7 @@ def api_resources():
 @capabilities_bp.post("/api/try/<tool_name>")
 def try_tool(tool_name: str):
     """Call a tool directly, bypassing chat/OpenAI entirely - for debugging."""
-    arguments = request.get_json(force=True) or {}
+    arguments = json_body()
     try:
         result = call_tool(tool_name, arguments)
         return jsonify({"status": "ok", "result": result})
@@ -125,7 +126,7 @@ def read_resource_route():
     try_tool but for resources. The URI goes in the JSON body rather than
     the URL path since it contains characters (:// and further /) that
     don't play nicely as a single path segment."""
-    data = request.get_json(force=True) or {}
+    data = json_body()
     uri = (data.get("uri") or "").strip()
     if not uri:
         return jsonify({"status": "error", "message": "Missing uri"}), 400

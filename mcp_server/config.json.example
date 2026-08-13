@@ -4,6 +4,7 @@
     "smtp_port": 587,
     "from": "notifications@example.com",
     "password": "${SMTP_PASSWORD}",
-    "to": ["team@example.com"]
+    "to": ["team@example.com"],
+    "approver_emails": ["you@example.com"]
   }
 }

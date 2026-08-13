@@ -171,7 +171,29 @@ def test_load_email_config_maps_from_to_from_address(tmp_path: Path):
         from_address="notifications@example.com",
         password="changeme",
         to=["team@example.com"],
+        approver_emails=["team@example.com"],
     )
+
+
+def test_approver_emails_default_to_the_general_recipients(tmp_path: Path):
+    """Splitting the two audiences should be available without being
+    mandatory - a config that never gates anything shouldn't have to
+    think about it."""
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    assert load_email_config(path).approver_emails == ["team@example.com"]
+
+
+def test_approver_emails_override_the_general_recipients(tmp_path: Path):
+    """When set, approvers are a *different* list, not an addition to it -
+    an approval link is authority to run something irreversible, and
+    everyone on the general notification list shouldn't inherit that."""
+    path = _write(tmp_path, {"email": {**VALID_EMAIL, "approver_emails": ["boss@example.com"]}})
+
+    config = load_email_config(path)
+
+    assert config.approver_emails == ["boss@example.com"]
+    assert config.to == ["team@example.com"]
 
 
 def test_missing_email_section_raises(tmp_path: Path):

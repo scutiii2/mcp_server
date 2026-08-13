@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, render_template, request
 
+from chat_app.errors import report
+from chat_app.security import json_body
 from chat_app.services.llm import router
 
 
@@ -40,7 +42,7 @@ def providers_api():
 
 @chat_bp.post("/api/chat")
 def chat_api():
-    data = request.get_json(force=True) or {}
+    data = json_body()
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"response": "Please enter a question."})
@@ -53,6 +55,13 @@ def chat_api():
         )
         return jsonify({"response": result.response, "tools_used": result.tools_used, "provider_id": result.provider_id})
     except ValueError as error:
+        # Deliberately verbatim: the router raises these with wording
+        # meant for whoever is chatting ("Claude is rate-limited right now
+        # - try again in 42s, or pick another provider"). They contain no
+        # internals, and replacing them with a reference number would make
+        # the app worse for no security gain.
         return jsonify({"response": f"❌ {error}"})
     except Exception as error:
-        return jsonify({"response": f"❌ Error: {error}"})
+        # Anything else is unplanned, so its text is untrusted for display -
+        # see errors.py.
+        return jsonify({"response": f"❌ {report(error, context='answering your question')}"})
