@@ -11,6 +11,20 @@ from chat_app.services.llm import cooldown, router
 from chat_app.services.llm.base import ChatResult
 
 
+def _patch_run_chat(provider_id: str, **kwargs):
+    """Patch the run_chat a provider will actually dispatch to.
+
+    Patching ``chat_app.services.llm.claude_provider.run_chat`` does NOT
+    work here: each provider module builds its ``PROVIDER = ProviderSpec(
+    run_chat=run_chat, ...)`` at import time, so the spec holds a direct
+    reference to the original function. Rebinding the module attribute
+    afterwards leaves that reference untouched, and the test sails past
+    the mock into a real network call. Patch the attribute on the spec
+    the router will use instead.
+    """
+    return patch.object(router._PROVIDERS[provider_id], "run_chat", **kwargs)
+
+
 def test_list_providers_reflects_availability(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -72,8 +86,6 @@ def test_list_providers_automatic_ignores_providers_outside_automatic_order(monk
     still raise, since it only ever loops over AUTOMATIC_ORDER."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    for var in ("AICORE_CLIENT_ID", "AICORE_CLIENT_SECRET", "AICORE_AUTH_URL", "AICORE_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
 
     providers = {p["id"]: p for p in router.list_providers()}
 
@@ -97,7 +109,7 @@ def test_run_chat_dispatches_to_requested_provider(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     expected = ChatResult(response="from claude", tools_used=[], provider_id="claude")
 
-    with patch("chat_app.services.llm.claude_provider.run_chat", return_value=expected) as mock_run:
+    with _patch_run_chat("claude", return_value=expected) as mock_run:
         result = router.run_chat("hello", [], "claude")
 
     assert result is expected
@@ -108,7 +120,7 @@ def test_run_chat_forwards_model_id_to_manually_selected_provider(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     expected = ChatResult(response="from claude opus", tools_used=[], provider_id="claude")
 
-    with patch("chat_app.services.llm.claude_provider.run_chat", return_value=expected) as mock_run:
+    with _patch_run_chat("claude", return_value=expected) as mock_run:
         result = router.run_chat("hello", [], "claude", "claude-opus-4-8")
 
     assert result is expected
@@ -120,7 +132,7 @@ def test_run_chat_defaults_to_automatic_when_provider_not_specified(monkeypatch)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     expected = ChatResult(response="from openai", tools_used=[], provider_id="openai")
 
-    with patch("chat_app.services.llm.openai_provider.run_chat", return_value=expected) as mock_run:
+    with _patch_run_chat("openai", return_value=expected) as mock_run:
         result = router.run_chat("hello", [], None)
 
     assert result is expected
@@ -132,8 +144,8 @@ def test_run_chat_automatic_prefers_openai_when_both_available(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     expected = ChatResult(response="from openai", tools_used=[], provider_id="openai")
 
-    with patch("chat_app.services.llm.openai_provider.run_chat", return_value=expected) as mock_openai, \
-         patch("chat_app.services.llm.claude_provider.run_chat") as mock_claude:
+    with _patch_run_chat("openai", return_value=expected) as mock_openai, \
+         _patch_run_chat("claude") as mock_claude:
         result = router.run_chat("hello", [], "auto")
 
     assert result is expected
@@ -146,7 +158,7 @@ def test_run_chat_automatic_falls_back_to_claude_when_openai_unavailable(monkeyp
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     expected = ChatResult(response="from claude", tools_used=[], provider_id="claude")
 
-    with patch("chat_app.services.llm.claude_provider.run_chat", return_value=expected) as mock_run:
+    with _patch_run_chat("claude", return_value=expected) as mock_run:
         result = router.run_chat("hello", [], "auto")
 
     assert result is expected
@@ -159,7 +171,7 @@ def test_run_chat_automatic_falls_back_when_openai_is_cooling_down(monkeypatch):
     cooldown.start_cooldown("openai", seconds=30)
     expected = ChatResult(response="from claude", tools_used=[], provider_id="claude")
 
-    with patch("chat_app.services.llm.claude_provider.run_chat", return_value=expected) as mock_run:
+    with _patch_run_chat("claude", return_value=expected) as mock_run:
         result = router.run_chat("hello", [], "auto")
 
     assert result is expected
@@ -169,8 +181,6 @@ def test_run_chat_automatic_falls_back_when_openai_is_cooling_down(monkeypatch):
 def test_run_chat_automatic_raises_when_nothing_available(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    for var in ("AICORE_CLIENT_ID", "AICORE_CLIENT_SECRET", "AICORE_AUTH_URL", "AICORE_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
 
     with pytest.raises(ValueError, match="No provider is currently available"):
         router.run_chat("hello", [], "auto")

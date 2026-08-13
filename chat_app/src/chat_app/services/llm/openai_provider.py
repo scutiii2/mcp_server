@@ -15,7 +15,7 @@ from openai import OpenAI, RateLimitError
 
 from chat_app.config import settings
 from chat_app.services.llm import cooldown
-from chat_app.services.llm.base import ChatResult, ModelOption, ProviderSpec
+from chat_app.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec
 from chat_app.services.mcp_client import call_tool, list_tools
 
 
@@ -29,12 +29,6 @@ MODELS = [
     ModelOption(id="gpt-5.6-terra", label="GPT-5.6 Terra (balanced)"),
     ModelOption(id="gpt-5.6-luna", label="GPT-5.6 Luna (fast/cheap)"),
 ]
-
-SYSTEM_PROMPT = (
-    "You are a SAP Basis administrator assistant. Use tools to get real "
-    "data - never guess. Confirm before any destructive action (stop/start "
-    "a system, kernel update, rename)."
-)
 
 _client: OpenAI | None = None
 

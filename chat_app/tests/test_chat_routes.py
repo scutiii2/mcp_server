@@ -32,22 +32,22 @@ def test_api_chat_rejects_empty_question(client):
 def test_api_chat_returns_run_chat_result(client):
     with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
         mock_run_chat.return_value = ChatResult(
-            response="E4G is running normally.",
-            tools_used=["get_sap_system_health"],
+            response="web-1 is running normally.",
+            tools_used=["get_host_health"],
             provider_id="claude",
         )
         response = client.post(
             "/api/chat",
-            json={"question": "how is E4G doing?", "history": [], "provider": "claude", "model": "claude-opus-4-8"},
+            json={"question": "how is web-1 doing?", "history": [], "provider": "claude", "model": "claude-opus-4-8"},
         )
 
     assert response.status_code == 200
     assert response.get_json() == {
-        "response": "E4G is running normally.",
-        "tools_used": ["get_sap_system_health"],
+        "response": "web-1 is running normally.",
+        "tools_used": ["get_host_health"],
         "provider_id": "claude",
     }
-    mock_run_chat.assert_called_once_with("how is E4G doing?", [], "claude", "claude-opus-4-8")
+    mock_run_chat.assert_called_once_with("how is web-1 doing?", [], "claude", "claude-opus-4-8")
 
 
 def test_api_chat_defaults_provider_and_model_to_none_when_omitted(client):
@@ -80,8 +80,6 @@ def test_api_chat_catches_unexpected_errors(client):
 def test_api_providers_reflects_availability(client, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    for var in ("AICORE_CLIENT_ID", "AICORE_CLIENT_SECRET", "AICORE_AUTH_URL", "AICORE_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
 
     response = client.get("/api/providers")
 
@@ -89,4 +87,4 @@ def test_api_providers_reflects_availability(client, monkeypatch):
     data = {p["id"]: p["available"] for p in response.get_json()}
     # "auto" is available too here, since at least one real provider (openai) is.
     # "ollama" is always True - no API key needed, see ollama_provider.py.
-    assert data == {"auto": True, "openai": True, "claude": False, "sap_ai_hub": False, "ollama": True}
+    assert data == {"auto": True, "openai": True, "claude": False, "ollama": True}

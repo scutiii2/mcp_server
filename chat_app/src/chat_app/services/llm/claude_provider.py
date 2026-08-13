@@ -20,7 +20,7 @@ from anthropic import Anthropic, RateLimitError
 
 from chat_app.config import settings
 from chat_app.services.llm import cooldown
-from chat_app.services.llm.base import ChatResult, ModelOption, ProviderSpec
+from chat_app.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec
 from chat_app.services.mcp_client import call_tool, list_tools
 
 
@@ -32,12 +32,6 @@ MODELS = [
     ModelOption(id="claude-sonnet-5", label="Claude Sonnet 5 (balanced)"),
     ModelOption(id="claude-haiku-4-5-20251001", label="Claude Haiku 4.5 (fast/cheap)"),
 ]
-
-SYSTEM_PROMPT = (
-    "You are a SAP Basis administrator assistant. Use tools to get real "
-    "data - never guess. Confirm before any destructive action (stop/start "
-    "a system, kernel update, rename)."
-)
 
 _client: Anthropic | None = None
 

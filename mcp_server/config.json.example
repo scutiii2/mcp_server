@@ -3,7 +3,7 @@
     "smtp_server": "smtp.example.com",
     "smtp_port": 587,
     "from": "notifications@example.com",
-    "password": "changeme",
+    "password": "${SMTP_PASSWORD}",
     "to": ["team@example.com"]
   }
 }

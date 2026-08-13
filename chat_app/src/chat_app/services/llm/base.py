@@ -15,6 +15,21 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 
+# One prompt for every provider. It lives here rather than in each
+# provider file because it describes the assistant, not the wire format -
+# three copies of the same paragraph is three places to forget when you
+# change the assistant's job. Each provider still applies it in its own
+# way (OpenAI as a system-role message, Anthropic as a top-level
+# ``system=`` argument), which is a wire-format difference and stays
+# provider-side. Edit this to personalize the assistant.
+SYSTEM_PROMPT = (
+    "You are a helpful assistant with access to tools. Use them to get "
+    "real data rather than guessing, and say so plainly when no tool can "
+    "answer the question. Confirm with the user before any destructive or "
+    "hard-to-reverse action."
+)
+
+
 @dataclass
 class ChatResult:
     response: str

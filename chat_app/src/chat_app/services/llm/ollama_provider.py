@@ -6,12 +6,12 @@ pyproject.toml) rather than adding an Ollama-specific SDK - Ollama's
 compatibility layer is deliberately built to be a drop-in target for the
 OpenAI client, just pointed at a different ``base_url``.
 
-Deliberately uses the OLDER Chat-Completions shape (same as
-sap_ai_hub_provider.py), not the newer Responses API shape
-openai_provider.py uses. Ollama's own documentation describes its
-``/v1/responses`` support as still preliminary as of this writing, while
-``/v1/chat/completions`` (including tool calling) is the mature,
-long-documented path - this deliberately doesn't rely on the newer one.
+Deliberately uses the OLDER Chat-Completions shape, not the newer
+Responses API shape openai_provider.py uses. Ollama's own documentation
+describes its ``/v1/responses`` support as still preliminary as of this
+writing, while ``/v1/chat/completions`` (including tool calling) is the
+mature, long-documented path - this deliberately doesn't rely on the
+newer one.
 
 No API key needed - Ollama has no auth by default. The OpenAI client
 still requires *some* string for ``api_key``, so this passes the literal
@@ -26,16 +26,14 @@ the least reliable at producing well-formed ``tool_calls`` JSON, and most
 already call 3B unreliable for production tool use - 1B is smaller than
 that. Expect this provider to work fine for simple, low-tool-count
 questions and to sometimes answer in prose instead of calling a tool, or
-produce malformed arguments, against this project's wider SAP tool
-surface. That's why router.py deliberately leaves this OUT of
-AUTOMATIC_ORDER - manual-select only, so a flaky local model never
-silently becomes what answers a real SAP question. Point OLLAMA_MODELS
-at a larger locally-hosted model later if reliability matters more than
-running fully on a 1B model.
+produce malformed arguments, as the tool surface grows. That's why
+router.py deliberately leaves this OUT of AUTOMATIC_ORDER - manual-select
+only, so a flaky local model never silently becomes what answers a real
+question. Point OLLAMA_MODELS at a larger locally-hosted model if
+reliability matters more than running fully local on a 1B model.
 
-No rate-limit cooldown wiring, matching sap_ai_hub_provider.py's same
-choice and for the same reason: local inference doesn't 429 the way a
-cloud API does.
+No rate-limit cooldown wiring here, unlike the two cloud providers, for
+the reason it isn't needed: local inference doesn't 429.
 
 No live reachability check here (has_api_key()/is_available() are both
 unconditionally True) - matches every other provider's convention of a
@@ -52,27 +50,21 @@ import json
 import os
 from typing import Any
 
-from chat_app.services.llm.base import ChatResult, ModelOption, ProviderSpec
+from chat_app.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec
 from chat_app.services.mcp_client import call_tool, list_tools
 
 
 PROVIDER_ID = "ollama"
 
-SYSTEM_PROMPT = (
-    "You are a SAP Basis administrator assistant. Use tools to get real "
-    "data - never guess. Confirm before any destructive action (stop/start "
-    "a system, kernel update, rename)."
-)
-
 
 def _base_url() -> str:
-    """Point this at your Ollama host's LAN address, not localhost -
-    chat_app and Ollama are expected to run on different machines here
-    (chat_app on your dev machine, Ollama on a ZimaOS box on the same
-    network). Ollama itself binds to 127.0.0.1 only by default on a
-    plain install - if this times out or gets connection-refused, check
-    that OLLAMA_HOST=0.0.0.0 (or equivalent) is set on the Ollama side,
-    not just this env var on the chat_app side."""
+    """Point this at your Ollama host's LAN address, not localhost,
+    whenever chat_app and Ollama run on different machines (chat_app on
+    your dev machine, Ollama on a homelab/NAS box on the same network).
+    Ollama itself binds to 127.0.0.1 only by default on a plain install -
+    if this times out or gets connection-refused, check that
+    OLLAMA_HOST=0.0.0.0 (or equivalent) is set on the Ollama side, not
+    just this env var on the chat_app side."""
     return os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
 
@@ -88,15 +80,14 @@ def is_available() -> bool:
 
 def _parse_models_from_env() -> list[ModelOption]:
     """Format: "model_id=Label,model_id=Label" - using "=" as the
-    id/label separator, deliberately NOT ":" the way
-    sap_ai_hub_provider.py's identical-looking version of this pattern
-    does. That's not an inconsistency: SAP AI Hub deployment names (e.g.
-    "gpt-4o") never contain a colon, but Ollama model IDs almost always
-    do (the name:tag format, e.g. "qwen2.5:3b") - reusing ":" as the
-    id/label separator here made "qwen2.5:3b:My Label" genuinely
-    ambiguous to parse (it split on the FIRST colon, silently truncating
-    the id to "qwen2.5" and losing the ":3b" tag). "=" never appears in
-    an Ollama model id, so there's no equivalent ambiguity with it."""
+    id/label separator, deliberately NOT the ":" that would otherwise be
+    the obvious choice. Ollama model IDs almost always contain a colon
+    themselves (the name:tag format, e.g. "qwen2.5:3b"), so ":" as the
+    id/label separator made "qwen2.5:3b:My Label" genuinely ambiguous to
+    parse: it split on the FIRST colon, silently truncating the id to
+    "qwen2.5" and losing the ":3b" tag, which then 404'd against Ollama.
+    "=" never appears in an Ollama model id, so there's no equivalent
+    ambiguity with it."""
     raw = os.getenv("OLLAMA_MODELS", "llama3.2:1b=Llama 3.2 1B (local)")
     models: list[ModelOption] = []
     for entry in raw.split(","):
@@ -126,9 +117,9 @@ def _get_client() -> Any:
 
 
 def _tool_schemas() -> list[dict[str, Any]]:
-    """Chat-Completions function-wrapped shape - same as
-    sap_ai_hub_provider.py's, since Ollama's OpenAI-compat layer speaks
-    the same wire format."""
+    """Chat-Completions function-wrapped shape - note this nests the
+    schema under a "function" key, unlike openai_provider.py's flatter
+    Responses API shape."""
     return [
         {
             "type": "function",

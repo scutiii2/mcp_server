@@ -1,12 +1,12 @@
 """Process-wide rate-limit cooldown tracking.
 
-This is intentionally a plain module-level dict, not per-session state -
-and that's a deliberate distinction from the CACHED_DUMPS anti-pattern
-this project avoided elsewhere. A user's dump-query cache is personal data
-that has no business being global; a provider's rate-limit status is the
-opposite - it's a genuine process-wide fact. If OpenAI 429s this process
-once, it's 429ing every user of this process, not just whoever triggered
-it. Sharing that state is correct here.
+This is intentionally a plain module-level dict, not per-session state,
+and it's the one deliberate exception to this project's "no module-level
+mutable state" rule. The test is whose fact it is: a cache of one user's
+query results has no business being global, but a provider's rate-limit
+status is genuinely process-wide - if OpenAI 429s this process once, it's
+429ing every user of this process, not just whoever triggered it. Sharing
+that state is correct here.
 
 Caveat worth knowing: this resets on process restart, and isn't shared
 across multiple worker processes if this ever runs behind something like

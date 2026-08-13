@@ -1,8 +1,6 @@
 """Capabilities - one folder per tool, self-contained.
 
-Each subfolder (``control/``, and eventually ``monitoring/``, ``jobs/``,
-``kernel/``, ``rename/``, ``conversion/``, ``provisioning/``) holds
-everything specific to that capability:
+Each subfolder holds everything specific to that capability:
 
   - ``contract.py``  Pydantic request/result models
   - ``domain.py``    the real logic - typed in, typed out, imports only
@@ -12,9 +10,10 @@ everything specific to that capability:
                       return its result. ``@mcp.tool()`` appears here and
                       nowhere else.
 
-Shared infrastructure (``infra/ssh.py``, ``infra/sap_config.py``) stays one
-level up, at ``mcp_server/infra/`` - every capability uses the same SSH
-client and config loader rather than each folder inventing its own.
+Shared infrastructure (``infra/ssh.py``, ``infra/email.py``,
+``infra/app_config.py``, ``infra/pending_requests.py``) stays one level
+up, at ``mcp_server/infra/`` - every capability reuses the same clients
+and config loader rather than each folder inventing its own.
 
 Add a new capability by:
   1. mkdir capabilities/<name>/ with an __init__.py
@@ -22,4 +21,6 @@ Add a new capability by:
   3. capabilities/<name>/domain.py
   4. capabilities/<name>/tool.py
   5. Add `from mcp_server.capabilities.<name> import tool` to run.py
+
+Nothing is registered yet - this is an empty scaffold.
 """
