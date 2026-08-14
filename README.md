@@ -23,7 +23,7 @@ routing with automatic fallback.
 mcp_server/                        MCP tool server (port 8010)
 ├── pyproject.toml
 ├── .env.example
-├── config.json.example            currently only an "email" section
+├── config.json.example            worked "hosts" and "email" sections
 ├── src/mcp_server/
 │   ├── run.py                     entrypoint — loads .env, prints a startup banner, starts uvicorn
 │   ├── server.py                  shared FastMCP instance — rename it here
@@ -52,8 +52,8 @@ mcp_server/                        MCP tool server (port 8010)
     ├── test_approval_routes.py   GET is inert, POST acts — the mail-scanner property
     ├── test_email.py             each TLS mode, part ordering, derived plain text
     ├── test_host_health_domain.py parsers tested against real command output, verbatim
-    ├── test_otp_store.py         hashing, atomicity, expiry, the attempt cap
-    ├── test_otp_domain.py        the code never escapes; the recipient allowlist
+    ├── test_otp_store.py         hashing, atomicity, expiry, attempt cap, rate limits
+    ├── test_otp_domain.py        the code never escapes; recipient and domain rules
     ├── test_pending_requests.py  real tmp_path SQLite file, no mocking — pure stdlib
     └── test_ssh.py               injection payloads stay one argument; host-key policy
 
@@ -488,10 +488,10 @@ in `infra/otp.py` rather than left to callers:
   stops working *even if the right digits arrive*. Merely refusing the
   wrong ones would let an attacker exhaust the counter and still win by
   racing a legitimate verification.
-- **Recipients come from `config.json`, never the caller.** Otherwise
-  this is a tool that sends chosen text to a chosen address from your own
-  mail account — a spam relay and a phishing primitive that needs no bug
-  to reach, only a model that can be talked into it.
+- **Recipients are constrained by `config.json`, never chosen freely by
+  the caller.** Otherwise this is a tool that sends mail from your own
+  account to an address someone talked the model into — which needs no
+  bug to reach.
 
 Failures are distinguishable (`wrong_code`, `expired`, `too_many_attempts`,
 `already_used`, `unknown_id`) because the remedies genuinely differ, and a
@@ -501,6 +501,73 @@ plausible.
 Code length, TTL (10 minutes) and the attempt cap are module constants,
 not settings — they're what makes the whole thing safe, and an env var is
 too easy a place to weaken them from.
+
+### Who a code may be sent to
+
+By default, only an address already listed in `email.to` or
+`email.approver_emails`. To let callers supply their own address, add
+domains:
+
+```json
+"email": {
+  "smtp_server": "smtp.gmail.com",
+  "smtp_port": 465,
+  "security": "ssl",
+  "from": "you@gmail.com",
+  "password": "${SMTP_PASSWORD}",
+  "to": ["you@gmail.com"],
+  "approver_emails": ["you@gmail.com"],
+  "allowed_recipient_domains": ["staff.example"]
+}
+```
+
+An address is then accepted if it matches a configured address exactly
+**or** its domain is on that list.
+
+**Leaving the key out is not a wildcard** — it keeps the strict
+exact-address behaviour. That inversion (absent meaning "allow anything")
+is the dangerous way to get this wrong, so it has its own test.
+
+**Matching is exact, with no subdomain wildcards.** `staff.example`
+accepts `alice@staff.example` and refuses `mail.staff.example`,
+`notstaff.example`, `evil-staff.example` and `staff.example.evil.com`.
+The tempting `endswith()` implementation accepts the last three. List
+subdomains individually if you need them.
+
+Addresses are validated before the domain is read: exactly one `@`, a
+non-empty mailbox and domain, and no whitespace or control characters.
+The `@` count matters because `victim@staff.example@evil.com` resolves to
+a different domain depending on whether you split on the first or last
+one — so it's refused instead. The whitespace rule is header-injection
+defence: `send_email()` joins recipients into the `To:` header, and a
+newline there could add a `Bcc:`. That was unreachable while every
+recipient came from `config.json`, and became reachable the moment
+callers could supply one.
+
+Worth being honest about what a domain list buys you. `["yourdomain.com"]`
+is a real boundary. `["gmail.com"]` constrains nothing about *who* —
+anyone can hold a Gmail address — and what protects you there is that the
+message body is a fixed template the model can't write into, plus the
+rate limits below.
+
+### Rate limits
+
+**5 codes per recipient per hour, 20 per hour across all recipients.**
+Both are needed: the per-recipient counter sees nothing when addresses
+differ, and rotating the local part within a permitted domain is the
+cheapest bypass there is.
+
+The window slides rather than resetting on the clock hour, which would
+hand out two full budgets back to back at the boundary. Recipients are
+folded case-insensitively, or `ALICE@` would buy a second budget. A
+refused request stores nothing, so refusals don't fill the window
+themselves and a rejected caller is never told a code went out.
+
+These are module constants in `infra/otp.py`, not settings — a ceiling
+you can raise from config is a ceiling anyone who can edit config can
+raise. 20/hour is generous for verifying people you know and may be tight
+if you open recipients to a whole domain; that's a one-line edit, not a
+redesign.
 
 ## Email delivery
 
@@ -693,6 +760,255 @@ Two judgement calls worth knowing about, both visible in the tests:
   where `df` said 47%, because ext4 reserves ~5% for root — and a health
   report that disagrees with the command you'd run to check it is worse
   than no report.
+
+### Configuring `hosts`, step by step
+
+`"hosts"` is a map of *label* → machine. The label is what goes in the
+URI (`host://health/nas` reads the entry called `nas`), so name entries
+after their role rather than their address — the address is allowed to
+change, and a resource URI that follows it around is worthless. Per
+entry, `load_hosts_config` requires `hostname`, `user`, `os`
+(`"linux"` or `"windows"`, and it is *declared*, never detected), plus
+at least one of `key` or `password`; anything else is refused at load
+time with the file and key named. Two things worth knowing before you
+write one:
+
+- **`port` is optional and defaults to 22.** It used to be accepted and
+  then silently dropped — `SSHClient` had no port parameter, so a host
+  configured on 2222 quietly connected to 22 and failed confusingly.
+  Config that is accepted and ignored is worse than config that is
+  rejected, so it is now plumbed through, with a regression test.
+- **`key` is a path, not a secret**, so it needs no `${VAR}`;
+  `password` is a secret and should always be one. On Windows, write
+  the path with forward slashes (`"C:/Users/You/.ssh/id_ed25519"`) or
+  escaped backslashes — JSON treats a lone `\` as the start of an
+  escape sequence, and `"C:\Users\..."` is a parse error before any of
+  this code sees it.
+
+Copy the block you want out of `config.json.example` rather than the
+whole file: the real `config.json` is parsed with `json.load`, which
+accepts neither `//` comments nor a key repeated per example.
+
+#### Topology A — the server runs on your Windows desktop
+
+**This machine cannot monitor itself yet.** Windows 11 ships the
+OpenSSH *client* (`C:\Windows\System32\OpenSSH\ssh.exe`) but not the
+*server*, and `host_health` needs something to SSH *into*. Confirm with
+`Get-WindowsCapability -Online -Name OpenSSH.Server*` — `NotPresent`
+means an entry pointing at `127.0.0.1` will fail with connection
+refused, and no amount of correct config fixes that. Either install it
+(the commands are under Topology B, where you need them anyway) or
+point the first entry at something else.
+
+The something else worth starting with is **a Linux box you have
+already SSH'd to from this machine**, because `SSH_HOST_KEY_POLICY`
+defaults to `reject` and reads `~/.ssh/known_hosts` — the same file the
+`ssh` command uses. A host already in there is already trusted, which
+removes the single most likely first-run failure from the picture while
+you find out whether everything else works.
+
+```json
+{
+  "hosts": {
+    "nas": {
+      "hostname": "192.168.1.15",
+      "user": "you",
+      "os": "linux",
+      "password": "${NAS_SSH_PASSWORD}"
+    }
+  }
+}
+```
+
+and in `mcp_server/.env`:
+
+```
+NAS_SSH_PASSWORD=the-account-password
+```
+
+Key auth instead of a password is one substitution — replace the
+`password` line with `"key": "C:/Users/You/.ssh/id_ed25519"` and drop
+the `.env` line, since a path is not a credential. If you give both,
+the key is tried first and the password is the fallback.
+
+**You can also have no `hosts` section at all.** Nothing loads it until
+someone reads `host://health/{name}`; the OTP tools call
+`load_email_config`, which never looks at it. Leave it out and the
+resource fails with "missing a 'hosts' section" naming the file, while
+everything else works normally.
+
+A stale `${VAR}` in a host entry costs you **only that host**. Resolution
+is per-section, and `load_host_config` resolves just the one entry it was
+asked for — so an unset `${NAS_SSH_PASSWORD}` makes `nas` unreadable
+while `zima`, the email section and the OTP tools carry on. Only
+`load_hosts_config`, which returns the whole inventory, needs every
+secret present.
+
+That wasn't always true: resolution used to walk the entire document
+before any section was read, so one unset SSH password took down email
+too. If you see that symptom, you're on an older revision.
+
+#### Topology B — the server runs on the ZimaOS box
+
+Moving the server to the homelab box inverts the topology rather than
+extending it. ZimaOS stops being a remote machine and becomes
+`127.0.0.1`; the Windows desktop stops being where everything runs and
+becomes the remote target. Both entries change even though neither
+machine moved.
+
+```json
+{
+  "hosts": {
+    "zima": {
+      "hostname": "127.0.0.1",
+      "user": "you",
+      "os": "linux",
+      "key": "/home/you/.ssh/id_ed25519"
+    },
+    "desktop": {
+      "hostname": "192.168.1.20",
+      "user": "YourWindowsUser",
+      "os": "windows",
+      "password": "${DESKTOP_SSH_PASSWORD}"
+    }
+  }
+}
+```
+
+and in `mcp_server/.env` on the ZimaOS side:
+
+```
+DESKTOP_SSH_PASSWORD=the-windows-account-password
+```
+
+`zima` still goes over SSH even though it is the local machine — there
+is no shortcut path for "this host", so ZimaOS needs its own sshd
+running and its own key in its own `known_hosts` (see below;
+`127.0.0.1` counts as an unknown host until it is in the file).
+
+**1. Install OpenSSH Server on the Windows desktop.** In a PowerShell
+window opened with *Run as Administrator*, run:
+
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd
+Set-Service -Name sshd -StartupType Automatic
+```
+
+The first installs it, the second starts it now, the third makes it
+come back after a reboot — skip the third and the resource works
+perfectly until the day the desktop restarts. The installer opens the
+inbound firewall rule for port 22 itself; check with
+`Get-NetFirewallRule -Name *ssh*` if a connection times out rather than
+being refused.
+
+**2. Populate `known_hosts` on the ZimaOS side.** This is the step
+people skip, because the desktop's own `known_hosts` already trusts
+half the LAN and it is easy to assume that carries over. It does not —
+known_hosts is per-machine and per-user, ZimaOS has its own (empty or
+absent), and the default `reject` policy refuses a key it has never
+seen. On ZimaOS, as the user that will run the server:
+
+```bash
+ssh-keyscan -H 192.168.1.20 >> ~/.ssh/known_hosts
+ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts
+```
+
+`-H` hashes the hostnames, matching what `ssh` writes itself. Note this
+is trust-on-first-use with extra steps — `ssh-keyscan` records whatever
+answers — so do it on a network you trust, or compare the fingerprint
+against what the desktop reports locally. The equivalent shortcut is
+one run with `SSH_HOST_KEY_POLICY=auto`, which records what it accepts
+so you can switch straight back to `reject`.
+
+Also check *which* file the server will read: `SSH_KNOWN_HOSTS` if set,
+otherwise `~/.ssh/known_hosts` **of the user the process runs as**. A
+server started by a systemd unit running as `root` will not read
+`/home/you/.ssh/known_hosts`, and the resulting error is an auth
+failure that looks nothing like a path problem.
+
+#### Windows as an SSH target: four things that bite
+
+- **The default login shell is `cmd.exe`, and that is fine.** Nothing
+  needs changing. `domain._windows_command()` sends
+  `powershell -NoProfile -NonInteractive -EncodedCommand <base64>` as
+  the command, so whichever shell sshd launches only has to find
+  `powershell` on `PATH` — which both `cmd.exe` and PowerShell do. The
+  base64 UTF-16LE payload is what makes that safe: the script crosses
+  the SSH → shell → PowerShell boundary as one opaque token that no
+  layer tries to re-quote. (`run_login_shell` is never used against
+  Windows — there is no `/bin/bash` to wrap with.)
+- **Key auth to an *administrator* account uses a different file.**
+  Windows OpenSSH ignores `~/.ssh/authorized_keys` for any account in
+  the Administrators group and reads
+  `C:\ProgramData\ssh\administrators_authorized_keys` instead, which
+  additionally must have its ACLs restricted to `SYSTEM` and
+  `Administrators` or sshd silently refuses it. Getting that wrong
+  looks exactly like a wrong key. Password auth against a Windows
+  target is markedly less fiddly, and `${DESKTOP_SSH_PASSWORD}` keeps
+  it out of the config file either way.
+- **`user` is the local Windows account name**, not the Microsoft
+  account email you sign in with. `whoami` prints `machine\account` —
+  the part after the backslash is what goes in `user`. An email address
+  there fails as a bad password, which sends you off resetting the
+  wrong thing.
+- **Give the desktop a static IP or a DHCP reservation.** `hostname` is
+  an address written down in a file, and a lease that rotates turns a
+  working resource into connection-refused weeks later, with nothing
+  having changed on either machine.
+
+#### Test in this order
+
+Each rung adds exactly one layer, so whichever one breaks names the
+problem.
+
+**1. Plain `ssh`, from the machine that will run the server.** This
+tests reachability, credentials and the host key, with none of this
+code involved — and on success it writes the host key into
+`known_hosts` for you.
+
+```bash
+ssh you@192.168.1.15
+ssh YourWindowsUser@192.168.1.20 "powershell -NoProfile -Command Get-Date"
+```
+
+If this fails, nothing below can work, and the fix is on the target
+machine or the network.
+
+**2. The domain function directly, with no MCP server running.** This
+tests config loading, `${VAR}` resolution, paramiko's host-key check
+and the parsers, and skips MCP and Flask entirely. Save this next to
+`config.json` and run `python check.py` from `mcp_server/`:
+
+```python
+from dotenv import load_dotenv
+
+# Before importing anything under mcp_server: Settings reads os.getenv()
+# at import time, so .env has to be in the environment first - the same
+# ordering constraint run.py has.
+load_dotenv()
+
+from pathlib import Path
+
+from mcp_server.infra.app_config import load_host_config
+from mcp_server.resources.host_health.domain import collect, format_report
+
+config = load_host_config(Path("config.json"), "nas")
+print(format_report(collect(config)))
+```
+
+A `KeyError` naming the file is a config problem; a `ConnectionError`
+mentioning `known_hosts` is step 2 of Topology B; a `RuntimeError`
+about sections or JSON means the connection worked and the *output*
+was unexpected, which is a target-side problem (a different shell, a
+locale, a PowerShell that printed a warning first).
+
+**3. The resource through `/capabilities`.** Start both processes, open
+`http://127.0.0.1:5009/capabilities`, and read `host://health/{name}`
+with `name` set to the label. Only if step 2 passed and this fails is
+the problem actually in the MCP or Flask wiring — `MCP_SERVER_URL`,
+`CONFIG_PATH` pointing somewhere else for the server process, or the
+server running from a different working directory than you tested from.
 
 ## Multi-provider chat, Automatic selection, and rate-limit cooldown
 
@@ -904,7 +1220,7 @@ cd mcp_server && python -m pytest tests -q
 cd chat_app && python -m pytest tests -q
 ```
 
-246 tests, all passing, none touching the network or a real MCP server.
+276 tests, all passing, none touching the network or a real MCP server.
 Three patterns in here are worth knowing before you add more:
 
 - **Patching a provider's `run_chat`** — patch it on the `ProviderSpec`

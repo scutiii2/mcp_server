@@ -27,12 +27,19 @@ with a fresh random salt per record. Plain SHA-256 would be no better
 than plaintext here: six digits is a million-entry rainbow table anyone
 can build in seconds, so the salt - not the hash - is what makes a
 database copy useless.
+
+A fourth guard sits alongside those three but protects something else
+entirely. The three above protect the person the code was sent to; the
+issuing limits (see ``MAX_CODES_PER_RECIPIENT_PER_HOUR``) protect the
+deployment's own mail account, which is the only resource here that an
+outside party can take away for good.
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import secrets
 import sqlite3
 from dataclasses import dataclass
@@ -63,6 +70,87 @@ DEFAULT_TTL_MINUTES = 10
 # Higher and the guard stops meaning much; lower and an ordinary typo
 # streak locks a legitimate person out of a code they were sent.
 DEFAULT_MAX_ATTEMPTS = 5
+
+
+# Issuing limits, on the same footing as the two constants above: module
+# constants, not settings, and - unlike ``ttl_minutes`` and
+# ``max_attempts`` - not overridable per call either. The module docstring's
+# argument applies with more force here. A caller that can turn a limit off
+# doesn't get a weaker limiter, it gets a decorative one, and the caller in
+# the loop is exactly the thing being limited.
+#
+# What makes this load-bearing rather than tidy: delivery is no longer
+# restricted to an exact address allowlist - a caller may name any address
+# in a permitted domain - so a model that can be talked into calling
+# ``request_otp`` repeatedly is a bulk mailer aimed at a domain full of
+# strangers, sending from the deployment's own account. The realistic
+# consequence is not an annoyed recipient, it is the provider suspending
+# that account, which takes every other capability in this server down with
+# it and cannot be undone from here.
+#
+# Counted over a sliding window rather than a fixed clock-hour bucket: a
+# bucket that resets on the hour hands out two full budgets back to back at
+# the boundary, which is the one moment a burst costs the most.
+_RATE_LIMIT_WINDOW = timedelta(hours=1)
+
+# Five to one address per hour. A code lives ten minutes, so someone who
+# mistypes their address, waits for mail that was never coming, and asks
+# again still has four tries inside a single window - comfortably more than
+# the two or three a real "it didn't arrive" sequence takes. Three was the
+# first choice and is too tight: one mistyped address, one slow inbox and
+# one honest second attempt already spend it, and locking out the person
+# who is legitimately verifying is a real cost, not a hypothetical one.
+MAX_CODES_PER_RECIPIENT_PER_HOUR = 5
+
+# Twenty across all recipients per hour. The per-recipient limit sees
+# nothing whatsoever when the addresses differ, and rotating the local part
+# inside a permitted domain is the cheapest possible move - so without this
+# second ceiling the first one is bypassed by typing a different name.
+# Twenty lets four different people each exhaust their own budget in the
+# same hour, which no honest use of an identity-check tool approaches,
+# while capping a runaway loop at twenty messages instead of thousands.
+# Deliberately not derived from the number of configured recipients: that
+# count comes from config.json, and a ceiling computed from config is a
+# ceiling that a config edit raises.
+MAX_CODES_TOTAL_PER_HOUR = 20
+
+
+class RateLimited(Exception):
+    """Too many codes issued recently. Nothing was generated or stored.
+
+    Deliberately not ``ValueError``, which in this codebase means "present
+    but unusable": nothing about the request is wrong, and the identical
+    call succeeds later. A caller that can't tell those apart will send
+    someone off to fix an address that was always fine.
+
+    ``retry_after_seconds`` is the honest wait, computed from the record
+    that actually has to age out of the window - not a fixed guess. Telling
+    a person to come back in an hour when the window frees up in ninety
+    seconds is advice they will follow, and it costs them the difference.
+
+    ``limit`` names which ceiling was hit, and the message says so in
+    words too, because "you have asked too often" and "this server has
+    sent too much mail" are different situations and only the first is
+    about the person reading it.
+    """
+
+    # Both extras default rather than being required, so that constructing
+    # one from a message alone still works - a raise site here always
+    # passes them, but an exception class that can only be built one way is
+    # awkward to hand to a caller wrapping it. The fallback wait is the
+    # whole window: if nobody computed the real figure, erring long merely
+    # wastes time, while erring short produces the retry loop the limit
+    # exists to stop.
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: int = int(_RATE_LIMIT_WINDOW.total_seconds()),
+        limit: str = "unspecified",
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+        self.limit = limit
 
 
 class Outcome(str, Enum):
@@ -140,6 +228,23 @@ def _code_matches(salt: bytes, stored_hash: bytes, code: str) -> bool:
     return secrets.compare_digest(stored_hash, _hash_code(salt, code))
 
 
+def _recipient_bucket(recipient: str) -> str:
+    """Which per-recipient budget an address spends from.
+
+    Case-folded and trimmed, mirroring ``domain.resolve_recipient``. Without
+    this, ``Alice@x.com`` and ``alice@x.com`` are two budgets for one
+    mailbox and the limit is bypassed by holding shift - mail domains are
+    case-insensitive by definition, so the two are the same person.
+
+    This is a bucket key, never an identity check, which decides the
+    direction to err in: merging two addresses that were really distinct
+    only makes the limiter stricter, while splitting one address into two
+    buckets is a bypass. Hence normalizing aggressively rather than
+    carefully.
+    """
+    return recipient.strip().lower()
+
+
 def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
@@ -167,6 +272,13 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     # is what makes it legal in a WHERE clause it may evaluate more than
     # once. It is pure: same salt, same hash, same code, same answer.
     conn.create_function("otp_code_matches", 3, _code_matches, deterministic=True)
+    # Registered rather than using SQL ``LOWER(recipient)`` so the stored
+    # side and the queried side are folded by the same Python function.
+    # SQLite's built-in LOWER is ASCII-only, so a non-ASCII address would
+    # fold one way in Python and not at all in SQL, and a per-recipient
+    # limit that silently doesn't group is the exact failure this counts on
+    # not having. Same deterministic=True reasoning as above.
+    conn.create_function("otp_recipient_bucket", 1, _recipient_bucket, deterministic=True)
     return conn
 
 
@@ -177,6 +289,107 @@ def generate_code(length: int = DEFAULT_CODE_LENGTH) -> str:
     if length < 1:
         raise ValueError(f"OTP length must be at least 1, got {length}")
     return "".join(secrets.choice(_ALPHABET) for _ in range(length))
+
+
+def _limit_exceeded(
+    recent: list[str],
+    limit: int,
+    now: datetime,
+    *,
+    limit_name: str,
+    message: str,
+) -> RateLimited:
+    """Build the refusal, including how long the wait really is.
+
+    ``recent`` is every timestamp inside the window, oldest first. The
+    request fits once enough of them have aged out, and the one that has to
+    go is at index ``len(recent) - limit``: with the check below in place
+    that is simply the oldest row, but a deployment that lowered a constant
+    - or a database written before this existed - can hold more rows than
+    the limit, and reporting the oldest row's expiry there would promise a
+    slot that the next-oldest rows are still occupying.
+
+    Rounded up and floored at one second, because a truthful "0" reads as
+    "retry now" and produces a caller that retries into the same refusal.
+    """
+    frees_at = datetime.fromisoformat(recent[len(recent) - limit]) + _RATE_LIMIT_WINDOW
+    retry_after = max(math.ceil((frees_at - now).total_seconds()), 1)
+    return RateLimited(
+        f"{message} Try again in {retry_after} second(s).",
+        retry_after_seconds=retry_after,
+        limit=limit_name,
+    )
+
+
+def _enforce_rate_limits(conn: sqlite3.Connection, recipient: str, now: datetime) -> None:
+    """Raise ``RateLimited`` if this send would cross either ceiling.
+
+    Counted off the rows already in ``otp_codes`` rather than a second
+    table: ``created_at`` has been on every row since the table existed, so
+    a dedicated counters table would be a second copy of a fact this one
+    already states, with its own way of disagreeing after a crash. Nothing
+    is pruned either - rows outside the window are simply not selected, and
+    the table is small enough that a scan over one hour of it is nothing.
+
+    Every row counts regardless of what became of the code - verified,
+    burned, expired, unread. The limit exists to protect the mail account,
+    and a message costs the account the same whether or not anyone typed
+    the digits back.
+
+    Per-recipient is checked first because it is the one an ordinary person
+    can hit by accident, and its message is the one they can act on; the
+    global ceiling is the abuse case and its message is aimed at the
+    operator reading a log.
+
+    ISO-8601 UTC compares and sorts correctly as text, the same property
+    ``verify`` already relies on for expiry.
+    """
+    window_start = (now - _RATE_LIMIT_WINDOW).isoformat()
+
+    for_recipient = [
+        row[0]
+        for row in conn.execute(
+            "SELECT created_at FROM otp_codes WHERE created_at > ? "
+            "AND otp_recipient_bucket(recipient) = ? ORDER BY created_at",
+            (window_start, _recipient_bucket(recipient)),
+        )
+    ]
+    if len(for_recipient) >= MAX_CODES_PER_RECIPIENT_PER_HOUR:
+        raise _limit_exceeded(
+            for_recipient,
+            MAX_CODES_PER_RECIPIENT_PER_HOUR,
+            now,
+            limit_name="per_recipient",
+            # The count, not the constant: the two differ only when a
+            # deployment lowered the limit under rows that already exist,
+            # and that is exactly the moment a message quoting the
+            # constant would contradict the database.
+            message=(
+                f"Refusing to send another passcode to {recipient!r}: {len(for_recipient)} "
+                f"have already gone to that address in the last hour, and the limit is "
+                f"{MAX_CODES_PER_RECIPIENT_PER_HOUR} (per-recipient limit)."
+            ),
+        )
+
+    total = [
+        row[0]
+        for row in conn.execute(
+            "SELECT created_at FROM otp_codes WHERE created_at > ? ORDER BY created_at",
+            (window_start,),
+        )
+    ]
+    if len(total) >= MAX_CODES_TOTAL_PER_HOUR:
+        raise _limit_exceeded(
+            total,
+            MAX_CODES_TOTAL_PER_HOUR,
+            now,
+            limit_name="global",
+            message=(
+                f"Refusing to send another passcode: {len(total)} have been sent from this "
+                f"server in the last hour across all recipients, and the limit is "
+                f"{MAX_CODES_TOTAL_PER_HOUR} (global limit)."
+            ),
+        )
 
 
 def create(
@@ -195,15 +408,27 @@ def create(
     never go. It's still generated with ``secrets`` because a guessable
     id would let an attacker aim their five attempts at somebody else's
     live code instead of having to know one exists.
+
+    Raises ``RateLimited`` when either issuing ceiling is already met. The
+    signature is unchanged and the limits take no parameters on purpose -
+    see ``MAX_CODES_PER_RECIPIENT_PER_HOUR``.
     """
-    salt = secrets.token_bytes(16)
-    code = generate_code(length)
-    otp_id = secrets.token_urlsafe(12)
     now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(minutes=ttl_minutes)
 
     conn = _connect(db_path)
     try:
+        # Before a code is minted, not after storing one and rolling back:
+        # a refusal has to leave the database exactly as it found it, so
+        # that a rejected request cannot be reported to anyone as a code
+        # that was sent, and so that refusals don't themselves fill the
+        # window and turn one over-eager caller into a lockout for
+        # everybody else.
+        _enforce_rate_limits(conn, recipient, now)
+
+        salt = secrets.token_bytes(16)
+        code = generate_code(length)
+        otp_id = secrets.token_urlsafe(12)
+        expires_at = now + timedelta(minutes=ttl_minutes)
         conn.execute(
             "INSERT INTO otp_codes (otp_id, salt, code_hash, recipient, status, attempts, "
             "max_attempts, created_at, expires_at) VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)",

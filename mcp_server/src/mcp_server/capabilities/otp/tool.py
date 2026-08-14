@@ -29,10 +29,11 @@ def request_otp_tool(recipient: str | None = None) -> RequestOtpResult:
     returned to you - ask the recipient to read it back, then check it
     with `verify_otp_tool`.
 
-    `recipient` must be an address already listed in this server's email
-    configuration; anything else is refused, and the refusal names the
-    addresses that are allowed. Omit it to use the first configured
-    approver.
+    `recipient` must be an address this server's email configuration
+    permits: one of the addresses listed there, or - if the deployment
+    allows any recipient domains - any address at one of those domains.
+    Anything else is refused, and the refusal names what would have been
+    accepted. Omit it to use the first configured approver.
     """
     email_config = load_email_config(settings.config_path)
     return domain.request_otp(email_config, db_path=settings.otp_path, recipient=recipient)

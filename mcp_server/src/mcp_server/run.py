@@ -24,8 +24,13 @@ from mcp_server.server import mcp  # noqa: E402
 #
 # These imports look unused - they are not. Importing the module is what
 # runs its @mcp.tool()/@mcp.resource() decorator and registers it.
-from mcp_server.resources.host_health import resource as host_health_resource  # noqa: E402,F401
+#
+# host_health appears twice on purpose: the resource serves clients that
+# read a URI, the capability serves models that can only see tools. Same
+# domain logic underneath - see capabilities/host_health/domain.py.
+from mcp_server.capabilities.host_health import tool as host_health_tool  # noqa: E402,F401
 from mcp_server.capabilities.otp import tool as otp_tool  # noqa: E402,F401
+from mcp_server.resources.host_health import resource as host_health_resource  # noqa: E402,F401
 
 
 def main() -> None:

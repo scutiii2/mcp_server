@@ -18,6 +18,7 @@ from mcp_server.infra.app_config import (
     load_email_config,
     load_host_config,
     load_hosts_config,
+    resolve_section,
 )
 
 
@@ -27,12 +28,27 @@ def _write(tmp_path: Path, data: dict) -> Path:
     return path
 
 
+def _resolve(path: Path, name: str):
+    """Resolve one top-level section the way every loader does.
+
+    ``load_config`` deliberately returns the document unresolved, so a
+    test about substitution has to name the subtree it cares about - which
+    is the whole point of the change these tests cover.
+    """
+    return resolve_section(load_config(path)[name], where=name, config_path=path)
+
+
 VALID_EMAIL = {
     "smtp_server": "smtp.example.com",
     "smtp_port": 587,
     "from": "notifications@example.com",
     "password": "changeme",
     "to": ["team@example.com"],
+}
+
+VALID_HOSTS = {
+    "zima": {"hostname": "192.168.1.10", "user": "root", "os": "linux", "key": "/root/.ssh/id"},
+    "desktop": {"hostname": "192.168.1.20", "user": "User", "os": "windows", "password": "pw"},
 }
 
 
@@ -70,7 +86,7 @@ def test_unset_variable_raises_naming_both_the_variable_and_the_key(tmp_path: Pa
     path = _write(tmp_path, {"email": {**VALID_EMAIL, "password": "${SMTP_PASSWORD}"}})
 
     with pytest.raises(KeyError) as error:
-        load_config(path)
+        load_email_config(path)
 
     message = str(error.value)
     assert "SMTP_PASSWORD" in message
@@ -85,7 +101,7 @@ def test_empty_variable_raises_rather_than_yielding_a_blank_secret(tmp_path: Pat
     path = _write(tmp_path, {"email": {**VALID_EMAIL, "password": "${SMTP_PASSWORD}"}})
 
     with pytest.raises(ValueError, match="empty string"):
-        load_config(path)
+        load_email_config(path)
 
 
 def test_literal_empty_string_is_still_allowed(tmp_path: Path):
@@ -98,7 +114,7 @@ def test_literal_empty_string_is_still_allowed(tmp_path: Path):
 def test_non_string_values_pass_through_untouched(tmp_path: Path):
     path = _write(tmp_path, {"email": VALID_EMAIL, "extras": {"count": 3, "on": True, "nothing": None}})
 
-    assert load_config(path)["extras"] == {"count": 3, "on": True, "nothing": None}
+    assert _resolve(path, "extras") == {"count": 3, "on": True, "nothing": None}
 
 
 def test_bare_dollar_signs_are_not_treated_as_placeholders(tmp_path: Path):
@@ -106,7 +122,7 @@ def test_bare_dollar_signs_are_not_treated_as_placeholders(tmp_path: Path):
     or currency strings survive intact."""
     path = _write(tmp_path, {"email": VALID_EMAIL, "note": "costs US$5, not $HOME"})
 
-    assert load_config(path)["note"] == "costs US$5, not $HOME"
+    assert _resolve(path, "note") == "costs US$5, not $HOME"
 
 
 def test_double_dollar_escapes_a_literal_placeholder(tmp_path: Path, monkeypatch):
@@ -116,13 +132,13 @@ def test_double_dollar_escapes_a_literal_placeholder(tmp_path: Path, monkeypatch
     monkeypatch.delenv("SMTP_PASSWORD", raising=False)
     path = _write(tmp_path, {"email": VALID_EMAIL, "note": "write $${SMTP_PASSWORD} to refer to it"})
 
-    assert load_config(path)["note"] == "write ${SMTP_PASSWORD} to refer to it"
+    assert _resolve(path, "note") == "write ${SMTP_PASSWORD} to refer to it"
 
 
 def test_double_dollar_outside_a_placeholder_becomes_one_dollar(tmp_path: Path):
     path = _write(tmp_path, {"email": VALID_EMAIL, "note": "costs 5$$"})
 
-    assert load_config(path)["note"] == "costs 5$"
+    assert _resolve(path, "note") == "costs 5$"
 
 
 def test_placeholder_value_is_not_itself_expanded(tmp_path: Path, monkeypatch):
@@ -133,7 +149,111 @@ def test_placeholder_value_is_not_itself_expanded(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("NOT_A_VAR", raising=False)
     path = _write(tmp_path, {"email": VALID_EMAIL, "note": "${WEIRD}"})
 
-    assert load_config(path)["note"] == "${NOT_A_VAR}"
+    assert _resolve(path, "note") == "${NOT_A_VAR}"
+
+
+# --- lazy, per-section resolution --------------------------------------
+# Resolving the whole document up front meant one unset variable anywhere
+# broke every unrelated loader. These pin the fix down: each loader must
+# only demand the secrets belonging to the part it reads.
+
+
+def test_an_unset_variable_under_hosts_does_not_break_email(tmp_path: Path, monkeypatch):
+    """The exact production failure. An SSH password nobody set stopped
+    mail from being sent, because resolution ran over the whole document
+    before a section was picked. Email does not read 'hosts' and must not
+    depend on it being loadable."""
+    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
+    path = _write(
+        tmp_path,
+        {
+            "email": VALID_EMAIL,
+            "hosts": {"desktop": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"}},
+        },
+    )
+
+    assert load_email_config(path).to == ["team@example.com"]
+
+
+def test_an_unset_variable_under_email_does_not_break_a_host(tmp_path: Path, monkeypatch):
+    """The same independence in the other direction - otherwise a
+    deployment that never sends mail still has to satisfy the mail
+    section's secrets before it can reach a machine over SSH."""
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    path = _write(
+        tmp_path,
+        {"email": {**VALID_EMAIL, "password": "${SMTP_PASSWORD}"}, "hosts": VALID_HOSTS},
+    )
+
+    assert load_host_config(path, "zima").hostname == "192.168.1.10"
+
+
+def test_a_broken_host_does_not_break_a_sibling_host(tmp_path: Path, monkeypatch):
+    """Resolution is per *entry*, not per section. Loading every host and
+    then indexing would read the same and pass every other test here,
+    while leaving one unreachable machine able to lock you out of the
+    others - which is precisely when you need them."""
+    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
+    path = _write(
+        tmp_path,
+        {
+            "hosts": {
+                "zima": VALID_HOSTS["zima"],
+                "desktop": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"},
+            }
+        },
+    )
+
+    assert load_host_config(path, "zima").key == "/root/.ssh/id"
+
+    # ...and the broken one still fails, loudly, when it is the one asked for.
+    with pytest.raises(KeyError, match="DESKTOP_SSH_PASSWORD"):
+        load_host_config(path, "desktop")
+
+
+def test_loading_all_hosts_still_fails_when_any_host_is_broken(tmp_path: Path, monkeypatch):
+    """The one caller that legitimately needs every secret: it returns the
+    whole inventory, so skipping the entry it couldn't resolve would hand
+    back a silently short list and read as 'that host isn't configured'."""
+    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
+    path = _write(
+        tmp_path,
+        {
+            "hosts": {
+                "zima": VALID_HOSTS["zima"],
+                "desktop": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"},
+            }
+        },
+    )
+
+    with pytest.raises(KeyError, match="DESKTOP_SSH_PASSWORD"):
+        load_hosts_config(path)
+
+
+def test_a_host_error_still_names_the_full_dotted_path(tmp_path: Path, monkeypatch):
+    """Resolving a subtree must not shorten the path in the message. The
+    operator's next move is to open config.json and find the line, and
+    'desktop.password' would send them looking at the wrong level."""
+    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
+    path = _write(
+        tmp_path,
+        {"hosts": {"desktop": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"}}},
+    )
+
+    with pytest.raises(KeyError) as error:
+        load_host_config(path, "desktop")
+
+    assert "hosts.desktop.password" in str(error.value)
+
+
+def test_load_config_leaves_placeholders_unresolved(tmp_path: Path, monkeypatch):
+    """load_config is now parse-and-validate only. If it resolved anything
+    it would be back to demanding every secret in the file, which is the
+    bug - so the placeholder surviving verbatim is the property."""
+    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
+    path = _write(tmp_path, {"hosts": {"desktop": {"password": "${DESKTOP_SSH_PASSWORD}"}}})
+
+    assert load_config(path)["hosts"]["desktop"]["password"] == "${DESKTOP_SSH_PASSWORD}"
 
 
 # --- file handling -----------------------------------------------------
@@ -215,6 +335,38 @@ def test_missing_required_key_names_the_key(tmp_path: Path):
         load_email_config(path)
 
 
+def test_to_may_be_omitted_entirely(tmp_path: Path):
+    """A deployment that only mails one-time codes to caller-supplied
+    addresses has no standing recipient list, and requiring one forces an
+    invented address into the config - which then also joins the OTP
+    allowlist, quietly widening exactly the thing it feeds."""
+    no_to = {k: v for k, v in VALID_EMAIL.items() if k != "to"}
+    path = _write(
+        tmp_path,
+        {"email": {**no_to, "approver_emails": ["boss@example.com"]}},
+    )
+
+    config = load_email_config(path)
+
+    assert config.to == []
+    assert config.approver_emails == ["boss@example.com"]
+
+
+def test_to_and_approver_emails_may_both_be_absent(tmp_path: Path):
+    """Load time is the wrong place to reject this: send_email raises "No
+    recipients" and the OTP capability raises its own KeyError naming the
+    keys to add, both at the moment it matters. A load-time failure would
+    instead block a config that only ever sends where the caller says."""
+    no_to = {k: v for k, v in VALID_EMAIL.items() if k != "to"}
+    path = _write(tmp_path, {"email": {**no_to, "allowed_recipient_domains": ["example.com"]}})
+
+    config = load_email_config(path)
+
+    assert config.to == []
+    assert config.approver_emails == []
+    assert config.allowed_recipient_domains == ["example.com"]
+
+
 def test_password_may_be_omitted_entirely(tmp_path: Path):
     """An unauthenticated send is a real configuration - a LAN relay that
     authorizes by source address - not an oversight. Demanding the key
@@ -280,12 +432,83 @@ def test_string_port_is_coerced_to_int(tmp_path: Path):
     assert load_email_config(path).smtp_port == 587
 
 
-# --- hosts -------------------------------------------------------------
+# --- allowed_recipient_domains -----------------------------------------
+# The OTP capability sends a passcode to any address at these domains, so
+# the loader's job is to produce exactly what the operator wrote - and,
+# above all, to produce *nothing* when they wrote nothing.
 
-VALID_HOSTS = {
-    "zima": {"hostname": "192.168.1.10", "user": "root", "os": "linux", "key": "/root/.ssh/id"},
-    "desktop": {"hostname": "192.168.1.20", "user": "User", "os": "windows", "password": "pw"},
-}
+
+def test_omitting_allowed_recipient_domains_allows_no_domains(tmp_path: Path):
+    """The dangerous default, tested directly. An absent key must mean "no
+    domains", never "any domain" - the inverted version still passes every
+    happy-path test while turning the OTP tool into an open mail relay."""
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    assert load_email_config(path).allowed_recipient_domains == []
+
+
+def test_allowed_recipient_domains_are_loaded_in_order(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {"email": {**VALID_EMAIL, "allowed_recipient_domains": ["example.com", "example.org"]}},
+    )
+
+    assert load_email_config(path).allowed_recipient_domains == ["example.com", "example.org"]
+
+
+def test_domains_are_normalized_to_bare_lowercase(tmp_path: Path):
+    """Asked for a domain, people write "@example.com" or ".example.com"
+    as readily as the bare form, and mail domains are case-insensitive
+    anyway. A config that looks right and matches nothing is the worst
+    outcome available here: it reads as configured."""
+    path = _write(
+        tmp_path,
+        {
+            "email": {
+                **VALID_EMAIL,
+                "allowed_recipient_domains": ["  Example.COM ", "@Corp.example", ".mail.example"],
+            }
+        },
+    )
+
+    assert load_email_config(path).allowed_recipient_domains == [
+        "example.com",
+        "corp.example",
+        "mail.example",
+    ]
+
+
+def test_blank_domain_entries_are_dropped(tmp_path: Path):
+    """A leftover "" can only fail to match, so it widens nothing - but it
+    would show up in the refusal message a caller reads to work out what
+    it should have asked for."""
+    path = _write(tmp_path, {"email": {**VALID_EMAIL, "allowed_recipient_domains": ["", "  "]}})
+
+    assert load_email_config(path).allowed_recipient_domains == []
+
+
+def test_a_single_domain_string_is_accepted_as_a_list(tmp_path: Path):
+    """Same reasoning as 'to': iterating a bare string character by
+    character would produce a list of one-letter domains."""
+    path = _write(tmp_path, {"email": {**VALID_EMAIL, "allowed_recipient_domains": "example.com"}})
+
+    assert load_email_config(path).allowed_recipient_domains == ["example.com"]
+
+
+def test_domains_resolve_placeholders_and_are_still_normalized(tmp_path: Path):
+    """${VAR} resolution happens before normalization, so a domain supplied
+    by the environment gets the same treatment as one typed into the file
+    - otherwise the two ways of configuring the same thing disagree."""
+    monkeypatch_env = {"email": {**VALID_EMAIL, "allowed_recipient_domains": ["${STAFF_DOMAIN}"]}}
+    path = _write(tmp_path, monkeypatch_env)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("STAFF_DOMAIN", "@Staff.Example")
+
+        assert load_email_config(path).allowed_recipient_domains == ["staff.example"]
+
+
+# --- hosts -------------------------------------------------------------
 
 
 def test_hosts_are_keyed_by_name(tmp_path: Path):

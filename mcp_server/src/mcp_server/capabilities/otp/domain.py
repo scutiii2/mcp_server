@@ -19,6 +19,15 @@ already in ``config.json`` costs nothing real - the only reason to send a
 code somewhere is to check someone's identity against an inbox you
 already trust - and it makes the tool useless to anyone who talks the
 model into calling it.
+
+``email.allowed_recipient_domains`` widens that second rule, on purpose
+and only as far as the operator writes down: a deployment that verifies
+its own staff needs to send a code to a person who wasn't listed
+individually, and the domain is the thing that actually distinguishes
+"someone at the company" from "the attacker's mailbox". It is opt-in and
+exact-match, and an absent key leaves the strict address-only behavior in
+place - a spam relay that switches itself on when a config key is missing
+would be worse than no allowlist at all, because it would look configured.
 """
 
 from __future__ import annotations
@@ -28,7 +37,7 @@ from pathlib import Path
 
 from mcp_server.capabilities.otp.contract import RequestOtpResult, VerifyOtpResult
 from mcp_server.infra import otp
-from mcp_server.infra.app_config import EmailConfig
+from mcp_server.infra.app_config import EmailConfig, normalize_recipient_domain
 from mcp_server.infra.email import send_email
 
 
@@ -72,18 +81,101 @@ def permitted_recipients(email_config: EmailConfig) -> list[str]:
     return ordered
 
 
+def permitted_domains(email_config: EmailConfig) -> list[str]:
+    """Domains any address may be at, in comparison form.
+
+    Normalized here as well as in the config loader because an
+    ``EmailConfig`` reaches this function from tests and hand-built setups
+    that never touched the loader, and an allowlist that silently fails to
+    match ``"Example.COM "`` is worse than one that refuses it - the
+    operator sees a working config and a tool that refuses everyone.
+    Duplicates are dropped so the refusal message reads like the config
+    file rather than like a bug.
+    """
+    ordered: list[str] = []
+    for entry in email_config.allowed_recipient_domains:
+        domain = normalize_recipient_domain(entry)
+        if domain and domain not in ordered:
+            ordered.append(domain)
+    return ordered
+
+
+def _domain_of(address: str) -> str | None:
+    """The domain half of ``address``, or None if it isn't an address.
+
+    Returns None rather than raising because the caller is the only place
+    that can phrase a refusal naming what *was* permitted, and a refusal
+    that doesn't is a caller (usually a model) retrying the same guess.
+
+    Exactly one ``@`` is demanded before anything is split off, and that
+    order is the point. ``victim@allowed.example@evil.example`` is a
+    single string that two reasonable one-liners disagree about:
+    ``rpartition("@")`` reads its domain as ``evil.example`` and
+    ``partition("@")`` as ``allowed.example@evil.example``. One of those
+    hands an attacker delivery at a domain nobody allowed, and which one
+    you got depends on a character nobody reviewing the line would look
+    twice at. Counting first means the ambiguous address is refused
+    outright and never reaches a split at all.
+
+    Whitespace and control characters are refused for a different reason:
+    this string is joined into the message's ``To`` header by
+    ``infra/email.py``, and a header value containing a newline is header
+    injection - extra recipients, a forged subject - which was
+    unreachable while every recipient came from config.json and is not
+    once the caller supplies one.
+    """
+    if any(character.isspace() or ord(character) < 32 for character in address):
+        return None
+    if address.count("@") != 1:
+        return None
+    local_part, _, domain = address.partition("@")
+    if not local_part or not domain:
+        return None
+    # Only the domain is lowercased. The local part is left exactly as
+    # given: it is the receiving server's to interpret, and RFC 5321 lets
+    # it be case-sensitive even though essentially no real mailbox is.
+    return domain.lower()
+
+
+def _permitted_summary(allowed: list[str], domains: list[str]) -> str:
+    """What a refused caller could have said instead."""
+    if not domains:
+        return f"Codes can only go to addresses already listed in config.json: {', '.join(allowed)}."
+    return (
+        f"Codes can only go to addresses already listed in config.json "
+        f"({', '.join(allowed)}), or to any address at these domains: {', '.join(domains)}."
+    )
+
+
 def resolve_recipient(email_config: EmailConfig, requested: str | None) -> str:
-    """Map a requested address onto a configured one, or refuse.
+    """Map a requested address onto a permitted one, or refuse.
+
+    Two ways in, checked in this order. An exact match against a
+    configured address wins first and returns the *configured* spelling,
+    so a deployment that lists no domains behaves exactly as it did before
+    this function knew about domains. Failing that, the address is allowed
+    if its domain is one the operator listed, and then the caller's own
+    spelling is what gets sent to - there is no configured spelling to
+    prefer, which is the entire point of the domain form.
 
     Comparison is case-insensitive and whitespace-trimmed: mail domains
     are case-insensitive by definition and no real mailbox distinguishes
     ``Alice@`` from ``alice@``, so matching exactly would reject the
-    right address for a reason no user could see. The *configured*
-    spelling is what's returned and sent to, so the allowlist decides the
-    address rather than the caller's rendering of it.
+    right address for a reason no user could see.
+
+    Domain matching is equality, never suffix matching. ``example.com``
+    accepts neither ``evil-example.com`` nor ``mail.example.com``. The
+    obvious shorthand for "and subdomains" is
+    ``domain.endswith("example.com")``, which also accepts
+    ``notexample.com`` - a domain an attacker can register this afternoon,
+    from a bug that reviews cleanly. Guarding that correctly means
+    ``domain == d or domain.endswith("." + d)``, and it buys an operator
+    nothing they can't get by listing ``mail.example.com`` on its own
+    line, so the wildcard doesn't exist here.
     """
     allowed = permitted_recipients(email_config)
-    if not allowed:
+    domains = permitted_domains(email_config)
+    if not allowed and not domains:
         # A missing required thing, not a malformed one.
         raise KeyError(
             "No email recipients are configured, so there is nowhere to send a passcode. "
@@ -91,20 +183,39 @@ def resolve_recipient(email_config: EmailConfig, requested: str | None) -> str:
         )
 
     if requested is None or not requested.strip():
+        if not allowed:
+            # Domains alone can't supply a default: they say which
+            # addresses are acceptable, not which person to ask.
+            raise KeyError(
+                "No email recipients are configured, so there is no default address for a "
+                "passcode. Add 'email.to' to config.json, or name a recipient explicitly."
+            )
         # First approver: approver_emails is the list of people this
         # deployment already trusts to authorize actions, and it falls
         # back to `to` in the config loader, so this is never empty when
         # `allowed` isn't.
         return allowed[0]
 
-    wanted = requested.strip().lower()
+    candidate = requested.strip()
+    wanted = candidate.lower()
     for address in allowed:
         if address.strip().lower() == wanted:
             return address
 
+    if domains:
+        domain = _domain_of(candidate)
+        if domain is None:
+            raise ValueError(
+                f"Refusing to send a passcode to {requested!r}: that is not a usable email "
+                f"address - it needs exactly one '@', a mailbox name before it, a domain "
+                f"after it, and no spaces. {_permitted_summary(allowed, domains)}"
+            )
+        if domain in domains:
+            return candidate
+
     raise ValueError(
         f"Refusing to send a passcode to {requested!r}: it is not a configured recipient. "
-        f"Codes can only go to addresses already listed in config.json: {', '.join(allowed)}."
+        f"{_permitted_summary(allowed, domains)}"
     )
 
 
@@ -154,7 +265,24 @@ def request_otp(
     """
     address = resolve_recipient(email_config, recipient)
 
-    issued = otp.create(db_path, address, ttl_minutes=ttl_minutes)
+    try:
+        issued = otp.create(db_path, address, ttl_minutes=ttl_minutes)
+    except otp.RateLimited as limited:
+        # Raised, not returned as a RequestOtpResult carrying an apology.
+        # Every field of that type is a statement that a code is in an
+        # inbox, and a model handed a success object reads the first two
+        # and tells someone to go and look for mail that was never sent.
+        #
+        # Phrased from `retry_after_seconds` rather than by relaying
+        # infra's own sentence: the attribute is the interface the two
+        # modules agreed on, and wording is not. The original is kept as
+        # the cause, so a log still shows which ceiling was hit.
+        raise RuntimeError(
+            f"No passcode was sent: too many have been requested recently. Wait "
+            f"{limited.retry_after_seconds} seconds before asking for another code."
+        ) from limited
+
+
     send_email(
         email_config,
         subject="Your verification code",

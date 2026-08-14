@@ -19,7 +19,7 @@ feel radioactive - you can't share it, commit it, or paste it into an
 issue without leaking something.
 
 So a string anywhere in the config file may contain ``${VAR}``, which is
-replaced at load time with that environment variable's value::
+replaced with that environment variable's value::
 
     "password": "${SMTP_PASSWORD}"
 
@@ -33,6 +33,15 @@ this file's format and not any domain code.
 Write ``$$`` for a literal ``$`` if a value genuinely needs to contain
 ``${...}`` text rather than have it substituted.
 
+Substitution is *per section*, not per file: ``load_config`` parses and
+returns the document untouched, and each loader calls ``resolve_section``
+on just the subtree it is about to read. Resolving the whole document up
+front was the obvious implementation and it was wrong - one unset SSH
+password under ``hosts`` made ``load_email_config`` raise, so a machine
+nobody was talking to could stop mail from going out. A deployment is
+allowed to have half its secrets present; only the half it actually uses
+has to be.
+
 Deliberately fails loudly, at load time, with a message naming the file
 and the exact key - rather than returning ``{}`` or an empty string and
 letting a capability fail much later with a confusing error deep inside
@@ -41,8 +50,8 @@ required is absent (a config key, an environment variable), ``ValueError``
 when it's present but unusable (malformed JSON, an empty secret).
 
 Add a loader function per config section as capabilities need them,
-following ``load_email_config`` below: read the section, validate what's
-required, return a frozen dataclass. Domain code should take that
+following ``load_email_config`` below: read the section, resolve it with
+``resolve_section``, validate what's required, return a frozen dataclass. Domain code should take that
 dataclass, never a raw dict - that way a typo in config.json is caught
 here instead of at the call site.
 """
@@ -74,7 +83,12 @@ class EmailConfig:
     smtp_server: str
     smtp_port: int
     from_address: str
-    to: list[str]
+    # The standing recipient list, and empty is a real configuration: a
+    # deployment that only mails one-time codes to addresses the caller
+    # names (see `allowed_recipient_domains`) has nobody standing behind
+    # it. `send_email` refuses an empty final recipient list at send time,
+    # which is the moment it actually matters.
+    to: list[str] = field(default_factory=list)
     # Empty means "connect and send without authenticating". That's not a
     # degraded fallback, it's how LAN relays and local MTAs normally work -
     # they authorize by source address, and offering AUTH to them makes the
@@ -91,6 +105,12 @@ class EmailConfig:
     # the second one is a standing authorization list. Defaults to `to`
     # when unset, so the split is available without being mandatory.
     approver_emails: list[str] = field(default_factory=list)
+    # Domains that a caller may name any address at - used by the OTP
+    # capability, which otherwise only sends to the exact addresses above.
+    # Empty is the default and means "no domains", never "any domain":
+    # widening an allowlist because a key is absent is the one failure mode
+    # here that nobody would notice, so the absent case is the strict one.
+    allowed_recipient_domains: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -135,8 +155,16 @@ def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:
     return value
 
 
-def _resolve_env(value: Any, *, where: str, config_path: Path) -> Any:
-    """Walk the parsed config and substitute ${VAR} inside every string.
+def resolve_section(value: Any, *, where: str, config_path: Path) -> Any:
+    """Substitute ${VAR} inside every string of one subtree of the config.
+
+    ``where`` is that subtree's *full* dotted path from the top of the
+    document ("email", "hosts.desktop"), not a name local to it, and it is
+    extended as the walk descends. Callers resolve a slice but errors still
+    read ``hosts.desktop.password`` - the operator has to open config.json
+    and find the line, and a path relative to whatever the loader happened
+    to pass in would send them looking in the wrong place. Pass ``""`` for
+    a whole document.
 
     Recurses through dicts and lists so any section added later gets this
     for free. Only values are touched, never keys - a computed key name
@@ -145,12 +173,12 @@ def _resolve_env(value: Any, *, where: str, config_path: Path) -> Any:
     """
     if isinstance(value, dict):
         return {
-            key: _resolve_env(item, where=f"{where}.{key}" if where else str(key), config_path=config_path)
+            key: resolve_section(item, where=f"{where}.{key}" if where else str(key), config_path=config_path)
             for key, item in value.items()
         }
     if isinstance(value, list):
         return [
-            _resolve_env(item, where=f"{where}[{index}]", config_path=config_path)
+            resolve_section(item, where=f"{where}[{index}]", config_path=config_path)
             for index, item in enumerate(value)
         ]
     if isinstance(value, str):
@@ -164,7 +192,11 @@ def _resolve_env(value: Any, *, where: str, config_path: Path) -> Any:
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
-    """Read, parse, and resolve ${VAR} references. Raises on anything unusable."""
+    """Read and parse the config file. Raises on anything unusable.
+
+    Returns the document exactly as written, ``${VAR}`` placeholders and
+    all; a loader resolves the part it needs with ``resolve_section``.
+    """
     if not config_path.exists():
         raise FileNotFoundError(
             f"Config file not found: {config_path}. Copy config.json.example "
@@ -178,13 +210,33 @@ def load_config(config_path: Path) -> dict[str, Any]:
 
     if not isinstance(data, dict):
         raise ValueError(f"Config file {config_path} must contain a JSON object at the top level")
-    return _resolve_env(data, where="", config_path=config_path)
+    return data
 
 
 def _require(section: dict[str, Any], key: str, *, section_name: str, config_path: Path) -> Any:
     if key not in section:
         raise KeyError(f"Config file {config_path} is missing '{section_name}.{key}'")
     return section[key]
+
+
+def normalize_recipient_domain(value: str) -> str:
+    """One ``email.allowed_recipient_domains`` entry, in comparison form.
+
+    Public, and imported by ``capabilities/otp/domain.py`` rather than
+    reimplemented there, because two spellings of "normalized" is how an
+    allowlist quietly stops matching what the operator wrote - and an
+    ``EmailConfig`` can be built directly, in a test or a hand-written
+    setup, without ever passing through this loader. Both sides calling
+    the same function is what makes that safe.
+
+    A leading ``@`` or ``.`` is stripped rather than rejected: asked for a
+    domain, people write ``@example.com`` or ``.example.com`` about as
+    often as the bare form, and all three plainly mean the same thing.
+    Nothing else is repaired - this is not an address parser, and a value
+    that isn't a domain just fails to match anything, which is the
+    direction a mistake here should fail in.
+    """
+    return value.strip().lower().lstrip("@.")
 
 
 SUPPORTED_EMAIL_SECURITY = ("starttls", "ssl", "none")
@@ -202,29 +254,52 @@ def load_email_config(config_path: Path) -> EmailConfig:
     ``from`` is a Python keyword, so it can't be a dataclass field name -
     it's read from the JSON as ``from`` and exposed as ``from_address``.
 
-    ``password`` and ``security`` are the only optional keys. ``password``
-    is optional because an unauthenticated relay is a legitimate setup, not
-    a mistake to guard against; ``security`` because the port already
-    implies it in the common cases.
+    ``password``, ``security``, ``to`` and ``allowed_recipient_domains``
+    are the only optional keys. ``password`` is optional because an
+    unauthenticated relay is a legitimate setup, not a mistake to guard
+    against; ``security`` because the port already implies it in the
+    common cases; ``allowed_recipient_domains`` because its absence is a
+    *stricter* deployment, not an unconfigured one; ``to`` because a
+    deployment that only ever mails caller-supplied addresses (see
+    ``allowed_recipient_domains``) has no standing recipient list and
+    shouldn't have to invent one to pass validation.
     """
     config = load_config(config_path)
     section = config.get("email")
     if not isinstance(section, dict):
         raise KeyError(f"Config file {config_path} is missing an 'email' section")
+    # Only this section: an unset ${DESKTOP_SSH_PASSWORD} under `hosts`
+    # has nothing to do with sending mail and must not stop it.
+    section = resolve_section(section, where="email", config_path=config_path)
 
     def required(key: str) -> Any:
         return _require(section, key, section_name="email", config_path=config_path)
 
-    def as_address_list(value: Any) -> list[str]:
-        # A bare string is the obvious thing to write for one recipient,
-        # and iterating it character-by-character would be a nasty way to
-        # find out otherwise.
+    def as_string_list(value: Any) -> list[str]:
+        # A bare string is the obvious thing to write for one recipient (or
+        # one domain), and iterating it character-by-character would be a
+        # nasty way to find out otherwise.
         if isinstance(value, str):
             value = [value]
-        return [str(address) for address in value]
+        return [str(item) for item in value]
 
-    recipients = as_address_list(required("to"))
-    approvers = as_address_list(section.get("approver_emails", recipients))
+    # Empty is allowed and is not checked against `approver_emails` here.
+    # `send_email` already refuses with "No recipients", and the OTP
+    # capability raises its own KeyError naming the keys to add, so a
+    # load-time failure would only forbid the legitimate config that sends
+    # exclusively to addresses the caller names.
+    recipients = as_string_list(section.get("to", []))
+    approvers = as_string_list(section.get("approver_emails", recipients))
+
+    domains = [
+        normalize_recipient_domain(entry)
+        for entry in as_string_list(section.get("allowed_recipient_domains", []))
+    ]
+    # A blank entry - the "" left behind by editing a JSON list - is
+    # dropped rather than rejected. It can only ever fail to match, so
+    # keeping it would widen nothing; all it would do is appear in the
+    # refusal message a caller reads to work out what it should have said.
+    domains = [domain for domain in domains if domain]
 
     port = int(required("smtp_port"))
     inferred = "ssl" if port == IMPLICIT_TLS_PORT else "starttls"
@@ -246,61 +321,100 @@ def load_email_config(config_path: Path) -> EmailConfig:
         password=str(section.get("password", "")),
         security=security,
         approver_emails=approvers,
+        allowed_recipient_domains=domains,
     )
 
 
 SUPPORTED_HOST_OS = ("linux", "windows")
 
 
-def load_hosts_config(config_path: Path) -> dict[str, HostConfig]:
-    """Parse the "hosts" section into HostConfigs keyed by name."""
+def _hosts_section(config_path: Path) -> dict[str, Any]:
+    """The raw "hosts" mapping, placeholders still unresolved."""
     config = load_config(config_path)
     section = config.get("hosts")
     if not isinstance(section, dict):
         raise KeyError(f"Config file {config_path} is missing a 'hosts' section")
+    return section
 
-    hosts: dict[str, HostConfig] = {}
-    for name, entry in section.items():
-        if not isinstance(entry, dict):
-            raise ValueError(f"Config file {config_path}: 'hosts.{name}' must be an object")
 
-        def required(key: str, _entry: dict[str, Any] = entry, _name: str = name) -> Any:
-            return _require(_entry, key, section_name=f"hosts.{_name}", config_path=config_path)
+def _build_host(name: str, entry: Any, *, config_path: Path) -> HostConfig:
+    """Resolve and validate one raw host entry into a HostConfig.
 
-        host_os = str(required("os")).strip().lower()
-        if host_os not in SUPPORTED_HOST_OS:
-            raise ValueError(
-                f"Config file {config_path}: 'hosts.{name}.os' is {host_os!r}, "
-                f"expected one of {', '.join(SUPPORTED_HOST_OS)}."
-            )
+    The unit of resolution is deliberately a single entry: this is the
+    whole reason one unreachable machine's missing secret no longer takes
+    the others down with it. Both loaders go through here so that "one
+    host" and "all hosts" cannot drift into validating differently - the
+    single-host path is the one that runs in production, and it would be
+    the one that quietly lost a check.
+    """
+    if not isinstance(entry, dict):
+        raise ValueError(f"Config file {config_path}: 'hosts.{name}' must be an object")
 
-        key = entry.get("key")
-        password = entry.get("password")
-        if not key and not password:
-            # Failing here beats failing at connect time, where it surfaces
-            # as a generic auth error and looks like a wrong password.
-            raise KeyError(
-                f"Config file {config_path}: 'hosts.{name}' needs a 'key' or a 'password'."
-            )
+    # Resolved under the entry's full path, so the message still reads
+    # 'hosts.desktop.password' and points at a findable line.
+    entry = resolve_section(entry, where=f"hosts.{name}", config_path=config_path)
 
-        hosts[name] = HostConfig(
-            name=name,
-            hostname=str(required("hostname")),
-            user=str(required("user")),
-            os=host_os,
-            port=int(entry.get("port", 22)),
-            key=str(key) if key else None,
-            password=str(password) if password else None,
+    def required(key: str) -> Any:
+        return _require(entry, key, section_name=f"hosts.{name}", config_path=config_path)
+
+    host_os = str(required("os")).strip().lower()
+    if host_os not in SUPPORTED_HOST_OS:
+        raise ValueError(
+            f"Config file {config_path}: 'hosts.{name}.os' is {host_os!r}, "
+            f"expected one of {', '.join(SUPPORTED_HOST_OS)}."
         )
-    return hosts
+
+    key = entry.get("key")
+    password = entry.get("password")
+    if not key and not password:
+        # Failing here beats failing at connect time, where it surfaces
+        # as a generic auth error and looks like a wrong password.
+        raise KeyError(
+            f"Config file {config_path}: 'hosts.{name}' needs a 'key' or a 'password'."
+        )
+
+    return HostConfig(
+        name=name,
+        hostname=str(required("hostname")),
+        user=str(required("user")),
+        os=host_os,
+        port=int(entry.get("port", 22)),
+        key=str(key) if key else None,
+        password=str(password) if password else None,
+    )
+
+
+def load_hosts_config(config_path: Path) -> dict[str, HostConfig]:
+    """Parse the "hosts" section into HostConfigs keyed by name.
+
+    This one really does need every host's secrets present, because it
+    claims to return every host - a caller listing the inventory would
+    otherwise get a silently short list. Reach for ``load_host_config``
+    when you only want one; that is the call that survives a broken
+    sibling.
+    """
+    section = _hosts_section(config_path)
+    return {
+        name: _build_host(name, entry, config_path=config_path)
+        for name, entry in section.items()
+    }
 
 
 def load_host_config(config_path: Path, name: str) -> HostConfig:
     """One host by name, with the available names listed if it's not there -
     the caller is usually a model that guessed, and the fix is knowing
-    what it could have said instead."""
-    hosts = load_hosts_config(config_path)
-    if name not in hosts:
-        known = ", ".join(sorted(hosts)) or "none configured"
+    what it could have said instead.
+
+    Only the named host's entry is resolved, so a ``desktop`` whose
+    password variable is unset cannot stop you from reaching ``zima``.
+    Loading all hosts and then indexing would read identically and defeat
+    the entire point.
+    """
+    section = _hosts_section(config_path)
+    if name not in section:
+        # Names come from the JSON keys, which are never substituted, so
+        # this list is available without resolving anything.
+        known = ", ".join(sorted(section)) or "none configured"
         raise KeyError(f"Unknown host {name!r}. Configured hosts: {known}.")
-    return hosts[name]
+
+    return _build_host(name, section[name], config_path=config_path)

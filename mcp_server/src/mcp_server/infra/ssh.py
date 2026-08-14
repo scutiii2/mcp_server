@@ -90,6 +90,7 @@ class SSHClient:
         *,
         key: str | None = None,
         password: str | None = None,
+        port: int = 22,
         connect_timeout: int = 10,
         command_timeout: int = 30,
         known_hosts: Path | str | None = None,
@@ -99,6 +100,7 @@ class SSHClient:
         self.user = user
         self.key = key
         self.password = password
+        self.port = port
         self.connect_timeout = connect_timeout
         self.command_timeout = command_timeout
         self.known_hosts = known_hosts
@@ -120,6 +122,7 @@ class SSHClient:
             try:
                 self._client.connect(
                     hostname=self.host,
+                    port=self.port,
                     username=self.user,
                     key_filename=self.key,
                     timeout=self.connect_timeout,
@@ -134,6 +137,7 @@ class SSHClient:
             try:
                 self._client.connect(
                     hostname=self.host,
+                    port=self.port,
                     username=self.user,
                     password=self.password,
                     timeout=self.connect_timeout,

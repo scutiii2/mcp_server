@@ -136,3 +136,32 @@ def test_unknown_policy_name_fails_loudly(tmp_path: Path):
     something permissive."""
     with pytest.raises(ValueError, match="expected 'reject' or 'auto'"):
         _new_client(known_hosts=tmp_path / "known_hosts", host_key_policy="ignore")
+
+
+# --- port ---------------------------------------------------------------
+
+
+def test_configured_port_reaches_paramiko(tmp_path: Path):
+    """Regression: `port` was accepted in config.json, defaulted to 22, and
+    then dropped - SSHClient had no port parameter at all, so a host on a
+    non-standard sshd port silently connected to 22. Config that is
+    accepted and ignored is worse than config that is rejected."""
+    known = tmp_path / "known_hosts"
+    known.touch()
+    client = SSHClient("h", "u", password="pw", port=2222, known_hosts=known)
+    client._client = MagicMock()
+
+    client._connect()
+
+    assert client._client.connect.call_args.kwargs["port"] == 2222
+
+
+def test_port_defaults_to_22(tmp_path: Path):
+    known = tmp_path / "known_hosts"
+    known.touch()
+    client = SSHClient("h", "u", password="pw", known_hosts=known)
+    client._client = MagicMock()
+
+    client._connect()
+
+    assert client._client.connect.call_args.kwargs["port"] == 22

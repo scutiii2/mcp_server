@@ -13,69 +13,12 @@
       "password": "${DESKTOP_SSH_PASSWORD}"
     }
   },
-
-  /////////// GMAIL EXAMPLE ///////////
   "email": {
     "smtp_server": "smtp.gmail.com",
     "smtp_port": 465,
     "security": "ssl",
     "from": "you@gmail.com",
     "password": "${SMTP_PASSWORD}",
-    "to": ["you@gmail.com"],
     "approver_emails": ["you@gmail.com"]
-  },
-
-  /////////// YAHOO EXAMPLE ///////////
-  "email": {
-    "smtp_server": "smtp.mail.yahoo.com",
-    "smtp_port": 465,
-    "security": "ssl",
-    "from": "you@yahoo.com",
-    "password": "${SMTP_PASSWORD}",
-    "to": ["you@yahoo.com"],
-    "approver_emails": ["you@yahoo.com"]
-  },
-
-  /////////// ICLOUD EXAMPLE ///////////
-  "email": {
-    "smtp_server": "smtp.mail.me.com",
-    "smtp_port": 587,
-    "security": "starttls",
-    "from": "you@icloud.com",
-    "password": "${SMTP_PASSWORD}",
-    "to": ["you@icloud.com"],
-    "approver_emails": ["you@icloud.com"]
-  },
-
-  /////////// LAN RELAY EXAMPLE ///////////
-  "email": {
-    "smtp_server": "192.168.1.5",
-    "smtp_port": 25,
-    "security": "none",
-    "from": "ember@your.lan",
-    "to": ["you@gmail.com"],
-    "approver_emails": ["you@gmail.com"]
-  },
-
-  /////////// PROTON BRIDGE EXAMPLE ///////////
-  "email": {
-    "smtp_server": "127.0.0.1",
-    "smtp_port": 1025,
-    "security": "starttls",
-    "from": "you@proton.me",
-    "password": "${SMTP_PASSWORD}",
-    "to": ["you@proton.me"],
-    "approver_emails": ["you@proton.me"]
-  },
-
-  /////////// SMTP SUBMISSION PAID EXAMPLE ///////////
-  "email": {
-    "smtp_server": "smtp.protonmail.ch",
-    "smtp_port": 587,
-    "security": "starttls",
-    "from": "you@yourdomain.com",
-    "password": "${SMTP_PASSWORD}",
-    "to": ["you@yourdomain.com"],
-    "approver_emails": ["you@yourdomain.com"]
   }
 }

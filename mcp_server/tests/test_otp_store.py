@@ -3,10 +3,10 @@
 A one-time passcode is only worth anything because of properties that
 are invisible when the happy path works: the code isn't recoverable from
 the database, it can't be spent twice, it dies on a clock, and guessing
-it is bounded. Each of those is asserted here, against a real file,
-because every one of them is the kind of thing that silently stops being
-true after a refactor while every "correct code verifies" test keeps
-passing.
+it is bounded, and issuing one is rate limited. Each of those is asserted
+here, against a real file, because every one of them is the kind of thing
+that silently stops being true after a refactor while every "correct code
+verifies" test keeps passing.
 """
 
 from __future__ import annotations
@@ -14,7 +14,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 from mcp_server.infra import otp
 
@@ -25,6 +28,24 @@ def _column(db: Path, sql: str, params: tuple) -> list:
     conn = sqlite3.connect(db)
     try:
         return conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+
+
+def _backdate(db: Path, when: datetime, *, otp_id: str | None = None) -> None:
+    """Move rows back in time so the sliding window can be tested without
+    the suite sleeping for an hour. Rewriting ``created_at`` is honest
+    here: it is exactly the state the database would be in later."""
+    conn = sqlite3.connect(db)
+    try:
+        if otp_id is None:
+            conn.execute("UPDATE otp_codes SET created_at = ?", (when.isoformat(),))
+        else:
+            conn.execute(
+                "UPDATE otp_codes SET created_at = ? WHERE otp_id = ?",
+                (when.isoformat(), otp_id),
+            )
+        conn.commit()
     finally:
         conn.close()
 
@@ -41,9 +62,16 @@ def test_code_is_six_digits():
 
 def test_codes_differ_between_issues(tmp_path: Path):
     """A generator that repeats itself would make every previously
-    delivered email a valid credential for the next request."""
+    delivered email a valid credential for the next request.
+
+    Bounded by the per-recipient issuing limit rather than a round number,
+    so this stays a test of the generator instead of quietly becoming a
+    second test of the limiter."""
     db = tmp_path / "otp.db"
-    codes = {otp.create(db, "user@example.com").code for _ in range(25)}
+    codes = {
+        otp.create(db, "user@example.com").code
+        for _ in range(otp.MAX_CODES_PER_RECIPIENT_PER_HOUR)
+    }
 
     assert len(codes) > 1
 
@@ -246,3 +274,150 @@ def test_records_do_not_clobber_each_other(tmp_path: Path):
     otp.verify(db, first.otp_id, first.code)
 
     assert otp.verify(db, second.otp_id, second.code).verified is True
+
+
+# --- rate limiting ------------------------------------------------------
+
+
+def _fill_recipient(db: Path, address: str) -> None:
+    for _ in range(otp.MAX_CODES_PER_RECIPIENT_PER_HOUR):
+        otp.create(db, address)
+
+
+def test_per_recipient_limit_refuses_the_next_code(tmp_path: Path):
+    """Stops one mailbox being buried. Without it, a model talked into
+    calling the tool in a loop turns the deployment's own mail account
+    into a spam source aimed at one person - and the account being
+    suspended for it is the consequence nothing here can undo."""
+    db = tmp_path / "otp.db"
+    _fill_recipient(db, "user@example.com")
+
+    with pytest.raises(otp.RateLimited) as caught:
+        otp.create(db, "user@example.com")
+
+    assert caught.value.limit == "per_recipient"
+    assert caught.value.retry_after_seconds > 0
+
+
+def test_a_rate_limited_request_stores_nothing(tmp_path: Path):
+    """The check has to run before the code is minted. A refused request
+    that still writes a row would let the caller be told a code was sent
+    when none was, and would let refusals fill the window themselves so
+    one over-eager caller locks everyone out for an hour."""
+    db = tmp_path / "otp.db"
+    _fill_recipient(db, "user@example.com")
+    before = _column(db, "SELECT COUNT(*) FROM otp_codes", ())[0][0]
+
+    with pytest.raises(otp.RateLimited):
+        otp.create(db, "user@example.com")
+
+    assert _column(db, "SELECT COUNT(*) FROM otp_codes", ())[0][0] == before
+
+
+def test_the_per_recipient_limit_is_case_insensitive(tmp_path: Path):
+    """A limit keyed on the exact string is bypassed by holding shift.
+    ``Alice@x.com`` and ``alice@x.com`` are one mailbox, so they must be
+    one budget."""
+    db = tmp_path / "otp.db"
+    for index in range(otp.MAX_CODES_PER_RECIPIENT_PER_HOUR):
+        # Alternating spellings of the same address, none of which reaches
+        # the limit on its own.
+        otp.create(db, "Alice@example.com" if index % 2 else "alice@example.com")
+
+    with pytest.raises(otp.RateLimited) as caught:
+        otp.create(db, "ALICE@example.com")
+
+    assert caught.value.limit == "per_recipient"
+
+
+def test_another_recipient_is_unaffected_by_someone_elses_limit(tmp_path: Path):
+    """The per-recipient limit must bound one person's traffic, not the
+    server's ability to verify anyone else. A limiter that denies everyone
+    once one address is noisy is a denial of service with extra steps."""
+    db = tmp_path / "otp.db"
+    _fill_recipient(db, "noisy@example.com")
+
+    issued = otp.create(db, "someone-else@example.com")
+
+    assert otp.verify(db, issued.otp_id, issued.code).verified is True
+
+
+def test_the_global_limit_stops_fan_out_across_recipients(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The case the per-recipient limit cannot see at all. With delivery
+    widened from an exact allowlist to a whole domain, sending one code
+    each to a hundred different addresses costs nothing and never trips a
+    per-address counter - it is bulk mail with the counter looking the
+    other way.
+
+    The constant is patched rather than exercised at its real value so
+    this stays a test of the mechanism and not of twenty inserts; the
+    default value is checked by the sanity test below."""
+    db = tmp_path / "otp.db"
+    ceiling = 3
+    monkeypatch.setattr(otp, "MAX_CODES_TOTAL_PER_HOUR", ceiling)
+    for index in range(ceiling):
+        otp.create(db, f"person{index}@example.com")
+
+    with pytest.raises(otp.RateLimited) as caught:
+        otp.create(db, "yet-another@example.com")
+
+    # "global", not "per_recipient": every address above was distinct, so
+    # the per-recipient counter never saw more than one.
+    assert caught.value.limit == "global"
+
+
+def test_the_global_ceiling_leaves_room_for_the_per_recipient_one(tmp_path: Path):
+    """A guard on the constants themselves. If the global limit were set
+    below the per-recipient one, a single person asking for their allowed
+    codes would be refused with "this server has sent too much mail" - a
+    message about somebody else's behaviour, and a per-recipient limit
+    that can never actually be reached."""
+    assert otp.MAX_CODES_TOTAL_PER_HOUR > otp.MAX_CODES_PER_RECIPIENT_PER_HOUR
+
+
+def test_retry_after_is_measured_from_the_oldest_row_in_the_window(tmp_path: Path):
+    """The window slides, so the wait is however long the oldest record
+    has left - not a flat hour. Quoting an hour to someone whose slot
+    frees up in a minute is advice they will act on, and it costs them the
+    difference for no reason."""
+    db = tmp_path / "otp.db"
+    first = otp.create(db, "user@example.com")
+    for _ in range(otp.MAX_CODES_PER_RECIPIENT_PER_HOUR - 1):
+        otp.create(db, "user@example.com")
+    _backdate(db, datetime.now(timezone.utc) - timedelta(minutes=59), otp_id=first.otp_id)
+
+    with pytest.raises(otp.RateLimited) as caught:
+        otp.create(db, "user@example.com")
+
+    # About a minute, because the oldest of the five is 59 minutes into a
+    # 60 minute window. A fixed guess would be somewhere near 3600.
+    assert 0 < caught.value.retry_after_seconds <= 61
+
+
+def test_codes_older_than_the_window_stop_counting(tmp_path: Path):
+    """The window slides rather than latching. A limiter that never
+    forgets is a permanent ban after one busy hour, which is a worse
+    failure than the one it was added to prevent."""
+    db = tmp_path / "otp.db"
+    _fill_recipient(db, "user@example.com")
+    _backdate(db, datetime.now(timezone.utc) - timedelta(hours=2))
+
+    issued = otp.create(db, "user@example.com")
+
+    assert otp.verify(db, issued.otp_id, issued.code).verified is True
+
+
+def test_the_refusal_says_which_limit_was_hit(tmp_path: Path):
+    """A caller relaying a bare "rate limited" leaves the reader guessing
+    whether the problem is theirs. "You have asked five times" and "this
+    server has sent too much mail" have different remedies."""
+    db = tmp_path / "otp.db"
+    _fill_recipient(db, "user@example.com")
+
+    with pytest.raises(otp.RateLimited) as caught:
+        otp.create(db, "user@example.com")
+
+    assert "per-recipient limit" in str(caught.value)
+    assert "user@example.com" in str(caught.value)

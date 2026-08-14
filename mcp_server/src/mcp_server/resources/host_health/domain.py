@@ -184,6 +184,7 @@ def collect(config: HostConfig) -> HostHealth:
         config.user,
         key=config.key,
         password=config.password,
+        port=config.port,
     ) as ssh:
         result = ssh.run(command)
 
