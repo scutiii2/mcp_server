@@ -3,17 +3,19 @@
 Two independent Python packages, one MCP tool server and one Flask chat
 app, talking over HTTP.
 
-**This is a general-purpose scaffold with zero capabilities registered.**
-What's here is the structure, not the features: the MCP server wiring,
-shared infrastructure (SSH, SMTP, a durable request store, a config
-loader), the Flask page layout, and multi-provider LLM routing with
-automatic fallback. Everything domain-specific has been removed, so
-nothing below assumes what you're building. Start with "Adding a new
-tool".
+A general-purpose scaffold, plus a small number of working capabilities:
 
-Because nothing is registered, `/capabilities` renders an empty catalog
-and `/chat` runs with an empty tool list — both work, they just have
-nothing to show yet.
+- **`request_otp_tool` / `verify_otp_tool`** — email a one-time passcode
+  and check it. The worked example for the tool pattern, and for a
+  security property expressed in the contract rather than in comments.
+- **`host://health/{name}`** — CPU, memory, disk and uptime from a
+  configured host over SSH, on Linux or Windows.
+
+Underneath: the MCP server wiring, shared infrastructure (SSH with host
+key verification, SMTP, a durable request store, a config loader that
+keeps secrets out of the config file), a human-approval gate for
+irreversible actions, the Flask page layout, and multi-provider LLM
+routing with automatic fallback.
 
 ## Layout
 
@@ -31,17 +33,27 @@ mcp_server/                        MCP tool server (port 8010)
 │   │   ├── app_config.py           JSON config loader — resolves ${VAR} secrets, fails loudly
 │   │   ├── approvals.py            the gate: registry, request_approval(), approve()
 │   │   ├── ssh.py                  SSH client — host keys verified, commands shell-quoted
-│   │   ├── email.py                SMTP notifications — stdlib only
+│   │   ├── email.py                SMTP — implicit TLS / STARTTLS / none, plain+HTML parts
+│   │   ├── otp.py                  one-time codes: salted hashes, atomic single-use, attempt cap
 │   │   └── pending_requests.py     SQLite store for approval-gated / resumable requests
 │   ├── capabilities/              Tools — actions the model deliberately invokes
-│   │   └── __init__.py             empty; the per-capability pattern is in its docstring
+│   │   └── otp/                    request_otp_tool, verify_otp_tool
+│   │       ├── contract.py          result models — note the code has no field to live in
+│   │       ├── domain.py            recipient allowlist + email body; never returns the code
+│   │       └── tool.py              the @mcp.tool() wrappers
 │   └── resources/                 Resources — read-only, URI-addressed, browsable data
-│       └── __init__.py             empty
+│       └── host_health/            host://health/{name} — CPU, memory, disk, uptime
+│           ├── contract.py          HostHealth / DiskUsage
+│           ├── domain.py            /proc on Linux, PowerShell JSON on Windows
+│           └── resource.py          the @mcp.resource() wrapper
 └── tests/
     ├── test_app_config.py        mostly asserts on the *errors* — the point is failing loudly
     ├── test_approvals.py         requesting must not execute; approving must execute once
     ├── test_approval_routes.py   GET is inert, POST acts — the mail-scanner property
-    ├── test_email.py             smtplib mocked; asserts what would be sent, and to whom
+    ├── test_email.py             each TLS mode, part ordering, derived plain text
+    ├── test_host_health_domain.py parsers tested against real command output, verbatim
+    ├── test_otp_store.py         hashing, atomicity, expiry, the attempt cap
+    ├── test_otp_domain.py        the code never escapes; the recipient allowlist
     ├── test_pending_requests.py  real tmp_path SQLite file, no mocking — pure stdlib
     └── test_ssh.py               injection payloads stay one argument; host-key policy
 
@@ -329,11 +341,39 @@ internals and a reference number would be strictly worse.
 ### Still your job
 
 - **File permissions** on `.env` and `config.json`. Both are readable by
-  anything running as your user; `icacls` can restrict them. This matters
-  more than the file format — see the note under Configuration.
-- **A real secret store.** `${VAR}` indirection means moving to the
-  Windows credential store (via `keyring`) or a vault is a change to one
+  anything running as your user; `icacls` (Windows) or `chmod 600`
+  (Linux) can restrict them. This matters more than the file format — see
+  the note under Configuration.
+- **A real secret store.** `${VAR}` indirection means moving to a
+  credential store (via `keyring`) or a vault is a change to one
   function, not a rewrite.
+
+### Before hosting this on a server
+
+Everything above defaults to the safe-but-local setting, which stops
+being the right one the moment this stops running on your desktop. Moving
+it to a machine on your LAN means, at minimum:
+
+1. **Set `CHAT_AUTH_USER` and `CHAT_AUTH_PASSWORD`.** Without them the
+   Flask app serves loopback only, so it will appear completely broken
+   from any other machine — that's the intended failure, but it's a
+   confusing one if you've forgotten why.
+2. **Set `CHAT_ALLOWED_HOSTS`** to the name or IP you'll actually browse
+   to, or every request gets a 403 on the Host check.
+3. **Decide how the two processes talk.** If they're separate containers,
+   `MCP_SERVER_URL` points at the MCP one and `MCP_HOST` has to be
+   reachable from it — that's the one legitimate reason to move off
+   `127.0.0.1`, and it should be a container network, not the LAN.
+4. **Set `MCP_PUBLIC_BASE_URL`.** Approval links are built from it, and
+   the default localhost value resolves to the wrong machine entirely
+   from an approver's inbox.
+5. **Populate `known_hosts` for every host you'll SSH to**, since
+   verification now rejects unknown keys. `ssh-keyscan`, or connect once
+   with `SSH_HOST_KEY_POLICY=auto` and switch back.
+
+If any of that ends up reachable from outside your network, put a reverse
+proxy with TLS in front of it — Basic auth over plain HTTP sends the
+password in clear text on every request.
 
 ## Adding a new tool
 
@@ -403,16 +443,256 @@ Tools with their argument forms, Resources with their URI-template
 parameters — pulled live from `list_tools()`/`list_resource_templates()`
 respectively. Nothing needs to change there for a new resource either.
 
-**Honest caveat on the exact MCP client/SDK details**: `@mcp.resource()`'s
-exact keyword arguments, whether `list_resource_templates()` is the right
-client call versus `list_resources()`, and the response attribute's exact
-casing (`resource_templates` vs `resourceTemplates`) are written to the
-best of my knowledge of the MCP spec and FastMCP's documented patterns,
-but are **not runtime-verified** against the pinned `mcp==1.28.0` — there
-is no registered resource to exercise them against yet. `mcp_client.py`
-and `run.py` both have inline comments flagging exactly which lines to
-check first. `run.py`'s startup banner already falls back to `"unknown"`
-for the resource count rather than crashing if neither call works.
+**Verified against `mcp==1.28.0`** (this used to be a list of educated
+guesses; registering `host_health` settled it):
+
+- A resource whose URI contains a `{placeholder}` appears **only** in
+  `list_resource_templates()`. One with a fixed URI appears **only** in
+  `list_resources()`. Neither call returns both, so anything counting
+  resources needs to call both and add them — `run.py`'s banner does, and
+  reported `Resources: 0` until it did.
+- The client-side field is `resourceTemplates`, camelCase, with no
+  snake_case alias — the SDK keeps the wire name here rather than
+  converting it. `mcp_client.py` reads that first, with a snake_case
+  fallback as insurance against a later version normalizing it.
+- On each template the attributes are `name`, `uriTemplate`,
+  `description`, `mimeType`.
+- The docstring of the decorated function becomes the description, and
+  errors raised inside it surface to the client wrapped in "Error
+  creating resource from template" — so the message needs to stand on its
+  own (`load_host_config` lists the configured host names for exactly
+  this reason).
+
+## One-time passcodes: `request_otp_tool` / `verify_otp_tool`
+
+Emails a six-digit code to a configured address and checks it later. The
+security property is stated as a negative, which is the only way it means
+anything: **the code is never returned to the caller.** Answering it
+proves you can read that inbox precisely because the thing that asked for
+it can't read the code. `RequestOtpResult` has no field for it — the
+contract carries the guarantee, so a future edit that wanted to leak it
+would have to add somewhere to put it.
+
+Four things make a six-digit secret defensible, and all four are enforced
+in `infra/otp.py` rather than left to callers:
+
+- **Salted hashes, never the code.** Per-record `secrets.token_bytes`
+  salt, HMAC-SHA256. Six digits is a million values, so an unsalted hash
+  is a lookup table.
+- **One statement, one use.** Verification is a single conditional
+  `UPDATE` — the HMAC comparison happens *inside* SQL via a registered
+  SQLite function, which is what makes a compare-and-set possible when
+  the hash depends on a per-row salt. A code that verifies twice isn't
+  one-time.
+- **The attempt cap burns the record.** Five wrong guesses and the code
+  stops working *even if the right digits arrive*. Merely refusing the
+  wrong ones would let an attacker exhaust the counter and still win by
+  racing a legitimate verification.
+- **Recipients come from `config.json`, never the caller.** Otherwise
+  this is a tool that sends chosen text to a chosen address from your own
+  mail account — a spam relay and a phishing primitive that needs no bug
+  to reach, only a model that can be talked into it.
+
+Failures are distinguishable (`wrong_code`, `expired`, `too_many_attempts`,
+`already_used`, `unknown_id`) because the remedies genuinely differ, and a
+model handed one generic "invalid" will invent the remedy it finds most
+plausible.
+
+Code length, TTL (10 minutes) and the attempt cap are module constants,
+not settings — they're what makes the whole thing safe, and an env var is
+too easy a place to weaken them from.
+
+## Email delivery
+
+`infra/email.py` supports implicit TLS (port 465), STARTTLS (587), and no
+TLS at all for a relay on your own network. Omit `security` in
+`config.json` and it's inferred from the port. Omit `password` entirely
+and it won't authenticate — that's for LAN relays that authorize by
+source address, and it's deliberately *not* the same as leaving
+`SMTP_PASSWORD=` blank, which is rejected at load as a forgotten value.
+
+Messages go out as `multipart/alternative` with the plain-text part
+derived from the HTML, plus explicit `Date` and `Message-ID`. Not
+cosmetic: HTML-only bodies are penalized by common filters, and a missing
+`Message-ID` breaks threading — for an approval link, being filtered
+means the action silently never gets approved.
+
+**Recipients can be at any domain.** What's constrained is the *sending*
+account:
+
+| Sender | Host | Port | Credential | Notes |
+|---|---|---|---|---|
+| **Gmail** (recommended) | `smtp.gmail.com` | 587 / 465 | 16-char App Password | Needs 2-Step Verification. ~500/day. |
+| Yahoo | `smtp.mail.yahoo.com` | 587 / 465 | App password | Account password rejected. |
+| iCloud | `smtp.mail.me.com` | 587 | App-specific password | Apple ID password won't work. |
+| Proton (free) | — | — | — | **No SMTP at all.** Not possible. |
+| Proton Bridge | `127.0.0.1` | 1025 | Bridge password | Paid only; self-signed cert needs a custom SSL context this code doesn't build yet. |
+| Outlook.com | `smtp-mail.outlook.com` | 587 | OAuth2 only | Basic auth removed 2024-09-16. Avoid. |
+
+All of them require `From` to match the authenticated account — Gmail
+silently rewrites a mismatch, Yahoo and iCloud reject it. `send_email()`
+logs in as `config.from_address` and sets `From` to the same value, so
+they can't diverge.
+
+Note SMTP is not an alternative to these providers, it's the protocol they
+speak: `smtp.gmail.com` *is* Gmail. The alternatives would be
+provider-specific HTTP APIs (the Gmail API, SendGrid, Postmark), which
+were passed over because one SMTP code path covers every provider plus a
+LAN relay, `smtplib` is stdlib, and an app password is a string rather
+than an OAuth flow. Proton is the clearest illustration of the
+distinction: it can't be a sender *because* it doesn't offer SMTP on free
+accounts.
+
+### Worked config examples
+
+Each block is the `"email"` section of `config.json`. `security` may be
+omitted — 465 infers `"ssl"`, anything else `"starttls"` — and is spelled
+out here only for clarity. The password always comes from
+`SMTP_PASSWORD` in `.env`.
+
+**Gmail** (recommended). Needs 2-Step Verification, then an App Password
+from Google Account → Security → App passwords. Port 587 with
+`"starttls"` is equivalent.
+
+```json
+"email": {
+  "smtp_server": "smtp.gmail.com",
+  "smtp_port": 465,
+  "security": "ssl",
+  "from": "you@gmail.com",
+  "password": "${SMTP_PASSWORD}",
+  "to": ["you@gmail.com"],
+  "approver_emails": ["you@gmail.com"]
+}
+```
+
+**Yahoo.** App password from Account Security → External connections.
+
+```json
+"email": {
+  "smtp_server": "smtp.mail.yahoo.com",
+  "smtp_port": 465,
+  "security": "ssl",
+  "from": "you@yahoo.com",
+  "password": "${SMTP_PASSWORD}",
+  "to": ["you@yahoo.com"],
+  "approver_emails": ["you@yahoo.com"]
+}
+```
+
+**iCloud.** App-specific password from appleid.apple.com.
+
+```json
+"email": {
+  "smtp_server": "smtp.mail.me.com",
+  "smtp_port": 587,
+  "security": "starttls",
+  "from": "you@icloud.com",
+  "password": "${SMTP_PASSWORD}",
+  "to": ["you@icloud.com"],
+  "approver_emails": ["you@icloud.com"]
+}
+```
+
+**LAN relay, no authentication.** Note `password` is absent entirely —
+that is what disables the login. Setting `SMTP_PASSWORD=` blank in `.env`
+is rejected at load instead, because a blank value nearly always means
+someone forgot to fill it in.
+
+```json
+"email": {
+  "smtp_server": "192.168.1.5",
+  "smtp_port": 25,
+  "security": "none",
+  "from": "ember@your.lan",
+  "to": ["you@gmail.com"],
+  "approver_emails": ["you@gmail.com"]
+}
+```
+
+**Proton Bridge — this config will not work as written.** Paid plans
+only, password generated by Bridge (Mailbox details), not your Proton
+password. Bridge presents a self-signed certificate and `email.py`
+verifies certificates, so this raises `SSLCertVerificationError`.
+Supporting it needs a custom `ssl.SSLContext` that trusts Bridge's
+exported certificate — not built, because Bridge must also stay running
+as a desktop app, which Proton doesn't officially support headless.
+
+```json
+"email": {
+  "smtp_server": "127.0.0.1",
+  "smtp_port": 1025,
+  "security": "starttls",
+  "from": "you@proton.me",
+  "password": "${SMTP_PASSWORD}",
+  "to": ["you@proton.me"],
+  "approver_emails": ["you@proton.me"]
+}
+```
+
+**Proton SMTP submission.** Requires a paid plan *and* a custom domain —
+a `@proton.me` address cannot use this. The password is a generated SMTP
+token.
+
+```json
+"email": {
+  "smtp_server": "smtp.protonmail.ch",
+  "smtp_port": 587,
+  "security": "starttls",
+  "from": "you@yourdomain.com",
+  "password": "${SMTP_PASSWORD}",
+  "to": ["you@yourdomain.com"],
+  "approver_emails": ["you@yourdomain.com"]
+}
+```
+
+**Outlook.com / Hotmail.** No working configuration exists. Microsoft
+removed basic authentication for personal accounts on 2024-09-16;
+`smtplib` with a username and password fails with `535 5.7.139`. OAuth2
+is the only path and this code does not implement it.
+
+Free Proton and Outlook are the only two dead ends, and both are dead
+ends *as senders only*. Either address works fine in `approver_emails` no
+matter who does the sending.
+
+## The registered resource: `host://health/{name}`
+
+Reads CPU, memory, disk and uptime from a host listed under `"hosts"` in
+`config.json`. `name` is the key in that map, not a hostname.
+
+**It is OS-aware, and has to be.** The intended deployment runs this
+server on Linux and reaches *out* to machines including Windows ones, and
+those two share nothing here — not the commands, not the units, not even
+the shell that parses them. The OS is declared per host in config rather
+than detected: detection costs a round trip on every call and can only
+ever be inferred from command output, while the answer is a stable fact
+about a machine you own.
+
+- **Linux** reads `/proc/uptime`, `/proc/loadavg`, `/proc/meminfo` and
+  `df -P -k` in a single connection, marker-separated, so it's one round
+  trip rather than five. `/proc` over `top`/`free` deliberately: those
+  are formatted for humans and their layout shifts between distributions
+  and procps versions, while `/proc` is a documented kernel interface.
+- **Windows** runs PowerShell and asks for JSON. Getting a script intact
+  through SSH → `cmd.exe` → PowerShell is the hard part, since each layer
+  has its own quoting rules and they disagree; `-EncodedCommand` with
+  base64 UTF-16LE sidesteps all of it, travelling as one opaque token no
+  shell tries to interpret. Note `SSHClient.run_login_shell` is useless
+  against Windows — there's no `/bin/bash` to wrap with.
+
+Two judgement calls worth knowing about, both visible in the tests:
+
+- **Metrics one OS can't provide stay `None`** rather than being coerced
+  into a shared number. Linux load average counts runnable processes and
+  can exceed the core count; Windows CPU load is a percentage bounded at
+  100. Presenting either as the other would be inventing data, and a
+  model can say "not available on Windows" but can't un-mislead itself
+  about a fabricated figure.
+- **Disk percentages are computed against usable space**, matching what
+  `df` itself prints. Dividing by `df`'s raw total column gave 49.7%
+  where `df` said 47%, because ext4 reserves ~5% for root — and a health
+  report that disagrees with the command you'd run to check it is worse
+  than no report.
 
 ## Multi-provider chat, Automatic selection, and rate-limit cooldown
 
@@ -624,7 +904,7 @@ cd mcp_server && python -m pytest tests -q
 cd chat_app && python -m pytest tests -q
 ```
 
-165 tests, all passing, none touching the network or a real MCP server.
+246 tests, all passing, none touching the network or a real MCP server.
 Three patterns in here are worth knowing before you add more:
 
 - **Patching a provider's `run_chat`** — patch it on the `ProviderSpec`
@@ -655,11 +935,19 @@ functions, since that's what produces the failure mode.
 
 ## Known gaps
 
-- **Nothing is registered.** No tool, no resource, no gated capability.
-  `infra/` is working and tested, but nothing calls it yet — so
-  `paramiko` in particular is a dependency whose behavior against a real
-  host is unexercised here. The approval flow is tested end to end
-  against a fake capability; it has never gated a real one.
+- **No gated capabilities yet.** The approval flow is tested end to end
+  against a fake capability but has never gated a real one. Nothing
+  registered so far is irreversible enough to need it.
+- **Nothing has sent a real email.** Every SMTP path is tested against a
+  mocked `smtplib`, so the first live send is where provider-specific
+  reality arrives — most likely an app-password or TLS-mode mismatch.
+- **`host_health` has never run against a real machine.** Its parsers are
+  tested against real `df`/`/proc` output pasted verbatim, but the SSH
+  round trip, the host-key verification, and the PowerShell
+  `-EncodedCommand` path have only been exercised with a fake client.
+  Expect the first live run to find something — most likely on the
+  Windows side, where the SSH server's default shell (`cmd.exe` vs
+  PowerShell) affects how the command is invoked.
 - **No authentication on `/approvals/`.** Possession of the emailed token
   is the whole authorization, and the "approved by" name is self-reported
   rather than verified. Proportionate for a single-operator setup; put
@@ -677,5 +965,6 @@ functions, since that's what produces the failure mode.
 - **Rate limiting doesn't exist anywhere** — not on Basic auth (so
   password guessing is unthrottled), not on `/approvals/`. Fine behind
   loopback, not fine once exposed.
-- The MCP resource-primitive details are unverified against the installed
-  SDK — see the caveat in "Tools vs. Resources" above.
+- **No caching.** Every read of `host://health/{name}` opens a fresh SSH
+  connection. Fine for occasional use; a client that polls it will be
+  noticeably slow and will hammer the target.

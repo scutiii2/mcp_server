@@ -22,5 +22,7 @@ Add a new capability by:
   4. capabilities/<name>/tool.py
   5. Add `from mcp_server.capabilities.<name> import tool` to run.py
 
-Nothing is registered yet - this is an empty scaffold.
+``otp/`` is the worked example: two tools, a domain module that imports
+only ``infra/``, and a contract whose shape carries the security property
+(the passcode is deliberately absent from the result model).
 """

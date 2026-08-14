@@ -47,13 +47,12 @@ async def _list_resource_templates_async() -> list[Any]:
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.list_resource_templates()
-            # NOT runtime-verified against the installed mcp==1.28.0 SDK in
-            # the sandbox this was built in (no network access to install
-            # it there) - the MCP spec defines this field as
-            # "resourceTemplates" on the wire, and the Python SDK typically
-            # exposes it as the snake_case ``resource_templates``. Confirm
-            # the attribute name once you can actually run this.
-            return getattr(result, "resource_templates", getattr(result, "resourceTemplates", []))
+            # Verified against the pinned mcp==1.28.0: the field is
+            # ``resourceTemplates``, camelCase, with no snake_case alias -
+            # the SDK keeps the wire name here rather than converting it.
+            # The snake_case fallback stays as cheap insurance in case a
+            # later version normalizes it.
+            return getattr(result, "resourceTemplates", getattr(result, "resource_templates", []))
 
 
 async def _read_resource_async(uri: str) -> str:

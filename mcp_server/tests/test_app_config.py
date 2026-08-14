@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from mcp_server.infra.app_config import EmailConfig, load_config, load_email_config
+from mcp_server.infra.app_config import (
+    EmailConfig,
+    load_config,
+    load_email_config,
+    load_host_config,
+    load_hosts_config,
+)
 
 
 def _write(tmp_path: Path, data: dict) -> Path:
@@ -203,9 +209,59 @@ def test_missing_email_section_raises(tmp_path: Path):
 
 
 def test_missing_required_key_names_the_key(tmp_path: Path):
-    incomplete = {k: v for k, v in VALID_EMAIL.items() if k != "password"}
+    incomplete = {k: v for k, v in VALID_EMAIL.items() if k != "smtp_server"}
     path = _write(tmp_path, {"email": incomplete})
-    with pytest.raises(KeyError, match="email.password"):
+    with pytest.raises(KeyError, match="email.smtp_server"):
+        load_email_config(path)
+
+
+def test_password_may_be_omitted_entirely(tmp_path: Path):
+    """An unauthenticated send is a real configuration - a LAN relay that
+    authorizes by source address - not an oversight. Demanding the key
+    would force a dummy value that then gets offered to a server with no
+    AUTH extension, which fails the send."""
+    no_password = {k: v for k, v in VALID_EMAIL.items() if k != "password"}
+    path = _write(tmp_path, {"email": no_password})
+
+    assert load_email_config(path).password == ""
+
+
+def test_security_defaults_to_starttls_on_a_submission_port(tmp_path: Path):
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    assert load_email_config(path).security == "starttls"
+
+
+def test_port_465_infers_implicit_tls(tmp_path: Path):
+    """465 is the registered implicit-TLS submission port and every
+    mainstream provider uses it as such, so the port is enough to know the
+    transport - saving a field that would otherwise be wrong-by-default
+    for the most common consumer setup."""
+    path = _write(tmp_path, {"email": {**VALID_EMAIL, "smtp_port": 465}})
+
+    assert load_email_config(path).security == "ssl"
+
+
+def test_explicit_security_beats_the_port_inference(tmp_path: Path):
+    """Inference is a convenience, not a rule: a relay can listen for
+    STARTTLS on 465, and the config file has to win when it disagrees."""
+    path = _write(tmp_path, {"email": {**VALID_EMAIL, "smtp_port": 465, "security": "starttls"}})
+
+    assert load_email_config(path).security == "starttls"
+
+
+def test_security_is_normalized(tmp_path: Path):
+    path = _write(tmp_path, {"email": {**VALID_EMAIL, "security": " SSL "}})
+
+    assert load_email_config(path).security == "ssl"
+
+
+def test_unsupported_security_is_rejected_rather_than_falling_back(tmp_path: Path):
+    """A typo must not quietly become a plaintext connection: the password
+    would go out in the clear and nothing in the run would say so."""
+    path = _write(tmp_path, {"email": {**VALID_EMAIL, "security": "tls"}})
+
+    with pytest.raises(ValueError, match="expected one of"):
         load_email_config(path)
 
 
@@ -222,3 +278,74 @@ def test_string_port_is_coerced_to_int(tmp_path: Path):
     path = _write(tmp_path, {"email": {**VALID_EMAIL, "smtp_port": "587"}})
 
     assert load_email_config(path).smtp_port == 587
+
+
+# --- hosts -------------------------------------------------------------
+
+VALID_HOSTS = {
+    "zima": {"hostname": "192.168.1.10", "user": "root", "os": "linux", "key": "/root/.ssh/id"},
+    "desktop": {"hostname": "192.168.1.20", "user": "User", "os": "windows", "password": "pw"},
+}
+
+
+def test_hosts_are_keyed_by_name(tmp_path: Path):
+    path = _write(tmp_path, {"hosts": VALID_HOSTS})
+
+    hosts = load_hosts_config(path)
+
+    assert set(hosts) == {"zima", "desktop"}
+    assert hosts["zima"].name == "zima"
+    assert hosts["desktop"].os == "windows"
+
+
+def test_port_defaults_to_22(tmp_path: Path):
+    path = _write(tmp_path, {"hosts": VALID_HOSTS})
+
+    assert load_hosts_config(path)["zima"].port == 22
+
+
+def test_os_is_normalized(tmp_path: Path):
+    path = _write(tmp_path, {"hosts": {"a": {**VALID_HOSTS["zima"], "os": "  Linux "}}})
+
+    assert load_hosts_config(path)["a"].os == "linux"
+
+
+def test_unsupported_os_is_rejected(tmp_path: Path):
+    """The OS picks the entire command set, so a typo would otherwise
+    surface as a pile of 'command not found'."""
+    path = _write(tmp_path, {"hosts": {"a": {**VALID_HOSTS["zima"], "os": "darwin"}}})
+
+    with pytest.raises(ValueError, match="expected one of"):
+        load_hosts_config(path)
+
+
+def test_host_without_key_or_password_is_rejected(tmp_path: Path):
+    """Failing here beats failing at connect time, where it looks like a
+    wrong password rather than a missing one."""
+    path = _write(tmp_path, {"hosts": {"a": {"hostname": "h", "user": "u", "os": "linux"}}})
+
+    with pytest.raises(KeyError, match="needs a 'key' or a 'password'"):
+        load_hosts_config(path)
+
+
+def test_host_secrets_resolve_from_the_environment(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DESKTOP_SSH_PASSWORD", "hunter2")
+    path = _write(tmp_path, {"hosts": {"a": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"}}})
+
+    assert load_hosts_config(path)["a"].password == "hunter2"
+
+
+def test_unknown_host_names_the_ones_that_exist(tmp_path: Path):
+    """The caller is usually a model that guessed a name; the fix is
+    knowing what it could have said."""
+    path = _write(tmp_path, {"hosts": VALID_HOSTS})
+
+    with pytest.raises(KeyError, match="desktop, zima"):
+        load_host_config(path, "nas")
+
+
+def test_missing_hosts_section_raises(tmp_path: Path):
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    with pytest.raises(KeyError, match="hosts"):
+        load_hosts_config(path)

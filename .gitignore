@@ -3,6 +3,13 @@ config.json
 __pycache__/
 *.pyc
 .venv/
+venv_*/
 *.egg-info/
+
+# Runtime state, not source: pending approval requests and one-time-code
+# records. Both hold security-relevant material - an approval token is a
+# live authorization until it expires, and the OTP rows are salted
+# hashes. Neither belongs in version control.
+*.db
 
 zip_versions/

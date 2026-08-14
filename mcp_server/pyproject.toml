@@ -1,7 +1,11 @@
 [project]
-name = "mcp-server"
+# The distribution and console-script name. The importable package stays
+# `mcp_server` (see the wheel target below) - a dist name differing from
+# the module it installs is normal in Python, and renaming the package
+# would touch every import for no benefit.
+name = "ember-mcp-server"
 version = "0.1.0"
-description = "MCP tool server"
+description = "Ember MCP tool server"
 requires-python = ">=3.11"
 dependencies = [
     "mcp==1.28.0",
@@ -16,7 +20,7 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-mcp-server = "mcp_server.run:main"
+ember-mcp-server = "mcp_server.run:main"
 
 [build-system]
 requires = ["hatchling"]

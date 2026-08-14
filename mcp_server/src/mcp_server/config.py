@@ -42,6 +42,15 @@ class Settings:
     # Backs any approval-gated / resumable capability, not tied to any
     # specific tool.
     pending_requests_path: Path = Path(_env("PENDING_REQUESTS_PATH", "pending_requests.db"))
+    # SQLite file backing infra/otp.py - relative to CWD by default, same
+    # as pending_requests_path above. A separate file, not just a
+    # separate table, so the short-lived churn of one-time codes can be
+    # deleted wholesale (or put on a tmpfs) without touching pending
+    # approvals. Only the path is a setting: code length, TTL and the
+    # attempt limit stay constants in infra/otp.py, because they are what
+    # makes a six-digit secret safe and an env var is too easy a place to
+    # weaken them from.
+    otp_path: Path = Path(_env("OTP_PATH", "otp.db"))
     # The URL an approval email's link points at. Deliberately NOT derived
     # from host/port above - `host` is a bind address (127.0.0.1 and
     # 0.0.0.0 are both meaningless from someone else's inbox), while this
