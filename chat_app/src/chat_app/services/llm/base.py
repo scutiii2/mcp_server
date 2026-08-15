@@ -35,6 +35,12 @@ class ChatResult:
     response: str
     tools_used: list[str] = field(default_factory=list)
     provider_id: str = ""
+    # None means "this provider/run didn't report token usage" - the
+    # frontend hides the token display in that case rather than showing a
+    # fabricated number. When a provider does report usage, this is the sum
+    # across every round of the tool-calling loop (each round is a
+    # separate, separately-billed API call), not just the final round's.
+    total_tokens: int | None = None
 
 
 @dataclass
@@ -44,8 +50,33 @@ class ModelOption:
 
 
 # model is optional - None means "use this provider's own default".
-RunChatFn = Callable[[str, list[dict[str, Any]], "str | None"], ChatResult]
+# enabled_extensions is optional - None/empty means "no extension tools",
+# the same safe default list_tools() itself applies (see mcp_client.py).
+RunChatFn = Callable[[str, list[dict[str, Any]], "str | None", "list[str] | None"], ChatResult]
 IsAvailableFn = Callable[[], bool]
+
+
+@dataclass
+class ModelAvailability:
+    """Whether one configured model is actually usable right now."""
+
+    available: bool
+    reason: str | None  # None, or "not_pulled"
+
+
+@dataclass
+class ModelAvailabilityCheck:
+    """Result of a provider's live availability check (see
+    ollama_provider.check_model_availability), reused for both the
+    provider-level and per-model available/reason fields in
+    router.list_providers() - one call, not one per field."""
+
+    reachable: bool
+    reason: str | None  # None, or "unreachable" (set only when reachable is False)
+    models: dict[str, ModelAvailability]  # keyed by model id
+
+
+CheckModelsFn = Callable[[], ModelAvailabilityCheck]
 
 
 @dataclass
@@ -57,3 +88,11 @@ class ProviderSpec:
     run_chat: RunChatFn
     models: list[ModelOption] = field(default_factory=list)
     default_model_id: str = ""
+    # Optional live per-model availability check. None for every provider
+    # except ollama - openai/claude's MODELS lists are hardcoded and
+    # assumed always usable once the API key is present, so there's
+    # nothing to verify live. See router.list_providers() for how this
+    # feeds both the provider-level and per-model available/reason
+    # fields, and ollama_provider.py's module docstring for why ollama is
+    # the one provider that needs this.
+    check_models: CheckModelsFn | None = None

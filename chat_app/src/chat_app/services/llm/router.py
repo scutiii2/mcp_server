@@ -68,14 +68,45 @@ def list_providers() -> list[dict[str, Any]]:
             reason = "rate_limited"
         elif not provider.has_api_key():
             reason = "missing_key"
+
+        # Called at most once per provider per request - its result feeds
+        # BOTH the provider-level and every per-model available/reason
+        # field below, never two separate calls for the two uses.
+        availability = provider.check_models() if provider.check_models is not None else None
+
+        if availability is not None:
+            models = [
+                {
+                    "id": m.id,
+                    "label": m.label,
+                    "available": availability.models[m.id].available,
+                    "reason": availability.models[m.id].reason,
+                }
+                for m in provider.models
+            ]
+            provider_available = provider.is_available() and availability.reachable
+            if not availability.reachable:
+                # A provider whose reachability can't be confirmed
+                # shouldn't claim to be available - but this must not
+                # stomp a higher-priority reason that's already set
+                # (rate_limited/missing_key both win over "unreachable").
+                reason = reason or availability.reason
+        else:
+            # No live check for this provider - every model is
+            # unconditionally available, same as before this feature
+            # existed. Keeps the shape uniform so the frontend never has
+            # to special-case by provider id.
+            models = [{"id": m.id, "label": m.label, "available": True, "reason": None} for m in provider.models]
+            provider_available = provider.is_available()
+
         entries.append(
             {
                 "id": provider.id,
                 "label": provider.label,
-                "available": provider.is_available(),
+                "available": provider_available,
                 "reason": reason,
                 "cooldown_seconds_remaining": int(remaining),
-                "models": [{"id": m.id, "label": m.label} for m in provider.models],
+                "models": models,
                 "default_model_id": provider.default_model_id,
             }
         )
@@ -98,6 +129,7 @@ def run_chat(
     history: list[dict[str, Any]],
     provider_id: str | None,
     model_id: str | None = None,
+    enabled_extensions: list[str] | None = None,
 ) -> ChatResult:
     provider_id = provider_id or DEFAULT_PROVIDER_ID
 
@@ -106,9 +138,12 @@ def run_chat(
         # resolves to uses its own default. Mixing "pick any provider" with
         # "but insist on this specific model" gets confusing fast, and the
         # model dropdown is hidden client-side whenever Automatic is
-        # selected for exactly this reason.
+        # selected for exactly this reason. enabled_extensions has nothing
+        # to do with that - it still needs to reach whichever provider
+        # gets picked, so it's forwarded by keyword here rather than
+        # positionally (which would require also passing a model).
         provider = _pick_automatic()
-        return provider.run_chat(question, history)
+        return provider.run_chat(question, history, enabled_extensions=enabled_extensions)
 
     provider = _PROVIDERS.get(provider_id)
     if provider is None:
@@ -118,4 +153,4 @@ def run_chat(
     if cooldown.is_in_cooldown(provider_id):
         remaining = int(cooldown.seconds_remaining(provider_id))
         raise ValueError(f"{provider.label} is rate-limited right now - try again in {remaining}s, or pick another provider")
-    return provider.run_chat(question, history, model_id)
+    return provider.run_chat(question, history, model_id, enabled_extensions)

@@ -2,6 +2,305 @@ const history = [];
 let providerLabels = {}; // id -> label, used to render "answered by X"
 let providersById = {};  // id -> full provider entry (incl. models), used to populate the model dropdown
 
+// --- Extensions sidebar -----------------------------------------------
+// Toggle state is convenience/UX state, not a security boundary - the
+// real enforcement is server-side (chat_app filters enabled_extensions
+// again before offering tools to the model), so localStorage is fine
+// here even though it's fully user-editable.
+const EXT_STORAGE_KEY = 'chat.enabledExtensions';
+let extensionsById = {}; // id -> full extension entry from the last successful /api/extensions load
+let enabledExtensions = loadEnabledExtensionsFromStorage();
+
+function loadEnabledExtensionsFromStorage() {
+  try {
+    const raw = localStorage.getItem(EXT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch (err) {
+    // Corrupt JSON or storage unavailable (private browsing) - the safe
+    // default (nothing enabled) is exactly right here too.
+    return new Set();
+  }
+}
+
+function saveEnabledExtensionsToStorage() {
+  try {
+    localStorage.setItem(EXT_STORAGE_KEY, JSON.stringify([...enabledExtensions]));
+  } catch (err) {
+    // Quota exceeded / storage disabled - the toggle still works for
+    // this page load, it just won't survive a reload. Not worth
+    // surfacing to the user over.
+  }
+}
+
+// --- Chat session persistence ------------------------------------------
+// This is a plain multi-page app with no client-side router: navigating
+// to /capabilities and back, or hitting F5, is a full browser navigation
+// that reloads this script from scratch and wipes the #log DOM and the
+// in-memory `history` array. sessionStorage (unlike localStorage) is
+// exactly the right lifetime for "survive that" without persisting the
+// conversation forever - it clears the moment the tab closes.
+const SESSION_STORAGE_KEY = 'chat.session';
+// Mirrors every *permanent* appendMsg() call (user turns, assistant
+// turns, the "Answered by X" note, the greeting) so a reload can replay
+// them. Deliberately does NOT mirror the rotating "Thinking..." bubble in
+// send() - that one gets .remove()'d once the request settles, and if a
+// reload caught it mid-flight it would come back as a permanently stuck
+// "Thinking..." message with no request actually in progress. Kept as a
+// separate array from `history` because `history` is the LLM-facing
+// conversation (no greeting), while this is the UI-facing transcript.
+const sessionLog = [];
+
+function loadSessionFromStorage() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || !Array.isArray(parsed.log) || !Array.isArray(parsed.history)) {
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    // Corrupt JSON or storage unavailable (private browsing) - treat it
+    // as "no saved session" rather than breaking page load.
+    return null;
+  }
+}
+
+function saveSessionToStorage() {
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ log: sessionLog, history }));
+  } catch (err) {
+    // Quota exceeded / storage disabled - the chat still works for this
+    // page load, it just won't survive the next navigation.
+  }
+}
+
+async function loadExtensions() {
+  const banner = document.getElementById('ext-error-banner');
+  try {
+    const res = await fetch('/api/extensions');
+    const data = await res.json();
+    const extensions = data.extensions || [];
+    extensionsById = Object.fromEntries(extensions.map(e => [e.id, e]));
+
+    if (data.error) {
+      // chat_app responded fine, but it couldn't fully reach mcp_server -
+      // same "couldn't reach" case /capabilities' browse() surfaces. The
+      // banner already explains why the list is empty, so the list area
+      // itself skips the separate "no extensions configured" message
+      // below - showing both would read as contradictory.
+      banner.textContent = `Couldn't reach extensions: ${data.error}`;
+      banner.classList.remove('hidden');
+      renderExtensions(extensions, { suppressEmptyMessage: true });
+    } else {
+      banner.classList.add('hidden');
+      renderExtensions(extensions, { suppressEmptyMessage: false });
+    }
+  } catch (err) {
+    // fetch() itself failed - chat_app unreachable, distinct from the
+    // data.error case above where chat_app answered but mcp_server didn't.
+    banner.textContent = `Couldn't load extensions: ${err.message}`;
+    banner.classList.remove('hidden');
+    extensionsById = {};
+    renderExtensions([], { suppressEmptyMessage: true });
+  }
+  updateExtToggleButtonLabel();
+}
+
+async function submitAddExtension(event) {
+  event.preventDefault();
+  const labelInput = document.getElementById('ext-add-label');
+  const urlInput = document.getElementById('ext-add-url');
+  const errorEl = document.getElementById('ext-add-error');
+  const addBtn = document.getElementById('ext-add-btn');
+
+  const label = labelInput.value.trim();
+  const url = urlInput.value.trim();
+  if (!label || !url) {
+    errorEl.textContent = 'Name and URL are required.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  errorEl.classList.add('hidden');
+  addBtn.disabled = true;
+  try {
+    const res = await fetch('/api/extensions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, url }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Server responded with ${res.status}`);
+    }
+    labelInput.value = '';
+    urlInput.value = '';
+    await loadExtensions(); // refresh immediately rather than waiting for the next 15s poll
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('hidden');
+  } finally {
+    addBtn.disabled = false;
+  }
+}
+
+async function removeExtension(ext) {
+  // Cheap guard against a misclick removing a configured extension - this
+  // is a local UI action with no side effects outside this browser tab,
+  // so a native confirm() is sufficient.
+  const confirmed = confirm(`Remove "${ext.label || ext.id}"?`);
+  if (!confirmed) return;
+
+  const banner = document.getElementById('ext-error-banner');
+  try {
+    const res = await fetch(`/api/extensions/${encodeURIComponent(ext.id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Server responded with ${res.status}`);
+    }
+    await loadExtensions();
+  } catch (err) {
+    banner.textContent = `Couldn't remove extension: ${err.message}`;
+    banner.classList.remove('hidden');
+  }
+}
+
+function renderExtensions(extensions, { suppressEmptyMessage = false } = {}) {
+  const list = document.getElementById('ext-list');
+  list.innerHTML = '';
+
+  if (extensions.length === 0) {
+    // Plainly say so rather than leaving an empty box with no
+    // explanation - unless an error banner is already explaining it.
+    if (!suppressEmptyMessage) {
+      list.innerHTML = '<p class="ext-empty">No extensions configured.</p>';
+    }
+    return;
+  }
+
+  for (const ext of extensions) {
+    list.appendChild(buildExtensionItem(ext));
+  }
+}
+
+function buildExtensionItem(ext) {
+  const item = document.createElement('div');
+  item.className = 'ext-item';
+
+  const top = document.createElement('div');
+  top.className = 'ext-item-top';
+
+  const labelWrap = document.createElement('div');
+  labelWrap.className = 'ext-item-label';
+
+  const dot = document.createElement('span');
+  const connected = ext.status === 'connected';
+  dot.className = `ext-status-dot ${connected ? 'connected' : 'error'}`;
+  if (!connected && ext.error) {
+    dot.title = ext.error; // hover shows the error, per spec
+  }
+  labelWrap.appendChild(dot);
+
+  const labelText = document.createElement('span');
+  labelText.textContent = ext.label || ext.id;
+  labelWrap.appendChild(labelText);
+  top.appendChild(labelWrap);
+
+  const controls = document.createElement('div');
+  controls.className = 'ext-item-controls';
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'ext-remove-btn';
+  removeBtn.setAttribute('aria-label', `Remove ${ext.label || ext.id}`);
+  removeBtn.textContent = '×';
+  removeBtn.addEventListener('click', () => removeExtension(ext));
+  controls.appendChild(removeBtn);
+
+  const switchLabel = document.createElement('label');
+  switchLabel.className = 'ext-switch';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  // Default OFF: only checked if a previous session already turned it
+  // on and that survived into localStorage - never on for a fresh id.
+  checkbox.checked = enabledExtensions.has(ext.id);
+  checkbox.addEventListener('change', () => {
+    if (checkbox.checked) {
+      enabledExtensions.add(ext.id);
+    } else {
+      enabledExtensions.delete(ext.id);
+    }
+    saveEnabledExtensionsToStorage();
+    updateExtToggleButtonLabel();
+  });
+  const slider = document.createElement('span');
+  slider.className = 'ext-switch-slider';
+  switchLabel.appendChild(checkbox);
+  switchLabel.appendChild(slider);
+  controls.appendChild(switchLabel);
+  top.appendChild(controls);
+
+  item.appendChild(top);
+
+  if (ext.description) {
+    const desc = document.createElement('p');
+    desc.className = 'ext-item-desc';
+    desc.textContent = ext.description;
+    item.appendChild(desc);
+  }
+
+  // Error shown inline too, not just on hover - a dot's tooltip is easy
+  // to miss and this is exactly the kind of thing a user needs to know
+  // before deciding whether to switch it on.
+  if (!connected && ext.error) {
+    const errText = document.createElement('p');
+    errText.className = 'ext-item-error';
+    errText.textContent = ext.error;
+    item.appendChild(errText);
+  }
+
+  return item;
+}
+
+function updateExtToggleButtonLabel() {
+  const btn = document.getElementById('ext-toggle-btn');
+  // Only count ids that still exist in the last-known catalog - a stale
+  // localStorage entry for a since-removed extension shouldn't inflate
+  // the count.
+  const activeCount = [...enabledExtensions].filter(id => extensionsById[id]).length;
+  btn.textContent = activeCount > 0 ? `Extensions (${activeCount})` : 'Extensions';
+  btn.classList.toggle('has-enabled', activeCount > 0);
+}
+
+function currentEnabledExtensions() {
+  // Same "still exists" filter as above - only forward ids send() can
+  // actually vouch for as real, currently-known extensions.
+  return [...enabledExtensions].filter(id => extensionsById[id]);
+}
+
+function openExtPanel() {
+  document.getElementById('ext-panel').classList.add('open');
+  document.getElementById('ext-panel').setAttribute('aria-hidden', 'false');
+  document.getElementById('ext-overlay').classList.remove('hidden');
+  document.getElementById('ext-toggle-btn').setAttribute('aria-expanded', 'true');
+}
+
+function closeExtPanel() {
+  document.getElementById('ext-panel').classList.remove('open');
+  document.getElementById('ext-panel').setAttribute('aria-hidden', 'true');
+  document.getElementById('ext-overlay').classList.add('hidden');
+  document.getElementById('ext-toggle-btn').setAttribute('aria-expanded', 'false');
+}
+
+function toggleExtPanel() {
+  if (document.getElementById('ext-panel').classList.contains('open')) {
+    closeExtPanel();
+  } else {
+    openExtPanel();
+  }
+}
+
 async function loadProviders() {
   const providerSelect = document.getElementById('provider');
   const previousProvider = providerSelect.value; // preserve the user's choice across refreshes
@@ -65,11 +364,30 @@ function updateModelDropdown() {
   for (const m of provider.models) {
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = m.label;
+    // Same idea as the provider dropdown above: an unavailable entry stays
+    // in the list (disabled) with the reason folded into its visible text,
+    // rather than just vanishing or relying on a hover tooltip that native
+    // <option> elements don't reliably support.
+    opt.textContent = m.available ? m.label : `${m.label} — ${describeModelReason(m.reason)}`;
+    opt.disabled = !m.available;
     modelSelect.appendChild(opt);
   }
+  // Preserve the user's pick by id same as the provider select does, even
+  // if it just went unavailable - the option text above already carries
+  // the reason, so keeping the selection here doesn't silently look fine,
+  // it shows exactly why. Only fall back to the default when the id is
+  // gone from the list entirely.
   const stillExists = provider.models.some(m => m.id === previousModel);
   modelSelect.value = stillExists ? previousModel : provider.default_model_id;
+}
+
+function describeModelReason(reason) {
+  if (reason === 'not_pulled') return 'not pulled';
+  if (reason === 'unreachable') return 'Ollama unreachable';
+  // Unrecognized reason - surface it raw rather than dropping it silently,
+  // so a future reason this code doesn't know about yet still shows up as
+  // SOMETHING visible instead of nothing.
+  return reason || 'unavailable';
 }
 
 // A pool rather than one fixed string - purely to keep the wait from
@@ -90,6 +408,55 @@ function pickThinkingMessage(exclude) {
   return options[Math.floor(Math.random() * options.length)];
 }
 
+// Same idea as THINKING_MESSAGES above - a pool rather than one fixed
+// string, so the "hi" you get on reload doesn't feel like a canned splash
+// screen every single time.
+const GREETING_MESSAGES = [
+  'Hello! How can I help you today?',
+  'Hi there! What can I do for you?',
+  "Hey! What's on your mind?",
+  'Welcome back! What would you like to know?',
+  'Hello! Ask me anything to get started.',
+  "Hi! I'm ready when you are.",
+  'Hey there! What are we working on today?',
+];
+
+function pickGreetingMessage() {
+  return GREETING_MESSAGES[Math.floor(Math.random() * GREETING_MESSAGES.length)];
+}
+
+// Compact, e.g. "2.4s" under a minute, "1m 03s" past it - one decimal
+// place is plenty of precision for something the user is just glancing
+// at while waiting.
+function formatElapsedTime(ms) {
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(1)}s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
+// total_tokens is defensive by design: the token-tracking work landing
+// this in the response JSON is a separate, parallel change, and some
+// providers/paths never report usage at all - undefined, null, and
+// non-positive values all just mean "don't show a token count".
+function formatTimerText(ms, totalTokens) {
+  const base = formatElapsedTime(ms);
+  if (typeof totalTokens === 'number' && totalTokens > 0) {
+    return `${base} · ${totalTokens} tokens`;
+  }
+  return base;
+}
+
+function createTimerElement(text) {
+  const el = document.createElement('div');
+  el.className = 'msg-timer';
+  el.textContent = text;
+  return el;
+}
+
 async function send() {
   const input = document.getElementById('q');
   const question = input.value.trim();
@@ -99,6 +466,8 @@ async function send() {
   input.value = '';
   appendMsg('user', question);
   history.push({ role: 'user', content: question });
+  sessionLog.push({ role: 'user', text: question });
+  saveSessionToStorage();
 
   const selectedProvider = document.getElementById('provider').value;
   const modelSelect = document.getElementById('model');
@@ -113,6 +482,7 @@ async function send() {
   input.disabled = true;
   sendBtn.disabled = true;
   sendBtn.textContent = 'Sending...';
+  const requestStartTime = Date.now();
 
   let currentThinkingText = pickThinkingMessage();
   const thinkingEl = appendMsg('system thinking', currentThinkingText);
@@ -125,11 +495,28 @@ async function send() {
     thinkingEl.textContent = 'Still working - this can take longer with local models or multi-step tool calls...';
   }, 15000);
 
+  // Lives directly below the thinking bubble while the request is in
+  // flight, ticking up once per second so the wait itself is visible -
+  // not just the final duration after the fact. Gets relocated into the
+  // assistant message wrapper on success (see below), or discarded on
+  // failure since there's no reply bubble for it to live under.
+  const timerEl = createTimerElement(formatElapsedTime(0));
+  document.getElementById('log').appendChild(timerEl);
+  const timerInterval = setInterval(() => {
+    timerEl.textContent = formatElapsedTime(Date.now() - requestStartTime);
+  }, 1000);
+
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, history, provider: selectedProvider, model: selectedModel }),
+      body: JSON.stringify({
+        question,
+        history,
+        provider: selectedProvider,
+        model: selectedModel,
+        enabled_extensions: currentEnabledExtensions(),
+      }),
     });
 
     if (!res.ok) {
@@ -150,17 +537,31 @@ async function send() {
     // otherwise the user has no way to know if it was ChatGPT or Claude.
     if (selectedProvider === 'auto' && data.provider_id) {
       const label = providerLabels[data.provider_id] || data.provider_id;
-      appendMsg('system', `Answered by ${label} (Automatic)`);
+      const note = `Answered by ${label} (Automatic)`;
+      appendMsg('system', note);
+      sessionLog.push({ role: 'system', text: note });
+      saveSessionToStorage();
     }
 
-    appendMsg('assistant', data.response);
+    // Freeze the timer at the final elapsed value and fold in the token
+    // count (if the parallel token-tracking work has landed and this
+    // provider/path reported one), then relocate the same node into the
+    // assistant bubble rather than creating a second element.
+    const finalTimerText = formatTimerText(Date.now() - requestStartTime, data.total_tokens);
+    timerEl.textContent = finalTimerText;
+    const assistantWrap = appendMsg('assistant', data.response);
+    assistantWrap.appendChild(timerEl);
     history.push({ role: 'assistant', content: data.response });
+    sessionLog.push({ role: 'assistant', text: data.response, meta: finalTimerText });
+    saveSessionToStorage();
   } catch (err) {
     thinkingEl.remove();
+    timerEl.remove(); // no reply bubble to attach it to - the error message speaks for itself
     appendMsg('system', `⚠️ Request failed: ${err.message}. Check that chat_app and the MCP server are both still running.`);
   } finally {
     clearInterval(rotateTimer);
     clearTimeout(slowNoticeTimer);
+    clearInterval(timerInterval);
     input.disabled = false;
     sendBtn.disabled = false;
     sendBtn.textContent = 'Send';
@@ -225,6 +626,42 @@ document.getElementById('q').addEventListener('keydown', e => {
   if (e.key === 'Enter') send();
 });
 document.getElementById('provider').addEventListener('change', updateModelDropdown);
+document.getElementById('ext-toggle-btn').addEventListener('click', toggleExtPanel);
+document.getElementById('ext-close-btn').addEventListener('click', closeExtPanel);
+document.getElementById('ext-overlay').addEventListener('click', closeExtPanel);
+document.getElementById('ext-add-form').addEventListener('submit', submitAddExtension);
 
 loadProviders();
 setInterval(loadProviders, 15000);
+
+loadExtensions();
+setInterval(loadExtensions, 15000); // same cadence as the provider poll above
+
+// Restore a saved session (if this load is a navigation/reload within the
+// same tab, not a first visit) before deciding whether to greet.
+const savedSession = loadSessionFromStorage();
+const hasRestoredMessages = !!savedSession && savedSession.log.length > 0;
+if (savedSession) {
+  for (const entry of savedSession.log) {
+    const wrap = appendMsg(entry.role, entry.text);
+    if (entry.meta) {
+      // A completed, historical duration - it won't tick, which is
+      // correct: the request it timed is long over.
+      wrap.appendChild(createTimerElement(entry.meta));
+    }
+    sessionLog.push(entry);
+  }
+  history.push(...savedSession.history); // `history` is const - only ever .push()d into, never reassigned
+}
+
+// Only greet on a genuine first visit (nothing to restore) - reappending
+// a fresh greeting on every reload/navigation made the log balloon with
+// "Hi! I'm ready when you are." repeated on top of a restored
+// conversation, which is exactly what the persistence feature above is
+// supposed to prevent.
+if (!hasRestoredMessages) {
+  const greeting = pickGreetingMessage();
+  appendMsg('assistant', greeting);
+  sessionLog.push({ role: 'assistant', text: greeting });
+  saveSessionToStorage();
+}

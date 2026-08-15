@@ -9,6 +9,7 @@
   <div class="toprow">
     <a class="caps-link" href="/capabilities">View MCP server capabilities →</a>
     <div class="selectors">
+      <button id="ext-toggle-btn" type="button" class="ext-toggle-btn" aria-expanded="false" aria-controls="ext-panel">Extensions</button>
       <select id="model" class="hidden"><option>—</option></select>
       <select id="provider"><option>Loading providers...</option></select>
     </div>
@@ -18,6 +19,26 @@
     <input id="q" type="text" placeholder="Ask a question...">
     <button id="send-btn" onclick="send()">Send</button>
   </div>
+
+  <div id="ext-overlay" class="ext-overlay hidden"></div>
+  <aside id="ext-panel" class="ext-panel" aria-hidden="true">
+    <div class="ext-panel-header">
+      <h2>Extensions</h2>
+      <button id="ext-close-btn" type="button" class="ext-close-btn" aria-label="Close extensions panel">×</button>
+    </div>
+    <p class="ext-sub">
+      Tools proxied in from other MCP servers. Off by default - switch on
+      the ones you want offered to the model for this chat.
+    </p>
+    <div id="ext-error-banner" class="ext-error-banner hidden"></div>
+    <form id="ext-add-form" class="ext-add-form">
+      <input id="ext-add-label" type="text" placeholder="Name" required>
+      <input id="ext-add-url" type="text" placeholder="URL" required>
+      <button id="ext-add-btn" type="submit">Add</button>
+      <p id="ext-add-error" class="ext-add-error hidden"></p>
+    </form>
+    <div id="ext-list" class="ext-list"><p class="ext-empty">Loading...</p></div>
+  </aside>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/16.3.0/lib/marked.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.13/purify.min.js"></script>

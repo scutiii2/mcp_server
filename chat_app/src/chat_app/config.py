@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass
+from pathlib import Path
 
 
 def _env(name: str, default: str) -> str:
@@ -41,6 +42,11 @@ class Settings:
     secret_key: str = _secret_key()
     openai_model: str = _env("OPENAI_MODEL", "gpt-5.6-sol")
     claude_model: str = _env("CLAUDE_MODEL", "claude-sonnet-5")
+    # Structured, per-deployment config (currently just the Ollama desired-
+    # model list) - see infra/app_config.py. Mirrors mcp_server/config.py's
+    # CONFIG_PATH; relative to CWD by default, same as every other path
+    # setting in this project.
+    chat_config_path: Path = Path(_env("CHAT_CONFIG_PATH", "config.json"))
 
 
 settings = Settings()

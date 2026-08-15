@@ -25,4 +25,9 @@ Add a new capability by:
 ``otp/`` is the worked example: two tools, a domain module that imports
 only ``infra/``, and a contract whose shape carries the security property
 (the passcode is deliberately absent from the result model).
+
+A third pattern, alongside "capability" and "resource" above, lives at
+``infra/extensions.py``: proxied external tools, connected out to other
+MCP servers as a client and re-exposed here under a namespaced name,
+rather than written by hand in this repo at all.
 """

@@ -1,3 +1,91 @@
+// --- Extension groups ---------------------------------------------------
+// Shares its enabled/disabled state with the chat page's extensions
+// sidebar via the SAME localStorage key and JSON-array-of-ids shape (see
+// chat/template/script.js's EXT_STORAGE_KEY / loadEnabledExtensionsFromStorage
+// / buildExtensionItem) - both pages are same-origin, so no extra plumbing
+// is needed beyond reusing the identical key name. Toggling an extension
+// here changes exactly the same "offered to the model in chat" state as
+// toggling it in chat's sidebar, and additionally decides whether this
+// page shows or hides that extension's tool cards.
+const EXT_STORAGE_KEY = 'chat.enabledExtensions';
+
+function loadEnabledExtensionsFromStorage() {
+  try {
+    const raw = localStorage.getItem(EXT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch (err) {
+    // Corrupt JSON or storage unavailable (private browsing) - the safe
+    // default (nothing enabled) is exactly right here too.
+    return new Set();
+  }
+}
+
+function saveEnabledExtensionsToStorage(enabledExtensions) {
+  try {
+    localStorage.setItem(EXT_STORAGE_KEY, JSON.stringify([...enabledExtensions]));
+  } catch (err) {
+    // Quota exceeded / storage disabled - the toggle still works for this
+    // page load, it just won't survive a reload. Not worth surfacing.
+  }
+}
+
+let enabledExtensions = loadEnabledExtensionsFromStorage();
+
+// Renders a single group's body according to its enabled state - swaps
+// between the real tool cards (already server-rendered into
+// .ext-group-tools) and a placeholder message, without touching the
+// group's open/closed state, which is a fully independent axis.
+function renderExtGroupBody(group) {
+  const enabled = enabledExtensions.has(group.dataset.extensionId);
+  const toolsEl = group.querySelector('.ext-group-tools');
+  const placeholderEl = group.querySelector('.ext-group-placeholder');
+  const count = toolsEl.querySelectorAll(':scope > .tool').length;
+
+  if (enabled) {
+    toolsEl.style.display = '';
+    placeholderEl.style.display = 'none';
+  } else {
+    toolsEl.style.display = 'none';
+    placeholderEl.textContent = `Disabled — turn on to see its ${count} tool${count === 1 ? '' : 's'}.`;
+    placeholderEl.style.display = 'block';
+  }
+}
+
+function initExtGroups() {
+  const groups = document.querySelectorAll('.ext-group');
+  for (const group of groups) {
+    const extId = group.dataset.extensionId;
+    const checkbox = group.querySelector('.ext-group-toggle');
+    const switchLabel = group.querySelector('.ext-switch');
+    const header = group.querySelector('.ext-group-header');
+
+    checkbox.checked = enabledExtensions.has(extId);
+    renderExtGroupBody(group);
+
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        enabledExtensions.add(extId);
+      } else {
+        enabledExtensions.delete(extId);
+      }
+      saveEnabledExtensionsToStorage(enabledExtensions);
+      renderExtGroupBody(group);
+    });
+
+    // The toggle (and its slider label) must never also fire the header's
+    // expand/collapse handler below - they're independent controls that
+    // happen to share a row.
+    switchLabel.addEventListener('click', event => event.stopPropagation());
+
+    header.addEventListener('click', () => {
+      group.classList.toggle('open');
+    });
+  }
+}
+
+initExtGroups();
+
 async function runTool(event, toolName) {
   event.preventDefault();
   const form = event.target;

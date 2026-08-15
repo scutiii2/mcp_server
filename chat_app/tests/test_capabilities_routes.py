@@ -12,12 +12,34 @@ inside the same try block, so any test exercising it needs BOTH
 unpatched means it attempts a real (failing) network call, which the
 except clause catches and silently resets *both* tools and resources to
 empty, not just the one that actually failed.
+
+``_serialize_tools()`` also calls ``fetch_extensions()`` now (to unlock
+``list_tools()``'s extension filter for this page - see its docstring),
+which is a THIRD thing that makes a real network call if left unpatched.
+Rather than repeat that patch in every test below, ``_no_extensions``
+patches it file-wide: almost nothing here cares about extensions, so the
+default is "none configured," and the one test that does care overrides
+it locally.
 """
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_extensions():
+    """Without this, every test below that exercises _serialize_tools()
+    makes a real, slow, failing HTTP call from fetch_extensions() - this
+    project's test suite has held to zero real network calls throughout,
+    and a 10-second timeout per test is also just a bad time to sit
+    through. Confirmed the regression this fixture prevents: before
+    adding it, this file's 13 tests took ~12s instead of well under 1s."""
+    with patch("chat_app.pages.capabilities.routes.fetch_extensions", return_value=[]):
+        yield
 
 
 def _fake_tool(name="restart_service_tool", description="Restart a service on a host."):
@@ -66,6 +88,73 @@ def test_browse_shows_resources_error_without_hiding_successfully_loaded_tools(c
     assert b"restart_service_tool" in response.data  # tools still rendered
 
 
+def test_browse_asks_list_tools_for_every_connected_extension(client):
+    """Regression: this page's whole point (see module docstring) is
+    showing whatever mcp_server actually has registered right now.
+    list_tools()'s own default is "no extension tools" - correct for
+    /api/chat, where an unconfigured extension must never be silently in
+    scope for the model, but wrong here: a human browsing the catalog
+    isn't the chat sidebar's toggle state, and defaulting to empty would
+    make this page quietly under-report what's registered."""
+    with patch("chat_app.pages.capabilities.routes.fetch_extensions",
+               return_value=[{"id": "reference", "status": "connected"}, {"id": "other", "status": "error"}]), \
+         patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[]), \
+         patch("chat_app.pages.capabilities.routes.list_tools") as mock_list_tools:
+        mock_list_tools.return_value = [_fake_tool()]
+        client.get("/capabilities/")
+
+    mock_list_tools.assert_called_once_with(enabled_extensions=["reference", "other"])
+
+
+def test_browse_shows_builtin_tools_even_when_extension_status_is_unreachable(client):
+    """A broken fetch_extensions() (mcp_server up, but that one call
+    failing) must degrade to "no extensions" rather than blanking the
+    whole tools section - built-in tools come from a separate call this
+    failure has nothing to do with."""
+    with patch("chat_app.pages.capabilities.routes.fetch_extensions", side_effect=ConnectionError("boom")), \
+         patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[]), \
+         patch("chat_app.pages.capabilities.routes.list_tools", return_value=[_fake_tool()]):
+        response = client.get("/capabilities/")
+
+    assert response.status_code == 200
+    assert b"restart_service_tool" in response.data
+
+
+def test_browse_groups_extension_tools_under_their_own_accordion_section(client):
+    """The new per-extension accordion needs each extension's own tools
+    bucketed under it, keyed off the live extension catalog (not just
+    whatever ids happen to show up in the tool list) - so a connected
+    extension that currently offers zero tools still gets an (empty)
+    group, and an extension tool renders once, inside its group, not
+    also duplicated into the flat built-in list above it."""
+    with patch(
+        "chat_app.pages.capabilities.routes.fetch_extensions",
+        return_value=[
+            {"id": "reference", "label": "Reference", "description": "", "status": "connected", "error": None},
+            {"id": "empty_ext", "label": "Empty Ext", "description": "", "status": "error", "error": "boom"},
+        ],
+    ), \
+         patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[]), \
+         patch(
+             "chat_app.pages.capabilities.routes.list_tools",
+             return_value=[_fake_tool(name="reference__do_thing"), _fake_tool()],
+         ):
+        response = client.get("/capabilities/")
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    assert 'data-extension-id="reference"' in html
+    assert 'data-extension-id="empty_ext"' in html
+    # The extension tool renders exactly once - inside its group, not
+    # duplicated into the flat built-in list (which now only loops over
+    # tools with no extension_id).
+    assert html.count('id="tool-reference__do_thing"') == 1
+    # The built-in tool still renders unchanged in the flat list.
+    assert "restart_service_tool" in html
+    assert "1 tool" in html  # reference's count
+    assert "0 tools" in html  # empty_ext's count
+
+
 def test_api_tools_returns_reshaped_json(client):
     with patch("chat_app.pages.capabilities.routes.list_tools", return_value=[_fake_tool()]):
         response = client.get("/capabilities/api/tools")
@@ -77,8 +166,21 @@ def test_api_tools_returns_reshaped_json(client):
             "title": "Restart Service",
             "description": "Restart a service on a host.",
             "input_schema": {"type": "object", "properties": {"service": {"type": "string"}}},
+            "extension_id": None,
         }
     ]
+
+
+def test_api_tools_tags_extension_namespaced_tool_with_its_extension_id(client):
+    """Extension tools are "{ext_id}__original_name" (double underscore) -
+    same convention mcp_client._tool_is_enabled uses. This field is what
+    the capabilities page's script.js groups tool cards by."""
+    with patch("chat_app.pages.capabilities.routes.list_tools", return_value=[_fake_tool(name="reference__do_thing")]):
+        response = client.get("/capabilities/api/tools")
+
+    assert response.status_code == 200
+    assert response.get_json()[0]["extension_id"] == "reference"
+    assert response.get_json()[0]["name"] == "reference__do_thing"
 
 
 def test_browse_renders_friendly_title_not_just_raw_name(client):

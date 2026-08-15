@@ -11,12 +11,15 @@ dropdown, the router) actually depends on.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from urllib.error import URLError
 
 import pytest
 
 from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
+from chat_app.services.llm.base import ModelOption
 
 
 def _fake_tool():
@@ -156,61 +159,261 @@ def test_ollama_base_url_reads_env_override(monkeypatch):
     assert ollama_provider._base_url() == "http://192.168.1.50:11434/v1"
 
 
-def test_ollama_models_parsed_from_env():
-    import os
+class _FakeTagsResponse:
+    """Stand-in for the object urlopen()'s context manager yields -
+    mirrors test_mcp_client.py's _FakeResponse."""
 
-    old = os.environ.get("OLLAMA_MODELS")
-    try:
-        os.environ["OLLAMA_MODELS"] = "llama3.2:1b=Tiny local,qwen2.5:3b=Bigger local"
-        models = ollama_provider._parse_models_from_env()
-    finally:
-        if old is None:
-            os.environ.pop("OLLAMA_MODELS", None)
-        else:
-            os.environ["OLLAMA_MODELS"] = old
+    def __init__(self, payload: bytes):
+        self._payload = payload
 
-    assert [m.id for m in models] == ["llama3.2:1b", "qwen2.5:3b"]
-    assert [m.label for m in models] == ["Tiny local", "Bigger local"]
+    def __enter__(self):
+        return self
 
+    def __exit__(self, *args):
+        return False
 
-def test_ollama_models_parsed_preserves_the_tag_colon_in_model_id():
-    """Regression test for the exact bug found while testing this
-    provider: Ollama model IDs contain a colon themselves (name:tag), so
-    a ":"-separated id/label format truncates "qwen2.5:3b" down to just
-    "qwen2.5" and loses the tag - which then 404s against Ollama, since
-    "qwen2.5" alone isn't a pulled model. "=" as the separator avoids
-    the collision entirely."""
-    import os
-
-    old = os.environ.get("OLLAMA_MODELS")
-    try:
-        os.environ["OLLAMA_MODELS"] = "qwen2.5:3b=Qwen 2.5 3B (local)"
-        models = ollama_provider._parse_models_from_env()
-    finally:
-        if old is None:
-            os.environ.pop("OLLAMA_MODELS", None)
-        else:
-            os.environ["OLLAMA_MODELS"] = old
-
-    assert len(models) == 1
-    assert models[0].id == "qwen2.5:3b"  # NOT "qwen2.5" - the tag must survive
-    assert models[0].label == "Qwen 2.5 3B (local)"
+    def read(self):
+        return self._payload
 
 
-def test_ollama_models_parsed_falls_back_to_id_when_label_omitted():
-    import os
+def _tags_payload(*names: str) -> bytes:
+    return json.dumps({"models": [{"name": name, "model": name} for name in names]}).encode("utf-8")
 
-    old = os.environ.get("OLLAMA_MODELS")
-    try:
-        os.environ["OLLAMA_MODELS"] = "qwen2.5:3b"
-        models = ollama_provider._parse_models_from_env()
-    finally:
-        if old is None:
-            os.environ.pop("OLLAMA_MODELS", None)
-        else:
-            os.environ["OLLAMA_MODELS"] = old
 
-    assert models == [ollama_provider.ModelOption(id="qwen2.5:3b", label="qwen2.5:3b")]
+def test_tags_url_strips_v1_suffix(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    assert ollama_provider._tags_url() == "http://localhost:11434/api/tags"
+
+
+def test_tags_url_strips_v1_suffix_with_trailing_slash(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434/v1/")
+    assert ollama_provider._tags_url() == "http://localhost:11434/api/tags"
+
+
+def test_tags_url_leaves_a_base_without_v1_untouched(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    assert ollama_provider._tags_url() == "http://localhost:11434/api/tags"
+
+
+def test_check_model_availability_skips_the_network_call_when_nothing_is_configured(monkeypatch):
+    """No "providers.ollama.models" entries is a valid quiet deployment
+    state, not something worth probing a host for."""
+    monkeypatch.setattr(ollama_provider, "MODELS", [])
+
+    with patch("chat_app.services.llm.ollama_provider.urlopen") as mock_urlopen:
+        result = ollama_provider.check_model_availability()
+
+    mock_urlopen.assert_not_called()
+    assert result == ollama_provider.ModelAvailabilityCheck(reachable=True, reason=None, models={})
+
+
+def test_check_model_availability_full_match(monkeypatch):
+    monkeypatch.setattr(
+        ollama_provider,
+        "MODELS",
+        [ModelOption(id="qwen2.5:7b", label="Qwen"), ModelOption(id="llama3.2:1b", label="Llama")],
+    )
+    response = _FakeTagsResponse(_tags_payload("qwen2.5:7b", "llama3.2:1b"))
+
+    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+        result = ollama_provider.check_model_availability()
+
+    assert result.reachable is True
+    assert result.reason is None
+    assert result.models["qwen2.5:7b"] == ollama_provider.ModelAvailability(available=True, reason=None)
+    assert result.models["llama3.2:1b"] == ollama_provider.ModelAvailability(available=True, reason=None)
+
+
+def test_check_model_availability_partial_match(monkeypatch):
+    """Some configured models are pulled, some aren't - the common case
+    once a deployment lists more models than it's actually pulled."""
+    monkeypatch.setattr(
+        ollama_provider,
+        "MODELS",
+        [ModelOption(id="qwen2.5:7b", label="Qwen"), ModelOption(id="llama3.2:1b", label="Llama")],
+    )
+    response = _FakeTagsResponse(_tags_payload("qwen2.5:7b"))
+
+    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+        result = ollama_provider.check_model_availability()
+
+    assert result.reachable is True
+    assert result.reason is None
+    assert result.models["qwen2.5:7b"] == ollama_provider.ModelAvailability(available=True, reason=None)
+    assert result.models["llama3.2:1b"] == ollama_provider.ModelAvailability(available=False, reason="not_pulled")
+
+
+def test_check_model_availability_connection_failure_fails_closed(monkeypatch):
+    monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
+
+    with patch("chat_app.services.llm.ollama_provider.urlopen", side_effect=URLError("connection refused")):
+        result = ollama_provider.check_model_availability()
+
+    assert result.reachable is False
+    assert result.reason == "unreachable"
+    assert result.models["qwen2.5:7b"] == ollama_provider.ModelAvailability(available=False, reason="unreachable")
+
+
+def test_check_model_availability_timeout_fails_closed(monkeypatch):
+    monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
+
+    with patch("chat_app.services.llm.ollama_provider.urlopen", side_effect=TimeoutError("timed out")):
+        result = ollama_provider.check_model_availability()
+
+    assert result.reachable is False
+    assert result.reason == "unreachable"
+    assert result.models["qwen2.5:7b"].available is False
+    assert result.models["qwen2.5:7b"].reason == "unreachable"
+
+
+def test_check_model_availability_malformed_json_fails_closed(monkeypatch):
+    monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
+    response = _FakeTagsResponse(b"not valid json")
+
+    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+        result = ollama_provider.check_model_availability()
+
+    assert result.reachable is False
+    assert result.reason == "unreachable"
+
+
+def test_check_model_availability_unexpected_response_shape_fails_closed(monkeypatch):
+    """Valid JSON, but not the documented {"models": [...]} shape (e.g. an
+    unrelated endpoint answering on that port) - must degrade, not
+    raise KeyError/TypeError out of the route this feeds."""
+    monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
+    response = _FakeTagsResponse(json.dumps({"unexpected": "shape"}).encode("utf-8"))
+
+    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+        result = ollama_provider.check_model_availability()
+
+    assert result.reachable is False
+    assert result.reason == "unreachable"
+
+
+def test_claude_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkeypatch):
+    """Each round of the tool-calling loop is a separately-billed API
+    call, so the reported total is the sum of every round's usage, not
+    just the final one."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+    tool_use_block = SimpleNamespace(type="tool_use", name="get_status_tool", input={"resource_id": "web-1"}, id="tool_1")
+    round_one = SimpleNamespace(
+        stop_reason="tool_use",
+        content=[tool_use_block],
+        usage=SimpleNamespace(input_tokens=100, output_tokens=20),
+    )
+    text_block = SimpleNamespace(type="text", text="web-1 is healthy.")
+    round_two = SimpleNamespace(
+        stop_reason="end_turn",
+        content=[text_block],
+        usage=SimpleNamespace(input_tokens=150, output_tokens=30),
+    )
+    fake_client = SimpleNamespace(messages=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
+
+    with patch("chat_app.services.llm.claude_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.claude_provider.list_tools", return_value=[]), \
+         patch("chat_app.services.llm.claude_provider.call_tool", return_value="ok"):
+        result = claude_provider.run_chat("how is web-1?", [])
+
+    assert result.response == "web-1 is healthy."
+    # (100 + 20) + (150 + 30) - both rounds counted, not just the final one.
+    assert result.total_tokens == 300
+
+
+def test_claude_run_chat_reports_total_tokens_on_a_single_round_too():
+    response = SimpleNamespace(
+        stop_reason="end_turn",
+        content=[SimpleNamespace(type="text", text="hi")],
+        usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+    )
+    fake_client = SimpleNamespace(messages=SimpleNamespace(create=Mock(return_value=response)))
+
+    with patch("chat_app.services.llm.claude_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.claude_provider.list_tools", return_value=[]):
+        result = claude_provider.run_chat("hello", [])
+
+    assert result.total_tokens == 15
+
+
+def test_openai_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    function_call = SimpleNamespace(
+        type="function_call", name="get_status_tool", arguments='{"resource_id": "web-1"}', call_id="call_1"
+    )
+    round_one = SimpleNamespace(output=[function_call], output_text="", usage=SimpleNamespace(total_tokens=120))
+    round_two = SimpleNamespace(output=[], output_text="web-1 is healthy.", usage=SimpleNamespace(total_tokens=80))
+    fake_client = SimpleNamespace(responses=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
+
+    with patch("chat_app.services.llm.openai_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.openai_provider.list_tools", return_value=[]), \
+         patch("chat_app.services.llm.openai_provider.call_tool", return_value="ok"):
+        result = openai_provider.run_chat("how is web-1?", [])
+
+    assert result.response == "web-1 is healthy."
+    assert result.total_tokens == 200
+
+
+def test_openai_run_chat_total_tokens_is_none_when_usage_missing(monkeypatch):
+    """Some SDK versions leave response.usage unset - that round
+    contributes nothing countable rather than crashing or reporting 0."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    response = SimpleNamespace(output=[], output_text="ok", usage=None)
+    fake_client = SimpleNamespace(responses=SimpleNamespace(create=Mock(return_value=response)))
+
+    with patch("chat_app.services.llm.openai_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.openai_provider.list_tools", return_value=[]):
+        result = openai_provider.run_chat("hi", [])
+
+    assert result.total_tokens is None
+
+
+def test_ollama_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkeypatch):
+    monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="llama3.2:1b", label="Llama")])
+    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "llama3.2:1b")
+
+    call = SimpleNamespace(id="call_1", function=SimpleNamespace(name="get_status_tool", arguments='{"resource_id": "web-1"}'))
+    round_one_message = SimpleNamespace(content=None, tool_calls=[call])
+    round_one = SimpleNamespace(choices=[SimpleNamespace(message=round_one_message)], usage=SimpleNamespace(total_tokens=90))
+    round_two_message = SimpleNamespace(content="web-1 is healthy.", tool_calls=None)
+    round_two = SimpleNamespace(choices=[SimpleNamespace(message=round_two_message)], usage=SimpleNamespace(total_tokens=60))
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
+    )
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]), \
+         patch("chat_app.services.llm.ollama_provider.call_tool", return_value="ok"):
+        result = ollama_provider.run_chat("how is web-1?", [])
+
+    assert result.response == "web-1 is healthy."
+    assert result.total_tokens == 150
+
+
+def test_ollama_run_chat_total_tokens_is_none_when_usage_missing():
+    """Ollama does not always populate usage, depending on version."""
+    message = SimpleNamespace(content="ok", tool_calls=None)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])  # no .usage at all
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+        result = ollama_provider.run_chat("hi", [])
+
+    assert result.total_tokens is None
+
+
+def test_ollama_usage_tokens_falls_back_to_prompt_plus_completion_when_total_missing():
+    usage = SimpleNamespace(total_tokens=None, prompt_tokens=40, completion_tokens=10)
+    assert ollama_provider._usage_tokens(usage) == 50
+
+
+def test_ollama_usage_tokens_treats_all_zero_usage_as_uncountable():
+    """A round that genuinely reports zero on every field is treated the
+    same as a missing usage object, not as a real zero-token round."""
+    usage = SimpleNamespace(total_tokens=0, prompt_tokens=0, completion_tokens=0)
+    assert ollama_provider._usage_tokens(usage) is None
 
 
 def test_ollama_not_in_automatic_order():

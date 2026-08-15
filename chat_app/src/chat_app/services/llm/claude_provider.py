@@ -54,22 +54,34 @@ def is_available() -> bool:
     return has_api_key() and not cooldown.is_in_cooldown(PROVIDER_ID)
 
 
-def _tool_schemas() -> list[dict[str, Any]]:
+def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str, Any]]:
     return [
         {
             "name": tool.name,
             "description": tool.description or "",
             "input_schema": tool.inputSchema or {"type": "object", "properties": {}},
         }
-        for tool in list_tools()
+        for tool in list_tools(enabled_extensions)
     ]
 
 
-def run_chat(question: str, history: list[dict[str, Any]], model: str | None = None) -> ChatResult:
+def run_chat(
+    question: str,
+    history: list[dict[str, Any]],
+    model: str | None = None,
+    enabled_extensions: list[str] | None = None,
+) -> ChatResult:
     client = _get_client()
     messages: list[dict[str, Any]] = [*history, {"role": "user", "content": question}]
     tools_used: list[str] = []
-    tool_schemas = _tool_schemas()
+    tool_schemas = _tool_schemas(enabled_extensions)
+    # Every round of this loop is a real, separately-billed API call, so a
+    # multi-tool-call answer's total is the sum across all rounds, not just
+    # the final one. Anthropic's usage object has input_tokens/output_tokens
+    # but no total_tokens field of its own - always present on this API, so
+    # this stays a plain int rather than the optional/"unknown" handling the
+    # other providers need.
+    total_tokens = 0
 
     try:
         for _ in range(6):
@@ -80,10 +92,11 @@ def run_chat(question: str, history: list[dict[str, Any]], model: str | None = N
                 messages=messages,
                 tools=tool_schemas,
             )
+            total_tokens += response.usage.input_tokens + response.usage.output_tokens
 
             if response.stop_reason != "tool_use":
                 text = "".join(block.text for block in response.content if block.type == "text")
-                return ChatResult(response=text, tools_used=tools_used, provider_id=PROVIDER_ID)
+                return ChatResult(response=text, tools_used=tools_used, provider_id=PROVIDER_ID, total_tokens=total_tokens)
 
             messages.append({"role": "assistant", "content": response.content})
 
@@ -104,7 +117,12 @@ def run_chat(question: str, history: list[dict[str, Any]], model: str | None = N
         cooldown.start_cooldown(PROVIDER_ID, seconds)
         raise
 
-    return ChatResult(response="Reached maximum tool-call rounds without a final answer.", tools_used=tools_used, provider_id=PROVIDER_ID)
+    return ChatResult(
+        response="Reached maximum tool-call rounds without a final answer.",
+        tools_used=tools_used,
+        provider_id=PROVIDER_ID,
+        total_tokens=total_tokens,
+    )
 
 
 PROVIDER = ProviderSpec(

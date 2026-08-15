@@ -51,7 +51,7 @@ def is_available() -> bool:
     return has_api_key() and not cooldown.is_in_cooldown(PROVIDER_ID)
 
 
-def _tool_schemas() -> list[dict[str, Any]]:
+def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str, Any]]:
     return [
         {
             "type": "function",
@@ -59,16 +59,28 @@ def _tool_schemas() -> list[dict[str, Any]]:
             "description": tool.description or "",
             "parameters": tool.inputSchema or {"type": "object", "properties": {}},
         }
-        for tool in list_tools()
+        for tool in list_tools(enabled_extensions)
     ]
 
 
-def run_chat(question: str, history: list[dict[str, Any]], model: str | None = None) -> ChatResult:
+def run_chat(
+    question: str,
+    history: list[dict[str, Any]],
+    model: str | None = None,
+    enabled_extensions: list[str] | None = None,
+) -> ChatResult:
     client = _get_client()
     messages: list[Any] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []
-    tool_schemas = _tool_schemas()
+    tool_schemas = _tool_schemas(enabled_extensions)
+    # Every round of this loop is a real, separately-billed API call, so a
+    # multi-tool-call answer's total is the sum across all rounds, not just
+    # the final one. Stays None (rather than 0) until a round actually
+    # reports usage - some SDK versions leave response.usage unset, and a
+    # provider that never reported usage should say "unknown" (see
+    # ChatResult.total_tokens), not "zero tokens".
+    total_tokens: int | None = None
 
     try:
         for _ in range(6):
@@ -77,9 +89,14 @@ def run_chat(question: str, history: list[dict[str, Any]], model: str | None = N
                 input=messages,
                 tools=tool_schemas if tool_schemas else None,
             )
+            usage = getattr(response, "usage", None)
+            round_tokens = getattr(usage, "total_tokens", None) if usage is not None else None
+            if round_tokens is not None:
+                total_tokens = (total_tokens or 0) + round_tokens
+
             function_calls = [item for item in response.output if getattr(item, "type", "") == "function_call"]
             if not function_calls:
-                return ChatResult(response=response.output_text, tools_used=tools_used, provider_id=PROVIDER_ID)
+                return ChatResult(response=response.output_text, tools_used=tools_used, provider_id=PROVIDER_ID, total_tokens=total_tokens)
 
             messages.extend(response.output)
             for call in function_calls:
@@ -98,7 +115,12 @@ def run_chat(question: str, history: list[dict[str, Any]], model: str | None = N
         cooldown.start_cooldown(PROVIDER_ID, seconds)
         raise
 
-    return ChatResult(response="Reached maximum tool-call rounds without a final answer.", tools_used=tools_used, provider_id=PROVIDER_ID)
+    return ChatResult(
+        response="Reached maximum tool-call rounds without a final answer.",
+        tools_used=tools_used,
+        provider_id=PROVIDER_ID,
+        total_tokens=total_tokens,
+    )
 
 
 PROVIDER = ProviderSpec(

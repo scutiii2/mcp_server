@@ -17,7 +17,7 @@
   <h2>Tools</h2>
   <p class="section-sub">Actions the model decides to invoke, with arguments.</p>
 
-  {% for tool in tools %}
+  {% macro render_tool_card(tool) %}
   <div class="tool" id="tool-{{ tool.name }}">
     <div class="tool-header" onclick="document.getElementById('tool-{{ tool.name }}').classList.toggle('open')">
       <div>
@@ -44,10 +44,38 @@
       <pre class="result" style="display:none"></pre>
     </div>
   </div>
+  {% endmacro %}
+
+  {% for tool in tools if not tool.extension_id %}
+    {{ render_tool_card(tool) }}
   {% endfor %}
   {% if not tools %}
   <p class="empty">No tools registered.</p>
   {% endif %}
+
+  {% for extension in extensions %}
+  <div class="ext-group" data-extension-id="{{ extension.id }}">
+    <div class="ext-group-header">
+      <span class="ext-group-chevron">▸</span>
+      <span class="ext-status-dot {{ 'connected' if extension.status == 'connected' else 'error' }}"
+            {% if extension.error %}title="{{ extension.error }}"{% endif %}></span>
+      <span class="ext-group-label">{{ extension.label }}</span>
+      <span class="ext-group-count">{{ extension.tools|length }} tool{{ '' if extension.tools|length == 1 else 's' }}</span>
+      <label class="ext-switch">
+        <input type="checkbox" class="ext-group-toggle">
+        <span class="ext-switch-slider"></span>
+      </label>
+    </div>
+    <div class="ext-group-body">
+      <div class="ext-group-tools">
+        {% for tool in extension.tools %}
+          {{ render_tool_card(tool) }}
+        {% endfor %}
+      </div>
+      <p class="ext-group-placeholder" style="display:none"></p>
+    </div>
+  </div>
+  {% endfor %}
 
   <h2>Resources</h2>
   <p class="section-sub">Read-only, URI-addressed data — browsed and read directly, no model decision needed.</p>

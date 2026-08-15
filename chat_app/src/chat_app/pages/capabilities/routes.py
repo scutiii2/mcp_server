@@ -20,6 +20,7 @@ from flask import Blueprint, jsonify, render_template
 from chat_app.security import json_body
 from chat_app.services.mcp_client import (
     call_tool,
+    fetch_extensions,
     list_resource_templates,
     list_tools,
     read_resource,
@@ -36,18 +37,91 @@ capabilities_bp = Blueprint(
 )
 
 
-def _serialize_tools() -> list[dict]:
+def _fetch_extensions_or_empty() -> list[dict]:
+    """Every extension mcp_server currently has connected, regardless of
+    status - used both to unlock list_tools()'s filter for this page and
+    to build the per-extension accordion groups below.
+
+    list_tools()'s "omit = show no extension tools" default exists for
+    /api/chat, where an unconfigured extension must never be silently in
+    scope for the model. This page is the opposite case: a human
+    browsing the live catalog, whose entire point (see module docstring)
+    is showing everything actually registered. Reusing the same default
+    here would make this page quietly lie about what mcp_server exposes.
+    The full catalog still round-trips from the server on every request -
+    what changed is that the browser (script.js) now hides a disabled
+    extension's tools by default once they arrive here, so a human can
+    still toggle one on to look, and that same toggle state is what's
+    offered to the model in chat.
+
+    Failing open to "no extensions" rather than raising: a broken
+    /extensions fetch shouldn't blank out the built-in tools too, since
+    those come from a separate call this function doesn't touch.
+    """
+    try:
+        return fetch_extensions()
+    except Exception:  # noqa: BLE001 - degrade to built-ins only, don't blank the page
+        return []
+
+
+def _serialize_tools(extensions: list[dict] | None = None) -> list[dict]:
     """Reshape raw MCP Tool objects into plain dicts with a friendly
     title attached - shared by both the page and the JSON API so there's
-    one place that knows this shape."""
+    one place that knows this shape.
+
+    ``extensions`` is the live extension catalog (``fetch_extensions()``'s
+    shape) used to unlock list_tools()'s enabled-extension filter - see
+    ``_fetch_extensions_or_empty()``. Fetches its own when not given, so
+    the JSON API (which has no other use for the catalog) doesn't need to
+    know about this wiring; ``browse()`` passes its own copy in so the
+    catalog isn't fetched twice per request.
+    """
+    if extensions is None:
+        extensions = _fetch_extensions_or_empty()
+    enabled_ids = [extension["id"] for extension in extensions]
+
+    tools = []
+    for tool in list_tools(enabled_extensions=enabled_ids):
+        # Same double-underscore convention as mcp_client._tool_is_enabled:
+        # extension tools are "{ext_id}__original_name"; built-ins have no
+        # such prefix and get extension_id=None.
+        ext_id, sep, _ = tool.name.partition("__")
+        tools.append(
+            {
+                "name": tool.name,
+                "title": title_for(tool.name),
+                "description": tool.description or "",
+                "input_schema": tool.inputSchema or {},
+                "extension_id": ext_id if sep else None,
+            }
+        )
+    return tools
+
+
+def _group_tools_by_extension(tools: list[dict], extensions: list[dict]) -> list[dict]:
+    """Bucket already-serialized tool dicts under their owning extension,
+    for the capabilities page's per-extension accordion groups. Keyed off
+    ``extensions`` (not just whatever extension ids happen to show up in
+    ``tools``) so a connected extension that currently offers zero tools
+    still gets a group with an empty ``tools`` list - that's still useful
+    "this extension is connected but offers nothing right now" info, not
+    something to silently drop."""
+    tools_by_extension: dict[str, list[dict]] = {}
+    for tool in tools:
+        ext_id = tool["extension_id"]
+        if ext_id is not None:
+            tools_by_extension.setdefault(ext_id, []).append(tool)
+
     return [
         {
-            "name": tool.name,
-            "title": title_for(tool.name),
-            "description": tool.description or "",
-            "input_schema": tool.inputSchema or {},
+            "id": extension["id"],
+            "label": extension.get("label") or extension["id"],
+            "description": extension.get("description") or "",
+            "status": extension.get("status"),
+            "error": extension.get("error"),
+            "tools": tools_by_extension.get(extension["id"], []),
         }
-        for tool in list_tools()
+        for extension in extensions
     ]
 
 
@@ -77,8 +151,13 @@ def _serialize_resources() -> list[dict]:
 
 @capabilities_bp.get("/")
 def browse():
+    # Fetched once up front and threaded through _serialize_tools() so the
+    # accordion grouping below can reuse the exact same catalog rather than
+    # hitting mcp_server's /extensions endpoint a second time this request.
+    extensions_catalog = _fetch_extensions_or_empty()
+
     try:
-        tools = _serialize_tools()
+        tools = _serialize_tools(extensions_catalog)
         tools_error = None
     except Exception as exc:  # noqa: BLE001 - surface any error to the page
         tools = []
@@ -95,7 +174,14 @@ def browse():
     # separate above so one section failing doesn't discard the other
     # section's successfully-fetched data.
     error = tools_error or resources_error
-    return render_template("capabilities/index.html", tools=tools, resources=resources, error=error)
+    extensions = _group_tools_by_extension(tools, extensions_catalog)
+    return render_template(
+        "capabilities/index.html",
+        tools=tools,
+        extensions=extensions,
+        resources=resources,
+        error=error,
+    )
 
 
 @capabilities_bp.get("/api/tools")

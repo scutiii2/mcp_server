@@ -1084,14 +1084,25 @@ Chat-Completions (including tool calling) is the mature, long-documented
 path.
 
 No API key concept at all — Ollama has no auth by default, so
-`has_api_key()`/`is_available()` are unconditionally `True`. That also
-means, unlike every other provider, there's no live reachability check:
-an unreachable Ollama host (wrong `OLLAMA_BASE_URL`, LAN down, box off)
-shows as "available" in the dropdown and only surfaces as an error at
-actual chat time, the same way a technically-present-but-broken API key
-would for any other provider.
+`has_api_key()`/`is_available()` are unconditionally `True`.
 
-**Two config knobs, both env vars, neither obvious:**
+**Model list vs. model availability — read once, checked live.** The
+desired model list (which models the operator wants offered at all)
+lives in `config.json`'s `providers.ollama.models` (see
+`infra/app_config.py` and `config.json.example`), read once at startup —
+same as the old `OLLAMA_MODELS` env var it replaced, restart to pick up
+edits. Whether each of those is actually *usable* right now is a
+separate, live question: `check_model_availability()` calls Ollama's own
+`GET /api/tags` (at the host's root, not under `/v1` — see
+`_tags_url()`) on every `/api/providers` request and marks each
+configured model `available`/`not_pulled` accordingly. Any failure
+talking to Ollama (host off, LAN down, wrong `OLLAMA_BASE_URL`, malformed
+response) fails closed: the provider and every one of its models report
+`unreachable` rather than silently claiming to be fine. A short (~2s)
+timeout keeps a hung host from making that poll — which runs every 15s,
+from every open chat tab — noticeably laggy.
+
+**One config knob left as an env var:**
 
 - `OLLAMA_BASE_URL` — point this at your Ollama host's actual LAN
   address, NOT `localhost`, whenever `chat_app` and Ollama run on
@@ -1099,16 +1110,11 @@ would for any other provider.
   also binds to `127.0.0.1` only by default — it needs
   `OLLAMA_HOST=0.0.0.0` (or equivalent) set on the Ollama side too, or
   no amount of correct config on the `chat_app` side will reach it.
-- `OLLAMA_MODELS` — parsed from env rather than hardcoded, as
-  `"model_id=Label,model_id=Label"`, using `=` as the separator on
-  purpose. That's a fix for a real bug found while testing this provider:
-  Ollama model IDs already contain a colon themselves (the `name:tag`
-  format, e.g. `qwen2.5:3b`), so using `:` as the id/label separator too
-  made `qwen2.5:3b:My Label` genuinely ambiguous — it silently truncated
-  the id to `qwen2.5`, losing the tag, which then 404'd against Ollama
-  since `qwen2.5` alone was never a pulled model. Covered by a dedicated
-  regression test (`test_ollama_models_parsed_preserves_the_tag_colon_in_model_id`)
-  so this can't quietly come back.
+
+Ollama model IDs already contain a colon themselves (the `name:tag`
+format, e.g. `qwen2.5:3b`), which is exactly the string `/api/tags`
+reports back as each pulled model's `name` — matched verbatim against
+each configured `id`, no normalization needed.
 
 **Deliberately excluded from `AUTOMATIC_ORDER`.** Ollama's own template
 for the default model (`llama3.2:1b`) does have genuine tool-calling

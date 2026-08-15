@@ -14,11 +14,16 @@ import pytest
 
 from mcp_server.infra.app_config import (
     EmailConfig,
+    ExtensionConfig,
+    delete_extension_config,
     load_config,
     load_email_config,
+    load_extension_config,
+    load_extensions_config,
     load_host_config,
     load_hosts_config,
     resolve_section,
+    save_extension_config,
 )
 
 
@@ -49,6 +54,21 @@ VALID_EMAIL = {
 VALID_HOSTS = {
     "zima": {"hostname": "192.168.1.10", "user": "root", "os": "linux", "key": "/root/.ssh/id"},
     "desktop": {"hostname": "192.168.1.20", "user": "User", "os": "windows", "password": "pw"},
+}
+
+VALID_EXTENSIONS = {
+    "reference": {
+        "label": "Reference Extension",
+        "description": "Dev fixture",
+        "command": "python",
+        "args": ["-m", "mcp_server._fixtures.reference_extension_server"],
+    },
+    "other": {
+        "label": "Other Extension",
+        "description": "Another one",
+        "command": "python",
+        "args": [],
+    },
 }
 
 
@@ -572,3 +592,389 @@ def test_missing_hosts_section_raises(tmp_path: Path):
 
     with pytest.raises(KeyError, match="hosts"):
         load_hosts_config(path)
+
+
+# --- extensions ----------------------------------------------------------
+# Mirrors the "hosts" tests above - same per-entry resolution, same
+# broken-sibling isolation - with one deliberate difference: extensions
+# are loaded eagerly at every server startup (infra/extensions.py), not
+# lazily per tool call like hosts, so an absent "extensions" section has
+# to mean "none configured" rather than "config is broken", or every
+# config.json written before this feature existed stops starting.
+
+
+def test_extensions_are_keyed_by_id(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": VALID_EXTENSIONS})
+
+    extensions = load_extensions_config(path)
+
+    assert set(extensions) == {"reference", "other"}
+    assert extensions["reference"].id == "reference"
+    assert extensions["reference"].command == "python"
+    assert extensions["reference"].args == ["-m", "mcp_server._fixtures.reference_extension_server"]
+
+
+def test_args_default_to_empty_list(tmp_path: Path):
+    no_args = {k: v for k, v in VALID_EXTENSIONS["reference"].items() if k != "args"}
+    path = _write(tmp_path, {"extensions": {"reference": no_args}})
+
+    assert load_extensions_config(path)["reference"].args == []
+
+
+def test_description_defaults_to_empty_string(tmp_path: Path):
+    """Unlike `label` (shown as the extension's name in a UI, so it must
+    be spelled out) or `command` (nothing works without it), a missing
+    description degrades gracefully - it's cosmetic, not load-bearing."""
+    no_description = {k: v for k, v in VALID_EXTENSIONS["reference"].items() if k != "description"}
+    path = _write(tmp_path, {"extensions": {"reference": no_description}})
+
+    assert load_extensions_config(path)["reference"].description == ""
+
+
+def test_missing_command_and_url_is_rejected(tmp_path: Path):
+    """Before the http transport existed, 'command' was unconditionally
+    required and its absence raised KeyError naming the key. Now
+    'command' xor 'url' is required - omitting 'command' alone is only an
+    error because 'url' isn't present either (see
+    test_extension_with_neither_command_nor_url_is_rejected), so this
+    raises the mutual-exclusion ValueError rather than a KeyError about
+    'command' specifically."""
+    no_command = {k: v for k, v in VALID_EXTENSIONS["reference"].items() if k != "command"}
+    path = _write(tmp_path, {"extensions": {"reference": no_command}})
+
+    with pytest.raises(ValueError, match="'command'.*'url'"):
+        load_extensions_config(path)
+
+
+def test_missing_label_names_the_key(tmp_path: Path):
+    no_label = {k: v for k, v in VALID_EXTENSIONS["reference"].items() if k != "label"}
+    path = _write(tmp_path, {"extensions": {"reference": no_label}})
+
+    with pytest.raises(KeyError, match="extensions.reference.label"):
+        load_extensions_config(path)
+
+
+def test_extension_args_resolve_placeholders(tmp_path: Path, monkeypatch):
+    """The documented future use case: a bearer token passed as a CLI
+    arg, named rather than written down, same as hosts.<name>.password."""
+    monkeypatch.setenv("REFERENCE_TOKEN", "s3cret")
+    path = _write(
+        tmp_path,
+        {
+            "extensions": {
+                "reference": {
+                    **VALID_EXTENSIONS["reference"],
+                    "args": ["--token", "${REFERENCE_TOKEN}"],
+                }
+            }
+        },
+    )
+
+    assert load_extensions_config(path)["reference"].args == ["--token", "s3cret"]
+
+
+def test_a_broken_extension_does_not_break_a_sibling_extension(tmp_path: Path, monkeypatch):
+    """Same property as the equivalent host test: resolution is per
+    entry, so one extension's unset secret can't take a working sibling
+    down with it - which is exactly when you'd still want the working one
+    available."""
+    monkeypatch.delenv("MISSING_TOKEN", raising=False)
+    path = _write(
+        tmp_path,
+        {
+            "extensions": {
+                "reference": VALID_EXTENSIONS["reference"],
+                "broken": {**VALID_EXTENSIONS["other"], "args": ["${MISSING_TOKEN}"]},
+            }
+        },
+    )
+
+    assert load_extension_config(path, "reference").command == "python"
+
+    with pytest.raises(KeyError, match="MISSING_TOKEN"):
+        load_extension_config(path, "broken")
+
+
+def test_loading_all_extensions_still_fails_when_any_is_broken(tmp_path: Path, monkeypatch):
+    """The one caller that legitimately needs every extension: it returns
+    the whole configured set, so skipping the broken one would hand back
+    a silently short list."""
+    monkeypatch.delenv("MISSING_TOKEN", raising=False)
+    path = _write(
+        tmp_path,
+        {
+            "extensions": {
+                "reference": VALID_EXTENSIONS["reference"],
+                "broken": {**VALID_EXTENSIONS["other"], "args": ["${MISSING_TOKEN}"]},
+            }
+        },
+    )
+
+    with pytest.raises(KeyError, match="MISSING_TOKEN"):
+        load_extensions_config(path)
+
+
+def test_unknown_extension_names_the_ones_that_exist(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": VALID_EXTENSIONS})
+
+    with pytest.raises(KeyError, match="other, reference"):
+        load_extension_config(path, "nope")
+
+
+def test_missing_extensions_section_returns_empty_rather_than_raising(tmp_path: Path):
+    """The deliberate deviation from load_hosts_config: extensions load
+    eagerly on every startup (infra/extensions.py), not lazily per tool
+    call, so an absent section must mean "none configured" - the
+    alternative breaks every config.json written before this feature
+    existed the moment it ships."""
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    assert load_extensions_config(path) == {}
+
+
+def test_missing_extensions_section_makes_any_id_unknown(tmp_path: Path):
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    with pytest.raises(KeyError, match="none configured"):
+        load_extension_config(path, "reference")
+
+
+def test_extensions_section_must_be_an_object(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": ["not", "an", "object"]})
+
+    with pytest.raises(ValueError, match="must be an object"):
+        load_extensions_config(path)
+
+
+def test_extension_entry_args_must_be_a_list(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {"extensions": {"reference": {**VALID_EXTENSIONS["reference"], "args": "not-a-list"}}},
+    )
+
+    with pytest.raises(ValueError, match="must be a list"):
+        load_extensions_config(path)
+
+
+def test_load_extensions_config_returns_extension_config_instances(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": {"reference": VALID_EXTENSIONS["reference"]}})
+
+    assert load_extensions_config(path)["reference"] == ExtensionConfig(
+        id="reference",
+        label="Reference Extension",
+        description="Dev fixture",
+        transport="stdio",
+        command="python",
+        args=["-m", "mcp_server._fixtures.reference_extension_server"],
+    )
+
+
+# --- extensions: http transport -----------------------------------------
+# A second way to reach an extension: connect to a URL instead of spawning
+# a subprocess. 'command' and 'url' are mutually exclusive - exactly one
+# is required - since together they'd say two different things about how
+# to reach the same extension, and neither says it unambiguously alone.
+
+
+def test_http_extension_entry_parses_correctly(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "extensions": {
+                "remote": {
+                    "label": "Remote Extension",
+                    "description": "An http-transport extension",
+                    "url": "http://127.0.0.1:9000/mcp",
+                }
+            }
+        },
+    )
+
+    config = load_extensions_config(path)["remote"]
+
+    assert config == ExtensionConfig(
+        id="remote",
+        label="Remote Extension",
+        description="An http-transport extension",
+        transport="http",
+        url="http://127.0.0.1:9000/mcp",
+    )
+
+
+def test_extension_with_both_command_and_url_is_rejected(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "extensions": {
+                "confused": {
+                    "label": "Confused",
+                    "command": "python",
+                    "url": "http://127.0.0.1:9000/mcp",
+                }
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="both 'command' and 'url'"):
+        load_extensions_config(path)
+
+
+def test_extension_with_neither_command_nor_url_is_rejected(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": {"nothing": {"label": "Nothing"}}})
+
+    with pytest.raises(ValueError, match="'command'.*'url'"):
+        load_extensions_config(path)
+
+
+def test_http_extension_url_resolves_placeholders(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("UPSTREAM_HOST", "upstream.internal")
+    path = _write(
+        tmp_path,
+        {"extensions": {"remote": {"label": "Remote", "url": "http://${UPSTREAM_HOST}:9000/mcp"}}},
+    )
+
+    assert load_extensions_config(path)["remote"].url == "http://upstream.internal:9000/mcp"
+
+
+def test_http_extension_empty_url_is_rejected(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": {"remote": {"label": "Remote", "url": "   "}}})
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        load_extensions_config(path)
+
+
+# --- save_extension_config / delete_extension_config ----------------------
+# The runtime add/remove routes (extension_routes.py) persist through
+# these, so a successful HTTP response and config.json agreeing about what
+# extensions exist depends on them round-tripping correctly - and, just as
+# important, not disturbing anything else in the file.
+
+
+def test_save_extension_config_adds_a_new_http_entry(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": {}})
+
+    save_extension_config(
+        path,
+        ExtensionConfig(id="remote", label="Remote", description="desc", transport="http", url="http://x/mcp"),
+    )
+
+    data = load_config(path)
+    assert data["extensions"]["remote"] == {
+        "label": "Remote",
+        "description": "desc",
+        "url": "http://x/mcp",
+    }
+
+
+def test_save_extension_config_adds_a_new_stdio_entry(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": {}})
+
+    save_extension_config(
+        path,
+        ExtensionConfig(
+            id="local", label="Local", description="desc", transport="stdio", command="python", args=["-m", "x"]
+        ),
+    )
+
+    data = load_config(path)
+    assert data["extensions"]["local"] == {
+        "label": "Local",
+        "description": "desc",
+        "command": "python",
+        "args": ["-m", "x"],
+    }
+
+
+def test_save_extension_config_overwrites_an_existing_entry_by_id(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {"extensions": {"remote": {"label": "Old", "description": "", "url": "http://old/mcp"}}},
+    )
+
+    save_extension_config(
+        path,
+        ExtensionConfig(id="remote", label="New", description="", transport="http", url="http://new/mcp"),
+    )
+
+    assert load_config(path)["extensions"]["remote"]["url"] == "http://new/mcp"
+    assert load_config(path)["extensions"]["remote"]["label"] == "New"
+
+
+def test_save_extension_config_creates_the_extensions_section_if_absent(tmp_path: Path):
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    save_extension_config(
+        path, ExtensionConfig(id="remote", label="Remote", description="", transport="http", url="http://x/mcp")
+    )
+
+    data = load_config(path)
+    assert "remote" in data["extensions"]
+    assert data["email"] == VALID_EMAIL
+
+
+def test_save_extension_config_preserves_other_sections_and_entries(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "email": {**VALID_EMAIL, "password": "${SMTP_PASSWORD}"},
+            "hosts": VALID_HOSTS,
+            "extensions": {"other": VALID_EXTENSIONS["other"]},
+        },
+    )
+
+    save_extension_config(
+        path, ExtensionConfig(id="remote", label="Remote", description="", transport="http", url="http://x/mcp")
+    )
+
+    data = load_config(path)
+    assert data["email"]["password"] == "${SMTP_PASSWORD}"  # not resolved
+    assert data["hosts"] == VALID_HOSTS
+    assert data["extensions"]["other"] == VALID_EXTENSIONS["other"]
+    assert "remote" in data["extensions"]
+
+
+def test_delete_extension_config_removes_the_entry(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {"extensions": {"remote": {"label": "Remote", "description": "", "url": "http://x/mcp"}}},
+    )
+
+    delete_extension_config(path, "remote")
+
+    assert "remote" not in load_config(path)["extensions"]
+
+
+def test_delete_extension_config_preserves_other_sections_and_entries(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "email": {**VALID_EMAIL, "password": "${SMTP_PASSWORD}"},
+            "extensions": {
+                "remote": {"label": "Remote", "description": "", "url": "http://x/mcp"},
+                "other": VALID_EXTENSIONS["other"],
+            },
+        },
+    )
+
+    delete_extension_config(path, "remote")
+
+    data = load_config(path)
+    assert "remote" not in data["extensions"]
+    assert data["extensions"]["other"] == VALID_EXTENSIONS["other"]
+    assert data["email"]["password"] == "${SMTP_PASSWORD}"  # not resolved
+
+
+def test_delete_extension_config_is_idempotent_for_an_unknown_id(tmp_path: Path):
+    path = _write(tmp_path, {"extensions": {"other": VALID_EXTENSIONS["other"]}})
+
+    delete_extension_config(path, "does-not-exist")  # must not raise
+
+    assert set(load_config(path)["extensions"]) == {"other"}
+
+
+def test_delete_extension_config_is_idempotent_when_extensions_section_is_absent(tmp_path: Path):
+    path = _write(tmp_path, {"email": VALID_EMAIL})
+
+    delete_extension_config(path, "does-not-exist")  # must not raise
+
+    assert load_config(path)["email"] == VALID_EMAIL
