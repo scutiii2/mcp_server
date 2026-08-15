@@ -35,7 +35,17 @@
       <input id="ext-add-label" type="text" placeholder="Name" required>
       <input id="ext-add-url" type="text" placeholder="URL" required>
       <button id="ext-add-btn" type="submit">Add</button>
-      <p id="ext-add-error" class="ext-add-error hidden"></p>
+      <div id="ext-add-error" class="ext-add-error hidden">
+        <p id="ext-add-error-text" class="ext-add-error-text"></p>
+        <p id="ext-add-error-details" class="ext-add-error-details hidden"></p>
+        <button id="ext-add-error-help-toggle" type="button" class="ext-add-error-help-toggle hidden" aria-expanded="false">Why might this happen?</button>
+        <ul id="ext-add-error-help-list" class="ext-add-error-help-list hidden">
+          <li>The server might be down or hasn't started yet.</li>
+          <li>The URL might be wrong - check the host, port, and path.</li>
+          <li>A firewall or network could be blocking the connection.</li>
+          <li>The URL might not point to a running MCP server.</li>
+        </ul>
+      </div>
     </form>
     <div id="ext-list" class="ext-list"><p class="ext-empty">Loading...</p></div>
   </aside>

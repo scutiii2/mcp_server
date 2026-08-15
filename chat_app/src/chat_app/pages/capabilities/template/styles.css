@@ -81,3 +81,22 @@ pre.result { background: #f5f5f5; padding: 10px 12px; border-radius: 6px; font-s
 .ext-switch input:checked + .ext-switch-slider { background: #3b6d11; }
 .ext-switch input:checked + .ext-switch-slider::before { transform: translateX(14px); }
 .ext-switch input:focus-visible + .ext-switch-slider { outline: 2px solid #185fa5; outline-offset: 2px; }
+
+/* Top-level Tools/Resources accordions - the same header+chevron+.open
+   pattern as .ext-group above, one level up: a bigger, section-scale
+   version of the identical interaction rather than a new one. Body is
+   shown by default (.capability-section starts with .open in the
+   template) so nothing is hidden on first load. */
+.capability-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin: 32px 0 4px;
+}
+.capability-section-header:hover .capability-section-chevron { color: #666; }
+.capability-section-header h2 { margin: 0; }
+.capability-section-chevron { font-size: 13px; color: #999; transition: transform 0.15s ease; flex-shrink: 0; }
+.capability-section.open .capability-section-chevron { transform: rotate(90deg); }
+.capability-section-body { display: none; }
+.capability-section.open .capability-section-body { display: block; }

@@ -284,11 +284,49 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
 }
 .ext-add-error {
   flex: 1 1 100%;
+  margin: 0;
+}
+.ext-add-error.hidden { display: none; }
+.ext-add-error-text {
   font-size: 11px;
   color: #c0392b;
   margin: 0;
 }
-.ext-add-error.hidden { display: none; }
+
+/* Connectivity-shaped failures add two things below the headline: a
+   muted "Details: ..." line carrying the original technical message
+   (never lost, just no longer the headline), and a collapsed disclosure
+   of likely causes so the panel isn't guessing which one applies. Both
+   sit on the same tone as .ext-sub / .ext-item-desc - muted, 11-12px,
+   no jargon. */
+.ext-add-error-details {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 4px 0 0;
+}
+.ext-add-error-details.hidden { display: none; }
+.ext-add-error-help-toggle {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ext-add-error-help-toggle:hover { background: none !important; color: var(--ink); }
+.ext-add-error-help-toggle:focus-visible { outline: 2px solid var(--rail-user); outline-offset: 1px; }
+.ext-add-error-help-toggle.hidden { display: none; }
+.ext-add-error-help-list {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.ext-add-error-help-list li { margin-bottom: 2px; }
+.ext-add-error-help-list.hidden { display: none; }
 
 .ext-item {
   border: 1px solid var(--panel-border);

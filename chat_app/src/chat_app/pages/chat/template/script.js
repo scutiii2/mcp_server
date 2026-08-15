@@ -107,22 +107,62 @@ async function loadExtensions() {
   updateExtToggleButtonLabel();
 }
 
+// Matches chat_app's own _forward_extension_error() fallback text - it
+// falls back to this whenever mcp_server's error body had no usable
+// "error" message, i.e. nothing specific came through. A message in this
+// shape means "something went wrong talking to mcp_server", not "here's
+// what you did wrong" - that's a connectivity problem wearing a status
+// code, not a validation error.
+const GENERIC_EXTENSION_ERROR_RE = /^mcp_server returned \d+\.$/;
+
+// Plain validation-style message: headline only, no "why might this
+// happen" disclosure - the message already says exactly what's wrong.
+function showExtAddError(message) {
+  resetExtAddError();
+  document.getElementById('ext-add-error-text').textContent = message;
+  document.getElementById('ext-add-error').classList.remove('hidden');
+}
+
+// Connectivity-shaped failure (unreachable server, generic status-only
+// message, or a 201 that registered the extension but couldn't connect
+// to it): a friendly headline replaces the raw text, the raw text
+// survives as a muted "Details" line, and a collapsed list of likely
+// causes is offered instead of guessing which one applies.
+function showExtAddConnectivityError(details) {
+  resetExtAddError();
+  document.getElementById('ext-add-error-text').textContent = 'Failed to connect to this MCP Server.';
+  const detailsEl = document.getElementById('ext-add-error-details');
+  detailsEl.textContent = `Details: ${details}`;
+  detailsEl.classList.remove('hidden');
+  document.getElementById('ext-add-error-help-toggle').classList.remove('hidden');
+  document.getElementById('ext-add-error').classList.remove('hidden');
+}
+
+function resetExtAddError() {
+  const helpToggle = document.getElementById('ext-add-error-help-toggle');
+  document.getElementById('ext-add-error').classList.add('hidden');
+  document.getElementById('ext-add-error-text').textContent = '';
+  document.getElementById('ext-add-error-details').classList.add('hidden');
+  helpToggle.classList.add('hidden');
+  helpToggle.setAttribute('aria-expanded', 'false');
+  helpToggle.textContent = 'Why might this happen?';
+  document.getElementById('ext-add-error-help-list').classList.add('hidden');
+}
+
 async function submitAddExtension(event) {
   event.preventDefault();
   const labelInput = document.getElementById('ext-add-label');
   const urlInput = document.getElementById('ext-add-url');
-  const errorEl = document.getElementById('ext-add-error');
   const addBtn = document.getElementById('ext-add-btn');
 
   const label = labelInput.value.trim();
   const url = urlInput.value.trim();
   if (!label || !url) {
-    errorEl.textContent = 'Name and URL are required.';
-    errorEl.classList.remove('hidden');
+    showExtAddError('Name and URL are required.');
     return;
   }
 
-  errorEl.classList.add('hidden');
+  resetExtAddError();
   addBtn.disabled = true;
   try {
     const res = await fetch('/api/extensions', {
@@ -131,15 +171,39 @@ async function submitAddExtension(event) {
       body: JSON.stringify({ label, url }),
     });
     const data = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-      throw new Error(data.error || `Server responded with ${res.status}`);
+      const specific = data.error;
+      // No specific message, or one that collapsed to the generic
+      // fallback, means mcp_server (or chat_app relaying it) had nothing
+      // actionable to say - treat that as connectivity-shaped same as a
+      // 502. A real validation message (400 from missing fields or a
+      // malformed URL) is specific and stays verbatim.
+      const isGenericFallback = !specific || GENERIC_EXTENSION_ERROR_RE.test(specific);
+      if (res.status === 502 || isGenericFallback) {
+        showExtAddConnectivityError(specific || `Server responded with ${res.status}.`);
+      } else {
+        showExtAddError(specific);
+      }
+      return;
     }
+
+    // A 201 still isn't necessarily a clean success: mcp_server registers
+    // the extension either way and only reports whether it could reach
+    // it via status/error on the body (same shape GET /extensions uses
+    // for an already-broken entry). The extension IS registered - it'll
+    // show up, disabled and erroring, in the list below - so the form
+    // still clears, but this must not read as an unqualified success.
     labelInput.value = '';
     urlInput.value = '';
+    if (data.status === 'error') {
+      showExtAddConnectivityError(data.error || 'Could not connect to the server.');
+    }
     await loadExtensions(); // refresh immediately rather than waiting for the next 15s poll
   } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('hidden');
+    // fetch() itself failed - chat_app couldn't be reached at all, the
+    // most connectivity-shaped failure of all.
+    showExtAddConnectivityError(err.message);
   } finally {
     addBtn.disabled = false;
   }
@@ -630,6 +694,14 @@ document.getElementById('ext-toggle-btn').addEventListener('click', toggleExtPan
 document.getElementById('ext-close-btn').addEventListener('click', closeExtPanel);
 document.getElementById('ext-overlay').addEventListener('click', closeExtPanel);
 document.getElementById('ext-add-form').addEventListener('submit', submitAddExtension);
+document.getElementById('ext-add-error-help-toggle').addEventListener('click', () => {
+  const list = document.getElementById('ext-add-error-help-list');
+  const toggle = document.getElementById('ext-add-error-help-toggle');
+  const expanding = list.classList.contains('hidden');
+  list.classList.toggle('hidden');
+  toggle.setAttribute('aria-expanded', String(expanding));
+  toggle.textContent = expanding ? 'Hide' : 'Why might this happen?';
+});
 
 loadProviders();
 setInterval(loadProviders, 15000);

@@ -14,7 +14,12 @@
   <div class="error">Could not reach the MCP server: {{ error }}</div>
   {% endif %}
 
-  <h2>Tools</h2>
+  <div class="capability-section open" id="tools-section">
+    <div class="capability-section-header">
+      <span class="capability-section-chevron">▸</span>
+      <h2>Tools</h2>
+    </div>
+    <div class="capability-section-body">
   <p class="section-sub">Actions the model decides to invoke, with arguments.</p>
 
   {% macro render_tool_card(tool) %}
@@ -76,8 +81,15 @@
     </div>
   </div>
   {% endfor %}
+    </div>
+  </div>
 
-  <h2>Resources</h2>
+  <div class="capability-section open" id="resources-section">
+    <div class="capability-section-header">
+      <span class="capability-section-chevron">▸</span>
+      <h2>Resources</h2>
+    </div>
+    <div class="capability-section-body">
   <p class="section-sub">Read-only, URI-addressed data — browsed and read directly, no model decision needed.</p>
 
   {% for resource in resources %}
@@ -110,6 +122,8 @@
   {% if not resources %}
   <p class="empty">No resources registered.</p>
   {% endif %}
+    </div>
+  </div>
 
   <script src="{{ url_for('capabilities.static', filename='script.js') }}"></script>
 </body>

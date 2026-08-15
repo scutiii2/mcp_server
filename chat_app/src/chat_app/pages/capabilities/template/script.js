@@ -86,6 +86,23 @@ function initExtGroups() {
 
 initExtGroups();
 
+// --- Top-level Tools/Resources accordions --------------------------------
+// Same open/closed mechanics as the per-extension groups above (toggle an
+// .open class on click), just one level up and starting pre-opened so the
+// page still shows everything by default - this is purely an option to
+// collapse a section, not a default hide.
+function initCapabilitySections() {
+  const sections = document.querySelectorAll('.capability-section');
+  for (const section of sections) {
+    const header = section.querySelector('.capability-section-header');
+    header.addEventListener('click', () => {
+      section.classList.toggle('open');
+    });
+  }
+}
+
+initCapabilitySections();
+
 async function runTool(event, toolName) {
   event.preventDefault();
   const form = event.target;
