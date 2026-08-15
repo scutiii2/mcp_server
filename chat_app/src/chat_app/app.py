@@ -32,6 +32,7 @@ from jinja2 import FileSystemLoader, PrefixLoader
 from chat_app.config import settings
 from chat_app.pages.capabilities.routes import capabilities_bp
 from chat_app.pages.chat.routes import chat_bp
+from chat_app.pages.overview.routes import overview_bp
 from chat_app.security import install_security
 
 
@@ -46,11 +47,13 @@ def create_app() -> Flask:
     install_security(app)
     app.register_blueprint(chat_bp)
     app.register_blueprint(capabilities_bp)
+    app.register_blueprint(overview_bp)
 
     app.jinja_loader = PrefixLoader(
         {
             "chat": FileSystemLoader(str(PAGES_DIR / "chat" / "template")),
             "capabilities": FileSystemLoader(str(PAGES_DIR / "capabilities" / "template")),
+            "overview": FileSystemLoader(str(PAGES_DIR / "overview" / "template")),
         }
     )
 

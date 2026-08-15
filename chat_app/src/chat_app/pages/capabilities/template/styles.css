@@ -1,5 +1,6 @@
 body { font-family: -apple-system, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
-.back-link { display: inline-block; font-size: 13px; color: #666; text-decoration: none; margin-bottom: 16px; }
+.back-links { display: flex; gap: 14px; margin-bottom: 16px; }
+.back-link { display: inline-block; font-size: 13px; color: #666; text-decoration: none; }
 .back-link:hover { text-decoration: underline; }
 h1 { font-size: 20px; font-weight: 500; }
 h2 { font-size: 15px; font-weight: 500; margin: 32px 0 4px; }
@@ -100,3 +101,25 @@ pre.result { background: #f5f5f5; padding: 10px 12px; border-radius: 6px; font-s
 .capability-section.open .capability-section-chevron { transform: rotate(90deg); }
 .capability-section-body { display: none; }
 .capability-section.open .capability-section-body { display: block; }
+
+/* Per-capability accordion groups (built-in tools/resources, grouped by
+   e.g. "Host Health"/"OTP" - see tool_capabilities.py) - same card
+   language and header/chevron/body mechanics as .ext-group above, minus
+   the status dot and toggle switch: built-ins have no enabled/disabled
+   concept and no connection status, so that markup doesn't apply here. */
+.capability-group { border: 1px solid #e2e2e2; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+.capability-group-header {
+  padding: 14px 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.capability-group-header:hover { background: #fafafa; }
+.capability-group-chevron { font-size: 11px; color: #999; transition: transform 0.15s ease; flex-shrink: 0; }
+.capability-group.open .capability-group-chevron { transform: rotate(90deg); }
+.capability-group-label { font-weight: 500; font-size: 15px; }
+.capability-group-count { font-size: 12px; color: #999; flex: 1; }
+.capability-group-body { display: none; padding: 12px 18px 18px; border-top: 1px solid #eee; }
+.capability-group.open .capability-group-body { display: block; }
+.capability-group-body .tool:last-child { margin-bottom: 0; }

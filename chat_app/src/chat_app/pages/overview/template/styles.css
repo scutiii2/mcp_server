@@ -1,0 +1,9 @@
+body { font-family: -apple-system, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
+h1 { font-size: 20px; font-weight: 500; }
+.sub { color: #666; font-size: 13px; margin-bottom: 24px; }
+
+.page-list { list-style: none; margin: 0; padding: 0; }
+.page-card { border: 1px solid #e2e2e2; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+.page-link { font-size: 15px; font-weight: 500; color: #185fa5; text-decoration: none; }
+.page-link:hover { text-decoration: underline; }
+.page-desc { color: #666; font-size: 13px; margin: 6px 0 0; }

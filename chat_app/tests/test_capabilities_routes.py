@@ -235,6 +235,98 @@ def test_api_resources_returns_reshaped_json_with_extracted_params(client):
     ]
 
 
+def test_browse_groups_builtin_tools_under_their_capability_accordion(client):
+    """Built-in tools with a known capability (host_health/otp - see
+    tool_capabilities.py) get grouped into their own accordion sections,
+    the same way extension tools are grouped by extension. This is
+    separate from the flat ``tools`` list, which is kept around for the
+    top summary count."""
+    with patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[]), \
+         patch(
+             "chat_app.pages.capabilities.routes.list_tools",
+             return_value=[
+                 _fake_tool(name="get_host_health_tool"),
+                 _fake_tool(name="request_otp_tool"),
+                 _fake_tool(name="verify_otp_tool"),
+             ],
+         ):
+        response = client.get("/capabilities/")
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    assert 'data-capability-label="Host Health"' in html
+    assert 'data-capability-label="OTP"' in html
+    assert "2 tools" in html  # OTP's count (request_otp_tool + verify_otp_tool)
+    assert "1 tool" in html  # Host Health's count
+
+
+def test_browse_falls_back_unmapped_builtin_tools_to_other_group(client):
+    """A built-in tool with no entry in tool_capabilities.py's map isn't
+    dropped - it lands in the "Other" fallback group, so nothing silently
+    disappears if a future mcp_server capability lands before this map is
+    updated."""
+    with patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[]), \
+         patch("chat_app.pages.capabilities.routes.list_tools", return_value=[_fake_tool()]):
+        response = client.get("/capabilities/")
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    assert 'data-capability-label="Other"' in html
+    assert "restart_service_tool" in html
+
+
+def test_browse_excludes_extension_tools_from_capability_groups(client):
+    """An extension tool is grouped under its extension only - it must
+    not also show up in a capability group, since it doesn't come from
+    tool_capabilities.py's built-in map at all."""
+    with patch(
+        "chat_app.pages.capabilities.routes.fetch_extensions",
+        return_value=[{"id": "reference", "label": "Reference", "description": "", "status": "connected", "error": None}],
+    ), \
+         patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[]), \
+         patch(
+             "chat_app.pages.capabilities.routes.list_tools",
+             return_value=[_fake_tool(name="reference__do_thing"), _fake_tool(name="get_host_health_tool")],
+         ):
+        response = client.get("/capabilities/")
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    # The extension tool renders once, inside its extension group -
+    # capability groups only ever hold built-ins (extension_id is None).
+    assert html.count('id="tool-reference__do_thing"') == 1
+    assert 'data-capability-label="Host Health"' in html
+
+
+def test_browse_groups_resources_under_their_capability_accordion(client):
+    """host_health the resource groups under the same "Host Health" label
+    as get_host_health_tool - same underlying capability, per run.py's
+    comment (the resource serves URI-reading clients, the tool serves
+    models)."""
+    with patch("chat_app.pages.capabilities.routes.list_tools", return_value=[]), \
+         patch(
+             "chat_app.pages.capabilities.routes.list_resource_templates",
+             return_value=[_fake_resource_template(name="host_health", uri_template="host://health/{name}")],
+         ):
+        response = client.get("/capabilities/")
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    assert 'data-capability-label="Host Health"' in html
+    assert "1 resource" in html
+
+
+def test_browse_falls_back_unmapped_resources_to_other_group(client):
+    with patch("chat_app.pages.capabilities.routes.list_tools", return_value=[]), \
+         patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[_fake_resource_template()]):
+        response = client.get("/capabilities/")
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    assert 'data-capability-label="Other"' in html
+    assert "Recent Logs Resource" in html
+
+
 def test_browse_renders_resource_section(client):
     with patch("chat_app.pages.capabilities.routes.list_tools", return_value=[]), \
          patch("chat_app.pages.capabilities.routes.list_resource_templates", return_value=[_fake_resource_template()]):

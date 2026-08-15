@@ -103,6 +103,26 @@ function initCapabilitySections() {
 
 initCapabilitySections();
 
+// --- Per-capability accordion groups (built-in tools/resources) ---------
+// Groups built-in tools/resources by capability (e.g. "Host Health",
+// "OTP") - see tool_capabilities.py. Same open/closed mechanics as
+// .ext-group above (toggle .open on header click), collapsed by default
+// for visual consistency with the extension groups sitting right below
+// them in the Tools section. Unlike .ext-group, there's no toggle switch
+// or status dot to wire up - built-ins have no enabled/disabled concept
+// and no connection status, so this is simpler than initExtGroups().
+function initCapabilityGroups() {
+  const groups = document.querySelectorAll('.capability-group');
+  for (const group of groups) {
+    const header = group.querySelector('.capability-group-header');
+    header.addEventListener('click', () => {
+      group.classList.toggle('open');
+    });
+  }
+}
+
+initCapabilityGroups();
+
 async function runTool(event, toolName) {
   event.preventDefault();
   const form = event.target;

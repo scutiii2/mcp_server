@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MCP chat app</title>
+  <link rel="stylesheet" href="{{ url_for('overview.static', filename='styles.css') }}">
+</head>
+<body>
+  <h1>MCP chat app</h1>
+  <p class="sub">Pick a page to get started.</p>
+
+  <ul class="page-list">
+    <li class="page-card">
+      <a class="page-link" href="/chat">Chat</a>
+      <p class="page-desc">Talk to an LLM with MCP tool access.</p>
+    </li>
+    <li class="page-card">
+      <a class="page-link" href="/capabilities">Capabilities</a>
+      <p class="page-desc">Browse the MCP server's live tool and resource catalog.</p>
+    </li>
+  </ul>
+</body>
+</html>

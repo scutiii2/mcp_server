@@ -25,6 +25,7 @@ from chat_app.services.mcp_client import (
     list_tools,
     read_resource,
 )
+from chat_app.services.tool_capabilities import capability_for_resource, capability_for_tool
 from chat_app.services.tool_titles import title_for
 
 
@@ -125,6 +126,47 @@ def _group_tools_by_extension(tools: list[dict], extensions: list[dict]) -> list
     ]
 
 
+def _group_tools_by_capability(tools: list[dict]) -> list[dict]:
+    """Bucket built-in (non-extension) tool dicts under their capability
+    label, for the capabilities page's per-capability accordion groups -
+    the built-in equivalent of ``_group_tools_by_extension`` above, same
+    ``{label, tools}`` shape minus the extension-only fields (``id``,
+    ``status``, ``error``) that don't apply to a built-in grouping - no
+    connection status, nothing to toggle.
+
+    Unlike ``_group_tools_by_extension``, there's no upfront catalog of
+    known labels to iterate (capability labels come from
+    ``tool_capabilities``'s hand-maintained map, not something fetched
+    from mcp_server), so groups are built in first-seen order across
+    ``tools`` instead. A tool with no entry in that map still lands in a
+    group (the "Other" fallback baked into ``capability_for_tool``) rather
+    than being dropped - same fail-open reasoning used throughout this
+    module: nothing should silently disappear just because the map lagged
+    behind a new capability landing in mcp_server. Extension tools are
+    skipped entirely here - they're already grouped by extension."""
+    grouped: dict[str, list[dict]] = {}
+    for tool in tools:
+        if tool["extension_id"] is not None:
+            continue
+        label = capability_for_tool(tool["name"])
+        grouped.setdefault(label, []).append(tool)
+
+    return [{"label": label, "tools": tools_for_label} for label, tools_for_label in grouped.items()]
+
+
+def _group_resources_by_capability(resources: list[dict]) -> list[dict]:
+    """Same idea as ``_group_tools_by_capability`` above, for resources.
+    Resources have no extension concept at all today (they're all
+    built-in), so unlike the tools version there's nothing to skip - every
+    resource gets grouped."""
+    grouped: dict[str, list[dict]] = {}
+    for resource in resources:
+        label = capability_for_resource(resource["name"])
+        grouped.setdefault(label, []).append(resource)
+
+    return [{"label": label, "resources": resources_for_label} for label, resources_for_label in grouped.items()]
+
+
 def _extract_uri_params(uri_template: str) -> list[str]:
     """Pull {placeholder} names out of a resource URI template, in order -
     used to render one input field per parameter, the resource-template
@@ -175,11 +217,15 @@ def browse():
     # section's successfully-fetched data.
     error = tools_error or resources_error
     extensions = _group_tools_by_extension(tools, extensions_catalog)
+    tool_capability_groups = _group_tools_by_capability(tools)
+    resource_capability_groups = _group_resources_by_capability(resources)
     return render_template(
         "capabilities/index.html",
         tools=tools,
         extensions=extensions,
+        tool_capability_groups=tool_capability_groups,
         resources=resources,
+        resource_capability_groups=resource_capability_groups,
         error=error,
     )
 
