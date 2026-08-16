@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
+from chat_app.chats import store as chats_store
 from chat_app.services.llm.base import ChatResult
 
 
@@ -60,12 +61,12 @@ def test_api_chat_returns_run_chat_result(client):
         )
 
     assert response.status_code == 200
-    assert response.get_json() == {
-        "response": "web-1 is running normally.",
-        "tools_used": ["get_host_health"],
-        "provider_id": "claude",
-        "total_tokens": 1234,
-    }
+    body = response.get_json()
+    assert body["response"] == "web-1 is running normally."
+    assert body["tools_used"] == ["get_host_health"]
+    assert body["provider_id"] == "claude"
+    assert body["total_tokens"] == 1234
+    assert body["chat_id"] is not None  # Now persisted
     # enabled_extensions omitted from the request body -> defaults to [],
     # same as history/provider/model already do.
     mock_run_chat.assert_called_once_with("how is web-1 doing?", [], "claude", "claude-opus-4-8", [])
@@ -299,3 +300,170 @@ def test_remove_extension_api_reports_unreachable_mcp_server_as_502(client):
 
     assert response.status_code == 502
     assert "connection refused" in response.get_json()["error"]
+
+
+def test_api_chat_creates_a_new_chat_and_returns_its_id(client, chats_db):
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(response="hi there", provider_id="openai")
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    body = response.get_json()
+    assert body["chat_id"]
+    saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
+    assert saved["messages"] == [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi there"},
+    ]
+    assert saved["title"] == "hello"
+
+
+def test_api_chat_with_chat_id_updates_the_existing_chat(client, chats_db):
+    existing_id = chats_store.save_chat(
+        chats_db, "test-admin", None, [{"role": "user", "content": "first"}]
+    )
+
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(response="second reply", provider_id="openai")
+        response = client.post(
+            "/api/chat",
+            json={"question": "second question", "history": [{"role": "user", "content": "first"}], "chat_id": existing_id},
+        )
+
+    body = response.get_json()
+    assert body["chat_id"] == existing_id
+    saved = chats_store.get_chat(chats_db, "test-admin", existing_id)
+    assert saved["messages"] == [
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "second question"},
+        {"role": "assistant", "content": "second reply"},
+    ]
+
+
+def test_api_chat_persists_the_turn_even_when_the_provider_errors(client, chats_db):
+    """A curated ValueError still becomes a saved assistant turn - same
+    text the user sees in the transcript, so reopening the chat shows
+    what happened."""
+    with patch(
+        "chat_app.services.llm.router.run_chat",
+        side_effect=ValueError("Claude is not configured (missing API key)"),
+    ):
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    body = response.get_json()
+    saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
+    assert "Claude is not configured" in saved["messages"][-1]["content"]
+
+
+def test_api_chat_persistence_failure_does_not_break_the_response(client, chats_db):
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat, \
+         patch("chat_app.pages.chat.routes.chats_store.save_chat", side_effect=RuntimeError("disk full")):
+        mock_run_chat.return_value = ChatResult(response="hi there", provider_id="openai")
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["response"] == "hi there"
+    assert body["chat_id"] is None
+
+
+def test_api_chat_with_stale_chat_id_falls_back_to_creating_a_new_chat(client, chats_db):
+    """The chat_id the client sent no longer exists (e.g. deleted from
+    another tab) - the turn must not be lost, it lands in a fresh chat
+    instead."""
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(response="hi there", provider_id="openai")
+        response = client.post("/api/chat", json={"question": "hello", "chat_id": "does-not-exist"})
+
+    body = response.get_json()
+    assert body["chat_id"] != "does-not-exist"
+    saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
+    assert saved["messages"][-1]["content"] == "hi there"
+
+
+def test_list_chats_api_returns_only_the_current_users_chats(client, chats_db):
+    mine = chats_store.save_chat(chats_db, "test-admin", None, [{"role": "user", "content": "mine"}])
+    chats_store.save_chat(chats_db, "someone-else", None, [{"role": "user", "content": "not mine"}])
+
+    response = client.get("/api/chats")
+
+    ids = [c["id"] for c in response.get_json()]
+    assert ids == [mine]
+
+
+def test_get_chat_api_returns_the_full_record(client, chats_db):
+    chat_id = chats_store.save_chat(chats_db, "test-admin", None, [{"role": "user", "content": "hi"}])
+
+    response = client.get(f"/api/chats/{chat_id}")
+
+    assert response.status_code == 200
+    assert response.get_json()["messages"] == [{"role": "user", "content": "hi"}]
+
+
+def test_get_chat_api_404_for_unknown_id(client, chats_db):
+    response = client.get("/api/chats/does-not-exist")
+
+    assert response.status_code == 404
+
+
+def test_get_chat_api_404_for_a_chat_owned_by_someone_else(client, chats_db):
+    chat_id = chats_store.save_chat(chats_db, "someone-else", None, [{"role": "user", "content": "hi"}])
+
+    response = client.get(f"/api/chats/{chat_id}")
+
+    assert response.status_code == 404
+
+
+def test_rename_chat_api_updates_the_title(client, chats_db):
+    chat_id = chats_store.save_chat(chats_db, "test-admin", None, [{"role": "user", "content": "hi"}])
+
+    response = client.patch(f"/api/chats/{chat_id}", json={"title": "New title"})
+
+    assert response.status_code == 204
+    assert chats_store.get_chat(chats_db, "test-admin", chat_id)["title"] == "New title"
+
+
+def test_rename_chat_api_rejects_a_blank_title(client, chats_db):
+    chat_id = chats_store.save_chat(chats_db, "test-admin", None, [{"role": "user", "content": "hi"}])
+
+    response = client.patch(f"/api/chats/{chat_id}", json={"title": "   "})
+
+    assert response.status_code == 400
+
+
+def test_rename_chat_api_404_for_unknown_id(client, chats_db):
+    response = client.patch("/api/chats/does-not-exist", json={"title": "New title"})
+
+    assert response.status_code == 404
+
+
+def test_rename_chat_api_404_for_a_chat_owned_by_someone_else(client, chats_db):
+    chat_id = chats_store.save_chat(chats_db, "someone-else", None, [{"role": "user", "content": "hi"}])
+
+    response = client.patch(f"/api/chats/{chat_id}", json={"title": "Hijacked"})
+
+    assert response.status_code == 404
+    assert chats_store.get_chat(chats_db, "someone-else", chat_id)["title"] != "Hijacked"
+
+
+def test_delete_chat_api_removes_the_chat(client, chats_db):
+    chat_id = chats_store.save_chat(chats_db, "test-admin", None, [{"role": "user", "content": "hi"}])
+
+    response = client.delete(f"/api/chats/{chat_id}")
+
+    assert response.status_code == 204
+    assert chats_store.get_chat(chats_db, "test-admin", chat_id) is None
+
+
+def test_delete_chat_api_404_for_unknown_id(client, chats_db):
+    response = client.delete("/api/chats/does-not-exist")
+
+    assert response.status_code == 404
+
+
+def test_delete_chat_api_404_for_a_chat_owned_by_someone_else(client, chats_db):
+    chat_id = chats_store.save_chat(chats_db, "someone-else", None, [{"role": "user", "content": "hi"}])
+
+    response = client.delete(f"/api/chats/{chat_id}")
+
+    assert response.status_code == 404
+    assert chats_store.get_chat(chats_db, "someone-else", chat_id) is not None

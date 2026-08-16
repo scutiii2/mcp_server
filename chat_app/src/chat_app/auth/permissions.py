@@ -30,6 +30,10 @@ SCOPES: dict[str, dict[str, object]] = {
             "chat.add_extension_api",
             "chat.remove_extension_api",
             "chat.chat_api",
+            "chat.list_chats_api",
+            "chat.get_chat_api",
+            "chat.rename_chat_api",
+            "chat.delete_chat_api",
         },
     },
     "capabilities": {

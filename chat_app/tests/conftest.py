@@ -13,6 +13,7 @@ from chat_app.auth import service as auth_service
 from chat_app.config import settings as base_settings
 from chat_app.pages.account import routes as account_routes
 from chat_app.pages.auth import routes as auth_routes
+from chat_app.pages.chat import routes as chat_routes
 from chat_app.services.llm import cooldown
 
 
@@ -49,3 +50,13 @@ def users_db(tmp_path, monkeypatch):
     monkeypatch.setattr(auth_service, "settings", test_settings)
     monkeypatch.setattr(account_routes, "settings", test_settings)
     return test_settings.users_db_path
+
+
+@pytest.fixture
+def chats_db(tmp_path, monkeypatch):
+    """Points chat_app.pages.chat.routes' `settings` at a fresh, per-test
+    SQLite file - same reasoning as users_db above: a frozen,
+    import-time-evaluated Settings field can't be monkeypatched directly."""
+    test_settings = dataclasses.replace(base_settings, chats_db_path=tmp_path / "chats.db")
+    monkeypatch.setattr(chat_routes, "settings", test_settings)
+    return test_settings.chats_db_path

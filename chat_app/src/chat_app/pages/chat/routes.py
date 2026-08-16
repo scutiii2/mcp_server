@@ -18,6 +18,8 @@ import urllib.error
 from flask import Blueprint, jsonify, render_template, request
 
 from chat_app.auth import service
+from chat_app.chats import store as chats_store
+from chat_app.config import settings
 from chat_app.errors import report
 from chat_app.security import json_body
 from chat_app.services.llm import router
@@ -120,12 +122,51 @@ def remove_extension_api(extension_id):
         return jsonify({"error": str(exc)}), 502
 
 
+@chat_bp.get("/api/chats")
+def list_chats_api():
+    return jsonify(chats_store.list_chats(settings.chats_db_path, service.current_username()))
+
+
+@chat_bp.get("/api/chats/<chat_id>")
+def get_chat_api(chat_id):
+    chat = chats_store.get_chat(settings.chats_db_path, service.current_username(), chat_id)
+    if chat is None:
+        return jsonify({"error": "Chat not found."}), 404
+    return jsonify(chat)
+
+
+@chat_bp.patch("/api/chats/<chat_id>")
+def rename_chat_api(chat_id):
+    data = json_body()
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "Title must not be blank."}), 400
+    try:
+        chats_store.rename_chat(settings.chats_db_path, service.current_username(), chat_id, title)
+    except chats_store.UnknownChat:
+        return jsonify({"error": "Chat not found."}), 404
+    return "", 204
+
+
+@chat_bp.delete("/api/chats/<chat_id>")
+def delete_chat_api(chat_id):
+    try:
+        chats_store.delete_chat(settings.chats_db_path, service.current_username(), chat_id)
+    except chats_store.UnknownChat:
+        return jsonify({"error": "Chat not found."}), 404
+    return "", 204
+
+
 @chat_bp.post("/api/chat")
 def chat_api():
     data = json_body()
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"response": "Please enter a question."})
+
+    tools_used: list[str] = []
+    provider_id = ""
+    total_tokens = None
     try:
         result = router.run_chat(
             question,
@@ -134,22 +175,51 @@ def chat_api():
             data.get("model"),
             data.get("enabled_extensions", []),
         )
-        return jsonify(
-            {
-                "response": result.response,
-                "tools_used": result.tools_used,
-                "provider_id": result.provider_id,
-                "total_tokens": result.total_tokens,
-            }
-        )
+        response_text = result.response
+        tools_used = result.tools_used
+        provider_id = result.provider_id
+        total_tokens = result.total_tokens
     except ValueError as error:
         # Deliberately verbatim: the router raises these with wording
         # meant for whoever is chatting ("Claude is rate-limited right now
         # - try again in 42s, or pick another provider"). They contain no
         # internals, and replacing them with a reference number would make
         # the app worse for no security gain.
-        return jsonify({"response": f"❌ {error}"})
+        response_text = f"❌ {error}"
     except Exception as error:
         # Anything else is unplanned, so its text is untrusted for display -
         # see errors.py.
-        return jsonify({"response": f"❌ {report(error, context='answering your question')}"})
+        response_text = f"❌ {report(error, context='answering your question')}"
+
+    # Persisted regardless of which branch above ran - an error turn is
+    # saved too, same as the client already does unconditionally on its
+    # own `history` array, so reopening a chat shows what happened.
+    transcript = list(data.get("history", [])) + [
+        {"role": "user", "content": question},
+        {"role": "assistant", "content": response_text},
+    ]
+    chat_id = data.get("chat_id")
+    try:
+        chat_id = chats_store.save_chat(settings.chats_db_path, service.current_username(), chat_id, transcript)
+    except chats_store.UnknownChat:
+        # The chat_id the client sent no longer exists (deleted from
+        # another tab, most likely) - fall back to creating a fresh chat
+        # rather than losing this turn entirely.
+        try:
+            chat_id = chats_store.save_chat(settings.chats_db_path, service.current_username(), None, transcript)
+        except Exception as error:  # noqa: BLE001 - persistence must not break the chat answer itself
+            report(error, context="saving chat history")
+            chat_id = None
+    except Exception as error:  # noqa: BLE001 - persistence must not break the chat answer itself
+        report(error, context="saving chat history")
+        chat_id = None
+
+    return jsonify(
+        {
+            "response": response_text,
+            "tools_used": tools_used,
+            "provider_id": provider_id,
+            "total_tokens": total_tokens,
+            "chat_id": chat_id,
+        }
+    )

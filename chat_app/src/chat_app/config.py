@@ -60,6 +60,9 @@ class Settings:
     # monkeypatch the env per-case, and a deployment that expects editing
     # .env and restarting to be enough.
     users_db_path: Path = Path(_env("USERS_DB_PATH", "data/users.db"))
+    # Per-user chat history - see chats/store.py. Mirrors users_db_path
+    # immediately above it (relative to CWD by default, same convention).
+    chats_db_path: Path = Path(_env("CHATS_DB_PATH", "data/chats.db"))
 
 
 settings = Settings()
