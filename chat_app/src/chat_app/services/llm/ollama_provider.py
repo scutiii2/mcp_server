@@ -164,6 +164,15 @@ def _usage_tokens(usage: Any) -> int | None:
 # memory than a small local model already needs.
 _NUM_CTX = 8192
 
+# Nothing bounds how long a single completion can run by default - a
+# small model that starts hallucinating instead of answering has no
+# reason to stop on its own. Confirmed live: phi4-mini rambled about a
+# fictional Google Cloud Run setup for 8m52s / 3748 tokens on one
+# request. 1024 tokens is generous for a genuine answer (including a
+# thorough tool-result summary) while bounding the worst case to a
+# fraction of what an unbounded generation could reach.
+_NUM_PREDICT = 1024
+
 # Small local models have been observed (live, against phi4-mini)
 # hallucinating an entirely unrelated execution context - inventing a
 # cloud platform and an HTTP endpoint that were never mentioned - instead
@@ -298,7 +307,7 @@ def _tool_loop(
             model=model_name,
             messages=messages,
             tools=tool_schemas if tool_schemas else None,
-            extra_body={"options": {"num_ctx": _NUM_CTX}},
+            extra_body={"options": {"num_ctx": _NUM_CTX, "num_predict": _NUM_PREDICT}},
         )
         round_tokens = _usage_tokens(getattr(response, "usage", None))
         if round_tokens is not None:

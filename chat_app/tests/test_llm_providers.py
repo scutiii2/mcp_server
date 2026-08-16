@@ -445,7 +445,28 @@ def test_ollama_run_chat_requests_a_larger_context_window():
         ollama_provider.run_chat("hi", [])
 
     _, kwargs = fake_create.call_args
-    assert kwargs["extra_body"] == {"options": {"num_ctx": ollama_provider._NUM_CTX}}
+    assert kwargs["extra_body"]["options"]["num_ctx"] == ollama_provider._NUM_CTX
+
+
+def test_ollama_run_chat_caps_the_response_length():
+    """Nothing bounds how long a single completion can run by default -
+    confirmed live, a small model that starts hallucinating instead of
+    answering can burn thousands of tokens and several minutes before
+    stopping on its own (observed: phi4-mini rambling about a fictional
+    Google Cloud Run setup for 8m52s / 3748 tokens). A num_predict cap
+    bounds that worst case without touching genuinely reasonable-length
+    answers."""
+    message = SimpleNamespace(content="ok", tool_calls=None)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_create = Mock(return_value=response)
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+        ollama_provider.run_chat("hi", [])
+
+    _, kwargs = fake_create.call_args
+    assert kwargs["extra_body"]["options"]["num_predict"] == ollama_provider._NUM_PREDICT
 
 
 def test_ollama_usage_tokens_falls_back_to_prompt_plus_completion_when_total_missing():
