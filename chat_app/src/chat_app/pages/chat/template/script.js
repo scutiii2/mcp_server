@@ -519,6 +519,55 @@ function createTimerElement(text) {
   return el;
 }
 
+// Reused across calls rather than created fresh each time - browsers cap
+// how many AudioContexts can exist at once, and creation itself has a
+// small cost. Lazily created on first actual use (inside
+// playNotificationSound()) rather than at page load, so it's built in
+// response to the same user gesture (sending a message) that triggers
+// the request whose reply it announces - browser autoplay policies are
+// more lenient about audio started that way than audio started with no
+// gesture in the call chain at all.
+let notificationAudioCtx = null;
+
+// Only while the user is away from this tab - document.hidden covers
+// "switched tabs or minimized"; hasFocus() additionally covers "this
+// window is visible but another window has focus" (e.g. side-by-side
+// windows), which hidden alone wouldn't catch. Silent whenever the user
+// is already looking at the conversation - they don't need a sound to
+// notice a reply they're watching arrive.
+function shouldPlayNotificationSound() {
+  return document.hidden || !document.hasFocus();
+}
+
+function playNotificationSound() {
+  if (!shouldPlayNotificationSound()) return;
+  try {
+    if (!notificationAudioCtx) {
+      notificationAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = notificationAudioCtx;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880; // A5 - a short, clean, unobtrusive chime
+    // Exponential ramps (never a hard on/off) avoid the audible "click"
+    // a sudden gain change produces; ramping to/from a near-zero floor
+    // rather than literal 0 because exponentialRampToValueAtTime can't
+    // target exactly 0.
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.3);
+  } catch (err) {
+    // Web Audio unavailable, blocked by an autoplay policy, or otherwise
+    // unsupported - a missed notification sound isn't worth surfacing as
+    // a user-facing error over.
+  }
+}
+
 async function send() {
   const input = document.getElementById('q');
   const question = input.value.trim();
@@ -624,6 +673,7 @@ async function send() {
     const assistantWrap = appendMsg('assistant', data.response);
     assistantWrap.appendChild(timerEl);
     history.push({ role: 'assistant', content: data.response });
+    playNotificationSound();
 
     // A brand-new chat just got its first id back, or an existing one
     // was confirmed - either way the sidebar list (Task 4) may now be
@@ -645,6 +695,7 @@ async function send() {
     timerEl.remove(); // no reply bubble to attach it to - the error message speaks for itself
     removeOptimisticChatEntry(); // the request never completed - nothing was created
     appendMsg('system', `⚠️ Request failed: ${err.message}. Check that chat_app and the MCP server are both still running.`);
+    playNotificationSound();
   } finally {
     clearInterval(rotateTimer);
     clearTimeout(slowNoticeTimer);
