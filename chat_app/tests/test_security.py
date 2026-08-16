@@ -183,7 +183,7 @@ def test_cross_site_post_is_refused(client):
     assert response.status_code == 403
 
 
-def test_same_origin_post_is_allowed(client):
+def test_same_origin_post_is_allowed(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat", return_value=ChatResult(response="ok")):
         response = client.post(
             "/api/chat",
@@ -194,7 +194,7 @@ def test_same_origin_post_is_allowed(client):
     assert response.status_code == 200
 
 
-def test_direct_navigation_post_is_allowed(client):
+def test_direct_navigation_post_is_allowed(client, chats_db):
     """Sec-Fetch-Site: none means a typed URL or bookmark, not another
     site's request."""
     with patch("chat_app.services.llm.router.run_chat", return_value=ChatResult(response="ok")):

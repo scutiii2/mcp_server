@@ -47,7 +47,7 @@ def test_api_chat_rejects_empty_question(client):
     assert response.get_json() == {"response": "Please enter a question."}
 
 
-def test_api_chat_returns_run_chat_result(client):
+def test_api_chat_returns_run_chat_result(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
         mock_run_chat.return_value = ChatResult(
             response="web-1 is running normally.",
@@ -72,7 +72,7 @@ def test_api_chat_returns_run_chat_result(client):
     mock_run_chat.assert_called_once_with("how is web-1 doing?", [], "claude", "claude-opus-4-8", [])
 
 
-def test_api_chat_includes_total_tokens_as_null_when_provider_did_not_report_it(client):
+def test_api_chat_includes_total_tokens_as_null_when_provider_did_not_report_it(client, chats_db):
     """total_tokens defaults to None on ChatResult - the frontend treats a
     null (or missing) total_tokens the same way: hide the token display."""
     with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
@@ -85,7 +85,7 @@ def test_api_chat_includes_total_tokens_as_null_when_provider_did_not_report_it(
     assert body["total_tokens"] is None
 
 
-def test_api_chat_defaults_provider_and_model_to_none_when_omitted(client):
+def test_api_chat_defaults_provider_and_model_to_none_when_omitted(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
         mock_run_chat.return_value = ChatResult(response="ok", provider_id="openai")
         client.post("/api/chat", json={"question": "hello"})
@@ -96,7 +96,7 @@ def test_api_chat_defaults_provider_and_model_to_none_when_omitted(client):
     mock_run_chat.assert_called_once_with("hello", [], None, None, [])
 
 
-def test_api_chat_forwards_enabled_extensions_to_router(client):
+def test_api_chat_forwards_enabled_extensions_to_router(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
         mock_run_chat.return_value = ChatResult(response="ok", provider_id="openai")
         client.post(
@@ -107,7 +107,7 @@ def test_api_chat_forwards_enabled_extensions_to_router(client):
     mock_run_chat.assert_called_once_with("hello", [], None, None, ["reference"])
 
 
-def test_api_chat_reports_missing_api_key_without_crashing(client):
+def test_api_chat_reports_missing_api_key_without_crashing(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat", side_effect=ValueError("ANTHROPIC_API_KEY not configured")):
         response = client.post("/api/chat", json={"question": "hello", "provider": "claude"})
 
@@ -115,7 +115,7 @@ def test_api_chat_reports_missing_api_key_without_crashing(client):
     assert "ANTHROPIC_API_KEY not configured" in response.get_json()["response"]
 
 
-def test_api_chat_catches_unexpected_errors(client):
+def test_api_chat_catches_unexpected_errors(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat", side_effect=RuntimeError("MCP server unreachable")):
         response = client.post("/api/chat", json={"question": "hello"})
 
@@ -123,7 +123,7 @@ def test_api_chat_catches_unexpected_errors(client):
     assert "Something went wrong" in response.get_json()["response"]
 
 
-def test_api_chat_does_not_leak_unexpected_exception_text(client, caplog):
+def test_api_chat_does_not_leak_unexpected_exception_text(client, chats_db, caplog):
     """An unplanned exception's text is written for a traceback reader -
     paths, hostnames, sometimes credentials - and this response goes into
     a chat transcript and back to the model. The detail belongs in the
@@ -141,7 +141,7 @@ def test_api_chat_does_not_leak_unexpected_exception_text(client, caplog):
     assert "hunter2" in caplog.text
 
 
-def test_api_chat_still_shows_curated_provider_errors_verbatim(client):
+def test_api_chat_still_shows_curated_provider_errors_verbatim(client, chats_db):
     """Messages the router wrote for a human ("Claude is not configured")
     contain no internals and are far more useful than a reference id."""
     with patch(
