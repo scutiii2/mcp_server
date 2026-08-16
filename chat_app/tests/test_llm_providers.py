@@ -404,6 +404,27 @@ def test_ollama_run_chat_total_tokens_is_none_when_usage_missing():
     assert result.total_tokens is None
 
 
+def test_ollama_run_chat_requests_a_larger_context_window():
+    """Ollama defaults to its own small context window (often 2048
+    tokens) unless a request explicitly asks for more. A verbose tool
+    result (e.g. a host-health dump with many disks/processes) can
+    silently overflow that default on the follow-up summarization call,
+    and a small model overflowing its context tends to emit an empty
+    completion rather than an error - exactly the "no error, no text,
+    but real tokens burned" failure this guards against."""
+    message = SimpleNamespace(content="ok", tool_calls=None)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_create = Mock(return_value=response)
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+        ollama_provider.run_chat("hi", [])
+
+    _, kwargs = fake_create.call_args
+    assert kwargs["extra_body"] == {"options": {"num_ctx": ollama_provider._NUM_CTX}}
+
+
 def test_ollama_usage_tokens_falls_back_to_prompt_plus_completion_when_total_missing():
     usage = SimpleNamespace(total_tokens=None, prompt_tokens=40, completion_tokens=10)
     assert ollama_provider._usage_tokens(usage) == 50

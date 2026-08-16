@@ -148,6 +148,20 @@ def _usage_tokens(usage: Any) -> int | None:
     return total or None
 
 
+# Ollama's own default context window (independent of any per-model
+# training context) is small - often 2048 tokens - unless a request
+# explicitly asks for more via the "options.num_ctx" field its
+# OpenAI-compatible endpoint accepts as an extension (not part of the
+# openai SDK's own typed kwargs, hence `extra_body`). A tool result can
+# easily be verbose enough (a host-health dump with many disks/processes,
+# for instance) to overflow that default on the follow-up summarization
+# call - and a small model whose context overflows tends to emit an
+# empty completion rather than an error, which otherwise looks
+# indistinguishable from a genuinely blank answer. 8192 gives real
+# headroom over the default without asking Ollama to reserve much more
+# memory than a small local model already needs.
+_NUM_CTX = 8192
+
 _MAX_TOOL_CALL_ROUNDS = 6
 
 # Extra self-review rounds for models with recursive_chain=True (see
@@ -198,6 +212,7 @@ def _tool_loop(
             model=model_name,
             messages=messages,
             tools=tool_schemas if tool_schemas else None,
+            extra_body={"options": {"num_ctx": _NUM_CTX}},
         )
         round_tokens = _usage_tokens(getattr(response, "usage", None))
         if round_tokens is not None:
