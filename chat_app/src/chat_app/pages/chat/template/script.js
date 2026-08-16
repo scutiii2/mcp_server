@@ -33,47 +33,20 @@ function saveEnabledExtensionsToStorage() {
   }
 }
 
-// --- Chat session persistence ------------------------------------------
-// This is a plain multi-page app with no client-side router: navigating
-// to /capabilities and back, or hitting F5, is a full browser navigation
-// that reloads this script from scratch and wipes the #log DOM and the
-// in-memory `history` array. sessionStorage (unlike localStorage) is
-// exactly the right lifetime for "survive that" without persisting the
-// conversation forever - it clears the moment the tab closes.
-const SESSION_STORAGE_KEY = 'chat.session';
-// Mirrors every *permanent* appendMsg() call (user turns, assistant
-// turns, the "Answered by X" note, the greeting) so a reload can replay
-// them. Deliberately does NOT mirror the rotating "Thinking..." bubble in
-// send() - that one gets .remove()'d once the request settles, and if a
-// reload caught it mid-flight it would come back as a permanently stuck
-// "Thinking..." message with no request actually in progress. Kept as a
-// separate array from `history` because `history` is the LLM-facing
-// conversation (no greeting), while this is the UI-facing transcript.
-const sessionLog = [];
-
-function loadSessionFromStorage() {
-  try {
-    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (!parsed || !Array.isArray(parsed.log) || !Array.isArray(parsed.history)) {
-      return null;
-    }
-    return parsed;
-  } catch (err) {
-    // Corrupt JSON or storage unavailable (private browsing) - treat it
-    // as "no saved session" rather than breaking page load.
-    return null;
-  }
-}
-
-function saveSessionToStorage() {
-  try {
-    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ log: sessionLog, history }));
-  } catch (err) {
-    // Quota exceeded / storage disabled - the chat still works for this
-    // page load, it just won't survive the next navigation.
-  }
-}
+// --- Chat identity ------------------------------------------------------
+// The URL's `id` query param is this page's chat identity; no id means a
+// new, not-yet-saved chat. This replaces the old sessionStorage-based
+// resume mechanism entirely: unlike sessionStorage, server-side
+// persistence (via /api/chats) survives a closed tab/browser restart,
+// and supports more than one conversation.
+//
+// NOTE: this file already has a top-level `const history = []` (the
+// LLM-facing conversation array, declared at the very top of this
+// file) - that shadows the browser's global `window.history` within
+// this script's scope. Any URL-manipulation call below MUST go through
+// `window.history.*` explicitly, never bare `history.*`, or it will
+// silently call Array methods instead of the History API.
+let currentChatId = new URLSearchParams(location.search).get('id');
 
 async function loadExtensions() {
   const banner = document.getElementById('ext-error-banner');
@@ -533,8 +506,6 @@ async function send() {
   input.value = '';
   appendMsg('user', question);
   history.push({ role: 'user', content: question });
-  sessionLog.push({ role: 'user', text: question });
-  saveSessionToStorage();
 
   const selectedProvider = document.getElementById('provider').value;
   const modelSelect = document.getElementById('model');
@@ -583,6 +554,7 @@ async function send() {
         provider: selectedProvider,
         model: selectedModel,
         enabled_extensions: currentEnabledExtensions(),
+        chat_id: currentChatId,
       }),
     });
 
@@ -606,8 +578,6 @@ async function send() {
       const label = providerLabels[data.provider_id] || data.provider_id;
       const note = `Answered by ${label} (Automatic)`;
       appendMsg('system', note);
-      sessionLog.push({ role: 'system', text: note });
-      saveSessionToStorage();
     }
 
     // Freeze the timer at the final elapsed value and fold in the token
@@ -619,8 +589,17 @@ async function send() {
     const assistantWrap = appendMsg('assistant', data.response);
     assistantWrap.appendChild(timerEl);
     history.push({ role: 'assistant', content: data.response });
-    sessionLog.push({ role: 'assistant', text: data.response, meta: finalTimerText });
-    saveSessionToStorage();
+
+    // A brand-new chat just got its first id back, or an existing one
+    // was confirmed - either way the sidebar list (Task 4) may now be
+    // stale.
+    if (data.chat_id && data.chat_id !== currentChatId) {
+      currentChatId = data.chat_id;
+      window.history.pushState(null, '', `/chat?id=${encodeURIComponent(currentChatId)}`);
+    }
+    if (data.chat_id) {
+      loadChatHistory();
+    }
   } catch (err) {
     thinkingEl.remove();
     timerEl.remove(); // no reply bubble to attach it to - the error message speaks for itself
@@ -689,6 +668,36 @@ function renderMarkdown(container, text) {
   container.innerHTML = DOMPurify.sanitize(marked.parse(text));
 }
 
+async function loadChat(chatId) {
+  try {
+    const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}`);
+    if (!res.ok) {
+      // Unknown or not-yours chat id - degrade to a fresh chat rather
+      // than showing an error for what's just a stale/foreign link.
+      currentChatId = null;
+      window.history.replaceState(null, '', '/chat');
+      return false;
+    }
+    const chat = await res.json();
+    currentChatId = chat.id;
+    for (const message of chat.messages) {
+      appendMsg(message.role, message.content);
+      history.push({ role: message.role, content: message.content });
+    }
+    return true;
+  } catch (err) {
+    currentChatId = null;
+    window.history.replaceState(null, '', '/chat');
+    return false;
+  }
+}
+
+// Implemented in full by the sidebar-history-list feature - stubbed
+// here so send()'s and the init block's calls have something to call
+// while this file is worked on task-by-task. (Task 4 replaces this
+// stub with a real implementation in this same file.)
+async function loadChatHistory() {}
+
 document.getElementById('q').addEventListener('keydown', e => {
   if (e.key === 'Enter') send();
 });
@@ -712,31 +721,16 @@ setInterval(loadProviders, 15000);
 loadExtensions();
 setInterval(loadExtensions, 15000); // same cadence as the provider poll above
 
-// Restore a saved session (if this load is a navigation/reload within the
-// same tab, not a first visit) before deciding whether to greet.
-const savedSession = loadSessionFromStorage();
-const hasRestoredMessages = !!savedSession && savedSession.log.length > 0;
-if (savedSession) {
-  for (const entry of savedSession.log) {
-    const wrap = appendMsg(entry.role, entry.text);
-    if (entry.meta) {
-      // A completed, historical duration - it won't tick, which is
-      // correct: the request it timed is long over.
-      wrap.appendChild(createTimerElement(entry.meta));
-    }
-    sessionLog.push(entry);
-  }
-  history.push(...savedSession.history); // `history` is const - only ever .push()d into, never reassigned
-}
+loadChatHistory();
 
-// Only greet on a genuine first visit (nothing to restore) - reappending
-// a fresh greeting on every reload/navigation made the log balloon with
-// "Hi! I'm ready when you are." repeated on top of a restored
-// conversation, which is exactly what the persistence feature above is
-// supposed to prevent.
-if (!hasRestoredMessages) {
-  const greeting = pickGreetingMessage();
-  appendMsg('assistant', greeting);
-  sessionLog.push({ role: 'assistant', text: greeting });
-  saveSessionToStorage();
-}
+// Only greet on a genuine fresh chat (no id in the URL, or the id
+// turned out to be stale/foreign) - loadChat() itself replays every
+// restored message, so this only decides whether a greeting is ALSO
+// needed on top of that.
+(async () => {
+  const restored = currentChatId ? await loadChat(currentChatId) : false;
+  if (!restored) {
+    const greeting = pickGreetingMessage();
+    appendMsg('assistant', greeting);
+  }
+})();
