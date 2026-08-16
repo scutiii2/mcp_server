@@ -54,6 +54,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import secrets
 from typing import Any
 from urllib.request import urlopen
 
@@ -185,6 +187,67 @@ def _recursive_chain_enabled(model_name: str) -> bool:
     return False
 
 
+# Balances one level of brace nesting - enough for the malformed shapes
+# small models have actually been observed to leak (a flat object, or one
+# with a single nested "arguments"/"function" object inside). A tool's
+# own echoed JSON Schema nests deeper than this (parameters -> properties
+# -> per-field type objects), so it either fails to match as a complete
+# object here or - if some fragment of it does match - fails the
+# schema-shape rejection below. Either way it's never mistaken for a
+# real call; see _extract_fallback_tool_call's docstring.
+_JSON_OBJECT_RE = re.compile(r"\{(?:[^{}]|\{[^{}]*\})*\}")
+
+# Key names small models have been observed using in place of the
+# correct nested {"function": {"name": ..., "arguments": ...}} shape -
+# e.g. a flat literal string key "function.name" instead of actually
+# nesting. Checked in order; first match wins.
+_FALLBACK_NAME_KEYS = ("name", "function.name")
+_FALLBACK_ARGS_KEYS = ("arguments", "parameters", "function.arguments", "arguments.function.arguments")
+
+
+def _extract_fallback_tool_call(content: str, known_tool_names: set[str]) -> tuple[str, dict[str, Any]] | None:
+    """Recovers a tool call that leaked into plain-text ``content``
+    instead of the API's structured ``tool_calls`` field - a known
+    reliability gap for small local models (see this module's docstring).
+
+    Returns ``None`` - leaving the caller's existing "treat this as the
+    final answer" behavior completely unchanged - unless it finds, in the
+    same JSON object literal, BOTH a name matching one of THIS request's
+    actually-offered tools (``known_tool_names``, built from this
+    request's own ``tool_schemas`` - never a hallucinated or stale name)
+    AND an arguments-shaped dict. "Arguments-shaped" deliberately excludes
+    anything that looks like a JSON Schema (``"properties"`` present, or
+    ``"type": "object"``) - a confused model echoing back the tool
+    definition it was given has a "name" too, and must not be mistaken
+    for an attempt to call it.
+    """
+    for candidate in _JSON_OBJECT_RE.findall(content):
+        try:
+            parsed = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+
+        function_block = parsed.get("function")
+        lookup = {**parsed, **(function_block if isinstance(function_block, dict) else {})}
+
+        name = next(
+            (lookup[key] for key in _FALLBACK_NAME_KEYS if isinstance(lookup.get(key), str)),
+            None,
+        )
+        if name is None or name not in known_tool_names:
+            continue
+
+        arguments = next((lookup[key] for key in _FALLBACK_ARGS_KEYS if isinstance(lookup.get(key), dict)), None)
+        if arguments is None or "properties" in arguments or arguments.get("type") == "object":
+            continue
+
+        return name, arguments
+
+    return None
+
+
 def _tool_loop(
     client: Any,
     messages: list[dict[str, Any]],
@@ -206,6 +269,7 @@ def _tool_loop(
     None (rather than 0) until a round actually reports usage, consistent
     with ChatResult.total_tokens's "unknown" semantics."""
     total_tokens: int | None = None
+    known_tool_names = {schema["function"]["name"] for schema in tool_schemas}
 
     for _ in range(_MAX_TOOL_CALL_ROUNDS):
         response = client.chat.completions.create(
@@ -222,6 +286,35 @@ def _tool_loop(
         tool_calls = getattr(message, "tool_calls", None) or []
 
         if not tool_calls:
+            fallback = _extract_fallback_tool_call(message.content or "", known_tool_names)
+            if fallback is not None:
+                fallback_name, fallback_arguments = fallback
+                call_id = f"recovered-{secrets.token_hex(4)}"
+                # Reconstructed in the same shape a real tool_calls entry
+                # would take, so the rest of the conversation (and the
+                # model's next round) sees a normal tool exchange rather
+                # than the malformed text that actually arrived.
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": call_id,
+                                "type": "function",
+                                "function": {"name": fallback_name, "arguments": json.dumps(fallback_arguments)},
+                            }
+                        ],
+                    }
+                )
+                tools_used.append(fallback_name)
+                try:
+                    result_text = call_tool(fallback_name, fallback_arguments)
+                except Exception as error:
+                    result_text = f"Tool '{fallback_name}' failed: {error}"
+                messages.append({"role": "tool", "tool_call_id": call_id, "content": result_text})
+                continue
+
             answer = message.content or ""
             messages.append({"role": "assistant", "content": answer})
             return answer, total_tokens

@@ -526,6 +526,109 @@ def test_ollama_run_chat_recursive_chain_is_resolved_per_selected_model(monkeypa
     assert fake_create.call_count == 1
 
 
+def test_extract_fallback_tool_call_recovers_the_real_captured_malformed_shape():
+    """The exact malformed shape observed live from phi4-mini: a JSON
+    array of two objects using flattened dotted keys instead of the
+    correct nested {"function": {"name": ..., "arguments": ...}} shape."""
+    content = (
+        'Assistant: I am going to check on one of your server\'s configured '
+        'machines named \'zima\'. Please hold on for a moment while I '
+        'retrieve this information.\n\n'
+        '[{"type": "function.call"}, {"function.name": "get_host_health_tool", '
+        '"arguments.function.arguments": {"name": "zima"}}]'
+    )
+
+    result = ollama_provider._extract_fallback_tool_call(content, {"get_host_health_tool"})
+
+    assert result == ("get_host_health_tool", {"name": "zima"})
+
+
+def test_extract_fallback_tool_call_ignores_an_echoed_tool_schema():
+    """A model that echoes back the schema it was given (rather than
+    attempting a call) must not be mistaken for a real attempt - a
+    schema's "parameters"/"properties" describe types, they aren't
+    argument values."""
+    content = json.dumps(
+        {
+            "type": "function",
+            "function": {
+                "name": "get_host_health_tool",
+                "description": "Check CPU, memory, disk and uptime.",
+                "parameters": {
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {"name": {"type": "string"}},
+                },
+            },
+        }
+    )
+
+    assert ollama_provider._extract_fallback_tool_call(content, {"get_host_health_tool"}) is None
+
+
+def test_extract_fallback_tool_call_returns_none_for_plain_prose():
+    content = "Zima's CPU is at 12%, memory at 40%, disk usage is fine."
+
+    assert ollama_provider._extract_fallback_tool_call(content, {"get_host_health_tool"}) is None
+
+
+def test_extract_fallback_tool_call_ignores_a_call_to_an_unoffered_tool():
+    """A name that isn't one of THIS request's actually-offered tools -
+    hallucinated, from a stale echo, or anything else - must not be
+    executed."""
+    content = '{"name": "delete_everything", "arguments": {"target": "*"}}'
+
+    assert ollama_provider._extract_fallback_tool_call(content, {"get_host_health_tool"}) is None
+
+
+def test_extract_fallback_tool_call_accepts_empty_arguments():
+    """A tool that legitimately takes no arguments still recovers - an
+    empty dict is valid arguments, not a rejected schema-shape."""
+    content = '{"name": "list_hosts", "arguments": {}}'
+
+    assert ollama_provider._extract_fallback_tool_call(content, {"list_hosts"}) == ("list_hosts", {})
+
+
+def test_ollama_run_chat_recovers_a_leaked_tool_call_and_continues_the_conversation(monkeypatch):
+    """End-to-end: round 1 leaks the malformed call instead of using the
+    real tool_calls field; the recovery path should call the tool for
+    real, feed the result back, and let the model produce a genuine
+    summary on round 2 - the user should see that summary, not the
+    leaked JSON."""
+    monkeypatch.setattr(
+        ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", recursive_chain=False)]
+    )
+    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "phi4-mini:latest")
+
+    leaked_content = (
+        '[{"type": "function.call"}, {"function.name": "get_host_health_tool", '
+        '"arguments.function.arguments": {"name": "zima"}}]'
+    )
+    round_one = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=leaked_content, tool_calls=None))]
+    )
+    round_two = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="zima is healthy.", tool_calls=None))]
+    )
+    fake_create = Mock(side_effect=[round_one, round_two])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+    host_health_tool = SimpleNamespace(
+        name="get_host_health_tool",
+        description="Check CPU, memory, disk and uptime.",
+        inputSchema={"type": "object", "properties": {"name": {"type": "string"}}},
+    )
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[host_health_tool]), \
+         patch("chat_app.services.llm.ollama_provider.call_tool", return_value="zima: cpu 12%, mem 40%") as mock_call_tool:
+        result = ollama_provider.run_chat("check host health of zima", [])
+
+    assert result.response == "zima is healthy."
+    assert result.tools_used == ["get_host_health_tool"]
+    assert fake_create.call_count == 2
+    mock_call_tool.assert_called_once_with("get_host_health_tool", {"name": "zima"})
+
+
 def test_ollama_not_in_automatic_order():
     """The one behavioral guarantee this provider's whole design rests
     on - see its module docstring and router.py's comment on
