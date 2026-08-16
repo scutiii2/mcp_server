@@ -19,7 +19,7 @@ from urllib.error import URLError
 import pytest
 
 from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
-from chat_app.services.llm.base import ModelOption
+from chat_app.services.llm.base import SYSTEM_PROMPT, ModelOption
 
 
 def _fake_tool():
@@ -140,6 +140,29 @@ def test_ollama_tool_schemas_use_function_wrapped_shape():
             },
         }
     ]
+
+
+def test_ollama_run_chat_adds_local_model_tool_guidance_to_the_system_prompt():
+    """Small local models have been observed hallucinating an unrelated
+    execution context (a fictional cloud platform) instead of using their
+    native tool-calling mechanism, or writing a tool call as prose
+    instead of a real tool_calls entry - an explicit nudge against both,
+    layered on top of the shared SYSTEM_PROMPT rather than replacing it
+    (cloud providers don't need this and don't get it)."""
+    message = SimpleNamespace(content="ok", tool_calls=None)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_create = Mock(return_value=response)
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+        ollama_provider.run_chat("hi", [])
+
+    _, kwargs = fake_create.call_args
+    system_message = kwargs["messages"][0]
+    assert system_message["role"] == "system"
+    assert SYSTEM_PROMPT in system_message["content"]
+    assert system_message["content"] != SYSTEM_PROMPT  # guidance was actually appended, not just the shared prompt
 
 
 def test_ollama_has_no_api_key_requirement():

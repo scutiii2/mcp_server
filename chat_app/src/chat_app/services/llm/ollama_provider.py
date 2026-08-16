@@ -164,6 +164,28 @@ def _usage_tokens(usage: Any) -> int | None:
 # memory than a small local model already needs.
 _NUM_CTX = 8192
 
+# Small local models have been observed (live, against phi4-mini)
+# hallucinating an entirely unrelated execution context - inventing a
+# cloud platform and an HTTP endpoint that were never mentioned - instead
+# of using the tool-calling mechanism this request actually offers, and
+# writing a tool call as prose/JSON in the reply instead of a real
+# tool_calls entry. This is a best-effort nudge against both, not a fix:
+# whether it helps depends on how well a given model's own chat template
+# implements tool calling in the first place - see this module's
+# docstring for the broader small-model tool-calling caveat. Layered on
+# top of SYSTEM_PROMPT (never replacing it) and only for this provider -
+# the cloud providers' own tool-calling is already reliable and doesn't
+# need this.
+_LOCAL_MODEL_TOOL_GUIDANCE = (
+    "You are running locally via Ollama with real tool-calling support. "
+    "When you need a tool, call it using your native function-calling "
+    "mechanism - never write the tool call, its JSON arguments, or a "
+    "pretend HTTP request as text in your reply. Only ever call tools "
+    "that were actually offered to you in this request; do not invent or "
+    "assume any other platform, API, or execution environment (for "
+    "example a cloud provider) that wasn't mentioned."
+)
+
 _MAX_TOOL_CALL_ROUNDS = 6
 
 # Extra self-review rounds for models with recursive_chain=True (see
@@ -342,7 +364,8 @@ def run_chat(
     enabled_extensions: list[str] | None = None,
 ) -> ChatResult:
     client = _get_client()
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    system_content = f"{SYSTEM_PROMPT}\n\n{_LOCAL_MODEL_TOOL_GUIDANCE}"
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_content}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []
     tool_schemas = _tool_schemas(enabled_extensions)
