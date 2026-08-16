@@ -120,15 +120,22 @@ body { transition: margin-left 0.2s ease; }
   display: flex;
   align-items: center;
   gap: 4px;
-  border-radius: 6px;
-  padding: 2px 2px 2px 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 6px 6px 6px 8px;
 }
-.chat-history-item:hover { background: #ececea; }
-.chat-history-item.active { background: #e6f1fb; }
+.chat-history-item:hover { background: #f7f7f6; border-color: #e2e2e2; }
+.chat-history-item.active { background: #e6f1fb; border-color: #cfe4f7; }
 
-.chat-history-link {
+.chat-history-text {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-history-link {
   font-size: 12px;
   color: #444;
   text-decoration: none;
@@ -141,7 +148,6 @@ body { transition: margin-left 0.2s ease; }
 .chat-history-time {
   font-size: 10px;
   color: #888;
-  flex-shrink: 0;
 }
 
 .chat-history-controls {
@@ -166,8 +172,11 @@ body { transition: margin-left 0.2s ease; }
 .chat-history-delete-btn:hover { background: #dcdcda; color: #1a1a1a; }
 
 .chat-history-rename-input {
-  flex: 1;
-  min-width: 0;
+  /* Replaces .chat-history-link inside .chat-history-text, a flex COLUMN
+     - flex:1 there governs height, not width, so width needs its own
+     rule to actually fill the column the way the link it replaces does. */
+  width: 100%;
+  box-sizing: border-box;
   font: inherit;
   font-size: 12px;
   padding: 2px 4px;

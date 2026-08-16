@@ -789,10 +789,14 @@ function addOptimisticChatEntry(title) {
 
   const item = document.createElement('div');
   item.className = 'chat-history-item active';
+
+  const text = document.createElement('div');
+  text.className = 'chat-history-text';
   const titleEl = document.createElement('span');
   titleEl.className = 'chat-history-link';
   titleEl.textContent = title;
-  item.appendChild(titleEl);
+  text.appendChild(titleEl);
+  item.appendChild(text);
 
   list.insertBefore(item, list.firstChild);
   optimisticChatEntry = item;
@@ -809,16 +813,21 @@ function buildChatHistoryItem(chat) {
   const item = document.createElement('div');
   item.className = 'chat-history-item' + (chat.id === currentChatId ? ' active' : '');
 
+  const text = document.createElement('div');
+  text.className = 'chat-history-text';
+
   const link = document.createElement('a');
   link.className = 'chat-history-link';
   link.href = `/chat?id=${encodeURIComponent(chat.id)}`;
   link.textContent = chat.title;
-  item.appendChild(link);
+  text.appendChild(link);
 
   const time = document.createElement('span');
   time.className = 'chat-history-time';
   time.textContent = formatRelativeTime(chat.updated_at);
-  item.appendChild(time);
+  text.appendChild(time);
+
+  item.appendChild(text);
 
   const controls = document.createElement('div');
   controls.className = 'chat-history-controls';
