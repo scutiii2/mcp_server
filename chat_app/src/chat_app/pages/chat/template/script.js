@@ -360,8 +360,17 @@ async function loadProviders() {
         opt.textContent = `${p.label} (rate-limited, ~${p.cooldown_seconds_remaining}s)`;
       } else if (p.reason === 'none_available') {
         opt.textContent = `${p.label} (nothing available)`;
-      } else {
+      } else if (p.reason === 'unreachable') {
+        opt.textContent = `${p.label} (unreachable)`;
+      } else if (p.reason === 'missing_key') {
         opt.textContent = `${p.label} (no API key)`;
+      } else {
+        // Unrecognized reason - surface it raw rather than guessing (and
+        // previously, silently mislabeling anything unrecognized as a
+        // missing API key - including Ollama, which has no API key
+        // concept at all and reports "unreachable" instead) - same idea
+        // as describeModelReason()'s fallback below.
+        opt.textContent = `${p.label} (${p.reason || 'unavailable'})`;
       }
       opt.disabled = !p.available;
       providerSelect.appendChild(opt);
