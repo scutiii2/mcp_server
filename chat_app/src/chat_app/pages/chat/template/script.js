@@ -48,6 +48,19 @@ function saveEnabledExtensionsToStorage() {
 // silently call Array methods instead of the History API.
 let currentChatId = new URLSearchParams(location.search).get('id');
 
+// Set only when the canned greeting is shown on a genuine fresh chat
+// (see the bottom init block); cleared the moment the user actually
+// sends something, so the transcript starts clean instead of carrying
+// "Hi! I'm ready when you are." into what's about to become a real,
+// persisted conversation.
+let greetingEl = null;
+
+// The sidebar's client-only placeholder for a brand-new chat that hasn't
+// been confirmed by the server yet (see addOptimisticChatEntry). Never
+// more than one at a time - a chat only lacks a real id for its own
+// first message.
+let optimisticChatEntry = null;
+
 async function loadExtensions() {
   const banner = document.getElementById('ext-error-banner');
   try {
@@ -513,6 +526,18 @@ async function send() {
 
   const sendBtn = document.getElementById('send-btn');
   input.value = '';
+
+  if (greetingEl) {
+    greetingEl.remove();
+    greetingEl = null;
+  }
+  // Only a chat with no id yet lacks a sidebar entry at all - an
+  // existing chat is already listed, and its real ordering/timestamp
+  // catches up once the response lands (see loadChatHistory() below).
+  if (!currentChatId) {
+    addOptimisticChatEntry(question);
+  }
+
   appendMsg('user', question);
   const priorHistory = history.slice();
   history.push({ role: 'user', content: question });
@@ -608,11 +633,17 @@ async function send() {
       window.history.pushState(null, '', `/chat?id=${encodeURIComponent(currentChatId)}`);
     }
     if (data.chat_id) {
-      loadChatHistory();
+      loadChatHistory(); // also clears the optimistic placeholder - this fully re-renders the list
+    } else {
+      // Persistence failed server-side (see chat_api()'s save fallback) -
+      // nothing was actually created, so the placeholder shouldn't stick
+      // around implying otherwise.
+      removeOptimisticChatEntry();
     }
   } catch (err) {
     thinkingEl.remove();
     timerEl.remove(); // no reply bubble to attach it to - the error message speaks for itself
+    removeOptimisticChatEntry(); // the request never completed - nothing was created
     appendMsg('system', `⚠️ Request failed: ${err.message}. Check that chat_app and the MCP server are both still running.`);
   } finally {
     clearInterval(rotateTimer);
@@ -731,7 +762,8 @@ function formatRelativeTime(isoString) {
 
 function renderChatHistoryList(chats) {
   const list = document.getElementById('chat-history-list');
-  list.innerHTML = '';
+  list.innerHTML = ''; // also drops any optimistic placeholder still in the DOM
+  optimisticChatEntry = null; // the reference above is now stale either way
 
   if (chats.length === 0) {
     list.innerHTML = '<p class="chat-history-empty">No chats yet.</p>';
@@ -740,6 +772,36 @@ function renderChatHistoryList(chats) {
 
   for (const chat of chats) {
     list.appendChild(buildChatHistoryItem(chat));
+  }
+}
+
+// Shown the instant a brand-new chat's first message is sent, before the
+// server has confirmed anything - the real entry (with its real id,
+// rename/delete controls, and link) replaces this via loadChatHistory()
+// once the response lands. No href/controls here since there's nothing
+// real yet to navigate to or act on.
+function addOptimisticChatEntry(title) {
+  const list = document.getElementById('chat-history-list');
+  if (!list) return; // not on a page with the sidebar's chat-history panel
+
+  const empty = list.querySelector('.chat-history-empty');
+  if (empty) empty.remove();
+
+  const item = document.createElement('div');
+  item.className = 'chat-history-item active';
+  const titleEl = document.createElement('span');
+  titleEl.className = 'chat-history-link';
+  titleEl.textContent = title;
+  item.appendChild(titleEl);
+
+  list.insertBefore(item, list.firstChild);
+  optimisticChatEntry = item;
+}
+
+function removeOptimisticChatEntry() {
+  if (optimisticChatEntry) {
+    optimisticChatEntry.remove();
+    optimisticChatEntry = null;
   }
 }
 
@@ -885,6 +947,6 @@ loadChatHistory();
   const restored = currentChatId ? await loadChat(currentChatId) : false;
   if (!restored) {
     const greeting = pickGreetingMessage();
-    appendMsg('assistant', greeting);
+    greetingEl = appendMsg('assistant', greeting);
   }
 })();
