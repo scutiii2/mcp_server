@@ -47,6 +47,12 @@ class ChatResult:
 class ModelOption:
     id: str
     label: str
+    # Whether this model should re-review its own answer for a few extra
+    # rounds before returning (see ollama_provider.py's recursive-chain
+    # loop) instead of returning on the first plain-text response. Only
+    # meaningful for ollama_provider today - openai/claude's MODELS lists
+    # don't set it, so it stays at its default there.
+    recursive_chain: bool = False
 
 
 # model is optional - None means "use this provider's own default".

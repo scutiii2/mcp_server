@@ -148,26 +148,52 @@ def _usage_tokens(usage: Any) -> int | None:
     return total or None
 
 
-def run_chat(
-    question: str,
-    history: list[dict[str, Any]],
-    model: str | None = None,
-    enabled_extensions: list[str] | None = None,
-) -> ChatResult:
-    client = _get_client()
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
-    messages.append({"role": "user", "content": question})
-    tools_used: list[str] = []
-    tool_schemas = _tool_schemas(enabled_extensions)
-    model_name = model or _DEFAULT_MODEL_ID
-    # Every round of this loop is a real, separately-billed API call, so a
-    # multi-tool-call answer's total is the sum across all rounds, not just
-    # the final one. Stays None (rather than 0) until a round actually
-    # reports usage - only report a number if at least one round gave us
-    # one, consistent with ChatResult.total_tokens's "unknown" semantics.
+_MAX_TOOL_CALL_ROUNDS = 6
+
+# Extra self-review rounds for models with recursive_chain=True (see
+# config.json / ModelOption). Capped, not unbounded, for the same reason
+# _MAX_TOOL_CALL_ROUNDS is: a small local model that never settles on a
+# stable answer must not turn one chat request into an unbounded number
+# of API calls.
+_MAX_RECURSIVE_CHAIN_ROUNDS = 3
+
+_RECURSIVE_CHAIN_PROMPT = (
+    "Review your previous answer for correctness and completeness. If it "
+    "is already correct and complete, repeat it verbatim. Otherwise, "
+    "provide a corrected, final answer."
+)
+
+
+def _recursive_chain_enabled(model_name: str) -> bool:
+    for model in MODELS:
+        if model.id == model_name:
+            return model.recursive_chain
+    return False
+
+
+def _tool_loop(
+    client: Any,
+    messages: list[dict[str, Any]],
+    model_name: str,
+    tool_schemas: list[dict[str, Any]],
+    tools_used: list[str],
+) -> tuple[str, int | None]:
+    """One full pass through the tool-calling loop: keep letting the model
+    call tools until it produces a plain-text answer, capped at
+    _MAX_TOOL_CALL_ROUNDS rounds. Mutates ``messages``/``tools_used`` in
+    place (append-only) so a caller making multiple _tool_loop() calls in
+    sequence - recursive_chain's extra review rounds - keeps full
+    conversation history across calls. Appends the final plain-text answer
+    to ``messages`` as an assistant turn before returning, for the same
+    reason: a follow-up review round needs that answer in context.
+
+    Every round is a real, separately-billed API call, so the returned
+    token count is the sum across all rounds of this one pass - stays
+    None (rather than 0) until a round actually reports usage, consistent
+    with ChatResult.total_tokens's "unknown" semantics."""
     total_tokens: int | None = None
 
-    for _ in range(6):
+    for _ in range(_MAX_TOOL_CALL_ROUNDS):
         response = client.chat.completions.create(
             model=model_name,
             messages=messages,
@@ -181,7 +207,9 @@ def run_chat(
         tool_calls = getattr(message, "tool_calls", None) or []
 
         if not tool_calls:
-            return ChatResult(response=message.content or "", tools_used=tools_used, provider_id=PROVIDER_ID, total_tokens=total_tokens)
+            answer = message.content or ""
+            messages.append({"role": "assistant", "content": answer})
+            return answer, total_tokens
 
         messages.append({"role": "assistant", "content": message.content, "tool_calls": tool_calls})
         for call in tool_calls:
@@ -196,12 +224,44 @@ def run_chat(
                 result_text = f"Tool '{call.function.name}' failed: {error}"
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result_text})
 
-    return ChatResult(
-        response="Reached maximum tool-call rounds without a final answer.",
-        tools_used=tools_used,
-        provider_id=PROVIDER_ID,
-        total_tokens=total_tokens,
-    )
+    return "Reached maximum tool-call rounds without a final answer.", total_tokens
+
+
+def run_chat(
+    question: str,
+    history: list[dict[str, Any]],
+    model: str | None = None,
+    enabled_extensions: list[str] | None = None,
+) -> ChatResult:
+    client = _get_client()
+    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    messages.append({"role": "user", "content": question})
+    tools_used: list[str] = []
+    tool_schemas = _tool_schemas(enabled_extensions)
+    model_name = model or _DEFAULT_MODEL_ID
+    total_tokens: int | None = None
+
+    answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used)
+    if round_tokens is not None:
+        total_tokens = (total_tokens or 0) + round_tokens
+
+    if _recursive_chain_enabled(model_name):
+        # Ask the model to double-check its own answer for a bounded
+        # number of extra rounds, stopping early the moment an answer
+        # repeats verbatim (convergence) rather than always spending the
+        # full budget. An answer that keeps changing every round still
+        # stops at _MAX_RECURSIVE_CHAIN_ROUNDS and returns the last one.
+        for _ in range(_MAX_RECURSIVE_CHAIN_ROUNDS):
+            messages.append({"role": "user", "content": _RECURSIVE_CHAIN_PROMPT})
+            refined_answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used)
+            if round_tokens is not None:
+                total_tokens = (total_tokens or 0) + round_tokens
+            converged = refined_answer.strip() == answer.strip()
+            answer = refined_answer
+            if converged:
+                break
+
+    return ChatResult(response=answer, tools_used=tools_used, provider_id=PROVIDER_ID, total_tokens=total_tokens)
 
 
 # Short enough that a hung/unreachable Ollama host doesn't make the

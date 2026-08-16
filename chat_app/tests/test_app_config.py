@@ -103,6 +103,54 @@ def test_entry_with_non_string_label_fails_loudly(tmp_path: Path):
         load_ollama_models(path)
 
 
+def test_recursive_chain_defaults_to_false_when_absent(tmp_path: Path):
+    """Existing config.json files (and every model entry that predates
+    this field) shouldn't need it just to keep loading."""
+    path = _write(
+        tmp_path,
+        {"providers": {"ollama": {"models": [{"id": "qwen2.5:7b", "label": "Qwen"}]}}},
+    )
+
+    models = load_ollama_models(path)
+
+    assert models == [ModelOption(id="qwen2.5:7b", label="Qwen", recursive_chain=False)]
+
+
+def test_recursive_chain_true_parses_into_model_options(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "providers": {
+                "ollama": {
+                    "models": [
+                        {"id": "phi4-mini:latest", "label": "Phi 4 Mini", "recursive_chain": True},
+                    ]
+                }
+            }
+        },
+    )
+
+    models = load_ollama_models(path)
+
+    assert models == [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", recursive_chain=True)]
+
+
+def test_entry_with_non_bool_recursive_chain_fails_loudly(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "providers": {
+                "ollama": {
+                    "models": [{"id": "qwen2.5:7b", "label": "Qwen", "recursive_chain": "yes"}]
+                }
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match=r"models\[0\].recursive_chain"):
+        load_ollama_models(path)
+
+
 def test_non_object_entry_fails_loudly(tmp_path: Path):
     path = _write(tmp_path, {"providers": {"ollama": {"models": ["qwen2.5:7b"]}}})
 
