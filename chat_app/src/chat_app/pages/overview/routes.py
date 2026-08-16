@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template
 
+from chat_app.auth import service
+
 
 overview_bp = Blueprint(
     "overview",
@@ -29,4 +31,12 @@ overview_bp = Blueprint(
 
 @overview_bp.get("/")
 def index():
-    return render_template("overview/index.html")
+    # Login is mandatory app-wide (security.check_login has no
+    # unconfigured fallback), so reaching this view at all guarantees a
+    # session - current_scopes() can't return None here.
+    return render_template(
+        "overview/index.html",
+        username=service.current_username(),
+        role=service.current_role(),
+        scopes=service.current_scopes() or set(),
+    )

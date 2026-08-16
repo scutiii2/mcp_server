@@ -17,6 +17,7 @@ import urllib.error
 
 from flask import Blueprint, jsonify, render_template, request
 
+from chat_app.auth import service
 from chat_app.errors import report
 from chat_app.security import json_body
 from chat_app.services.llm import router
@@ -33,7 +34,16 @@ chat_bp = Blueprint(
 
 @chat_bp.get("/chat", strict_slashes=False)
 def chat_page():
-    return render_template("chat/index.html")
+    # Login is mandatory app-wide (security.check_login has no
+    # unconfigured fallback), so reaching this view at all guarantees a
+    # session - current_scopes() can't return None here.
+    return render_template(
+        "chat/index.html",
+        username=service.current_username(),
+        role=service.current_role(),
+        scopes=service.current_scopes() or set(),
+        current_page="chat",
+    )
 
 
 @chat_bp.get("/api/providers")

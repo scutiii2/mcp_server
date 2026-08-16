@@ -4,9 +4,15 @@ it needs, at the point it's imported into the route module."""
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from chat_app.app import create_app
+from chat_app.auth import service as auth_service
+from chat_app.config import settings as base_settings
+from chat_app.pages.account import routes as account_routes
+from chat_app.pages.auth import routes as auth_routes
 from chat_app.services.llm import cooldown
 
 
@@ -30,3 +36,16 @@ def reset_cooldowns():
     cooldown.reset()
     yield
     cooldown.reset()
+
+
+@pytest.fixture
+def users_db(tmp_path, monkeypatch):
+    """Points every module that reads settings.users_db_path at a fresh,
+    per-test SQLite file instead of the real (import-time-frozen) one -
+    see config.py's comment on that field for why a frozen dataclass field
+    can't just be monkeypatched directly."""
+    test_settings = dataclasses.replace(base_settings, users_db_path=tmp_path / "users.db")
+    monkeypatch.setattr(auth_routes, "settings", test_settings)
+    monkeypatch.setattr(auth_service, "settings", test_settings)
+    monkeypatch.setattr(account_routes, "settings", test_settings)
+    return test_settings.users_db_path

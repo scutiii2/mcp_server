@@ -30,15 +30,38 @@ a proxy**. ``X-Forwarded-For`` is deliberately not consulted - it's
 caller-supplied and trivially forged unless a proxy you control
 overwrites it.
 
-**3. The request isn't cross-site.** There are no cookies here, so
-classic session-riding CSRF doesn't apply - but with the loopback
-fallback active there's no credential to ride in the first place, and a
-POST from any page you happen to visit would just work. ``Sec-Fetch-Site``
-(sent by current browsers, not forgeable by page JavaScript) is the
-primary check, with an Origin/Host comparison as the fallback.
+**3. Someone is logged in.** A separate, inner gate from check 2: check 2
+decides whether the app is reachable from the network at all, using one
+shared credential; this one decides which individual is using it, using a
+session cookie, and is what sends an unauthenticated browser to
+``/login`` instead of straight through. Unlike check 2, this one is
+mandatory, not opt-in - there is no "unconfigured" fallback that leaves a
+page reachable without a session. That makes ``ADMIN_USERNAME``/
+``ADMIN_PASSWORD`` (see ``auth/service.py``) a hard requirement rather
+than a nice-to-have: with both blank and no accounts yet in ``users.db``,
+nobody - including the operator - has any way to log in. ``run.py``
+refuses to start in that state rather than booting into a deployment
+nobody can reach.
+
+**4. That person's role covers this endpoint.** Login (check 3) answers
+"who"; this answers "what they're allowed to touch" - see
+``auth/permissions.py`` for the scope catalog and ``auth/service.py`` for
+how a role resolves to a set of scopes. The env admin bypasses this
+entirely (every scope, always); everyone else's session is re-checked
+against the database on every request, not just at login, so revoking a
+role or deleting an account takes effect on the very next request rather
+than waiting for the session to expire.
+
+**5. The request isn't cross-site.** There are no cookies here beyond the
+login session above, so classic session-riding CSRF doesn't apply when
+login is unconfigured - but with the loopback fallback active there's no
+credential to ride in the first place, and a POST from any page you
+happen to visit would just work. ``Sec-Fetch-Site`` (sent by current
+browsers, not forgeable by page JavaScript) is the primary check, with an
+Origin/Host comparison as the fallback.
 
 Requiring ``Content-Type: application/json`` on the JSON endpoints is a
-fourth, quieter layer, enforced at the routes via ``json_body()``. A
+sixth, quieter layer, enforced at the routes via ``json_body()``. A
 cross-origin ``<form>`` can only send form or text content types, and
 anything that sets ``application/json`` triggers a CORS preflight the
 browser blocks. That single header requirement is what makes a stray
@@ -53,7 +76,10 @@ import secrets
 from typing import Any
 from urllib.parse import urlparse
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, redirect, request, url_for
+
+from chat_app.auth import permissions
+from chat_app.auth.service import current_scopes, is_authenticated, logout
 
 
 AUTH_REALM = "chat_app"
@@ -157,6 +183,72 @@ def check_auth() -> Response | None:
     return None
 
 
+# The auth blueprint's own sign-in surface: the login/register pages
+# themselves, their form submissions, and their static assets (styles.css
+# etc, needed to render the login page before anyone is logged in). Every
+# other route in the app - including auth.create_invite - stays gated.
+_LOGIN_EXEMPT_ENDPOINTS = {
+    "auth.login_page",
+    "auth.login_submit",
+    "auth.register_page",
+    "auth.register_submit",
+    "auth.static",
+}
+
+
+def check_login() -> Response | None:
+    """Send an unauthenticated browser to /login, or refuse a JSON API
+    call with 401. Unconditional - see check 3 in the module docstring."""
+    if request.endpoint in _LOGIN_EXEMPT_ENDPOINTS:
+        return None
+    if is_authenticated():
+        return None
+    if "/api/" in request.path:
+        return _error("Not logged in.", 401)
+    return redirect(url_for("auth.login_page", next=request.path))
+
+
+def _forbidden_page() -> Response:
+    """HTML, not JSON - unlike _error(), a page request landing here is a
+    browser navigation, and raw JSON is a worse result for that than a
+    short, readable page with a way back."""
+    body = (
+        "<!doctype html><html><head><meta charset='utf-8'><title>No access</title></head>"
+        "<body style=\"font-family:-apple-system,sans-serif;max-width:420px;margin:80px auto;padding:0 20px;\">"
+        "<h1 style=\"font-size:20px;font-weight:500;\">No access</h1>"
+        "<p style=\"color:#666;font-size:13px;\">Your role doesn't include this page. "
+        "<a href=\"/\" style=\"color:#185fa5;\">Back to overview</a></p></body></html>"
+    )
+    return Response(body, status=403, mimetype="text/html")
+
+
+def check_role_permission() -> Response | None:
+    """Enforce the logged-in user's role - see check 4 in the module
+    docstring. Only reachable once check_login has already let the
+    request through, so by this point the caller is always authenticated."""
+    if request.endpoint in _LOGIN_EXEMPT_ENDPOINTS:
+        return None
+    if not is_authenticated():
+        return None
+
+    scopes = current_scopes()
+    if scopes is None:
+        # The session names an account (or a role) that no longer exists -
+        # cleared rather than left dangling, so the next request goes
+        # through check_login's normal unauthenticated path instead of
+        # looping back here.
+        logout()
+        if "/api/" in request.path:
+            return _error("Your account no longer exists. Please log in again.", 401)
+        return redirect(url_for("auth.login_page"))
+
+    if permissions.endpoint_allowed(scopes, request.endpoint):
+        return None
+    if "/api/" in request.path:
+        return _error("You don't have access to this.", 403)
+    return _forbidden_page()
+
+
 def check_cross_site() -> Response | None:
     """Block state-changing requests initiated by another site."""
     if request.method not in _STATE_CHANGING:
@@ -208,13 +300,14 @@ def install_security(app: Flask) -> None:
     """Wire every check above into the app.
 
     Order matters: reject an unrecognized Host before doing anything else,
-    then authenticate, then check cross-site. Each returns a response to
+    then the network-level credential, then who's logged in, then what
+    their role covers, then cross-site. Each returns a response to
     short-circuit, or None to continue.
     """
 
     @app.before_request
     def _guard() -> Response | None:  # pyright: ignore[reportUnusedFunction]
-        for check in (check_host, check_auth, check_cross_site):
+        for check in (check_host, check_auth, check_login, check_role_permission, check_cross_site):
             failure = check()
             if failure is not None:
                 return failure

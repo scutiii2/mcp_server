@@ -5,8 +5,15 @@ cd /d "%~dp0mcp_server"
 REM Activate the virtual environment
 call .\venv_mcp\Scripts\activate
 
+:run
 REM Run the MCP server
 py -m mcp_server.run
 
-REM Keep the window open after execution
-pause
+echo.
+echo ----------------------------------------
+echo  MCP server stopped.
+choice /C RQ /N /M "Press [R] to restart, [Q] to quit: "
+if errorlevel 2 goto :end
+if errorlevel 1 goto :run
+
+:end

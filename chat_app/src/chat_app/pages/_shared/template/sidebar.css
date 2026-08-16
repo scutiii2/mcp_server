@@ -1,0 +1,273 @@
+/* Fixed-position sidebar. Pages that include it are expected to add one
+   rule of their own - `body { margin-left: SIDEBAR_WIDTH + GUTTER }` -
+   rather than this file reaching into their layout; see each page's own
+   styles.css for that line and its matching <700px reset. Keeping the
+   shift in the page's own stylesheet (not here) is what lets each page's
+   existing centering/max-width math keep working unmodified everywhere
+   else.
+
+   Collapsing is the one exception to "each page owns its own
+   margin-left": sidebar.js toggles a `sidebar-collapsed` class on <body>
+   (not on .app-sidebar), so a single `body.sidebar-collapsed` rule here
+   can override every page's margin-left by specificity alone (a class +
+   element selector beats a bare element selector, regardless of which
+   stylesheet loads first) without editing each page's own stylesheet.
+   Desktop-only (>=701px) - see the media query at the bottom; below that
+   the sidebar is already a static top bar with nothing to collapse. */
+body { transition: margin-left 0.2s ease; }
+
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 190px;
+  box-sizing: border-box;
+  padding: 24px 16px;
+  background: #f7f7f6;
+  border-right: 1px solid #e2e2e2;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  font-family: -apple-system, sans-serif;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 10;
+}
+
+@media (min-width: 701px) {
+  .app-sidebar { transition: width 0.2s ease, padding 0.2s ease; }
+  body.sidebar-collapsed { margin-left: 0; }
+  body.sidebar-collapsed .app-sidebar {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
+  }
+
+  /* A small round handle straddling the sidebar's right edge - a sibling
+     of .app-sidebar, not a child of it (see sidebar.html's comment on
+     why), so its own fixed position always tracks the viewport rather
+     than getting dragged along with the sidebar's width change. */
+  .sidebar-toggle {
+    position: fixed;
+    top: 24px;
+    left: 174px;
+    z-index: 12;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid #e2e2e2;
+    background: #fff;
+    color: #666;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    transition: left 0.2s ease;
+  }
+  .sidebar-toggle:hover { background: #f5f5f4; color: #1a1a1a; }
+  .sidebar-toggle svg { width: 13px; height: 13px; transition: transform 0.2s ease; }
+  body.sidebar-collapsed .sidebar-toggle { left: 4px; }
+  body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+}
+
+.sidebar-nav { display: flex; flex-direction: column; gap: 4px; }
+.sidebar-link {
+  font-size: 13px;
+  color: #444;
+  text-decoration: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.sidebar-link:hover { background: #ececea; }
+.sidebar-link.active { background: #e6f1fb; color: #185fa5; font-weight: 500; }
+
+/* Overview is styled like every other nav link (same hover, same
+   padding) rather than set apart with an icon/larger size - bold is the
+   only thing distinguishing it as the "home" entry. */
+.sidebar-home { font-weight: 700; color: #1a1a1a; }
+
+/* Invite control and identity chip sit at the bottom of the column.
+   margin-top: auto on .sidebar-invite pushes it (and everything after it,
+   i.e. .sidebar-user) to the bottom, leaving .sidebar-home/.sidebar-nav
+   pinned at the top. */
+.sidebar-invite {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid #e2e2e2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-invite-btn {
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+.sidebar-invite-btn:hover { background: #f0f0ef; }
+.sidebar-invite-result {
+  font-size: 11px;
+  color: #444;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Generated-code display: monospace code + a one-click Copy button. Same
+   shape reused in overview/template/styles.css and
+   account/template/styles.css - see sidebar.js's buildCopyChip(). */
+.copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #e2e2e2;
+  border-radius: 6px;
+  padding: 2px 4px 2px 8px;
+  max-width: 100%;
+}
+.copy-chip code {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  color: #1a1a1a;
+  overflow-wrap: anywhere;
+}
+.copy-chip-btn {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 7px;
+  border: none;
+  border-radius: 4px;
+  background: #185fa5;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.copy-chip-btn:hover { background: #124a80; }
+
+/* --- identity chip -------------------------------------------------------
+   Compact account chip: avatar + name/role, click to reveal a small
+   "Log out" popover above it (the chip is pinned to the bottom of the
+   column, so the menu has nowhere to go but up). Restrained on purpose -
+   no gradients, the popover's shadow is functional elevation rather than
+   decoration (matching the chat rail's slide-in panel), same spirit as
+   the page-card hover treatment elsewhere in this app. */
+.sidebar-user {
+  position: relative;
+  padding-top: 12px;
+  border-top: 1px solid #e2e2e2;
+}
+.sidebar-user-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 6px;
+  margin: -6px;
+  color: inherit;
+  cursor: pointer;
+}
+.sidebar-user-toggle:hover { background: #ececea; }
+.sidebar-user-toggle[aria-expanded="true"] { background: #ececea; }
+.sidebar-user .avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #185fa5;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.sidebar-user-id { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; text-align: left; }
+.sidebar-username { font-weight: 600; color: #1a1a1a; word-break: break-word; }
+.sidebar-role { font-size: 11px; color: #888; text-transform: capitalize; }
+.sidebar-user-chevron {
+  width: 14px;
+  height: 14px;
+  color: #888;
+  flex-shrink: 0;
+  transition: transform 0.12s ease;
+}
+.sidebar-user-toggle[aria-expanded="true"] .sidebar-user-chevron { transform: rotate(180deg); }
+
+.sidebar-user-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  background: #fff;
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(20, 24, 31, 0.1);
+  padding: 4px;
+  z-index: 11;
+}
+.sidebar-user-menu[hidden] { display: none; }
+.sidebar-user-menu-item {
+  display: block;
+  padding: 7px 8px;
+  font-size: 12px;
+  color: #1a1a1a;
+  text-decoration: none;
+  border-radius: 6px;
+}
+.sidebar-user-menu-item:hover { background: #f0f0ef; }
+
+/* Below this width the fixed left column stops making sense (too little
+   room left for content), so it drops into the document flow as a
+   horizontal bar above the page instead. Pages including this file
+   should reset their own margin-left to its normal mobile value in their
+   existing <=700px (or narrower) media query - see the note at the top
+   of this file. */
+@media (max-width: 700px) {
+  /* Collapsing only applies to the fixed desktop column (see the
+     min-width: 701px block above) - the sidebar is already a compact
+     static top bar down here, so the toggle has nothing useful to do. */
+  .sidebar-toggle { display: none; }
+  .app-sidebar {
+    position: static;
+    width: auto;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    border-right: none;
+    border-bottom: 1px solid #e2e2e2;
+    margin-bottom: 16px;
+  }
+  .sidebar-nav { flex-direction: row; flex-wrap: wrap; }
+  .sidebar-user {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+  .sidebar-user-toggle { width: auto; }
+  /* The sidebar is a top bar here, so a menu opening upward from the chip
+     would run off the top of the viewport - open it downward instead. */
+  .sidebar-user-menu {
+    bottom: auto;
+    top: calc(100% + 6px);
+    left: auto;
+    right: 0;
+    min-width: 140px;
+  }
+}

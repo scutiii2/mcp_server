@@ -17,6 +17,7 @@ import re
 
 from flask import Blueprint, jsonify, render_template
 
+from chat_app.auth import service
 from chat_app.security import json_body
 from chat_app.services.mcp_client import (
     call_tool,
@@ -219,6 +220,9 @@ def browse():
     extensions = _group_tools_by_extension(tools, extensions_catalog)
     tool_capability_groups = _group_tools_by_capability(tools)
     resource_capability_groups = _group_resources_by_capability(resources)
+    # Login is mandatory app-wide (security.check_login has no
+    # unconfigured fallback), so reaching this view at all guarantees a
+    # session - current_scopes() can't return None here.
     return render_template(
         "capabilities/index.html",
         tools=tools,
@@ -227,6 +231,10 @@ def browse():
         resources=resources,
         resource_capability_groups=resource_capability_groups,
         error=error,
+        username=service.current_username(),
+        role=service.current_role(),
+        scopes=service.current_scopes() or set(),
+        current_page="capabilities",
     )
 
 

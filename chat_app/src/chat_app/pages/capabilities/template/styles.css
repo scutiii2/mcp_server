@@ -1,7 +1,11 @@
-body { font-family: -apple-system, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
-.back-links { display: flex; gap: 14px; margin-bottom: 16px; }
-.back-link { display: inline-block; font-size: 13px; color: #666; text-decoration: none; }
-.back-link:hover { text-decoration: underline; }
+/* body reserves the sidebar's width with a plain (non-auto) margin-left
+   and otherwise has no width/centering opinion of its own; .page-content
+   is what actually gets a max-width and margin: 0 auto, so it centers
+   within body's remaining area (viewport minus the sidebar) rather than
+   within the full viewport - see this page's index.html for why the
+   split exists. */
+body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; color: #1a1a1a; margin-left: 190px; }
+.page-content { max-width: 860px; margin: 40px auto; padding: 0 20px; }
 h1 { font-size: 20px; font-weight: 500; }
 h2 { font-size: 15px; font-weight: 500; margin: 32px 0 4px; }
 .sub { color: #666; font-size: 13px; margin-bottom: 8px; }
@@ -123,3 +127,7 @@ pre.result { background: #f5f5f5; padding: 10px 12px; border-radius: 6px; font-s
 .capability-group-body { display: none; padding: 12px 18px 18px; border-top: 1px solid #eee; }
 .capability-group.open .capability-group-body { display: block; }
 .capability-group-body .tool:last-child { margin-bottom: 0; }
+
+@media (max-width: 700px) {
+  body { margin-left: 0; }
+}

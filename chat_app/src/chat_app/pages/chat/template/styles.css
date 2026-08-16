@@ -20,13 +20,25 @@
 
 * { box-sizing: border-box; }
 
+/* body reserves the sidebar's width with a plain (non-auto) margin-left
+   and otherwise has no width/centering opinion of its own; .page-content
+   is what actually gets a max-width and margin: 0 auto, so it centers
+   within body's remaining area (viewport minus the sidebar) rather than
+   within the full viewport - see this page's index.html for why the
+   split exists. */
 body {
   font-family: -apple-system, "Segoe UI", sans-serif;
+  margin: 0;
+  margin-left: 190px;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.page-content {
   max-width: 720px;
   margin: 40px auto;
   padding: 0 20px;
-  background: var(--paper);
-  color: var(--ink);
 }
 
 .toprow {
@@ -40,11 +52,6 @@ body {
   flex-wrap: wrap;
 }
 .selectors { display: flex; gap: 6px; }
-
-.toprow-links { display: flex; align-items: center; gap: 12px; }
-
-a.caps-link, a.back-link { font-size: 13px; color: var(--ink-muted); text-decoration: none; }
-a.caps-link:hover, a.back-link:hover { text-decoration: underline; }
 
 select {
   padding: 6px 10px;
@@ -174,8 +181,16 @@ button {
 button:hover:not(:disabled) { background: #000; }
 button:disabled { background: #a8a8a8; cursor: not-allowed; }
 
+/* Sidebar flips from fixed to static layout at 700px (see sidebar.css),
+   wider than this page's own 520px breakpoint below - the margin-left
+   reset needs to kick in at 700px, ahead of the 520px block's other
+   adjustments. */
+@media (max-width: 700px) {
+  body { margin-left: 0; }
+}
+
 @media (max-width: 520px) {
-  body { margin: 16px auto; padding: 0 12px; }
+  .page-content { margin: 16px auto; padding: 0 12px; }
   .toprow { flex-direction: column; align-items: flex-start; }
   .msg { margin: 8px 4px; }
 }

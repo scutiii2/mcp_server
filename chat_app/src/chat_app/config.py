@@ -47,6 +47,19 @@ class Settings:
     # CONFIG_PATH; relative to CWD by default, same as every other path
     # setting in this project.
     chat_config_path: Path = Path(_env("CHAT_CONFIG_PATH", "config.json"))
+    # Runtime-created accounts and invite codes - see auth/store.py.
+    # Relative to CWD by default, same convention as chat_config_path.
+    #
+    # ADMIN_USERNAME/ADMIN_PASSWORD (the default account) are deliberately
+    # *not* read into this frozen, import-time-evaluated dataclass - see
+    # auth/service.py._admin_credentials, which reads them with plain
+    # os.getenv() at request time instead, the same way
+    # security.configured_credentials() does for CHAT_AUTH_USER/PASSWORD.
+    # A frozen dataclass field would freeze the value at process start,
+    # which breaks the same thing it breaks for those: tests that
+    # monkeypatch the env per-case, and a deployment that expects editing
+    # .env and restarting to be enough.
+    users_db_path: Path = Path(_env("USERS_DB_PATH", "data/users.db"))
 
 
 settings = Settings()

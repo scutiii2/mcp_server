@@ -42,6 +42,20 @@ def _no_extensions():
         yield
 
 
+@pytest.fixture
+def client(client, monkeypatch):
+    """Login is mandatory app-wide with no unconfigured fallback (see
+    security.py), so every test below needs a real session to reach the
+    page at all. Overrides conftest.py's plain client with one that's
+    already logged in as an always-full-access admin - the tests here
+    are about the capabilities browser's own content, not about login/RBAC
+    itself (that's test_auth_routes.py/test_account_routes.py's job)."""
+    monkeypatch.setenv("ADMIN_USERNAME", "test-admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-pw-1")
+    client.post("/login", data={"username": "test-admin", "password": "test-admin-pw-1"})
+    return client
+
+
 def _fake_tool(name="restart_service_tool", description="Restart a service on a host."):
     return SimpleNamespace(
         name=name,

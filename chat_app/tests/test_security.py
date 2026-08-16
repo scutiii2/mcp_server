@@ -30,6 +30,41 @@ def no_credentials(monkeypatch):
     monkeypatch.delenv("CHAT_ALLOWED_HOSTS", raising=False)
 
 
+@pytest.fixture
+def client(client, monkeypatch):
+    """Login is mandatory app-wide with no unconfigured fallback (see
+    security.py), so a "200 means the request reached the route" test
+    below needs a real session, not just a passing check_host/check_auth.
+    Overrides conftest.py's plain client with one that's already logged in
+    as an always-full-access admin - these tests are about check_host/
+    check_auth/check_cross_site specifically, not about login/RBAC (that's
+    test_auth_routes.py/test_account_routes.py's job), so admin's blanket
+    access keeps every existing assertion here meaningful unchanged. Runs
+    after the autouse no_credentials fixture above (autouse fixtures run
+    before explicitly-requested ones), so this login always happens while
+    CHAT_AUTH_USER is still unset - individual tests that set it afterward,
+    inside the test body, do so only for the request(s) they make next."""
+    monkeypatch.setenv("ADMIN_USERNAME", "test-admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-pw-1")
+    client.post("/login", data={"username": "test-admin", "password": "test-admin-pw-1"})
+    return client
+
+
+def _login_with_host(client, host: str) -> None:
+    """The shared ``client`` fixture already logged in once, but Werkzeug's
+    test client cookie jar keys the session cookie by the Host header used
+    at login time (matching real browsers: Flask's session cookie has no
+    explicit Domain attribute, so it's host-only) - see the two tests below
+    that vary Host on purpose. A request under a different Host simply
+    won't carry that cookie, so those two log in again under the specific
+    Host they're about to use."""
+    client.post(
+        "/login",
+        data={"username": "test-admin", "password": "test-admin-pw-1"},
+        headers={"Host": host},
+    )
+
+
 def _basic(user: str, password: str) -> dict[str, str]:
     from base64 import b64encode
 
@@ -124,12 +159,14 @@ def test_foreign_host_header_is_refused_even_from_loopback(client):
 
 
 def test_host_with_a_port_is_matched_on_the_hostname(client):
+    _login_with_host(client, "127.0.0.1:5009")
     assert client.get("/api/providers", headers={"Host": "127.0.0.1:5009"}).status_code == 200
 
 
 def test_allowlisted_host_is_accepted(client, monkeypatch):
     monkeypatch.setenv("CHAT_ALLOWED_HOSTS", "tools.internal,other.example")
 
+    _login_with_host(client, "tools.internal")
     assert client.get("/api/providers", headers={"Host": "tools.internal"}).status_code == 200
 
 

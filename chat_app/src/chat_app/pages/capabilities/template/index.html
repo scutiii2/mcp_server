@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8">
   <title>MCP capabilities</title>
+  <link rel="stylesheet" href="{{ url_for('shared.static', filename='sidebar.css') }}">
   <link rel="stylesheet" href="{{ url_for('capabilities.static', filename='styles.css') }}">
 </head>
 <body>
-  <div class="back-links">
-    <a class="back-link" href="/">← Overview</a>
-    <a class="back-link" href="/chat">← Back to chat</a>
-  </div>
+  {% include "shared/sidebar.html" %}
+  <div class="page-content">
   <h1>MCP server capabilities</h1>
   <p class="sub">{{ tools|length }} tools, {{ resources|length }} resources — fetched live from the MCP server just now.</p>
 
@@ -153,7 +152,9 @@
   {% endif %}
     </div>
   </div>
+  </div>
 
   <script src="{{ url_for('capabilities.static', filename='script.js') }}"></script>
+  <script src="{{ url_for('shared.static', filename='sidebar.js') }}"></script>
 </body>
 </html>

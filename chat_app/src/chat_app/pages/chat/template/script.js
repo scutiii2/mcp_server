@@ -210,10 +210,13 @@ async function submitAddExtension(event) {
 }
 
 async function removeExtension(ext) {
-  // Cheap guard against a misclick removing a configured extension - this
-  // is a local UI action with no side effects outside this browser tab,
-  // so a native confirm() is sufficient.
-  const confirmed = confirm(`Remove "${ext.label || ext.id}"?`);
+  // Cheap guard against a misclick removing a configured extension.
+  const confirmed = await confirmModal({
+    title: 'Remove extension?',
+    message: `Remove "${ext.label || ext.id}"?`,
+    confirmLabel: 'Remove',
+    danger: true,
+  });
   if (!confirmed) return;
 
   const banner = document.getElementById('ext-error-banner');

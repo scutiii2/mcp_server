@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Account manager - MCP chat app</title>
+  <link rel="stylesheet" href="{{ url_for('shared.static', filename='sidebar.css') }}">
+  <link rel="stylesheet" href="{{ url_for('shared.static', filename='modal.css') }}">
+  <link rel="stylesheet" href="{{ url_for('account.static', filename='styles.css') }}">
+</head>
+<body>
+  {% include "shared/sidebar.html" %}
+  <div class="page-content">
+
+  <h1>Account manager</h1>
+  <p id="status-banner" class="status-banner hidden"></p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" type="button" data-tab="users" role="tab" aria-selected="true">Users</button>
+    <button class="tab-btn" type="button" data-tab="roles" role="tab" aria-selected="false">Roles</button>
+    <button class="tab-btn" type="button" data-tab="invites" role="tab" aria-selected="false">Invitations</button>
+  </div>
+
+  <section class="tab-panel active" id="tab-users" role="tabpanel">
+    <div class="panel-block">
+      <h2>Create a user</h2>
+      <form id="create-user-form" class="inline-form">
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="password" name="password" placeholder="Password (min 8 chars)" minlength="8" required>
+        <select name="role" required>
+          {% for role in roles %}
+          <option value="{{ role.name }}" {% if role.name == 'member' %}selected{% endif %}>{{ role.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Create user</button>
+      </form>
+    </div>
+
+    <div class="panel-block">
+      <h2>All users</h2>
+      <table>
+        <thead><tr><th>Username</th><th>Role</th><th>Created by</th><th>Created</th><th></th></tr></thead>
+        <tbody id="users-body">
+          {% for user in users %}
+          <tr data-username="{{ user.username }}">
+            <td>{{ user.username }}</td>
+            <td>
+              <select class="role-select">
+                {% for role in roles %}
+                <option value="{{ role.name }}" {% if role.name == user.role %}selected{% endif %}>{{ role.name }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>{{ user.created_by }}</td>
+            <td>{{ user.created_at }}</td>
+            <td><button class="delete-user danger" type="button" {% if user.username == username %}disabled title="Can't delete your own account"{% endif %}>Delete</button></td>
+          </tr>
+          {% endfor %}
+          {% if not users %}
+          <tr><td colspan="5" class="empty-row">No users yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tab-panel" id="tab-roles" role="tabpanel">
+    <div class="panel-block">
+      <h2>Create a role</h2>
+      <form id="create-role-form" class="inline-form">
+        <input type="text" name="name" placeholder="Role name" required>
+        <fieldset class="scope-checkboxes">
+          {% for scope in scope_catalog %}
+          <label><input type="checkbox" name="scopes" value="{{ scope.key }}"> {{ scope.label }}</label>
+          {% endfor %}
+        </fieldset>
+        <button type="submit">Create role</button>
+      </form>
+    </div>
+
+    <div class="panel-block">
+      <h2>All roles</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Scopes</th><th>Created by</th><th></th></tr></thead>
+        <tbody id="roles-body">
+          {% for role in roles %}
+          <tr data-role="{{ role.name }}">
+            <td>{{ role.name }}</td>
+            <td>{{ 'all' if role.name == admin_role else (role.scopes | sort | join(', ') or '—') }}</td>
+            <td>{{ role.created_by }}</td>
+            <td><button class="delete-role danger" type="button" {% if role.name == admin_role %}disabled title="Built-in role"{% endif %}>Delete</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tab-panel" id="tab-invites" role="tabpanel">
+    <div class="panel-block">
+      <h2>Generate an invite code</h2>
+      <form id="create-invite-form" class="inline-form">
+        <select name="role" required>
+          {% for role in roles %}
+          <option value="{{ role.name }}" {% if role.name == 'member' %}selected{% endif %}>{{ role.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="ttl_hours">
+          <option value="">Never expires</option>
+          <option value="1">1 hour</option>
+          <option value="24" selected>24 hours</option>
+          <option value="168">7 days</option>
+        </select>
+        <button type="submit">Generate code</button>
+      </form>
+      <p id="invite-result"></p>
+    </div>
+
+    <div class="panel-block">
+      <h2>All invite codes</h2>
+      <p class="section-hint">Every code below is still redeemable - one gets used, it disappears from this list automatically.</p>
+      <table>
+        <thead><tr><th>Code</th><th>Role</th><th>Created by</th><th>Created</th><th>Expires</th><th></th></tr></thead>
+        <tbody id="invites-body">
+          {% for invite in invites %}
+          <tr data-code-id="{{ invite.code_id }}">
+            <td><span class="invite-code-unavailable" title="Only shown once, right after it's generated">—</span></td>
+            <td>{{ invite.role }}</td>
+            <td>{{ invite.created_by }}</td>
+            <td>{{ invite.created_at }}</td>
+            <td>{{ invite.expires_at or 'Never' }}</td>
+            <td><button class="delete-invite danger" type="button">Delete</button></td>
+          </tr>
+          {% endfor %}
+          {% if not invites %}
+          <tr><td colspan="6" class="empty-row">No invite codes yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  </div>
+
+  <script src="{{ url_for('shared.static', filename='modal.js') }}"></script>
+  <script src="{{ url_for('account.static', filename='script.js') }}"></script>
+  <script src="{{ url_for('shared.static', filename='sidebar.js') }}"></script>
+</body>
+</html>
