@@ -89,6 +89,92 @@ body { transition: margin-left 0.2s ease; }
    only thing distinguishing it as the "home" entry. */
 .sidebar-home { font-weight: 700; color: #1a1a1a; }
 
+/* Chat history panel - chat page only (see sidebar.html's current_page
+   gate). Sits directly under the nav in DOM order, above the
+   margin-top: auto-pushed .sidebar-invite/.sidebar-user pair below it. */
+.sidebar-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e2e2;
+}
+.sidebar-new-chat-btn {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  color: #1a1a1a;
+  text-decoration: none;
+  cursor: pointer;
+}
+.sidebar-new-chat-btn:hover { background: #f0f0ef; }
+
+.chat-history-list { display: flex; flex-direction: column; gap: 2px; }
+.chat-history-empty { font-size: 11px; color: #888; margin: 0; padding: 4px 2px; }
+
+.chat-history-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 2px 2px 2px 8px;
+}
+.chat-history-item:hover { background: #ececea; }
+.chat-history-item.active { background: #e6f1fb; }
+
+.chat-history-link {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #444;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-history-item.active .chat-history-link { color: #185fa5; font-weight: 500; }
+
+.chat-history-time {
+  font-size: 10px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.chat-history-controls {
+  display: none;
+  flex-shrink: 0;
+  gap: 2px;
+}
+.chat-history-item:hover .chat-history-controls { display: flex; }
+.chat-history-rename-btn,
+.chat-history-delete-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.chat-history-rename-btn:hover,
+.chat-history-delete-btn:hover { background: #dcdcda; color: #1a1a1a; }
+
+.chat-history-rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid #185fa5;
+  border-radius: 4px;
+}
+
 /* Invite control and identity chip sit at the bottom of the column.
    margin-top: auto on .sidebar-invite pushes it (and everything after it,
    i.e. .sidebar-user) to the bottom, leaving .sidebar-home/.sidebar-nav
@@ -255,6 +341,7 @@ body { transition: margin-left 0.2s ease; }
     margin-bottom: 16px;
   }
   .sidebar-nav { flex-direction: row; flex-wrap: wrap; }
+  .sidebar-chats { flex-basis: 100%; border-top: none; }
   .sidebar-user {
     margin-top: 0;
     padding-top: 0;

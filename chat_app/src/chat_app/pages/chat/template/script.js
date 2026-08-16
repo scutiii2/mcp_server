@@ -692,11 +692,151 @@ async function loadChat(chatId) {
   }
 }
 
-// Implemented in full by the sidebar-history-list feature - stubbed
-// here so send()'s and the init block's calls have something to call
-// while this file is worked on task-by-task. (Task 4 replaces this
-// stub with a real implementation in this same file.)
-async function loadChatHistory() {}
+async function loadChatHistory() {
+  const list = document.getElementById('chat-history-list');
+  if (!list) return; // not on the chat page's sidebar variant - nothing to do
+  try {
+    const res = await fetch('/api/chats');
+    const chats = await res.json();
+    renderChatHistoryList(chats);
+  } catch (err) {
+    list.innerHTML = '<p class="chat-history-empty">Could not load chat history.</p>';
+  }
+}
+
+// Compact buckets, e.g. "2h ago" / "3d ago" - falls back to a plain
+// date once it's old enough that a relative count stops being useful.
+function formatRelativeTime(isoString) {
+  const then = new Date(isoString).getTime();
+  const diffSeconds = Math.max(0, (Date.now() - then) / 1000);
+  if (diffSeconds < 60) return 'just now';
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(isoString).toLocaleDateString();
+}
+
+function renderChatHistoryList(chats) {
+  const list = document.getElementById('chat-history-list');
+  list.innerHTML = '';
+
+  if (chats.length === 0) {
+    list.innerHTML = '<p class="chat-history-empty">No chats yet.</p>';
+    return;
+  }
+
+  for (const chat of chats) {
+    list.appendChild(buildChatHistoryItem(chat));
+  }
+}
+
+function buildChatHistoryItem(chat) {
+  const item = document.createElement('div');
+  item.className = 'chat-history-item' + (chat.id === currentChatId ? ' active' : '');
+
+  const link = document.createElement('a');
+  link.className = 'chat-history-link';
+  link.href = `/chat?id=${encodeURIComponent(chat.id)}`;
+  link.textContent = chat.title;
+  item.appendChild(link);
+
+  const time = document.createElement('span');
+  time.className = 'chat-history-time';
+  time.textContent = formatRelativeTime(chat.updated_at);
+  item.appendChild(time);
+
+  const controls = document.createElement('div');
+  controls.className = 'chat-history-controls';
+
+  const renameBtn = document.createElement('button');
+  renameBtn.type = 'button';
+  renameBtn.className = 'chat-history-rename-btn';
+  renameBtn.setAttribute('aria-label', `Rename ${chat.title}`);
+  renameBtn.textContent = '✎';
+  renameBtn.addEventListener('click', () => startRenameChat(item, chat));
+  controls.appendChild(renameBtn);
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'chat-history-delete-btn';
+  deleteBtn.setAttribute('aria-label', `Delete ${chat.title}`);
+  deleteBtn.textContent = '×';
+  deleteBtn.addEventListener('click', () => deleteChatEntry(chat));
+  controls.appendChild(deleteBtn);
+
+  item.appendChild(controls);
+  return item;
+}
+
+function startRenameChat(item, chat) {
+  const link = item.querySelector('.chat-history-link');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'chat-history-rename-input';
+  input.value = chat.title;
+  link.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+
+  const commit = async () => {
+    if (settled) return;
+    settled = true;
+    const newTitle = input.value.trim();
+    if (newTitle && newTitle !== chat.title) {
+      try {
+        const res = await fetch(`/api/chats/${encodeURIComponent(chat.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle }),
+        });
+        if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+      } catch (err) {
+        // The list reload below shows the true (unrenamed) title either
+        // way, which is enough feedback that the rename didn't take -
+        // no separate error UI for a sidebar-scoped action this small.
+      }
+    }
+    await loadChatHistory();
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') input.blur(); // triggers commit via the blur handler above
+    if (e.key === 'Escape') {
+      settled = true;
+      loadChatHistory();
+    }
+  });
+}
+
+async function deleteChatEntry(chat) {
+  const confirmed = await confirmModal({
+    title: 'Delete chat?',
+    message: `Delete "${chat.title}"? This can't be undone.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/chats/${encodeURIComponent(chat.id)}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) throw new Error(`Server responded with ${res.status}`);
+  } catch (err) {
+    // Best-effort - the list reload / navigation below reflects
+    // whatever the server's actual state ended up being either way.
+  }
+
+  if (chat.id === currentChatId) {
+    location.href = '/chat';
+    return;
+  }
+  await loadChatHistory();
+}
 
 document.getElementById('q').addEventListener('keydown', e => {
   if (e.key === 'Enter') send();

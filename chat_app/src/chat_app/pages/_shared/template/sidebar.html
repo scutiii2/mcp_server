@@ -48,6 +48,13 @@
     {% endif %}
   </nav>
 
+  {% if current_page == 'chat' %}
+  <div class="sidebar-chats">
+    <a href="/chat" class="sidebar-new-chat-btn">+ New chat</a>
+    <div id="chat-history-list" class="chat-history-list"><p class="chat-history-empty">Loading...</p></div>
+  </div>
+  {% endif %}
+
   {% if 'invites' in scopes %}
   <div class="sidebar-invite">
     <button id="sidebar-generate-invite" type="button" class="sidebar-invite-btn">+ Invite code</button>
