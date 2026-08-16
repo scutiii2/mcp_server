@@ -825,17 +825,21 @@ async function deleteChatEntry(chat) {
 
   try {
     const res = await fetch(`/api/chats/${encodeURIComponent(chat.id)}`, { method: 'DELETE' });
+    // A 404 here means it's already gone (e.g. deleted from another tab) -
+    // treat that as success too, same as a clean 2xx.
     if (!res.ok && res.status !== 404) throw new Error(`Server responded with ${res.status}`);
-  } catch (err) {
-    // Best-effort - the list reload / navigation below reflects
-    // whatever the server's actual state ended up being either way.
-  }
 
-  if (chat.id === currentChatId) {
-    location.href = '/chat';
-    return;
+    if (chat.id === currentChatId) {
+      location.href = '/chat';
+      return;
+    }
+    await loadChatHistory();
+  } catch (err) {
+    // Unlike a successful delete, this must NOT navigate away or refresh
+    // the list - the chat record still exists server-side, so silently
+    // proceeding would look like a successful delete when it wasn't.
+    alert('Could not delete this chat: ' + err.message);
   }
-  await loadChatHistory();
 }
 
 document.getElementById('q').addEventListener('keydown', e => {
