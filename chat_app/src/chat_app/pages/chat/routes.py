@@ -194,10 +194,19 @@ def chat_api():
     # Persisted regardless of which branch above ran - an error turn is
     # saved too, same as the client already does unconditionally on its
     # own `history` array, so reopening a chat shows what happened.
-    transcript = list(data.get("history", [])) + [
-        {"role": "user", "content": question},
-        {"role": "assistant", "content": response_text},
-    ]
+    #
+    # history_in may or may not already end with the current question:
+    # script.js's send() sends a `priorHistory` snapshot taken before the
+    # question was pushed, so it never does - but this endpoint is a
+    # public JSON API other callers could hit directly, and one might
+    # send `history` already including the current turn. Guard against
+    # that so the saved transcript never duplicates the question either
+    # way.
+    history_in = list(data.get("history", []))
+    current_turn = [{"role": "user", "content": question}]
+    if history_in and history_in[-1] == current_turn[0]:
+        current_turn = []
+    transcript = history_in + current_turn + [{"role": "assistant", "content": response_text}]
     chat_id = data.get("chat_id")
     try:
         chat_id = chats_store.save_chat(settings.chats_db_path, service.current_username(), chat_id, transcript)

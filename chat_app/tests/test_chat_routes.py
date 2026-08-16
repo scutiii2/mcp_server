@@ -339,6 +339,34 @@ def test_api_chat_with_chat_id_updates_the_existing_chat(client, chats_db):
     ]
 
 
+def test_api_chat_does_not_duplicate_the_question_when_history_already_includes_it(client, chats_db):
+    """script.js's send() sends a `priorHistory` snapshot that never
+    includes the current question, but /api/chat is a public JSON API -
+    some other caller might send `history` already ending with the
+    current question. The saved transcript must still contain that
+    question exactly once, not twice."""
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(response="second reply", provider_id="openai")
+        response = client.post(
+            "/api/chat",
+            json={
+                "question": "second question",
+                "history": [
+                    {"role": "user", "content": "first"},
+                    {"role": "user", "content": "second question"},
+                ],
+            },
+        )
+
+    body = response.get_json()
+    saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
+    assert saved["messages"] == [
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "second question"},
+        {"role": "assistant", "content": "second reply"},
+    ]
+
+
 def test_api_chat_persists_the_turn_even_when_the_provider_errors(client, chats_db):
     """A curated ValueError still becomes a saved assistant turn - same
     text the user sees in the transcript, so reopening the chat shows

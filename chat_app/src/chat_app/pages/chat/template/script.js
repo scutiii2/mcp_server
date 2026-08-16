@@ -505,6 +505,7 @@ async function send() {
   const sendBtn = document.getElementById('send-btn');
   input.value = '';
   appendMsg('user', question);
+  const priorHistory = history.slice();
   history.push({ role: 'user', content: question });
 
   const selectedProvider = document.getElementById('provider').value;
@@ -550,7 +551,7 @@ async function send() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question,
-        history,
+        history: priorHistory,
         provider: selectedProvider,
         model: selectedModel,
         enabled_extensions: currentEnabledExtensions(),
