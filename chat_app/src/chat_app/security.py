@@ -19,16 +19,19 @@ loopback interface. ``remote_addr`` looks perfectly local. What doesn't
 match is the Host header, which still carries the attacker's domain -
 so that's what gets checked.
 
-**2. The caller is authenticated.** HTTP Basic against a single shared
-credential from the environment. If none is configured, the app still
-runs but serves loopback requests only - local development stays
-frictionless, while exposing it to a network requires deliberately
-setting a password. Note the fallback trusts ``remote_addr``: behind a
-reverse proxy every request appears to come from the proxy, i.e. from
-loopback, so **you must configure credentials before putting this behind
-a proxy**. ``X-Forwarded-For`` is deliberately not consulted - it's
-caller-supplied and trivially forged unless a proxy you control
-overwrites it.
+**2. The caller is authenticated.** HTTP Basic Auth, checked once the
+network gate is switched on (``auth.service.network_gate_enabled()``) -
+against a shared credential from the environment, a real account's own
+credentials (which also logs that account in immediately - see
+``check_auth``'s docstring for why), or a temporary gate code. If the
+gate isn't switched on at all, the app still runs but serves loopback
+requests only - local development stays frictionless, while exposing it
+to a network requires deliberately switching the gate on. Note the
+fallback trusts ``remote_addr``: behind a reverse proxy every request
+appears to come from the proxy, i.e. from loopback, so **you must switch
+the gate on before putting this behind a proxy**. ``X-Forwarded-For`` is
+deliberately not consulted - it's caller-supplied and trivially forged
+unless a proxy you control overwrites it.
 
 **3. Someone is logged in.** A separate, inner gate from check 2: check 2
 decides whether the app is reachable from the network at all, using one
@@ -79,7 +82,16 @@ from urllib.parse import urlparse
 from flask import Flask, Response, jsonify, redirect, request, url_for
 
 from chat_app.auth import permissions
-from chat_app.auth.service import current_scopes, is_authenticated, is_executive, logout
+from chat_app.auth.service import (
+    check_credentials,
+    current_scopes,
+    gate_code_grants_access,
+    is_authenticated,
+    is_executive,
+    login,
+    logout,
+    network_gate_enabled,
+)
 
 
 AUTH_REALM = "chat_app"
@@ -158,29 +170,70 @@ def check_host() -> Response | None:
 
 
 def check_auth() -> Response | None:
-    credentials = configured_credentials()
+    """Whether this request satisfies the network gate.
 
-    if credentials is None:
+    ``auth.service.network_gate_enabled()`` decides whether the gate is
+    switched on AT ALL - kept as a separate question from what satisfies
+    it once active, since ADMIN_USERNAME/PASSWORD is mandatory in every
+    deployment (see that function's docstring for why "an admin account
+    exists" can never be the activation signal by itself).
+
+    Once the gate is on, EVERY request needs valid Basic Auth - including
+    a loopback one, and including one that already carries a valid
+    session cookie (check_login, which reads that cookie, doesn't run
+    until after this check) - unchanged from today's behavior when
+    CHAT_AUTH_USER/PASSWORD was the only way to switch it on. There are
+    now three ways to satisfy it, checked in order:
+
+    1. The configured shared pair, exactly as before.
+    2. A real account's own credentials (service.check_credentials - the
+       same check the login form itself uses), which - unlike the shared
+       pair - also establishes a session immediately (service.login()),
+       so check_login sees it right after in the same request. This is
+       the "one prompt, not two" merge: a browser that's cached this
+       Basic Auth challenge resends it on every subsequent request
+       automatically, so a person only ever has to type it once.
+    3. A currently-valid gate code, checked against the password field
+       only - the username is meaningless for a credential that isn't
+       tied to any identity. Passes the gate but does NOT log anyone in;
+       check_login still sends them to /login right after, same as an
+       unauthenticated request today.
+    """
+    if not network_gate_enabled():
         if _is_loopback_address(request.remote_addr):
             return None
         return _error(
-            "This app is not configured for network access. Set CHAT_AUTH_USER "
-            "and CHAT_AUTH_PASSWORD to enable authenticated remote access.",
+            "This app is not configured for network access. Set CHAT_AUTH_USER/"
+            "CHAT_AUTH_PASSWORD or CHAT_NETWORK_ACCESS_ENABLED, or mint a gate "
+            "code from the Account manager, to enable authenticated remote access.",
             403,
         )
 
-    user, password = credentials
     supplied = request.authorization
     if supplied is None or supplied.type != "basic":
         return _error("Authentication required.", 401, {"WWW-Authenticate": f'Basic realm="{AUTH_REALM}"'})
+    username = supplied.username or ""
+    password = supplied.password or ""
 
-    # compare_digest on both halves, and never short-circuit between them:
-    # a plain == leaks how much of the credential was right via timing.
-    user_ok = secrets.compare_digest((supplied.username or ""), user)
-    password_ok = secrets.compare_digest((supplied.password or ""), password)
-    if not (user_ok and password_ok):
-        return _error("Invalid credentials.", 401, {"WWW-Authenticate": f'Basic realm="{AUTH_REALM}"'})
-    return None
+    credentials = configured_credentials()
+    if credentials is not None:
+        user, expected_password = credentials
+        # compare_digest on both halves, and never short-circuit between
+        # them: a plain == leaks how much of the credential was right via
+        # timing.
+        user_ok = secrets.compare_digest(username, user)
+        password_ok = secrets.compare_digest(password, expected_password)
+        if user_ok and password_ok:
+            return None
+
+    if check_credentials(username, password):
+        login(username)
+        return None
+
+    if gate_code_grants_access(password):
+        return None
+
+    return _error("Invalid credentials.", 401, {"WWW-Authenticate": f'Basic realm="{AUTH_REALM}"'})
 
 
 # The auth blueprint's own sign-in surface: the login/register pages

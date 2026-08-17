@@ -31,7 +31,7 @@ def no_credentials(monkeypatch):
 
 
 @pytest.fixture
-def client(client, monkeypatch):
+def client(client, monkeypatch, users_db):
     """Login is mandatory app-wide with no unconfigured fallback (see
     security.py), so a "200 means the request reached the route" test
     below needs a real session, not just a passing check_host/check_auth.
@@ -240,3 +240,146 @@ def test_empty_json_body_is_still_accepted_as_no_arguments(client):
 
     assert response.status_code == 200
     mock_call.assert_called_once_with("some_tool", {})
+
+
+# --- merged login (real accounts, gate codes) ---------------------------
+#
+# Unlike the sections above, these tests mostly use a FRESH, sessionless
+# client (client.application.test_client()) rather than the file's shared
+# `client` fixture - that fixture is already logged in via a session
+# cookie, and once any of these tests switches the gate on, every
+# subsequent request needs its own valid Basic Auth regardless of that
+# cookie (check_auth runs before check_login, unconditionally - see
+# check_auth's own docstring). A fresh client sidesteps having to reason
+# about that ordering for each assertion.
+
+
+def test_gate_stays_off_with_no_activation_signal(client):
+    """Regression check for the byte-for-byte-unchanged-when-off
+    guarantee - the two tests in the loopback-fallback section above
+    already cover this implicitly, this one names it explicitly."""
+    assert client.get("/api/providers", environ_base=REMOTE).status_code == 403
+
+
+def test_network_access_enabled_env_var_switches_the_gate_on(client, monkeypatch):
+    monkeypatch.setenv("CHAT_NETWORK_ACCESS_ENABLED", "1")
+
+    response = client.get("/api/providers", environ_base=REMOTE)
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"].startswith("Basic ")
+
+
+def test_a_live_gate_code_switches_the_gate_on(client, users_db):
+    from chat_app.auth import store
+
+    store.create_gate_code(users_db, created_by="test-admin", ttl_hours=1)
+
+    response = client.get("/api/providers", environ_base=REMOTE)
+
+    assert response.status_code == 401
+
+
+def test_real_account_credentials_pass_the_gate_and_auto_login(client, monkeypatch):
+    """The 'one prompt, not two' merge: Basic Auth with a real account's
+    own credentials both satisfies check_auth AND establishes a session,
+    so check_login (which runs right after in the same request) doesn't
+    also redirect to /login."""
+    monkeypatch.setenv("CHAT_NETWORK_ACCESS_ENABLED", "1")
+    fresh = client.application.test_client()
+
+    response = fresh.get(
+        "/api/providers", headers=_basic("test-admin", "test-admin-pw-1"), environ_base=REMOTE
+    )
+
+    assert response.status_code == 200
+
+
+def test_wrong_real_account_password_falls_through_to_401(client, monkeypatch):
+    monkeypatch.setenv("CHAT_NETWORK_ACCESS_ENABLED", "1")
+    fresh = client.application.test_client()
+
+    response = fresh.get("/api/providers", headers=_basic("test-admin", "wrong-pw"), environ_base=REMOTE)
+
+    assert response.status_code == 401
+
+
+def test_a_gate_code_passes_the_gate_but_does_not_establish_a_session(client, users_db):
+    from chat_app.auth import store
+
+    issued = store.create_gate_code(users_db, created_by="test-admin", ttl_hours=1)
+    fresh = client.application.test_client()
+
+    response = fresh.get("/", headers=_basic("whoever", issued.code), environ_base=REMOTE, follow_redirects=False)
+
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_gate_code_username_field_is_ignored(client, users_db):
+    from chat_app.auth import store
+
+    issued = store.create_gate_code(users_db, created_by="test-admin", ttl_hours=1)
+    fresh = client.application.test_client()
+
+    response = fresh.get("/api/providers", headers=_basic("literally-anything", issued.code), environ_base=REMOTE)
+
+    assert response.status_code == 401  # gate passed (not 403); 401 is check_login's JSON-API rejection
+
+
+def test_expired_gate_code_is_rejected(client, users_db, monkeypatch):
+    """CHAT_NETWORK_ACCESS_ENABLED keeps the gate itself on independent of
+    this one code's fate - the code under test is the only gate code that
+    has ever existed here, so without another activation signal, expiring
+    it would also flip network_gate_enabled() back to False and this
+    request would 403 as "not configured" rather than 401 as "invalid
+    credentials," which is the thing actually under test."""
+    monkeypatch.setenv("CHAT_NETWORK_ACCESS_ENABLED", "1")
+    from chat_app.auth import store
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+
+    issued = store.create_gate_code(users_db, created_by="test-admin", ttl_hours=1)
+    conn = sqlite3.connect(str(users_db))
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    conn.execute("UPDATE gate_codes SET expires_at = ? WHERE code_id = ?", (past, issued.code_id))
+    conn.commit()
+    conn.close()
+    fresh = client.application.test_client()
+
+    response = fresh.get("/api/providers", headers=_basic("whoever", issued.code), environ_base=REMOTE)
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"].startswith("Basic ")
+
+
+def test_revoked_gate_code_is_rejected_immediately(client, users_db, monkeypatch):
+    """Same reasoning as test_expired_gate_code_is_rejected above:
+    CHAT_NETWORK_ACCESS_ENABLED keeps the gate on independent of this one
+    code, which is the only one ever created here and is about to be
+    deleted."""
+    monkeypatch.setenv("CHAT_NETWORK_ACCESS_ENABLED", "1")
+    from chat_app.auth import store
+
+    issued = store.create_gate_code(users_db, created_by="test-admin", ttl_hours=1)
+    store.delete_gate_code(users_db, issued.code_id)
+    fresh = client.application.test_client()
+
+    response = fresh.get("/api/providers", headers=_basic("whoever", issued.code), environ_base=REMOTE)
+
+    assert response.status_code == 401
+
+
+def test_shared_pair_still_takes_priority_when_configured(client, monkeypatch):
+    """The shared pair (checked first) still works exactly as before -
+    using the already-logged-in `client` fixture rather than a fresh,
+    sessionless one, since the shared-pair path deliberately does not
+    establish a session (see check_auth's docstring): a sessionless client
+    would still get redirected by check_login right after, regardless of
+    whether check_auth itself passed."""
+    monkeypatch.setenv("CHAT_AUTH_USER", "me")
+    monkeypatch.setenv("CHAT_AUTH_PASSWORD", "s3cret")
+
+    response = client.get("/api/providers", headers=_basic("me", "s3cret"), environ_base=REMOTE)
+
+    assert response.status_code == 200

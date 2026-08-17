@@ -47,6 +47,10 @@ services:
       # your NAS's IP/hostname isn't "localhost" either, so it's
       # rejected unless listed here (comma-separated for more than one).
       - CHAT_ALLOWED_HOSTS=[YOUR NAS LAN IP OR HOSTNAME]
+      # Alternative to CHAT_AUTH_USER/PASSWORD above, not needed alongside
+      # them: set CHAT_NETWORK_ACCESS_ENABLED=1 instead if you'd rather
+      # require real per-person account logins for every request than a
+      # shared pair. See .env.example for the full explanation.
       # The account that always exists - log in as it once to generate
       # invite codes for everyone else (see /register). Required: chat_app
       # refuses to start without it if no other accounts exist yet.
