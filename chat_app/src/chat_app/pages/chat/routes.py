@@ -182,6 +182,23 @@ def chat_api():
     # choke on or reject. Those extra fields are only ever meant for
     # chats_store/the browser, never for the LLM call itself.
     llm_history = [{"role": m.get("role"), "content": m.get("content")} for m in data.get("history", [])]
+    # Minted before the LLM call, not only after (as this endpoint used to
+    # do), so a staged-pipeline model (see staged_pipeline.py) that pauses
+    # mid-turn on an ask_user step has a stable chat_id to persist its
+    # paused plan against - and so the very next request (this chat's
+    # reply to that question) can find it. An empty transcript is created
+    # immediately for a brand-new chat rather than only generating an id
+    # string, because chats_store.save_chat's contract is "None creates, a
+    # given id updates (raising UnknownChat if it doesn't exist yet)" -
+    # passing a not-yet-persisted id straight to the later update call
+    # would raise UnknownChat against its own id.
+    chat_id = data.get("chat_id")
+    if chat_id is None:
+        try:
+            chat_id = chats_store.save_chat(settings.chats_db_path, service.current_username(), None, [])
+        except Exception as error:  # noqa: BLE001 - persistence must not block the chat answer itself
+            report(error, context="starting a new chat")
+            chat_id = None
     start = time.monotonic()
     try:
         result = router.run_chat(
@@ -190,6 +207,7 @@ def chat_api():
             data.get("provider"),
             data.get("model"),
             data.get("enabled_extensions", []),
+            chat_id=chat_id,
         )
         response_text = result.response
         tools_used = result.tools_used
@@ -246,7 +264,6 @@ def chat_api():
     if recursive_rounds:
         assistant_entry["recursive_rounds"] = len(recursive_rounds)
     transcript = history_in + current_turn + [assistant_entry]
-    chat_id = data.get("chat_id")
     try:
         chat_id = chats_store.save_chat(settings.chats_db_path, service.current_username(), chat_id, transcript)
     except chats_store.UnknownChat:

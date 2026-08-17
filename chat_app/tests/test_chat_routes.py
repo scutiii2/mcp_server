@@ -73,7 +73,9 @@ def test_api_chat_returns_run_chat_result(client, chats_db):
     assert body["chat_id"] is not None  # Now persisted
     # enabled_extensions omitted from the request body -> defaults to [],
     # same as history/provider/model already do.
-    mock_run_chat.assert_called_once_with("how is web-1 doing?", [], "claude", "claude-opus-4-8", [])
+    mock_run_chat.assert_called_once_with(
+        "how is web-1 doing?", [], "claude", "claude-opus-4-8", [], chat_id=body["chat_id"]
+    )
 
 
 def test_api_chat_reports_and_persists_recursive_round_count_only(client, chats_db, log_dir):
@@ -163,23 +165,43 @@ def test_api_chat_includes_total_tokens_as_null_when_provider_did_not_report_it(
 def test_api_chat_defaults_provider_and_model_to_none_when_omitted(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
         mock_run_chat.return_value = ChatResult(response="ok", provider_id="openai")
-        client.post("/api/chat", json={"question": "hello"})
+        response = client.post("/api/chat", json={"question": "hello"})
 
+    body = response.get_json()
     # router.run_chat itself applies the "auto" default and resolves it to
     # a real provider - the route just passes through whatever (or
     # nothing) the client sent, unchanged.
-    mock_run_chat.assert_called_once_with("hello", [], None, None, [])
+    mock_run_chat.assert_called_once_with("hello", [], None, None, [], chat_id=body["chat_id"])
 
 
 def test_api_chat_forwards_enabled_extensions_to_router(client, chats_db):
     with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
         mock_run_chat.return_value = ChatResult(response="ok", provider_id="openai")
-        client.post(
+        response = client.post(
             "/api/chat",
             json={"question": "hello", "enabled_extensions": ["reference"]},
         )
 
-    mock_run_chat.assert_called_once_with("hello", [], None, None, ["reference"])
+    body = response.get_json()
+    mock_run_chat.assert_called_once_with("hello", [], None, None, ["reference"], chat_id=body["chat_id"])
+
+
+def test_api_chat_mints_a_chat_id_before_calling_the_llm(client, chats_db):
+    """The staged pipeline (a later feature) needs a stable chat_id to
+    pause a plan against - it must exist before router.run_chat is
+    called, not only be assigned afterward by chats_store.save_chat."""
+    seen_chat_id = {}
+
+    def _capture(*args, **kwargs):
+        seen_chat_id["value"] = kwargs.get("chat_id")
+        return ChatResult(response="ok", provider_id="openai")
+
+    with patch("chat_app.services.llm.router.run_chat", side_effect=_capture):
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    body = response.get_json()
+    assert seen_chat_id["value"] is not None
+    assert seen_chat_id["value"] == body["chat_id"]
 
 
 def test_api_chat_reports_missing_api_key_without_crashing(client, chats_db):

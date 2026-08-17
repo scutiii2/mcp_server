@@ -88,9 +88,17 @@ def save_chat(db_path: Path, username: str, chat_id: str | None, messages: list[
             conn.commit()
             return new_id
 
+        # title is only replaced when it's still the "New chat" placeholder
+        # - a chat created with an empty transcript up front (see
+        # pages/chat/routes.py's early chat_id minting) gets that
+        # placeholder on INSERT, and this is where it becomes a real title
+        # once the first real transcript arrives. A title the user set via
+        # rename_chat is anything else and must survive every later save.
         updated = conn.execute(
-            "UPDATE chats SET messages = ?, updated_at = ? WHERE id = ? AND username = ?",
-            (messages_json, now, chat_id, username),
+            "UPDATE chats SET messages = ?, updated_at = ?, "
+            "title = CASE WHEN title = 'New chat' THEN ? ELSE title END "
+            "WHERE id = ? AND username = ?",
+            (messages_json, now, _derive_title(messages), chat_id, username),
         ).rowcount
         conn.commit()
         if updated == 0:

@@ -212,7 +212,7 @@ def test_run_chat_dispatches_to_requested_provider(monkeypatch):
         result = router.run_chat("hello", [], "claude")
 
     assert result is expected
-    mock_run.assert_called_once_with("hello", [], None, None)
+    mock_run.assert_called_once_with("hello", [], None, None, chat_id=None)
 
 
 def test_run_chat_forwards_model_id_to_manually_selected_provider(monkeypatch):
@@ -223,7 +223,7 @@ def test_run_chat_forwards_model_id_to_manually_selected_provider(monkeypatch):
         result = router.run_chat("hello", [], "claude", "claude-opus-4-8")
 
     assert result is expected
-    mock_run.assert_called_once_with("hello", [], "claude-opus-4-8", None)
+    mock_run.assert_called_once_with("hello", [], "claude-opus-4-8", None, chat_id=None)
 
 
 def test_run_chat_forwards_enabled_extensions_to_manually_selected_provider(monkeypatch):
@@ -234,7 +234,30 @@ def test_run_chat_forwards_enabled_extensions_to_manually_selected_provider(monk
         result = router.run_chat("hello", [], "claude", "claude-opus-4-8", ["reference"])
 
     assert result is expected
-    mock_run.assert_called_once_with("hello", [], "claude-opus-4-8", ["reference"])
+    mock_run.assert_called_once_with("hello", [], "claude-opus-4-8", ["reference"], chat_id=None)
+
+
+def test_run_chat_forwards_chat_id_to_manually_selected_provider(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    expected = ChatResult(response="from claude", tools_used=[], provider_id="claude")
+
+    with _patch_run_chat("claude", return_value=expected) as mock_run:
+        result = router.run_chat("hello", [], "claude", None, None, "chat-123")
+
+    assert result is expected
+    mock_run.assert_called_once_with("hello", [], None, None, chat_id="chat-123")
+
+
+def test_run_chat_automatic_forwards_chat_id(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    expected = ChatResult(response="from openai", tools_used=[], provider_id="openai")
+
+    with _patch_run_chat("openai", return_value=expected) as mock_run:
+        result = router.run_chat("hello", [], "auto", chat_id="chat-123")
+
+    assert result is expected
+    mock_run.assert_called_once_with("hello", [], enabled_extensions=None, chat_id="chat-123")
 
 
 def test_run_chat_defaults_to_automatic_when_provider_not_specified(monkeypatch):
@@ -246,7 +269,7 @@ def test_run_chat_defaults_to_automatic_when_provider_not_specified(monkeypatch)
         result = router.run_chat("hello", [], None)
 
     assert result is expected
-    mock_run.assert_called_once_with("hello", [], enabled_extensions=None)
+    mock_run.assert_called_once_with("hello", [], enabled_extensions=None, chat_id=None)
 
 
 def test_run_chat_automatic_prefers_openai_when_both_available(monkeypatch):
@@ -272,7 +295,7 @@ def test_run_chat_automatic_falls_back_to_claude_when_openai_unavailable(monkeyp
         result = router.run_chat("hello", [], "auto")
 
     assert result is expected
-    mock_run.assert_called_once_with("hello", [], enabled_extensions=None)
+    mock_run.assert_called_once_with("hello", [], enabled_extensions=None, chat_id=None)
 
 
 def test_run_chat_automatic_falls_back_when_openai_is_cooling_down(monkeypatch):
@@ -285,7 +308,7 @@ def test_run_chat_automatic_falls_back_when_openai_is_cooling_down(monkeypatch):
         result = router.run_chat("hello", [], "auto")
 
     assert result is expected
-    mock_run.assert_called_once_with("hello", [], enabled_extensions=None)
+    mock_run.assert_called_once_with("hello", [], enabled_extensions=None, chat_id=None)
 
 
 def test_run_chat_automatic_forwards_enabled_extensions(monkeypatch):
@@ -300,7 +323,7 @@ def test_run_chat_automatic_forwards_enabled_extensions(monkeypatch):
         result = router.run_chat("hello", [], "auto", enabled_extensions=["reference"])
 
     assert result is expected
-    mock_run.assert_called_once_with("hello", [], enabled_extensions=["reference"])
+    mock_run.assert_called_once_with("hello", [], enabled_extensions=["reference"], chat_id=None)
 
 
 def test_run_chat_automatic_raises_when_nothing_available(monkeypatch):

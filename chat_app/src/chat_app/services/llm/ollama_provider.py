@@ -377,6 +377,7 @@ def run_chat(
     history: list[dict[str, Any]],
     model: str | None = None,
     enabled_extensions: list[str] | None = None,
+    chat_id: str | None = None,  # read only by the staged_pipeline branch, added in a later task
 ) -> ChatResult:
     client = _get_client()
     system_content = f"{SYSTEM_PROMPT}\n\n{_LOCAL_MODEL_TOOL_GUIDANCE}"

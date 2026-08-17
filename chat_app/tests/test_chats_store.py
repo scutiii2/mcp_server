@@ -88,6 +88,33 @@ def test_save_chat_with_id_owned_by_another_user_raises_unknown_chat(db_path):
         store.save_chat(db_path, "bob", chat_id, [{"role": "user", "content": "hijacked"}])
 
 
+def test_save_chat_update_sets_title_when_still_the_new_chat_placeholder(db_path):
+    """Regression coverage for chat_api's early chat_id minting (see
+    pages/chat/routes.py): a chat created with an empty transcript (via
+    save_chat(..., None, [])) gets the "New chat" placeholder title; the
+    very next save (the real transcript, via the id-given/UPDATE path)
+    must compute a real title instead of leaving the placeholder forever."""
+    chat_id = store.save_chat(db_path, "alice", None, [])
+
+    store.save_chat(db_path, "alice", chat_id, [{"role": "user", "content": "how do I reset a password?"}])
+
+    assert store.get_chat(db_path, "alice", chat_id)["title"] == "how do I reset a password?"
+
+
+def test_save_chat_update_preserves_a_manually_renamed_title(db_path):
+    """A title the user set via rename_chat must survive a later
+    save_chat update - only the "New chat" placeholder gets replaced."""
+    chat_id = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "first"}])
+    store.rename_chat(db_path, "alice", chat_id, "My renamed chat")
+
+    store.save_chat(
+        db_path, "alice", chat_id,
+        [{"role": "user", "content": "first"}, {"role": "assistant", "content": "reply"}],
+    )
+
+    assert store.get_chat(db_path, "alice", chat_id)["title"] == "My renamed chat"
+
+
 # --- list_chats ------------------------------------------------------------
 
 

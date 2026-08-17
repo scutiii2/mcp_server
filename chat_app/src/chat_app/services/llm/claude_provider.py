@@ -70,6 +70,7 @@ def run_chat(
     history: list[dict[str, Any]],
     model: str | None = None,
     enabled_extensions: list[str] | None = None,
+    chat_id: str | None = None,  # unused here - see base.py's RunChatFn comment
 ) -> ChatResult:
     client = _get_client()
     model_name = model or settings.claude_model

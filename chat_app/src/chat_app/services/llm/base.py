@@ -106,7 +106,12 @@ class ModelOption:
 # model is optional - None means "use this provider's own default".
 # enabled_extensions is optional - None/empty means "no extension tools",
 # the same safe default list_tools() itself applies (see mcp_client.py).
-RunChatFn = Callable[[str, list[dict[str, Any]], "str | None", "list[str] | None"], ChatResult]
+# chat_id is optional - None means no persisted conversation exists yet
+# for this turn. Only staged_pipeline.py (see ollama_provider.py) actually
+# reads it, to pause/resume a plan across turns - every other provider
+# accepts and ignores it, keeping one shared call signature across every
+# ProviderSpec.
+RunChatFn = Callable[[str, list[dict[str, Any]], "str | None", "list[str] | None", "str | None"], ChatResult]
 IsAvailableFn = Callable[[], bool]
 
 
