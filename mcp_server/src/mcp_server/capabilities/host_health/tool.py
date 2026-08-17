@@ -19,7 +19,7 @@ from mcp_server.config import settings
 from mcp_server.server import mcp
 
 
-@mcp.tool()
+@mcp.tool(meta={"keywords": ["host", "health", "cpu", "memory", "disk", "uptime", "status"]})
 def get_host_health_tool(name: str) -> HostHealthResult:
     """Check CPU, memory, disk and uptime on one of this server's configured machines.
 

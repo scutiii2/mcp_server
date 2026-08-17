@@ -20,7 +20,7 @@ from mcp_server.infra.app_config import load_email_config
 from mcp_server.server import mcp
 
 
-@mcp.tool()
+@mcp.tool(meta={"keywords": ["otp", "passcode", "code", "verify", "identity", "email"]})
 def request_otp_tool(recipient: str | None = None) -> RequestOtpResult:
     """Email a one-time passcode to a configured address, to confirm someone's identity.
 
@@ -39,7 +39,7 @@ def request_otp_tool(recipient: str | None = None) -> RequestOtpResult:
     return domain.request_otp(email_config, db_path=settings.otp_path, recipient=recipient)
 
 
-@mcp.tool()
+@mcp.tool(meta={"keywords": ["otp", "passcode", "code", "verify"]})
 def verify_otp_tool(otp_id: str, code: str) -> VerifyOtpResult:
     """Check a one-time passcode someone read back to you.
 
