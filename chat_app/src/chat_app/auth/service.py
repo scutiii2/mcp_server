@@ -52,6 +52,34 @@ def can_anyone_log_in() -> bool:
     return login_configured() or store.any_users_exist(settings.users_db_path)
 
 
+def network_gate_enabled() -> bool:
+    """Whether the network gate (security.check_auth) is switched on at
+    all - kept separate from what satisfies it once active, because
+    ADMIN_USERNAME/PASSWORD is mandatory in every deployment: if "an admin
+    account exists" alone were enough, every deployment would become
+    reachable off-loopback automatically. Three independent signals, any
+    one of which switches it on:
+
+    1. The shared CHAT_AUTH_USER/PASSWORD pair - read directly here
+       (rather than importing security.configured_credentials, which
+       would be a circular import: security already imports from this
+       module) with the same both-or-neither treatment.
+    2. At least one currently-valid gate code - an admin minting one is
+       itself a deliberate act, same reasoning as configuring the pair.
+    3. CHAT_NETWORK_ACCESS_ENABLED (any non-empty value) - the explicit
+       "real accounts alone, no shared secret" opt-in.
+    """
+    if os.getenv("CHAT_AUTH_USER") and os.getenv("CHAT_AUTH_PASSWORD"):
+        return True
+    if store.any_gate_code_valid(settings.users_db_path):
+        return True
+    return bool(os.getenv("CHAT_NETWORK_ACCESS_ENABLED"))
+
+
+def gate_code_grants_access(code: str) -> bool:
+    return store.gate_code_is_valid(settings.users_db_path, code)
+
+
 def current_username() -> str | None:
     return session.get(_SESSION_KEY)
 
