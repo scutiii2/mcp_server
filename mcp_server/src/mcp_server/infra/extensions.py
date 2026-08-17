@@ -240,6 +240,9 @@ class ExtensionRegistry:
                     description=tool.description,
                     inputSchema=tool.inputSchema,
                     outputSchema=tool.outputSchema,
+                    _meta=tool.meta,
+                    annotations=tool.annotations,
+                    icons=tool.icons,
                 ),
             )
             tool_names.append(namespaced)

@@ -184,6 +184,33 @@ async def test_connected_status_lists_the_namespaced_tool_names(monkeypatch: pyt
     )
 
 
+@pytest.mark.anyio
+async def test_proxied_tool_definition_preserves_meta_annotations_and_icons(monkeypatch: pytest.MonkeyPatch):
+    """Regression test: meta/annotations/icons were silently dropped when
+    building _ProxiedTool.definition, which would break any feature (like
+    keyword-based tool filtering) that relies on an extension's own
+    declared metadata surviving the proxy."""
+    tool = types.Tool(
+        name="echo",
+        description="Echo text back",
+        inputSchema={"type": "object", "properties": {}},
+        _meta={"keywords": ["echo", "repeat"]},
+        annotations=types.ToolAnnotations(title="Echo"),
+        icons=[types.Icon(src="https://example.com/icon.png")],
+    )
+    session = _FakeSession(tools=[tool])
+    _install_fake_connection(monkeypatch, session)
+    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config()})
+
+    registry = extensions.ExtensionRegistry()
+    await registry.connect_all(Path("unused.json"))
+
+    [proxied] = registry.proxied_tool_definitions()
+    assert proxied.meta == {"keywords": ["echo", "repeat"]}
+    assert proxied.annotations == types.ToolAnnotations(title="Echo")
+    assert proxied.icons == [types.Icon(src="https://example.com/icon.png")]
+
+
 # --- failure isolation -------------------------------------------------
 
 
