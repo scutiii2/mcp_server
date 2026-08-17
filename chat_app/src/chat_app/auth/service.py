@@ -113,8 +113,12 @@ def check_credentials(username: str, password: str) -> bool:
     admin = _admin_credentials()
     if admin is not None:
         admin_user, admin_password = admin
-        if secrets.compare_digest(username, admin_user):
-            return secrets.compare_digest(password, admin_password)
+        # .encode() before compare_digest: it raises TypeError on non-ASCII
+        # str input (works fine on bytes), and Basic Auth credentials are
+        # attacker-controlled - a non-ASCII username/password must fail
+        # the comparison, not crash the request with a 500.
+        if secrets.compare_digest(username.encode(), admin_user.encode()):
+            return secrets.compare_digest(password.encode(), admin_password.encode())
     return store.verify_user(settings.users_db_path, username, password)
 
 
@@ -129,7 +133,7 @@ def is_root() -> bool:
     if username is None:
         return False
     admin = _admin_credentials()
-    return admin is not None and secrets.compare_digest(username, admin[0])
+    return admin is not None and secrets.compare_digest(username.encode(), admin[0].encode())
 
 
 def current_role() -> str | None:
@@ -149,7 +153,7 @@ def current_role() -> str | None:
     if username is None:
         return None
     admin = _admin_credentials()
-    if admin is not None and secrets.compare_digest(username, admin[0]):
+    if admin is not None and secrets.compare_digest(username.encode(), admin[0].encode()):
         return permissions.EXECUTIVE_ROLE
     return store.get_user_role(settings.users_db_path, username)
 

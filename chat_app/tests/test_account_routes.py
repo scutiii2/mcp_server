@@ -386,6 +386,23 @@ def test_generating_a_gate_code_without_a_ttl_fails(admin_client, users_db):
     assert response.status_code == 400
 
 
+def test_generating_a_gate_code_with_nan_ttl_fails(admin_client, users_db):
+    """float("nan") doesn't raise and isn't <= 0, so it would otherwise
+    sail past the old validation and crash store.create_gate_code's
+    timedelta(hours=...) with a 500 instead of failing cleanly."""
+    response = admin_client.post("/accounts/api/gate-codes", json={"ttl_hours": "nan"})
+
+    assert response.status_code == 400
+
+
+def test_generating_a_gate_code_with_an_absurdly_large_ttl_fails(admin_client, users_db):
+    """A huge (but finite) value like 1e9 hours would overflow
+    timedelta/datetime arithmetic downstream - reject it here instead."""
+    response = admin_client.post("/accounts/api/gate-codes", json={"ttl_hours": 1e9})
+
+    assert response.status_code == 400
+
+
 def test_member_cannot_generate_a_gate_code_via_the_admin_endpoint(admin_client, users_db):
     member = _member_client(admin_client)
 

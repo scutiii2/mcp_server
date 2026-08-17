@@ -136,6 +136,19 @@ def test_correct_credentials_pass(client, monkeypatch):
     assert client.get("/api/providers", headers=_basic("me", "s3cret")).status_code == 200
 
 
+def test_non_ascii_basic_auth_credentials_are_rejected_not_crashed(client, monkeypatch):
+    """secrets.compare_digest raises TypeError on non-ASCII str arguments
+    (bytes are fine) - a Basic Auth header is attacker-controlled, so this
+    must produce a clean 401, not an unhandled 500, against the shared-pair
+    path."""
+    monkeypatch.setenv("CHAT_AUTH_USER", "me")
+    monkeypatch.setenv("CHAT_AUTH_PASSWORD", "s3cret")
+
+    response = client.get("/api/providers", headers=_basic("café", "x"))
+
+    assert response.status_code == 401
+
+
 def test_credentials_unlock_remote_access(client, monkeypatch):
     """Configuring auth is exactly what lifts the loopback restriction."""
     monkeypatch.setenv("CHAT_AUTH_USER", "me")
@@ -293,6 +306,18 @@ def test_real_account_credentials_pass_the_gate_and_auto_login(client, monkeypat
     )
 
     assert response.status_code == 200
+
+
+def test_non_ascii_credentials_against_the_real_account_path_are_rejected_not_crashed(client, monkeypatch):
+    """Same non-ASCII crash as the shared-pair test above, but exercised
+    against check_credentials's admin-account comparison (auth/service.py)
+    instead of security.py's shared-pair comparison."""
+    monkeypatch.setenv("CHAT_NETWORK_ACCESS_ENABLED", "1")
+    fresh = client.application.test_client()
+
+    response = fresh.get("/api/providers", headers=_basic("café", "x"), environ_base=REMOTE)
+
+    assert response.status_code == 401
 
 
 def test_wrong_real_account_password_falls_through_to_401(client, monkeypatch):

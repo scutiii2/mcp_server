@@ -60,12 +60,22 @@ def reset_cooldowns():
     cooldown.reset()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def users_db(tmp_path, monkeypatch):
     """Points every module that reads settings.users_db_path at a fresh,
     per-test SQLite file instead of the real (import-time-frozen) one -
     see config.py's comment on that field for why a frozen dataclass field
-    can't just be monkeypatched directly."""
+    can't just be monkeypatched directly.
+
+    autouse: security.check_auth() calls service.network_gate_enabled() on
+    EVERY request (even ones that never mention users_db), which reads
+    settings.users_db_path via store.any_gate_code_valid. Without this
+    fixture applying unconditionally, any test that doesn't explicitly
+    request `users_db` would fall through to the real, CWD-relative
+    data/users.db as a side effect of just running the suite - and could
+    fail nondeterministically if that file happens to contain a live gate
+    code. Still requestable by name for its return value (the path), same
+    as log_dir/reset_cooldowns above - autouse doesn't prevent that."""
     test_settings = dataclasses.replace(base_settings, users_db_path=tmp_path / "users.db")
     monkeypatch.setattr(auth_routes, "settings", test_settings)
     monkeypatch.setattr(auth_service, "settings", test_settings)

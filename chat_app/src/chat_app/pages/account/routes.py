@@ -20,6 +20,8 @@ form an actual hierarchy, not re-gating everything this page already did.
 
 from __future__ import annotations
 
+import math
+
 from flask import Blueprint, jsonify, render_template
 
 from chat_app.auth import permissions, service, store
@@ -280,8 +282,12 @@ def create_gate_code_api():
         ttl_hours = float(data.get("ttl_hours"))
     except (TypeError, ValueError):
         return _api_error("ttl_hours is required and must be a number.")
-    if ttl_hours <= 0:
-        return _api_error("ttl_hours must be positive.")
+    # float() accepts "nan"/"inf"/huge strings without raising - none of
+    # which the plain `<= 0` check below catches, and all of which crash
+    # store.create_gate_code's timedelta(hours=...) with ValueError/
+    # OverflowError instead of failing this request cleanly with a 400.
+    if not math.isfinite(ttl_hours) or not (0 < ttl_hours <= 8760):  # 8760 hours = 1 year
+        return _api_error("ttl_hours must be a positive number of hours, at most 8760 (1 year).")
 
     issued = store.create_gate_code(settings.users_db_path, created_by=service.current_username(), ttl_hours=ttl_hours)
     return (

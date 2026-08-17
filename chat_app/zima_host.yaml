@@ -41,6 +41,9 @@ services:
       # port mapping never looks like 127.0.0.1 - without these, every
       # request gets a permanent 403 "not configured for network
       # access", not just unauthenticated ones.
+      # Once the gate is on, this pair isn't the only thing that passes
+      # it: any registered user's own account password, and any currently-
+      # valid gate code (minted from the Account manager), also work.
       - CHAT_AUTH_USER=[PLACE A USERNAME HERE]
       - CHAT_AUTH_PASSWORD=[PLACE A PASSWORD HERE]
       # REQUIRED for the same reason - the Host header of a request to

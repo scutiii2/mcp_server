@@ -85,6 +85,7 @@ from chat_app.auth import permissions
 from chat_app.auth.service import (
     check_credentials,
     current_scopes,
+    current_username,
     gate_code_grants_access,
     is_authenticated,
     is_executive,
@@ -220,14 +221,25 @@ def check_auth() -> Response | None:
         user, expected_password = credentials
         # compare_digest on both halves, and never short-circuit between
         # them: a plain == leaks how much of the credential was right via
-        # timing.
-        user_ok = secrets.compare_digest(username, user)
-        password_ok = secrets.compare_digest(password, expected_password)
+        # timing. .encode() first - compare_digest raises TypeError on
+        # non-ASCII str input (bytes are fine), and a Basic Auth header is
+        # attacker-controlled, so a non-ASCII username/password must fail
+        # this comparison rather than crash the request with a 500.
+        user_ok = secrets.compare_digest(username.encode(), user.encode())
+        password_ok = secrets.compare_digest(password.encode(), expected_password.encode())
         if user_ok and password_ok:
             return None
 
     if check_credentials(username, password):
-        login(username)
+        # Only (re)establish the session when it would actually change
+        # something - login() unconditionally clears and reissues it, and
+        # calling that on every matching request (a browser resends cached
+        # Basic Auth on every single request) means a Set-Cookie on every
+        # response, including static assets, plus /logout appearing to
+        # silently do nothing: it clears the session, and the very next
+        # request's cached Basic Auth immediately re-logs-in right here.
+        if current_username() != username:
+            login(username)
         return None
 
     if gate_code_grants_access(password):
