@@ -15,7 +15,7 @@ from openai import OpenAI, RateLimitError
 
 from chat_app.config import settings
 from chat_app.services.llm import cooldown
-from chat_app.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec
+from chat_app.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec, ToolCallRecord
 from chat_app.services.mcp_client import call_tool, list_tools
 
 
@@ -70,9 +70,11 @@ def run_chat(
     enabled_extensions: list[str] | None = None,
 ) -> ChatResult:
     client = _get_client()
+    model_name = model or settings.openai_model
     messages: list[Any] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []
+    tool_calls: list[ToolCallRecord] = []
     tool_schemas = _tool_schemas(enabled_extensions)
     # Every round of this loop is a real, separately-billed API call, so a
     # multi-tool-call answer's total is the sum across all rounds, not just
@@ -85,7 +87,7 @@ def run_chat(
     try:
         for _ in range(6):
             response = client.responses.create(
-                model=model or settings.openai_model,
+                model=model_name,
                 input=messages,
                 tools=tool_schemas if tool_schemas else None,
             )
@@ -96,7 +98,14 @@ def run_chat(
 
             function_calls = [item for item in response.output if getattr(item, "type", "") == "function_call"]
             if not function_calls:
-                return ChatResult(response=response.output_text, tools_used=tools_used, provider_id=PROVIDER_ID, total_tokens=total_tokens)
+                return ChatResult(
+                    response=response.output_text,
+                    tools_used=tools_used,
+                    tool_calls=tool_calls,
+                    provider_id=PROVIDER_ID,
+                    model=model_name,
+                    total_tokens=total_tokens,
+                )
 
             messages.extend(response.output)
             for call in function_calls:
@@ -109,6 +118,7 @@ def run_chat(
                     result_text = call_tool(call.name, arguments)
                 except Exception as error:
                     result_text = f"Tool '{call.name}' failed: {error}"
+                tool_calls.append(ToolCallRecord(name=call.name, arguments=arguments, result=result_text))
                 messages.append({"type": "function_call_output", "call_id": call.call_id, "output": result_text})
     except RateLimitError as error:
         seconds = cooldown.extract_retry_after_seconds(error) or cooldown.DEFAULT_COOLDOWN_SECONDS
@@ -118,7 +128,9 @@ def run_chat(
     return ChatResult(
         response="Reached maximum tool-call rounds without a final answer.",
         tools_used=tools_used,
+        tool_calls=tool_calls,
         provider_id=PROVIDER_ID,
+        model=model_name,
         total_tokens=total_tokens,
     )
 

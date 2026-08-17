@@ -28,7 +28,9 @@
         <input type="password" name="password" placeholder="Password (min 8 chars)" minlength="8" required>
         <select name="role" required>
           {% for role in roles %}
-          <option value="{{ role.name }}" {% if role.name == 'member' %}selected{% endif %}>{{ role.name }}</option>
+          <option value="{{ role.name }}" data-rank="{{ role_ranks[role.name] }}"
+            {% if not assignable_roles[role.name] %}disabled{% endif %}
+            {% if role.name == 'member' %}selected{% endif %}>{{ role.name }}</option>
           {% endfor %}
         </select>
         <button type="submit">Create user</button>
@@ -41,12 +43,14 @@
         <thead><tr><th>Username</th><th>Role</th><th>Created by</th><th>Created</th><th></th></tr></thead>
         <tbody id="users-body">
           {% for user in users %}
-          <tr data-username="{{ user.username }}">
+          <tr data-username="{{ user.username }}" data-current-role="{{ user.role }}">
             <td>{{ user.username }}</td>
             <td>
               <select class="role-select">
                 {% for role in roles %}
-                <option value="{{ role.name }}" {% if role.name == user.role %}selected{% endif %}>{{ role.name }}</option>
+                <option value="{{ role.name }}" data-rank="{{ role_ranks[role.name] }}"
+                  {% if not assignable_roles[role.name] %}disabled{% endif %}
+                  {% if role.name == user.role %}selected{% endif %}>{{ role.name }}</option>
                 {% endfor %}
               </select>
             </td>
@@ -85,9 +89,9 @@
           {% for role in roles %}
           <tr data-role="{{ role.name }}">
             <td>{{ role.name }}</td>
-            <td>{{ 'all' if role.name == admin_role else (role.scopes | sort | join(', ') or '—') }}</td>
+            <td>{{ 'all' if role.name in (admin_role, executive_role) else (role.scopes | sort | join(', ') or '—') }}</td>
             <td>{{ role.created_by }}</td>
-            <td><button class="delete-role danger" type="button" {% if role.name == admin_role %}disabled title="Built-in role"{% endif %}>Delete</button></td>
+            <td><button class="delete-role danger" type="button" {% if role.name in (admin_role, executive_role) %}disabled title="Built-in role"{% endif %}>Delete</button></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -101,7 +105,9 @@
       <form id="create-invite-form" class="inline-form">
         <select name="role" required>
           {% for role in roles %}
-          <option value="{{ role.name }}" {% if role.name == 'member' %}selected{% endif %}>{{ role.name }}</option>
+          <option value="{{ role.name }}" data-rank="{{ role_ranks[role.name] }}"
+            {% if not assignable_roles[role.name] %}disabled{% endif %}
+            {% if role.name == 'member' %}selected{% endif %}>{{ role.name }}</option>
           {% endfor %}
         </select>
         <select name="ttl_hours">
@@ -141,6 +147,13 @@
 
   </div>
 
+  <script>
+    // Read by script.js's role-select change handler to detect a
+    // self-demotion (see that file's confirmModal() call) - the row's
+    // own data-username already identifies who each OTHER row belongs
+    // to, this is just the viewer's own identity to compare against.
+    const CURRENT_USERNAME = {{ username | tojson }};
+  </script>
   <script src="{{ url_for('shared.static', filename='modal.js') }}"></script>
   <script src="{{ url_for('account.static', filename='script.js') }}"></script>
   <script src="{{ url_for('shared.static', filename='sidebar.js') }}"></script>

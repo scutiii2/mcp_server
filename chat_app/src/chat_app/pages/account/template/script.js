@@ -178,18 +178,49 @@ document.getElementById('users-body').addEventListener('click', async (event) =>
 });
 
 document.getElementById('users-body').addEventListener('change', async (event) => {
-  if (!event.target.classList.contains('role-select')) return;
-  const row = event.target.closest('tr');
+  const select = event.target;
+  if (!select.classList.contains('role-select')) return;
+  const row = select.closest('tr');
   const username = row.dataset.username;
-  const role = event.target.value;
+  const role = select.value;
+  const previousRole = row.dataset.currentRole;
+
+  // Lowering your OWN rank is the one role change the server allows
+  // regardless of who's acting - see account/routes.py's set_role_api -
+  // but it's also the one action here you can't ask anyone else to undo
+  // for you, so it gets a confirmation the other (server-enforced,
+  // reversible-by-a-higher-rank) changes don't need.
+  if (username === CURRENT_USERNAME) {
+    const previousOption = [...select.options].find((o) => o.value === previousRole);
+    const newOption = [...select.options].find((o) => o.value === role);
+    const previousRank = previousOption ? Number(previousOption.dataset.rank) : 0;
+    const newRank = newOption ? Number(newOption.dataset.rank) : 0;
+    if (newRank < previousRank) {
+      const confirmed = await confirmModal({
+        title: 'Lower your own role?',
+        message:
+          `This changes your own role from "${previousRole}" to "${role}". ` +
+          'Only someone ranked above your new role could change it back - not you.',
+        confirmLabel: 'Change anyway',
+        danger: true,
+      });
+      if (!confirmed) {
+        select.value = previousRole;
+        return;
+      }
+    }
+  }
+
   try {
     await callApi(`/accounts/api/users/${encodeURIComponent(username)}/role`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
     });
+    row.dataset.currentRole = role;
     showStatus(`${username} is now ${role}.`, false);
   } catch (err) {
+    select.value = previousRole;
     showStatus(`Failed to change role: ${err.message}`, true);
   }
 });

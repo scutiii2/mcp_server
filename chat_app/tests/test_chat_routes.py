@@ -12,13 +12,14 @@ style.
 
 from __future__ import annotations
 
+import json
 import urllib.error
 from unittest.mock import patch
 
 import pytest
 
 from chat_app.chats import store as chats_store
-from chat_app.services.llm.base import ChatResult
+from chat_app.services.llm.base import ChatResult, RecursiveRoundRecord, ToolCallRecord
 
 
 @pytest.fixture
@@ -53,6 +54,7 @@ def test_api_chat_returns_run_chat_result(client, chats_db):
             response="web-1 is running normally.",
             tools_used=["get_host_health"],
             provider_id="claude",
+            model="claude-opus-4-8",
             total_tokens=1234,
         )
         response = client.post(
@@ -65,11 +67,84 @@ def test_api_chat_returns_run_chat_result(client, chats_db):
     assert body["response"] == "web-1 is running normally."
     assert body["tools_used"] == ["get_host_health"]
     assert body["provider_id"] == "claude"
+    assert body["model"] == "claude-opus-4-8"
     assert body["total_tokens"] == 1234
+    assert body["elapsed_seconds"] >= 0
     assert body["chat_id"] is not None  # Now persisted
     # enabled_extensions omitted from the request body -> defaults to [],
     # same as history/provider/model already do.
     mock_run_chat.assert_called_once_with("how is web-1 doing?", [], "claude", "claude-opus-4-8", [])
+
+
+def test_api_chat_reports_and_persists_recursive_round_count_only(client, chats_db, log_dir):
+    """The response JSON and the saved chats.db transcript carry just the
+    COUNT (for the chat UI's compact meta line); each round's own answer
+    text is a session_log-only detail - see chat_api's assistant_entry
+    comment for why."""
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(
+            response="final answer",
+            provider_id="ollama",
+            model="phi4-mini:latest",
+            recursive_rounds=[
+                RecursiveRoundRecord(round=1, response="draft", converged=False),
+                RecursiveRoundRecord(round=2, response="final answer", converged=True),
+            ],
+        )
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    body = response.get_json()
+    assert body["recursive_rounds"] == 2
+
+    chat_id = body["chat_id"]
+    saved = chats_store.get_chat(chats_db, "test-admin", chat_id)
+    assert saved["messages"][-1]["recursive_rounds"] == 2
+
+    log_file = log_dir / "chats" / "test-admin" / f"{chat_id}.jsonl"
+    entry = json.loads(log_file.read_text(encoding="utf-8").strip())
+    assert entry["recursive_rounds"] == [
+        {"round": 1, "response": "draft", "converged": False},
+        {"round": 2, "response": "final answer", "converged": True},
+    ]
+
+
+def test_api_chat_omits_recursive_rounds_when_none_happened(client, chats_db, log_dir):
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(response="ok", provider_id="openai")
+        response = client.post("/api/chat", json={"question": "hello"})
+
+    body = response.get_json()
+    assert body["recursive_rounds"] == 0
+
+    saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
+    assert "recursive_rounds" not in saved["messages"][-1]
+
+
+def test_api_chat_writes_a_session_log_entry_with_tool_call_detail(client, chats_db, log_dir):
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(
+            response="web-1 is running normally.",
+            tools_used=["get_host_health"],
+            tool_calls=[ToolCallRecord(name="get_host_health", arguments={"name": "web-1"}, result="cpu 12%")],
+            provider_id="claude",
+            model="claude-opus-4-8",
+            total_tokens=1234,
+        )
+        response = client.post(
+            "/api/chat",
+            json={"question": "how is web-1 doing?", "history": [], "provider": "claude", "model": "claude-opus-4-8"},
+        )
+
+    chat_id = response.get_json()["chat_id"]
+    log_file = log_dir / "chats" / "test-admin" / f"{chat_id}.jsonl"
+    assert log_file.exists()
+    entry = json.loads(log_file.read_text(encoding="utf-8").strip())
+    assert entry["question"] == "how is web-1 doing?"
+    assert entry["response"] == "web-1 is running normally."
+    assert entry["provider_id"] == "claude"
+    assert entry["model"] == "claude-opus-4-8"
+    assert entry["tool_calls"] == [{"name": "get_host_health", "arguments": {"name": "web-1"}, "result": "cpu 12%"}]
+    assert entry["elapsed_seconds"] >= 0
 
 
 def test_api_chat_includes_total_tokens_as_null_when_provider_did_not_report_it(client, chats_db):
@@ -310,10 +385,11 @@ def test_api_chat_creates_a_new_chat_and_returns_its_id(client, chats_db):
     body = response.get_json()
     assert body["chat_id"]
     saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
-    assert saved["messages"] == [
-        {"role": "user", "content": "hello"},
-        {"role": "assistant", "content": "hi there"},
-    ]
+    assert saved["messages"][0] == {"role": "user", "content": "hello"}
+    assistant_msg = saved["messages"][1]
+    elapsed = assistant_msg.pop("elapsed_seconds")
+    assert elapsed >= 0
+    assert assistant_msg == {"role": "assistant", "content": "hi there", "provider_id": "openai"}
     assert saved["title"] == "hello"
 
 
@@ -332,11 +408,13 @@ def test_api_chat_with_chat_id_updates_the_existing_chat(client, chats_db):
     body = response.get_json()
     assert body["chat_id"] == existing_id
     saved = chats_store.get_chat(chats_db, "test-admin", existing_id)
-    assert saved["messages"] == [
+    assert saved["messages"][:2] == [
         {"role": "user", "content": "first"},
         {"role": "user", "content": "second question"},
-        {"role": "assistant", "content": "second reply"},
     ]
+    assistant_msg = saved["messages"][2]
+    del assistant_msg["elapsed_seconds"]
+    assert assistant_msg == {"role": "assistant", "content": "second reply", "provider_id": "openai"}
 
 
 def test_api_chat_does_not_duplicate_the_question_when_history_already_includes_it(client, chats_db):
@@ -360,11 +438,13 @@ def test_api_chat_does_not_duplicate_the_question_when_history_already_includes_
 
     body = response.get_json()
     saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
-    assert saved["messages"] == [
+    assert saved["messages"][:2] == [
         {"role": "user", "content": "first"},
         {"role": "user", "content": "second question"},
-        {"role": "assistant", "content": "second reply"},
     ]
+    assistant_msg = saved["messages"][2]
+    del assistant_msg["elapsed_seconds"]
+    assert assistant_msg == {"role": "assistant", "content": "second reply", "provider_id": "openai"}
 
 
 def test_api_chat_persists_the_turn_even_when_the_provider_errors(client, chats_db):

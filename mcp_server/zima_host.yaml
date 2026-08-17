@@ -1,0 +1,67 @@
+# ZimaOS "Install a customized app" - Docker Compose.
+#
+# Setup (mirrors the Twinks Discord-bot recipe):
+#   1) Copy this folder's contents (everything EXCEPT venv_mcp/, .env,
+#      and __pycache__) into a folder on your ZimaOS storage.
+#   2) Edit the volume path below to point at that folder.
+#   3) Fill in every [PLACE ... HERE] placeholder below.
+#   4) App Store -> Install a customized app -> paste this -> Install.
+#
+# Unlike the Discord bot, this is a network server other things (like
+# chat_app) call into, so it needs a `ports:` mapping the bot didn't -
+# and see the MCP_HOST comment below for why that mapping alone isn't
+# enough to make it reachable.
+
+version: '3.8'
+services:
+  mcp_server:
+    # slim (glibc), not alpine (musl) - paramiko pulls in `cryptography`,
+    # a compiled dependency that reliably has prebuilt wheels for glibc
+    # but not always for musl, which means a from-source build (needing
+    # a C/Rust toolchain nothing here installs) instead of a plain
+    # `pip install`.
+    image: python:3.13-slim
+    container_name: mcp-server
+    volumes:
+      # EDIT THIS: wherever you copied this folder's contents to on the
+      # NAS - same idea as the Twinks volume line, just a different path.
+      - "/media/YOUR-HDD/mcp_server:/app"
+    working_dir: /app
+    entrypoint: ["sh", "-c", "pip install . && python -m mcp_server.run"]
+    restart: always
+    ports:
+      - "8010:8010"
+    environment:
+      # MCP_HOST must be 0.0.0.0, not the .env.example default of
+      # 127.0.0.1 - "loopback" means loopback INSIDE this container,
+      # which the `ports:` mapping above can never reach from outside.
+      #
+      # This server has NO authentication of its own (see its own
+      # startup banner's WARNING line about this) - anything that can
+      # reach port 8010 can run every registered tool with arguments of
+      # its choosing. Binding 0.0.0.0 is what makes the port mapping
+      # work at all, so restrict who can reach it at the NETWORK level
+      # instead (NAS firewall rule / VLAN / don't forward this port
+      # past your LAN) - nothing at the app level will.
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8010
+      - CONFIG_PATH=/app/config.json
+      - MCP_LOG_DIR=/app/logs
+      - PENDING_REQUESTS_PATH=/app/pending_requests.db
+      - OTP_PATH=/app/otp.db
+      # Only matters for approval-gated capabilities (an emailed
+      # approve/deny link) - point it at whatever address actually
+      # resolves back to this container from wherever you'll be reading
+      # that email (your NAS's LAN IP or a hostname, not 127.0.0.1).
+      - MCP_PUBLIC_BASE_URL=http://[YOUR NAS LAN IP OR HOSTNAME]:8010
+      # "reject" (default) needs a real known_hosts file with your SSH
+      # hosts' keys already in it - mount or create one at this path, or
+      # switch to "auto" to trust-on-first-use instead.
+      - SSH_HOST_KEY_POLICY=reject
+      - SSH_KNOWN_HOSTS=/app/known_hosts
+      # Only needed if config.json actually references ${SMTP_PASSWORD}
+      # / ${DESKTOP_SSH_PASSWORD} - delete whichever line you don't use,
+      # a ${VAR} that resolves to empty fails startup on purpose (see
+      # .env.example).
+      - SMTP_PASSWORD=[PLACE YOUR SMTP APP PASSWORD HERE]
+      - DESKTOP_SSH_PASSWORD=[PLACE YOUR SSH PASSWORD HERE]

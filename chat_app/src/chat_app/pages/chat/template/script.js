@@ -1,6 +1,5 @@
 const history = [];
-let providerLabels = {}; // id -> label, used to render "answered by X"
-let providersById = {};  // id -> full provider entry (incl. models), used to populate the model dropdown
+let providersById = {};  // id -> full provider entry (incl. models), used to populate the model dropdown and look up model labels
 
 // --- Extensions sidebar -----------------------------------------------
 // Toggle state is convenience/UX state, not a security boundary - the
@@ -48,6 +47,13 @@ function saveEnabledExtensionsToStorage() {
 // silently call Array methods instead of the History API.
 let currentChatId = new URLSearchParams(location.search).get('id');
 
+// Set by loadChat() below, from the last assistant message that has both
+// fields (an error turn has neither - see chat_api's assistant_entry
+// construction) - read once, right after loadChat() resolves, by
+// applyLastUsedModel() to restore this chat's dropdown selections.
+let lastUsedProviderId = null;
+let lastUsedModelId = null;
+
 // Set only when the canned greeting is shown on a genuine fresh chat
 // (see the bottom init block); cleared the moment the user actually
 // sends something, so the transcript starts clean instead of carrying
@@ -60,6 +66,18 @@ let greetingEl = null;
 // more than one at a time - a chat only lacks a real id for its own
 // first message.
 let optimisticChatEntry = null;
+
+// loadChatHistory() is called from several unsynchronized places - a
+// rename, a delete, Escape while renaming, and a chat response landing
+// (send() below) - so more than one can be in flight at once (e.g.
+// renaming one chat while another is still being answered). Without this,
+// whichever fetch's response happened to arrive last would win the
+// render, even if it reflected an OLDER snapshot than one that arrived
+// earlier - a chat created or changed in between would render, then
+// silently vanish when the slower, stale response landed and overwrote
+// it. Each call claims the next ticket; a response only renders if no
+// newer call has started since.
+let chatHistoryRequestId = 0;
 
 async function loadExtensions() {
   const banner = document.getElementById('ext-error-banner');
@@ -360,7 +378,6 @@ async function loadProviders() {
   try {
     const res = await fetch('/api/providers');
     const providers = await res.json();
-    providerLabels = Object.fromEntries(providers.map(p => [p.id, p.label]));
     providersById = Object.fromEntries(providers.map(p => [p.id, p]));
 
     providerSelect.innerHTML = '';
@@ -500,16 +517,36 @@ function formatElapsedTime(ms) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-// total_tokens is defensive by design: the token-tracking work landing
-// this in the response JSON is a separate, parallel change, and some
-// providers/paths never report usage at all - undefined, null, and
-// non-positive values all just mean "don't show a token count".
-function formatTimerText(ms, totalTokens) {
-  const base = formatElapsedTime(ms);
+// total_tokens/modelLabel/recursiveRounds are all defensive by design:
+// some providers/paths never report usage (undefined/null/non-positive
+// all just mean "don't show a token count"), an error turn (no real run
+// happened) has no model to show either - see chat_api's assistant_entry
+// construction, which omits provider_id/model/total_tokens entirely in
+// that case rather than sending empty-string/null noise - and only
+// ollama's recursive_chain models ever produce a nonzero round count.
+function formatTimerText(ms, totalTokens, modelLabel, recursiveRounds) {
+  const parts = [formatElapsedTime(ms)];
   if (typeof totalTokens === 'number' && totalTokens > 0) {
-    return `${base} · ${totalTokens} tokens`;
+    parts.push(`${totalTokens} tokens`);
   }
-  return base;
+  if (modelLabel) {
+    parts.push(modelLabel);
+  }
+  if (typeof recursiveRounds === 'number' && recursiveRounds > 0) {
+    parts.push(`${recursiveRounds} recursive round${recursiveRounds === 1 ? '' : 's'}`);
+  }
+  return parts.join(' · ');
+}
+
+// Human-readable label for a (provider_id, model_id) pair, using the
+// same data /api/providers already gave loadProviders() for the
+// dropdowns - falls back to the raw model id (or provider label) if the
+// providers list hasn't loaded yet or no longer lists that model.
+function modelLabel(providerId, modelId) {
+  const provider = providersById[providerId];
+  if (!provider) return modelId || '';
+  const found = (provider.models || []).find(m => m.id === modelId);
+  return found ? found.label : (modelId || provider.label || '');
 }
 
 function createTimerElement(text) {
@@ -656,23 +693,30 @@ async function send() {
     const data = await res.json();
     thinkingEl.remove();
 
-    // When "Automatic" resolved to a specific provider, say which one -
-    // otherwise the user has no way to know if it was ChatGPT or Claude.
-    if (selectedProvider === 'auto' && data.provider_id) {
-      const label = providerLabels[data.provider_id] || data.provider_id;
-      const note = `Answered by ${label} (Automatic)`;
-      appendMsg('system', note);
-    }
-
     // Freeze the timer at the final elapsed value and fold in the token
-    // count (if the parallel token-tracking work has landed and this
-    // provider/path reported one), then relocate the same node into the
-    // assistant bubble rather than creating a second element.
-    const finalTimerText = formatTimerText(Date.now() - requestStartTime, data.total_tokens);
+    // count and model (whichever the server actually reports - an error
+    // turn has neither, see chat_api's assistant_entry construction),
+    // then relocate the same node into the assistant bubble rather than
+    // creating a second element. Server-reported elapsed_seconds, not the
+    // client's own Date.now() delta, so this matches exactly what a
+    // reload of this same chat will show later (see loadChat() below).
+    const elapsedMs = typeof data.elapsed_seconds === 'number' ? data.elapsed_seconds * 1000 : Date.now() - requestStartTime;
+    const finalTimerText = formatTimerText(elapsedMs, data.total_tokens, modelLabel(data.provider_id, data.model), data.recursive_rounds);
     timerEl.textContent = finalTimerText;
     const assistantWrap = appendMsg('assistant', data.response);
     assistantWrap.appendChild(timerEl);
-    history.push({ role: 'assistant', content: data.response });
+    // provider_id/model/total_tokens/recursive_rounds are only included
+    // when truthy/not-null (an error turn has none of them) - mirrors
+    // chat_api's own assistant_entry construction, and matters because
+    // this same object gets sent back as `history` on the NEXT send() in
+    // this chat, then persisted again: an empty string, null, or 0 here
+    // would overwrite otherwise-real metadata with noise.
+    const assistantTurn = { role: 'assistant', content: data.response, elapsed_seconds: data.elapsed_seconds };
+    if (data.provider_id) assistantTurn.provider_id = data.provider_id;
+    if (data.model) assistantTurn.model = data.model;
+    if (typeof data.total_tokens === 'number') assistantTurn.total_tokens = data.total_tokens;
+    if (data.recursive_rounds) assistantTurn.recursive_rounds = data.recursive_rounds;
+    history.push(assistantTurn);
     playNotificationSound();
 
     // A brand-new chat just got its first id back, or an existing one
@@ -773,8 +817,29 @@ async function loadChat(chatId) {
     const chat = await res.json();
     currentChatId = chat.id;
     for (const message of chat.messages) {
-      appendMsg(message.role, message.content);
-      history.push({ role: message.role, content: message.content });
+      const wrap = appendMsg(message.role, message.content);
+      const turn = { role: message.role, content: message.content };
+      if (message.role === 'assistant') {
+        turn.elapsed_seconds = message.elapsed_seconds;
+        if (message.provider_id) turn.provider_id = message.provider_id;
+        if (message.model) turn.model = message.model;
+        if (typeof message.total_tokens === 'number') turn.total_tokens = message.total_tokens;
+        if (message.recursive_rounds) turn.recursive_rounds = message.recursive_rounds;
+        if (typeof message.elapsed_seconds === 'number') {
+          const text = formatTimerText(
+            message.elapsed_seconds * 1000,
+            message.total_tokens,
+            modelLabel(message.provider_id, message.model),
+            message.recursive_rounds
+          );
+          wrap.appendChild(createTimerElement(text));
+        }
+        if (message.provider_id && message.model) {
+          lastUsedProviderId = message.provider_id;
+          lastUsedModelId = message.model;
+        }
+      }
+      history.push(turn);
     }
     return true;
   } catch (err) {
@@ -787,11 +852,14 @@ async function loadChat(chatId) {
 async function loadChatHistory() {
   const list = document.getElementById('chat-history-list');
   if (!list) return; // not on the chat page's sidebar variant - nothing to do
+  const requestId = ++chatHistoryRequestId;
   try {
     const res = await fetch('/api/chats');
     const chats = await res.json();
+    if (requestId !== chatHistoryRequestId) return; // a newer call already landed - this one is stale
     renderChatHistoryList(chats);
   } catch (err) {
+    if (requestId !== chatHistoryRequestId) return;
     list.innerHTML = '<p class="chat-history-empty">Could not load chat history.</p>';
   }
 }
@@ -974,6 +1042,25 @@ async function deleteChatEntry(chat) {
   }
 }
 
+// Restores the provider/model dropdowns to whatever this chat last used,
+// set by loadChat() above - only once /api/providers has actually loaded
+// (providersById), since that's what says whether the restored choice is
+// still available at all. Silently does nothing (leaving the normal
+// Automatic default) if the provider's gone, the specific model's gone,
+// or either is just currently unavailable (missing key, rate-limited,
+// not pulled) - restoring something unusable would be worse than the
+// default.
+function applyLastUsedModel() {
+  if (!lastUsedProviderId || !lastUsedModelId) return;
+  const provider = providersById[lastUsedProviderId];
+  if (!provider || !provider.available) return;
+  const model = (provider.models || []).find(m => m.id === lastUsedModelId);
+  if (!model || !model.available) return;
+  document.getElementById('provider').value = lastUsedProviderId;
+  updateModelDropdown();
+  document.getElementById('model').value = lastUsedModelId;
+}
+
 document.getElementById('q').addEventListener('keydown', e => {
   if (e.key === 'Enter') send();
 });
@@ -991,7 +1078,11 @@ document.getElementById('ext-add-error-help-toggle').addEventListener('click', (
   toggle.textContent = expanding ? 'Hide' : 'Why might this happen?';
 });
 
-loadProviders();
+// Captured, not fire-and-forget: the init block below awaits this same
+// call (rather than firing a second /api/providers request) so
+// providersById is populated before loadChat() renders any stored
+// per-message model labels, and before applyLastUsedModel() runs.
+const providersReady = loadProviders();
 setInterval(loadProviders, 15000);
 
 loadExtensions();
@@ -1004,8 +1095,11 @@ loadChatHistory();
 // restored message, so this only decides whether a greeting is ALSO
 // needed on top of that.
 (async () => {
+  await providersReady;
   const restored = currentChatId ? await loadChat(currentChatId) : false;
-  if (!restored) {
+  if (restored) {
+    applyLastUsedModel();
+  } else {
     const greeting = pickGreetingMessage();
     greetingEl = appendMsg('assistant', greeting);
   }

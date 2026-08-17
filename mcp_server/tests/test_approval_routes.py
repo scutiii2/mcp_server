@@ -121,6 +121,31 @@ def test_post_records_the_approver(client, token, db):
     assert pending_requests.get(db, token).approved_by == "alice"
 
 
+def test_post_that_fails_during_execution_does_not_leak_exception_text(db, ran, log_dir):
+    """execute() can raise after the request is already claimed (see
+    approvals.approve's docstring). The failure page used to embed
+    str(error) directly - readable by anyone who clicks the emailed
+    link, not just the developer who wrote the code that raised."""
+    boom = RuntimeError("connect failed: postgres://admin:hunter2@10.0.0.5:5432")
+    with patch.dict(approvals._REGISTRY, {}, clear=True):
+        approvals.register(
+            approvals.GatedCapability(
+                name="explode",
+                summarize=lambda p: "Explode",
+                execute=lambda p: (_ for _ in ()).throw(boom),
+            )
+        )
+        app = Starlette()
+        install_approval_routes(app)
+        token = pending_requests.create(db, "explode", {})
+        with TestClient(app) as client:
+            response = client.post(f"/approvals/{token}", data={"approved_by": "alice"})
+
+    assert response.status_code == 500
+    assert "hunter2" not in response.text
+    assert "reference" in response.text.lower()
+
+
 # --- bad states --------------------------------------------------------
 
 

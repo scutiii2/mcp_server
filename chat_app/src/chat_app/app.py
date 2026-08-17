@@ -35,6 +35,7 @@ from chat_app.pages.account.routes import account_bp
 from chat_app.pages.auth.routes import auth_bp
 from chat_app.pages.capabilities.routes import capabilities_bp
 from chat_app.pages.chat.routes import chat_bp
+from chat_app.pages.logs.routes import logs_bp
 from chat_app.pages.overview.routes import overview_bp
 from chat_app.security import install_security
 
@@ -53,6 +54,7 @@ def create_app() -> Flask:
     app.register_blueprint(overview_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
+    app.register_blueprint(logs_bp)
     app.register_blueprint(shared_bp)
 
     app.jinja_loader = PrefixLoader(
@@ -62,6 +64,7 @@ def create_app() -> Flask:
             "overview": FileSystemLoader(str(PAGES_DIR / "overview" / "template")),
             "auth": FileSystemLoader(str(PAGES_DIR / "auth" / "template")),
             "account": FileSystemLoader(str(PAGES_DIR / "account" / "template")),
+            "logs": FileSystemLoader(str(PAGES_DIR / "logs" / "template")),
             "shared": FileSystemLoader(str(PAGES_DIR / "_shared" / "template")),
         }
     )

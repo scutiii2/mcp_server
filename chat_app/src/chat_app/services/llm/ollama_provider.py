@@ -68,6 +68,8 @@ from chat_app.services.llm.base import (
     ModelAvailabilityCheck,
     ModelOption,
     ProviderSpec,
+    RecursiveRoundRecord,
+    ToolCallRecord,
 )
 from chat_app.services.mcp_client import call_tool, list_tools
 
@@ -285,15 +287,17 @@ def _tool_loop(
     model_name: str,
     tool_schemas: list[dict[str, Any]],
     tools_used: list[str],
+    tool_calls_log: list[ToolCallRecord],
 ) -> tuple[str, int | None]:
     """One full pass through the tool-calling loop: keep letting the model
     call tools until it produces a plain-text answer, capped at
-    _MAX_TOOL_CALL_ROUNDS rounds. Mutates ``messages``/``tools_used`` in
-    place (append-only) so a caller making multiple _tool_loop() calls in
-    sequence - recursive_chain's extra review rounds - keeps full
-    conversation history across calls. Appends the final plain-text answer
-    to ``messages`` as an assistant turn before returning, for the same
-    reason: a follow-up review round needs that answer in context.
+    _MAX_TOOL_CALL_ROUNDS rounds. Mutates ``messages``/``tools_used``/
+    ``tool_calls_log`` in place (append-only) so a caller making multiple
+    _tool_loop() calls in sequence - recursive_chain's extra review rounds -
+    keeps full conversation history across calls. Appends the final
+    plain-text answer to ``messages`` as an assistant turn before
+    returning, for the same reason: a follow-up review round needs that
+    answer in context.
 
     Every round is a real, separately-billed API call, so the returned
     token count is the sum across all rounds of this one pass - stays
@@ -343,6 +347,7 @@ def _tool_loop(
                     result_text = call_tool(fallback_name, fallback_arguments)
                 except Exception as error:
                     result_text = f"Tool '{fallback_name}' failed: {error}"
+                tool_calls_log.append(ToolCallRecord(name=fallback_name, arguments=fallback_arguments, result=result_text))
                 messages.append({"role": "tool", "tool_call_id": call_id, "content": result_text})
                 continue
 
@@ -361,6 +366,7 @@ def _tool_loop(
                 result_text = call_tool(call.function.name, arguments)
             except Exception as error:
                 result_text = f"Tool '{call.function.name}' failed: {error}"
+            tool_calls_log.append(ToolCallRecord(name=call.function.name, arguments=arguments, result=result_text))
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result_text})
 
     return "Reached maximum tool-call rounds without a final answer.", total_tokens
@@ -377,31 +383,42 @@ def run_chat(
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_content}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []
+    tool_calls: list[ToolCallRecord] = []
     tool_schemas = _tool_schemas(enabled_extensions)
     model_name = model or _DEFAULT_MODEL_ID
     total_tokens: int | None = None
 
-    answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used)
+    answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used, tool_calls)
     if round_tokens is not None:
         total_tokens = (total_tokens or 0) + round_tokens
 
+    recursive_rounds: list[RecursiveRoundRecord] = []
     if _recursive_chain_enabled(model_name):
         # Ask the model to double-check its own answer for a bounded
         # number of extra rounds, stopping early the moment an answer
         # repeats verbatim (convergence) rather than always spending the
         # full budget. An answer that keeps changing every round still
         # stops at _MAX_RECURSIVE_CHAIN_ROUNDS and returns the last one.
-        for _ in range(_MAX_RECURSIVE_CHAIN_ROUNDS):
+        for round_number in range(1, _MAX_RECURSIVE_CHAIN_ROUNDS + 1):
             messages.append({"role": "user", "content": _RECURSIVE_CHAIN_PROMPT})
-            refined_answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used)
+            refined_answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used, tool_calls)
             if round_tokens is not None:
                 total_tokens = (total_tokens or 0) + round_tokens
             converged = refined_answer.strip() == answer.strip()
             answer = refined_answer
+            recursive_rounds.append(RecursiveRoundRecord(round=round_number, response=refined_answer, converged=converged))
             if converged:
                 break
 
-    return ChatResult(response=answer, tools_used=tools_used, provider_id=PROVIDER_ID, total_tokens=total_tokens)
+    return ChatResult(
+        response=answer,
+        tools_used=tools_used,
+        tool_calls=tool_calls,
+        recursive_rounds=recursive_rounds,
+        provider_id=PROVIDER_ID,
+        model=model_name,
+        total_tokens=total_tokens,
+    )
 
 
 # Short enough that a hung/unreachable Ollama host doesn't make the

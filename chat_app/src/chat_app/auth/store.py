@@ -18,10 +18,13 @@ high-entropy (``secrets.token_urlsafe``, not typed from memory) and
 single-use, so a slow hash would only cost CPU for no real defense.
 
 Roles are a name plus a comma-separated set of scope keys from
-``auth/permissions.py``; ``"admin"`` is seeded with the literal value
-``"*"`` (every current and future scope - see ``permissions.parse_scopes``)
-and can't be deleted, so there is always at least one role that can reach
-the account manager and repair a misconfigured deployment.
+``auth/permissions.py``; ``"admin"`` and ``"executive"`` are both seeded
+with the literal value ``"*"`` (every current and future scope - see
+``permissions.parse_scopes``) and neither can be deleted, so there is
+always at least one role that can reach the account manager and repair a
+misconfigured deployment. Executive's actual distinction from admin
+isn't in this table at all - see ``permissions.EXECUTIVE_ROLE``'s
+docstring and ``auth/service.py``'s ``current_rank()``/``is_executive()``.
 """
 
 from __future__ import annotations
@@ -146,6 +149,14 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         "INSERT OR IGNORE INTO roles (name, scopes, created_by, created_at) VALUES (?, '*', 'system', ?)",
         (permissions.ADMIN_ROLE, now),
     )
+    # Seeded the same way admin is (scopes="*") - executive's actual extra
+    # reach (Logs page, ranked role changes) is enforced outside the scope
+    # system entirely, not by anything stored in this row - see
+    # permissions.EXECUTIVE_ROLE's docstring.
+    conn.execute(
+        "INSERT OR IGNORE INTO roles (name, scopes, created_by, created_at) VALUES (?, '*', 'system', ?)",
+        (permissions.EXECUTIVE_ROLE, now),
+    )
     conn.execute(
         "INSERT OR IGNORE INTO roles (name, scopes, created_by, created_at) VALUES (?, ?, 'system', ?)",
         (permissions.DEFAULT_ROLE, permissions.format_scopes(set(permissions.SCOPES) - {"accounts"}), now),
@@ -203,7 +214,7 @@ def create_role(db_path: Path, name: str, scopes: set[str], created_by: str) -> 
 
 
 def delete_role(db_path: Path, name: str) -> None:
-    if name == permissions.ADMIN_ROLE:
+    if name in (permissions.ADMIN_ROLE, permissions.EXECUTIVE_ROLE):
         raise ProtectedRole(name)
     conn = _connect(db_path)
     try:

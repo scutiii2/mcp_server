@@ -72,6 +72,10 @@ class Settings:
     # accept. "auto" trusts whatever key answers first and records it,
     # which is fine for a throwaway lab and wrong everywhere else.
     ssh_host_key_policy: str = _env("SSH_HOST_KEY_POLICY", "reject")
+    # Where logging_setup.configure_logging() writes server.log and
+    # errors.report() writes per-reference error files. Relative to CWD by
+    # default, same convention as the paths above.
+    log_dir: Path = Path(_env("MCP_LOG_DIR", "logs"))
 
 
 settings = Settings()

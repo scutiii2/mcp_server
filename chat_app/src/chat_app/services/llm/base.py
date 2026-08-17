@@ -31,10 +31,49 @@ SYSTEM_PROMPT = (
 
 
 @dataclass
+class ToolCallRecord:
+    """One tool invocation's full detail - name, the arguments the model
+    supplied, and the result text that went back to it. Distinct from
+    ``ChatResult.tools_used`` (names only, shown in the UI's "tools used"
+    chip): this is for session_log.py's per-turn trace, which needs the
+    detail to be useful for debugging what the assistant actually did."""
+
+    name: str
+    arguments: dict[str, Any]
+    result: str
+
+
+@dataclass
+class RecursiveRoundRecord:
+    """One self-review round's own answer, for a recursive_chain model
+    (see ModelOption.recursive_chain and ollama_provider.py's run_chat) -
+    ``round`` is 1-indexed, ``converged`` is whether this round's answer
+    matched the previous one verbatim (the early-stop condition). Kept
+    per-round rather than just a final count so session_log.py's trace
+    (and the Logs page) can show how the answer actually evolved, not
+    just that it happened N times."""
+
+    round: int
+    response: str
+    converged: bool
+
+
+@dataclass
 class ChatResult:
     response: str
     tools_used: list[str] = field(default_factory=list)
+    tool_calls: list[ToolCallRecord] = field(default_factory=list)
+    # Empty for every provider except ollama - the only one with a
+    # recursive_chain concept at all (see ModelOption.recursive_chain).
+    recursive_rounds: list[RecursiveRoundRecord] = field(default_factory=list)
     provider_id: str = ""
+    # The actual model string used - not necessarily what the caller
+    # requested: "model" may have been None (provider picks its own
+    # default) or the request may have gone through "auto" (router.py
+    # resolves that to a concrete provider before calling it, but the
+    # model choice within that provider is still its own). Each provider
+    # fills this in with whatever it actually sent to its API.
+    model: str = ""
     # None means "this provider/run didn't report token usage" - the
     # frontend hides the token display in that case rather than showing a
     # fabricated number. When a provider does report usage, this is the sum

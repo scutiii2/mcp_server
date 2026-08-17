@@ -13,6 +13,7 @@ with capabilities/'s own index.html).
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 
 from flask import Blueprint, jsonify, render_template, request
@@ -22,7 +23,9 @@ from chat_app.chats import store as chats_store
 from chat_app.config import settings
 from chat_app.errors import report
 from chat_app.security import json_body
+from chat_app.services import session_log
 from chat_app.services.llm import router
+from chat_app.services.llm.base import RecursiveRoundRecord, ToolCallRecord
 from chat_app.services.mcp_client import add_extension, fetch_extensions, remove_extension
 
 
@@ -44,6 +47,7 @@ def chat_page():
         username=service.current_username(),
         role=service.current_role(),
         scopes=service.current_scopes() or set(),
+        is_executive=service.is_executive(),
         current_page="chat",
     )
 
@@ -165,19 +169,34 @@ def chat_api():
         return jsonify({"response": "Please enter a question."})
 
     tools_used: list[str] = []
+    tool_calls: list[ToolCallRecord] = []
+    recursive_rounds: list[RecursiveRoundRecord] = []
     provider_id = ""
+    model_used = ""
     total_tokens = None
+    # A stripped role/content-only copy, not the client's `history` as-is:
+    # every provider spreads this list directly into its raw API call
+    # (e.g. openai_provider.py: [..., *history]), and `history` may now
+    # carry extra fields (provider_id/model/total_tokens/elapsed_seconds -
+    # see the transcript-building block below) that a provider's API would
+    # choke on or reject. Those extra fields are only ever meant for
+    # chats_store/the browser, never for the LLM call itself.
+    llm_history = [{"role": m.get("role"), "content": m.get("content")} for m in data.get("history", [])]
+    start = time.monotonic()
     try:
         result = router.run_chat(
             question,
-            data.get("history", []),
+            llm_history,
             data.get("provider"),
             data.get("model"),
             data.get("enabled_extensions", []),
         )
         response_text = result.response
         tools_used = result.tools_used
+        tool_calls = result.tool_calls
+        recursive_rounds = result.recursive_rounds
         provider_id = result.provider_id
+        model_used = result.model
         total_tokens = result.total_tokens
     except ValueError as error:
         # Deliberately verbatim: the router raises these with wording
@@ -190,6 +209,7 @@ def chat_api():
         # Anything else is unplanned, so its text is untrusted for display -
         # see errors.py.
         response_text = f"❌ {report(error, context='answering your question')}"
+    elapsed_seconds = round(time.monotonic() - start, 1)
 
     # Persisted regardless of which branch above ran - an error turn is
     # saved too, same as the client already does unconditionally on its
@@ -206,7 +226,26 @@ def chat_api():
     current_turn = [{"role": "user", "content": question}]
     if history_in and history_in[-1] == current_turn[0]:
         current_turn = []
-    transcript = history_in + current_turn + [{"role": "assistant", "content": response_text}]
+    # provider_id/model/total_tokens are only meaningful once a real run
+    # happened - the ValueError/Exception branches above leave them at
+    # their empty defaults, so they're omitted here rather than stored as
+    # "" / null noise on an error turn. elapsed_seconds is always real
+    # (even a rate-limit check that fails fast still took some time), so
+    # it's always included. Only the round COUNT is persisted here, not
+    # each round's own answer text - that full detail lives in
+    # session_log's JSONL trace only (see the record_turn() call below),
+    # same split as tool_calls: chats.db carries just enough for the UI's
+    # compact meta line, not the technical detail behind it.
+    assistant_entry: dict = {"role": "assistant", "content": response_text, "elapsed_seconds": elapsed_seconds}
+    if provider_id:
+        assistant_entry["provider_id"] = provider_id
+    if model_used:
+        assistant_entry["model"] = model_used
+    if total_tokens is not None:
+        assistant_entry["total_tokens"] = total_tokens
+    if recursive_rounds:
+        assistant_entry["recursive_rounds"] = len(recursive_rounds)
+    transcript = history_in + current_turn + [assistant_entry]
     chat_id = data.get("chat_id")
     try:
         chat_id = chats_store.save_chat(settings.chats_db_path, service.current_username(), chat_id, transcript)
@@ -223,12 +262,32 @@ def chat_api():
         report(error, context="saving chat history")
         chat_id = None
 
+    if chat_id is not None:
+        try:
+            session_log.record_turn(
+                service.current_username(),
+                chat_id,
+                question=question,
+                response=response_text,
+                provider_id=provider_id,
+                model=model_used,
+                tool_calls=tool_calls,
+                recursive_rounds=recursive_rounds,
+                total_tokens=total_tokens,
+                elapsed_seconds=elapsed_seconds,
+            )
+        except Exception as error:  # noqa: BLE001 - a trace write must not break the chat answer itself
+            report(error, context="writing the chat session log")
+
     return jsonify(
         {
             "response": response_text,
             "tools_used": tools_used,
             "provider_id": provider_id,
+            "model": model_used,
             "total_tokens": total_tokens,
+            "elapsed_seconds": elapsed_seconds,
+            "recursive_rounds": len(recursive_rounds),
             "chat_id": chat_id,
         }
     )

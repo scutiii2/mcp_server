@@ -20,7 +20,7 @@ from anthropic import Anthropic, RateLimitError
 
 from chat_app.config import settings
 from chat_app.services.llm import cooldown
-from chat_app.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec
+from chat_app.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec, ToolCallRecord
 from chat_app.services.mcp_client import call_tool, list_tools
 
 
@@ -72,8 +72,10 @@ def run_chat(
     enabled_extensions: list[str] | None = None,
 ) -> ChatResult:
     client = _get_client()
+    model_name = model or settings.claude_model
     messages: list[dict[str, Any]] = [*history, {"role": "user", "content": question}]
     tools_used: list[str] = []
+    tool_calls: list[ToolCallRecord] = []
     tool_schemas = _tool_schemas(enabled_extensions)
     # Every round of this loop is a real, separately-billed API call, so a
     # multi-tool-call answer's total is the sum across all rounds, not just
@@ -86,7 +88,7 @@ def run_chat(
     try:
         for _ in range(6):
             response = client.messages.create(
-                model=model or settings.claude_model,
+                model=model_name,
                 max_tokens=2048,
                 system=SYSTEM_PROMPT,
                 messages=messages,
@@ -96,7 +98,14 @@ def run_chat(
 
             if response.stop_reason != "tool_use":
                 text = "".join(block.text for block in response.content if block.type == "text")
-                return ChatResult(response=text, tools_used=tools_used, provider_id=PROVIDER_ID, total_tokens=total_tokens)
+                return ChatResult(
+                    response=text,
+                    tools_used=tools_used,
+                    tool_calls=tool_calls,
+                    provider_id=PROVIDER_ID,
+                    model=model_name,
+                    total_tokens=total_tokens,
+                )
 
             messages.append({"role": "assistant", "content": response.content})
 
@@ -109,6 +118,7 @@ def run_chat(
                     result_text = call_tool(block.name, block.input)
                 except Exception as error:
                     result_text = f"Tool '{block.name}' failed: {error}"
+                tool_calls.append(ToolCallRecord(name=block.name, arguments=block.input, result=result_text))
                 tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text})
 
             messages.append({"role": "user", "content": tool_results})
@@ -120,7 +130,9 @@ def run_chat(
     return ChatResult(
         response="Reached maximum tool-call rounds without a final answer.",
         tools_used=tools_used,
+        tool_calls=tool_calls,
         provider_id=PROVIDER_ID,
+        model=model_name,
         total_tokens=total_tokens,
     )
 

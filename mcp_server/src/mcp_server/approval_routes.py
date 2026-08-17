@@ -33,6 +33,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
 from mcp_server.config import settings
+from mcp_server.errors import report
 from mcp_server.infra import approvals, pending_requests
 
 
@@ -138,12 +139,18 @@ async def approval_submit(request: Request) -> HTMLResponse:
     except LookupError as error:
         return _notice("Not approved", str(error), 409, error=True)
     except Exception as error:  # noqa: BLE001 - the request is burned either way; show why
+        # report(), not str(error) inline: this page is reachable by
+        # clicking a link in an email, so whoever's looking at it isn't
+        # necessarily the person who wrote the code that raised - the
+        # same reasoning as chat_app/errors.py, applied to an approver
+        # instead of a chat transcript.
+        safe_message = report(error, context="running an approved action")
         return _page(
             "Failed",
             "<h1>Approved, but it failed</h1>"
             '<p class="notice error">The action was approved and started, but did not '
             "complete. It will not run again on its own - this link is now used up.</p>"
-            f"<pre>{html.escape(str(error))}</pre>",
+            f"<pre>{html.escape(safe_message)}</pre>",
             status=500,
         )
 

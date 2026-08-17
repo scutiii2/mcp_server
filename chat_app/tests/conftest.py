@@ -8,12 +8,15 @@ import dataclasses
 
 import pytest
 
+from chat_app import errors
 from chat_app.app import create_app
 from chat_app.auth import service as auth_service
 from chat_app.config import settings as base_settings
 from chat_app.pages.account import routes as account_routes
 from chat_app.pages.auth import routes as auth_routes
 from chat_app.pages.chat import routes as chat_routes
+from chat_app.pages.logs import routes as logs_routes
+from chat_app.services import session_log
 from chat_app.services.llm import cooldown
 
 
@@ -27,6 +30,24 @@ def app():
 @pytest.fixture
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture(autouse=True)
+def log_dir(tmp_path, monkeypatch):
+    """Points errors.report()'s per-error files, session_log's per-chat
+    traces, and the Logs page's reads at a throwaway directory.
+
+    Without this, any test that triggers report() (e.g. an unexpected
+    exception from a route) or completes a chat turn (session_log.record_turn,
+    called unconditionally from chat_api) would write into the real,
+    CWD-relative logs/ directory as a side effect of running the test suite -
+    and any test hitting the Logs page would read whatever's actually
+    there instead of test-controlled fixtures."""
+    test_settings = dataclasses.replace(base_settings, log_dir=tmp_path / "logs")
+    monkeypatch.setattr(errors, "settings", test_settings)
+    monkeypatch.setattr(session_log, "settings", test_settings)
+    monkeypatch.setattr(logs_routes, "settings", test_settings)
+    return test_settings.log_dir
 
 
 @pytest.fixture(autouse=True)

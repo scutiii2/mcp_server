@@ -14,7 +14,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from mcp_server.config import settings  # noqa: E402
+from mcp_server.logging_setup import configure_logging  # noqa: E402
 from mcp_server.server import mcp  # noqa: E402
+
+# Before anything else runs, so uvicorn's own request/error logging (once
+# it starts inside _serve() below) is captured on disk from the start,
+# not just log lines written after some later point in startup.
+configure_logging(settings.log_dir)
 
 # Import order = the order tools/resources appear in their respective
 # list calls. Add each new capability's tool/resource module here as it's

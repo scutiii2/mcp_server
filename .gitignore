@@ -12,6 +12,14 @@ venv_*/
 # hashes. Neither belongs in version control.
 *.db
 
+# Runtime logs: combined server.log plus one file per error reference id
+# (see chat_app/mcp_server's logging_setup.py / errors.py). Regenerated
+# on every run, not source. Anchored to each app's own root (not a bare
+# "logs/") - unanchored, this also matched chat_app's SOURCE blueprint at
+# pages/logs/, silently excluding it from version control entirely.
+/chat_app/logs/
+/mcp_server/logs/
+
 zip_versions/
 
 # Local git worktrees used for isolated feature work (superpowers

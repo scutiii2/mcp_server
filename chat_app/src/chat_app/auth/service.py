@@ -90,6 +90,20 @@ def check_credentials(username: str, password: str) -> bool:
     return store.verify_user(settings.users_db_path, username, password)
 
 
+def is_root() -> bool:
+    """True only for the literal env-configured account - never a DB row,
+    regardless of what role that row names. This is what makes root
+    "always highest" structural rather than just a big rank number: it's
+    checked independently of current_role(), so current_rank() can give
+    it an unbounded rank even though its role name (EXECUTIVE_ROLE) is
+    shared with any other user promoted to executive."""
+    username = current_username()
+    if username is None:
+        return False
+    admin = _admin_credentials()
+    return admin is not None and secrets.compare_digest(username, admin[0])
+
+
 def current_role() -> str | None:
     """The logged-in user's role name, or None if nobody is logged in, or
     if the session names an account that no longer exists (deleted since
@@ -97,14 +111,18 @@ def current_role() -> str | None:
     treats that None the same as "not logged in" and clears the session.
 
     The env admin is checked first and never touches the database: it
-    isn't a row in ``users``, so a query for it would always miss.
+    isn't a row in ``users``, so a query for it would always miss. Its
+    role is EXECUTIVE_ROLE, not ADMIN_ROLE - the whole point of this
+    account is to be the one guaranteed-present executive (see
+    is_root()/current_rank() for how it stays above every other
+    executive too, not just above admin).
     """
     username = current_username()
     if username is None:
         return None
     admin = _admin_credentials()
     if admin is not None and secrets.compare_digest(username, admin[0]):
-        return permissions.ADMIN_ROLE
+        return permissions.EXECUTIVE_ROLE
     return store.get_user_role(settings.users_db_path, username)
 
 
@@ -127,3 +145,31 @@ def current_scopes() -> set[str] | None:
 
 def is_admin() -> bool:
     return current_role() == permissions.ADMIN_ROLE
+
+
+def is_executive() -> bool:
+    return current_role() == permissions.EXECUTIVE_ROLE
+
+
+def current_rank() -> int | None:
+    """The logged-in user's authority for ranked-role decisions (see
+    pages/account/routes.py's promote/demote/delete checks) - None means
+    "unbounded", not "zero"; callers compare with ``is None or n < rank``,
+    never plain ``<``, or root would rank below everyone instead of above.
+
+    Root gets None (unbounded) rather than a number one higher than
+    EXECUTIVE_ROLE's rank, because a number can always be matched by
+    seeding ROLE_RANK with something higher - None can't be out-ranked by
+    any future tier added to that table. This is what makes "root is
+    always highest" hold even against another executive with the same
+    role name.
+    """
+    if is_root():
+        return None
+    # Not "None" here - that's reserved for root/unbounded above, and
+    # every real caller of this is already behind security.check_login
+    # (route handlers this feeds all require a session to be reached at
+    # all), so this is a safe-default dead branch, not a real case: rank
+    # 0 is the LEAST authority a missing role could imply, the opposite
+    # of what None would mean here.
+    return permissions.role_rank(current_role() or "")

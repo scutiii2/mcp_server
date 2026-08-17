@@ -63,6 +63,10 @@ class Settings:
     # Per-user chat history - see chats/store.py. Mirrors users_db_path
     # immediately above it (relative to CWD by default, same convention).
     chats_db_path: Path = Path(_env("CHATS_DB_PATH", "data/chats.db"))
+    # Where logging_setup.configure_logging() writes server.log and
+    # errors.report() writes per-reference error files. Relative to CWD by
+    # default, same convention as the paths above.
+    log_dir: Path = Path(_env("CHAT_LOG_DIR", "logs"))
 
 
 settings = Settings()

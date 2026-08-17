@@ -7,6 +7,15 @@ it if an admin explicitly checked that box when creating the role. This
 blueprint owns everything under ``pages/account/`` - see
 ``pages/chat/routes.py``/``app.py`` for why the static/template wiring
 looks the way it does.
+
+Granting/revoking a RANKED role (admin, executive - see
+auth/permissions.ROLE_RANK) is gated on top of the "accounts" scope
+check above: create_user_api, set_role_api, and create_invite_api all
+require the acting user's rank (auth/service.current_rank()) to be high
+enough, via _can_grant()/_can_act_on() below. Assigning member or any
+custom (unranked) role stays governed by "accounts" scope alone, same as
+before this existed - the whole point is protecting the two tiers that
+form an actual hierarchy, not re-gating everything this page already did.
 """
 
 from __future__ import annotations
@@ -31,22 +40,67 @@ def _api_error(message: str, status: int = 400):
     return jsonify({"error": message}), status
 
 
+def _can_grant(actor_rank: int | None, role_name: str) -> bool:
+    """Can the actor set someone's role TO role_name?
+
+    None (root) is unbounded. Otherwise strictly-higher rank is required
+    for every ranked role EXCEPT executive itself, which only needs
+    at-or-above: any executive must be able to grant the executive role
+    to someone else (that's the specific ask EXECUTIVE_ROLE exists to
+    satisfy - see its docstring), but the same "at or above" logic must
+    NOT generalize to admin, or a plain admin could grant admin to a
+    peer, undoing the whole point of ranking admin at all.
+    """
+    if actor_rank is None:
+        return True
+    target_rank = permissions.role_rank(role_name)
+    if role_name == permissions.EXECUTIVE_ROLE:
+        return actor_rank >= target_rank
+    return actor_rank > target_rank
+
+
+def _can_act_on(actor_rank: int | None, current_role_name: str) -> bool:
+    """Can the actor change or delete a user CURRENTLY holding
+    current_role_name? None (root) is unbounded; otherwise strictly
+    above that role's rank - strictly, so two same-rank executives can't
+    touch each other's account at all (only root can, or the user
+    themselves via set_role_api's self-demotion carve-out)."""
+    return actor_rank is None or permissions.role_rank(current_role_name) < actor_rank
+
+
 @account_bp.get("/")
 def manage_page():
     # Login is mandatory app-wide (security.check_login has no
     # unconfigured fallback), so reaching this view at all guarantees a
     # session - current_scopes() can't return None here.
+    roles = store.list_roles(settings.users_db_path)
+    viewer_rank = service.current_rank()
     return render_template(
         "account/index.html",
         scopes=service.current_scopes() or set(),
+        is_executive=service.is_executive(),
         current_page="account",
         username=service.current_username(),
         role=service.current_role(),
         users=store.list_users(settings.users_db_path),
-        roles=store.list_roles(settings.users_db_path),
+        roles=roles,
+        # Plain numeric rank, for script.js's self-demotion comparison
+        # ("is my new choice lower than my current role?") - a simple
+        # ordering question, unlike the asymmetric assignable_roles below.
+        # Keyed by name rather than adding a "rank" field to
+        # store.list_roles() itself, which every OTHER caller of that
+        # function would then have to ignore.
+        role_ranks={r["name"]: permissions.role_rank(r["name"]) for r in roles},
+        # Whether the VIEWER could grant each role to someone right now -
+        # reuses _can_grant() itself (not a separate rank comparison in
+        # the template) specifically so this can never drift out of sync
+        # with what the API actually enforces; see _can_grant's docstring
+        # for why this isn't just "role_ranks[name] <= viewer_rank".
+        assignable_roles={r["name"]: _can_grant(viewer_rank, r["name"]) for r in roles},
         invites=store.list_invite_codes(settings.users_db_path),
         scope_catalog=[{"key": key, "label": entry["label"]} for key, entry in permissions.SCOPES.items()],
         admin_role=permissions.ADMIN_ROLE,
+        executive_role=permissions.EXECUTIVE_ROLE,
     )
 
 
@@ -61,6 +115,8 @@ def create_user_api():
         return _api_error("Username, password, and role are all required.")
     if len(password) < 8:
         return _api_error("Password must be at least 8 characters.")
+    if not _can_grant(service.current_rank(), role):
+        return _api_error(f"You don't have permission to grant the {role!r} role.", 403)
 
     try:
         store.create_user_direct(
@@ -77,6 +133,13 @@ def create_user_api():
 def delete_user_api(username: str):
     if username == service.current_username():
         return _api_error("You can't delete your own account while logged in as it.")
+    # Deliberately checked even though this user may not exist - a rank
+    # check that only ran on a successful lookup would be a no-op for
+    # nonexistent usernames anyway (store.delete_user raises UnknownUser
+    # below regardless), so there's no ordering issue either way.
+    current = store.get_user_role(settings.users_db_path, username)
+    if current is not None and not _can_act_on(service.current_rank(), current):
+        return _api_error("You don't have permission to delete this user.", 403)
     try:
         store.delete_user(settings.users_db_path, username)
     except store.UnknownUser:
@@ -90,6 +153,26 @@ def set_role_api(username: str):
     role = (data.get("role") or "").strip()
     if not role:
         return _api_error("Role is required.")
+
+    current = store.get_user_role(settings.users_db_path, username)
+    if current is not None:
+        # The one exception to "only a strictly-higher rank can act on
+        # you": lowering your OWN rank, allowed unconditionally - see
+        # pages/account/template/script.js's confirmModal() for the
+        # warning shown before this request is ever sent. Anything else
+        # (raising your own rank, touching someone else) goes through the
+        # normal checks below same as any other actor.
+        self_demotion = (
+            username == service.current_username()
+            and permissions.role_rank(role) < permissions.role_rank(current)
+        )
+        if not self_demotion:
+            actor_rank = service.current_rank()
+            if not _can_act_on(actor_rank, current):
+                return _api_error("You don't have permission to change this user's role.", 403)
+            if not _can_grant(actor_rank, role):
+                return _api_error(f"You don't have permission to grant the {role!r} role.", 403)
+
     try:
         store.set_user_role(settings.users_db_path, username, role)
     except store.UnknownUser:
@@ -144,6 +227,13 @@ def create_invite_api():
         return _api_error("ttl_hours must be a number.")
     if ttl_hours is not None and ttl_hours <= 0:
         return _api_error("ttl_hours must be positive.")
+    if not _can_grant(service.current_rank(), role):
+        # Checked at mint time, not re-checked at redemption - same
+        # "trust the moment it was issued" trust model the rest of the
+        # invite system already uses (a code minted while a role still
+        # existed stays redeemable even if the minting admin's own access
+        # changes later).
+        return _api_error(f"You don't have permission to grant the {role!r} role.", 403)
 
     try:
         issued = store.create_invite_code(

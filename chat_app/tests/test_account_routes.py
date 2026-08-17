@@ -39,6 +39,18 @@ def _member_client(admin_client, username="alice", password="hunter2pass"):
     return member
 
 
+def _client_with_role(admin_client, role, username, password="hunter2pass"):
+    """A logged-in client for a fresh DB user with the given role -
+    created directly by ``admin_client`` (the env admin, whose rank is
+    unbounded - see auth/service.py's current_rank()), so this works
+    regardless of what a given test is checking about lower ranks."""
+    created = admin_client.post("/accounts/api/users", json={"username": username, "password": password, "role": role})
+    assert created.status_code == 201, created.get_json()
+    fresh = create_app().test_client()
+    fresh.post("/login", data={"username": username, "password": password})
+    return fresh
+
+
 # --- who can reach the account manager -----------------------------------
 
 
@@ -195,3 +207,136 @@ def test_member_cannot_delete_an_invite(admin_client, users_db):
     response = member.delete(f"/accounts/api/invites/{invite['code_id']}")
 
     assert response.status_code == 403
+
+
+# --- role hierarchy: executive tier, ranked promotion/demotion -----------
+#
+# admin_client is logged in as the env-configured admin - which is root,
+# and root's role is EXECUTIVE_ROLE now, not ADMIN_ROLE (see
+# auth/service.py's current_role()). Every test below that needs a
+# genuinely rank-1 actor (not root) creates one via _client_with_role().
+
+
+def test_env_admin_is_executive_not_admin(admin_client, users_db):
+    """The one behavioral guarantee "the .env user is the only Executive
+    by default" rests on."""
+    page = admin_client.get("/accounts/").get_data(as_text=True)
+    assert "executive" in page
+
+
+def test_plain_admin_cannot_promote_a_member_to_admin(admin_client, users_db):
+    admin_actor = _client_with_role(admin_client, "admin", "plain-admin")
+    admin_client.post("/accounts/api/users", json={"username": "bob", "password": "hunter2pass", "role": "member"})
+
+    response = admin_actor.post("/accounts/api/users/bob/role", json={"role": "admin"})
+
+    assert response.status_code == 403
+
+
+def test_plain_admin_cannot_create_a_user_with_admin_role(admin_client, users_db):
+    admin_actor = _client_with_role(admin_client, "admin", "plain-admin")
+
+    response = admin_actor.post(
+        "/accounts/api/users", json={"username": "bob", "password": "hunter2pass", "role": "admin"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_plain_admin_cannot_mint_an_executive_invite(admin_client, users_db):
+    admin_actor = _client_with_role(admin_client, "admin", "plain-admin")
+
+    response = admin_actor.post("/accounts/api/invites", json={"role": "executive"})
+
+    assert response.status_code == 403
+
+
+def test_executive_can_promote_a_member_to_admin(admin_client, users_db):
+    executive_actor = _client_with_role(admin_client, "executive", "exec-two")
+    admin_client.post("/accounts/api/users", json={"username": "bob", "password": "hunter2pass", "role": "member"})
+
+    response = executive_actor.post("/accounts/api/users/bob/role", json={"role": "admin"})
+
+    assert response.status_code == 200
+    assert store.get_user_role(users_db, "bob") == "admin"
+
+
+def test_executive_can_grant_the_executive_role_to_someone_else(admin_client, users_db):
+    """The requirement this whole hierarchy exists to satisfy: any
+    executive - not just root - can create another one."""
+    executive_actor = _client_with_role(admin_client, "executive", "exec-two")
+    admin_client.post("/accounts/api/users", json={"username": "bob", "password": "hunter2pass", "role": "member"})
+
+    response = executive_actor.post("/accounts/api/users/bob/role", json={"role": "executive"})
+
+    assert response.status_code == 200
+    assert store.get_user_role(users_db, "bob") == "executive"
+
+
+def test_two_peer_executives_cannot_change_each_others_role(admin_client, users_db):
+    exec_one = _client_with_role(admin_client, "executive", "exec-one")
+    _client_with_role(admin_client, "executive", "exec-two")
+
+    response = exec_one.post("/accounts/api/users/exec-two/role", json={"role": "member"})
+
+    assert response.status_code == 403
+    assert store.get_user_role(users_db, "exec-two") == "executive"
+
+
+def test_root_can_demote_any_executive(admin_client, users_db):
+    _client_with_role(admin_client, "executive", "exec-one")
+
+    response = admin_client.post("/accounts/api/users/exec-one/role", json={"role": "member"})
+
+    assert response.status_code == 200
+    assert store.get_user_role(users_db, "exec-one") == "member"
+
+
+def test_user_can_demote_themselves(admin_client, users_db):
+    admin_actor = _client_with_role(admin_client, "admin", "plain-admin")
+
+    response = admin_actor.post("/accounts/api/users/plain-admin/role", json={"role": "member"})
+
+    assert response.status_code == 200
+    assert store.get_user_role(users_db, "plain-admin") == "member"
+
+
+def test_user_cannot_promote_themselves(admin_client, users_db):
+    admin_actor = _client_with_role(admin_client, "admin", "plain-admin")
+
+    response = admin_actor.post("/accounts/api/users/plain-admin/role", json={"role": "executive"})
+
+    assert response.status_code == 403
+    assert store.get_user_role(users_db, "plain-admin") == "admin"
+
+
+def test_plain_admin_cannot_delete_a_peer_admin(admin_client, users_db):
+    admin_actor = _client_with_role(admin_client, "admin", "plain-admin")
+    _client_with_role(admin_client, "admin", "other-admin")
+
+    response = admin_actor.delete("/accounts/api/users/other-admin")
+
+    assert response.status_code == 403
+    assert store.get_user_role(users_db, "other-admin") == "admin"
+
+
+def test_executive_can_delete_an_admin(admin_client, users_db):
+    executive_actor = _client_with_role(admin_client, "executive", "exec-two")
+    _client_with_role(admin_client, "admin", "plain-admin")
+
+    response = executive_actor.delete("/accounts/api/users/plain-admin")
+
+    assert response.status_code == 200
+
+
+def test_assigning_a_custom_role_still_only_needs_accounts_scope(admin_client, users_db):
+    """The unranked path (member and any custom role) is deliberately
+    untouched by this feature - a plain admin could always do this, and
+    still can."""
+    admin_actor = _client_with_role(admin_client, "admin", "plain-admin")
+    admin_client.post("/accounts/api/roles", json={"name": "reviewer", "scopes": ["capabilities"]})
+    admin_client.post("/accounts/api/users", json={"username": "bob", "password": "hunter2pass", "role": "member"})
+
+    response = admin_actor.post("/accounts/api/users/bob/role", json={"role": "reviewer"})
+
+    assert response.status_code == 200

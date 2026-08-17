@@ -19,7 +19,7 @@ from urllib.error import URLError
 import pytest
 
 from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
-from chat_app.services.llm.base import SYSTEM_PROMPT, ModelOption
+from chat_app.services.llm.base import RecursiveRoundRecord, SYSTEM_PROMPT, ModelOption, ToolCallRecord
 
 
 def _fake_tool():
@@ -342,6 +342,9 @@ def test_claude_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkey
     assert result.response == "web-1 is healthy."
     # (100 + 20) + (150 + 30) - both rounds counted, not just the final one.
     assert result.total_tokens == 300
+    assert result.tool_calls == [
+        ToolCallRecord(name="get_status_tool", arguments={"resource_id": "web-1"}, result="ok")
+    ]
 
 
 def test_claude_run_chat_reports_total_tokens_on_a_single_round_too():
@@ -376,6 +379,9 @@ def test_openai_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkey
 
     assert result.response == "web-1 is healthy."
     assert result.total_tokens == 200
+    assert result.tool_calls == [
+        ToolCallRecord(name="get_status_tool", arguments={"resource_id": "web-1"}, result="ok")
+    ]
 
 
 def test_openai_run_chat_total_tokens_is_none_when_usage_missing(monkeypatch):
@@ -481,9 +487,20 @@ def test_ollama_usage_tokens_treats_all_zero_usage_as_uncountable():
     assert ollama_provider._usage_tokens(usage) is None
 
 
-def test_ollama_run_chat_recursive_chain_disabled_makes_a_single_round():
+def test_ollama_run_chat_recursive_chain_disabled_makes_a_single_round(monkeypatch):
     """Default behavior (recursive_chain unset/False) must be unchanged:
-    exactly one API call, no refinement round appended."""
+    exactly one API call, no refinement round appended.
+
+    MODELS/_DEFAULT_MODEL_ID are monkeypatched here (unlike this test's
+    original version) rather than left at whatever config.json's real
+    content resolves to at import time - the whole point of this test is
+    a model with recursive_chain=False, and nothing here controlled that
+    otherwise."""
+    monkeypatch.setattr(
+        ollama_provider, "MODELS", [ModelOption(id="llama3.2:1b", label="Llama", recursive_chain=False)]
+    )
+    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "llama3.2:1b")
+
     message = SimpleNamespace(content="ok", tool_calls=None)
     response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
     fake_create = Mock(return_value=response)
@@ -495,6 +512,7 @@ def test_ollama_run_chat_recursive_chain_disabled_makes_a_single_round():
 
     assert result.response == "ok"
     assert fake_create.call_count == 1
+    assert result.recursive_rounds == []
 
 
 def test_ollama_run_chat_recursive_chain_runs_a_refinement_round_then_converges(monkeypatch):
@@ -517,6 +535,7 @@ def test_ollama_run_chat_recursive_chain_runs_a_refinement_round_then_converges(
 
     assert result.response == "Draft answer."
     assert fake_create.call_count == 2
+    assert result.recursive_rounds == [RecursiveRoundRecord(round=1, response="Draft answer.", converged=True)]
 
 
 def test_ollama_run_chat_recursive_chain_caps_at_max_refinement_rounds(monkeypatch):
@@ -544,6 +563,11 @@ def test_ollama_run_chat_recursive_chain_caps_at_max_refinement_rounds(monkeypat
 
     assert result.response == f"answer v{total_rounds - 1}"
     assert fake_create.call_count == total_rounds
+    # One recursive_rounds entry per refinement round (not the initial
+    # round), none converged - each produced a different answer.
+    assert [r.round for r in result.recursive_rounds] == list(range(1, ollama_provider._MAX_RECURSIVE_CHAIN_ROUNDS + 1))
+    assert all(not r.converged for r in result.recursive_rounds)
+    assert result.recursive_rounds[-1].response == f"answer v{total_rounds - 1}"
 
 
 def test_ollama_run_chat_recursive_chain_is_resolved_per_selected_model(monkeypatch):
@@ -568,6 +592,7 @@ def test_ollama_run_chat_recursive_chain_is_resolved_per_selected_model(monkeypa
 
     assert result.response == "plain answer"
     assert fake_create.call_count == 1
+    assert result.recursive_rounds == []
 
 
 def test_extract_fallback_tool_call_recovers_the_real_captured_malformed_shape():
@@ -669,6 +694,11 @@ def test_ollama_run_chat_recovers_a_leaked_tool_call_and_continues_the_conversat
 
     assert result.response == "zima is healthy."
     assert result.tools_used == ["get_host_health_tool"]
+    assert result.tool_calls == [
+        ToolCallRecord(
+            name="get_host_health_tool", arguments={"name": "zima"}, result="zima: cpu 12%, mem 40%"
+        )
+    ]
     assert fake_create.call_count == 2
     mock_call_tool.assert_called_once_with("get_host_health_tool", {"name": "zima"})
 

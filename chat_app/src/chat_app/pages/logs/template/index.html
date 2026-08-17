@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Logs - MCP chat app</title>
+  <link rel="stylesheet" href="{{ url_for('shared.static', filename='sidebar.css') }}">
+  <link rel="stylesheet" href="{{ url_for('logs.static', filename='styles.css') }}">
+</head>
+<body>
+  {% include "shared/sidebar.html" %}
+  <div class="page-content">
+
+  <h1>Logs</h1>
+  <p class="page-hint">Executive-only - chat transcripts (with tool-call detail) and error tracebacks, straight off disk.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" type="button" data-tab="chats" role="tab" aria-selected="true">Chat logs</button>
+    <button class="tab-btn" type="button" data-tab="errors" role="tab" aria-selected="false">Error logs</button>
+  </div>
+
+  <section class="tab-panel active" id="tab-chats" role="tabpanel">
+    <div class="panel-block">
+      <h2>Pick a user</h2>
+      <select id="chat-user-select">
+        <option value="">Select a user…</option>
+        {% for user in chat_users %}
+        <option value="{{ user }}">{{ user }}</option>
+        {% endfor %}
+      </select>
+      {% if not chat_users %}
+      <p class="section-hint">No chat logs on disk yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel-block" id="user-chats-block" hidden>
+      <h2>Their chats</h2>
+      <table>
+        <thead><tr><th>Chat ID</th><th>Last activity</th><th>Size</th><th></th></tr></thead>
+        <tbody id="user-chats-body"></tbody>
+      </table>
+    </div>
+
+    <div class="panel-block" id="chat-trace-block" hidden>
+      <h2>Trace</h2>
+      <div id="chat-trace-view" class="trace-view"></div>
+    </div>
+  </section>
+
+  <section class="tab-panel" id="tab-errors" role="tabpanel">
+    <div class="panel-block">
+      <h2>All error logs</h2>
+      <table>
+        <thead><tr><th>Reference</th><th>Logged</th><th>Size</th><th></th></tr></thead>
+        <tbody id="errors-body">
+          <tr><td colspan="4" class="empty-row">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel-block" id="error-view-block" hidden>
+      <h2>Traceback</h2>
+      <pre id="error-content-view" class="error-content"></pre>
+    </div>
+  </section>
+
+  </div>
+
+  <script src="{{ url_for('logs.static', filename='script.js') }}"></script>
+  <script src="{{ url_for('shared.static', filename='sidebar.js') }}"></script>
+</body>
+</html>

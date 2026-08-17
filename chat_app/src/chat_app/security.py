@@ -79,7 +79,7 @@ from urllib.parse import urlparse
 from flask import Flask, Response, jsonify, redirect, request, url_for
 
 from chat_app.auth import permissions
-from chat_app.auth.service import current_scopes, is_authenticated, logout
+from chat_app.auth.service import current_scopes, is_authenticated, is_executive, logout
 
 
 AUTH_REALM = "chat_app"
@@ -241,6 +241,19 @@ def check_role_permission() -> Response | None:
         if "/api/" in request.path:
             return _error("Your account no longer exists. Please log in again.", 401)
         return redirect(url_for("auth.login_page"))
+
+    # Checked separately from the scope catalog, not folded into it - see
+    # permissions.EXECUTIVE_ENDPOINTS's docstring for why admin's "every
+    # current and future scope" default makes that the wrong place for
+    # this. is_executive() re-reads current_role() itself rather than
+    # being derived from `scopes` above, since scopes says nothing about
+    # role tier.
+    if request.endpoint in permissions.EXECUTIVE_ENDPOINTS:
+        if is_executive():
+            return None
+        if "/api/" in request.path:
+            return _error("You don't have access to this.", 403)
+        return _forbidden_page()
 
     if permissions.endpoint_allowed(scopes, request.endpoint):
         return None

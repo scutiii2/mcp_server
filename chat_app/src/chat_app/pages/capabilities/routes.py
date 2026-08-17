@@ -234,6 +234,7 @@ def browse():
         username=service.current_username(),
         role=service.current_role(),
         scopes=service.current_scopes() or set(),
+        is_executive=service.is_executive(),
         current_page="capabilities",
     )
 

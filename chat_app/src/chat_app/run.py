@@ -16,6 +16,14 @@ load_dotenv()
 
 from chat_app.app import create_app  # noqa: E402
 from chat_app.auth.service import can_anyone_log_in  # noqa: E402
+from chat_app.config import settings  # noqa: E402
+from chat_app.logging_setup import configure_logging  # noqa: E402
+
+# Before create_app(): app.py is also imported by the test suite (see
+# tests/conftest.py's `app` fixture), which constructs a fresh Flask app
+# per test case - attaching log handlers there would duplicate them
+# across a run. Here, in the actual entry point, it runs exactly once.
+configure_logging(settings.log_dir)
 
 # Login is mandatory with no unconfigured fallback (see security.py) - so
 # starting up with no admin account and an empty users.db would boot a

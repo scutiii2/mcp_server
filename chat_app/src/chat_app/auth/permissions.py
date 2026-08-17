@@ -18,6 +18,32 @@ from __future__ import annotations
 
 ADMIN_ROLE = "admin"
 DEFAULT_ROLE = "member"
+# Above admin, not a scope bundle - see ROLE_RANK and EXECUTIVE_ENDPOINTS
+# below for why this can't just be "admin plus a 'logs' scope": admin's
+# scopes are literally "every entry in SCOPES, including ones added
+# later" (see parse_scopes), so any scope this role catalog knows about,
+# admin already has. Executive's extra reach (the Logs page, and the
+# authority to grant/revoke ranked roles - see auth/service.py and
+# pages/account/routes.py) has to live outside the scope system
+# entirely, or admin would silently inherit it too.
+EXECUTIVE_ROLE = "executive"
+
+# Only the three built-in tiers are ranked; every custom role (created via
+# the account manager's "Create role" tab) is unranked - rank 0, same as
+# the default member tier - since custom roles are just scope bundles,
+# not a position in a hierarchy. See auth/service.py's current_rank() and
+# pages/account/routes.py's rank checks for how this gates who can
+# promote/demote/delete whom.
+ROLE_RANK: dict[str, int] = {
+    DEFAULT_ROLE: 0,
+    ADMIN_ROLE: 1,
+    EXECUTIVE_ROLE: 2,
+}
+
+
+def role_rank(name: str) -> int:
+    """0 for any name not in ROLE_RANK - member and every custom role."""
+    return ROLE_RANK.get(name, 0)
 
 SCOPES: dict[str, dict[str, object]] = {
     "chat": {
@@ -74,6 +100,23 @@ SCOPES: dict[str, dict[str, object]] = {
 # every page that has a sidebar needs it regardless of which scopes that
 # page itself requires.
 ALWAYS_ALLOWED_ENDPOINTS = {"overview.index", "overview.static", "auth.logout", "shared.static"}
+
+# The Logs page (chat transcripts and error tracebacks - see
+# services/logs_reader.py) - deliberately outside SCOPES, checked
+# separately in security.check_role_permission() against
+# auth.service.is_executive() instead of a role's granted scopes. Same
+# reasoning as EXECUTIVE_ROLE above: putting this in SCOPES would make
+# admin inherit it automatically, which defeats the entire point of a
+# tier above admin.
+EXECUTIVE_ENDPOINTS = {
+    "logs.static",
+    "logs.logs_page",
+    "logs.list_chat_log_users_api",
+    "logs.list_user_chat_logs_api",
+    "logs.get_chat_log_api",
+    "logs.list_error_logs_api",
+    "logs.get_error_log_api",
+}
 
 
 def parse_scopes(raw: str) -> set[str]:

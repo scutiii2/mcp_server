@@ -28,9 +28,23 @@ def test_admin_and_member_roles_are_seeded(db_path):
     assert roles["member"]["scopes"] == {"chat", "capabilities", "invites"}
 
 
+def test_executive_role_is_seeded_with_every_scope(db_path):
+    """Seeded the same way admin is - executive's actual distinction from
+    admin (Logs page, ranked role changes) is enforced outside this table
+    entirely, not by anything stored in this row."""
+    roles = {role["name"]: role for role in store.list_roles(db_path)}
+
+    assert roles["executive"]["scopes"] == set(permissions.SCOPES)
+
+
 def test_admin_role_cannot_be_deleted(db_path):
     with pytest.raises(store.ProtectedRole):
         store.delete_role(db_path, "admin")
+
+
+def test_executive_role_cannot_be_deleted(db_path):
+    with pytest.raises(store.ProtectedRole):
+        store.delete_role(db_path, "executive")
 
 
 # --- users / invites ---------------------------------------------------
