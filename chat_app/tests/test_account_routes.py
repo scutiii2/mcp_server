@@ -18,6 +18,13 @@ ADMIN_USER = "admin"
 ADMIN_PASSWORD = "s3cret-pw"
 
 
+def _basic(user, password):
+    from base64 import b64encode
+
+    token = b64encode(f"{user}:{password}".encode()).decode()
+    return {"Authorization": f"Basic {token}"}
+
+
 @pytest.fixture(autouse=True)
 def admin_configured(monkeypatch):
     monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USER)
@@ -32,10 +39,22 @@ def admin_client(client):
 
 def _member_client(admin_client, username="alice", password="hunter2pass"):
     """Register a fresh member-role account (via an invite the admin
-    mints) and return a logged-in client for it - a separate browser."""
-    invite = admin_client.post("/api/invites").get_json()
+    mints) and return a logged-in client for it - a separate browser.
+
+    Both calls below carry _basic(ADMIN_USER, ADMIN_PASSWORD) so this still
+    works when called after a test has already minted a gate code and
+    switched the network gate on for the whole app (see the gate-code
+    tests near the end of this file) - harmless when the gate is off,
+    since check_auth only inspects the Authorization header once
+    network_gate_enabled() is true.
+    """
+    invite = admin_client.post("/api/invites", headers=_basic(ADMIN_USER, ADMIN_PASSWORD)).get_json()
     member = create_app().test_client()
-    member.post("/register", data={"username": username, "password": password, "invite_code": invite["code"]})
+    member.post(
+        "/register",
+        data={"username": username, "password": password, "invite_code": invite["code"]},
+        headers=_basic(ADMIN_USER, ADMIN_PASSWORD),
+    )
     return member
 
 
@@ -340,3 +359,83 @@ def test_assigning_a_custom_role_still_only_needs_accounts_scope(admin_client, u
     response = admin_actor.post("/accounts/api/users/bob/role", json={"role": "reviewer"})
 
     assert response.status_code == 200
+
+
+# --- gate codes (Network access tab) --------------------------------------
+#
+# Minting a gate code switches the network gate on for the whole app (see
+# security.check_auth / auth.service.network_gate_enabled) - so any
+# follow-up HTTP call in these tests, after a code already exists, needs
+# its own Basic Auth header even though admin_client already carries a
+# session cookie. Using the env admin's own credentials for that (which
+# also satisfies the gate via the real-account path) is simplest.
+
+
+def test_admin_can_generate_a_gate_code(admin_client, users_db):
+    response = admin_client.post("/accounts/api/gate-codes", json={"ttl_hours": 24})
+
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data["code"]
+    assert data["expires_at"] is not None
+
+
+def test_generating_a_gate_code_without_a_ttl_fails(admin_client, users_db):
+    response = admin_client.post("/accounts/api/gate-codes", json={})
+
+    assert response.status_code == 400
+
+
+def test_member_cannot_generate_a_gate_code_via_the_admin_endpoint(admin_client, users_db):
+    member = _member_client(admin_client)
+
+    response = member.post("/accounts/api/gate-codes", json={"ttl_hours": 24})
+
+    assert response.status_code == 403
+
+
+def test_admin_can_delete_an_outstanding_gate_code(admin_client, users_db):
+    admin_client.post("/accounts/api/gate-codes", json={"ttl_hours": 24})
+    [gate_code] = store.list_gate_codes(users_db)
+
+    response = admin_client.delete(
+        f"/accounts/api/gate-codes/{gate_code['code_id']}", headers=_basic(ADMIN_USER, ADMIN_PASSWORD)
+    )
+
+    assert response.status_code == 200
+    assert store.list_gate_codes(users_db) == []
+
+
+def test_deleting_an_unknown_gate_code_returns_404(admin_client, users_db):
+    response = admin_client.delete(
+        "/accounts/api/gate-codes/not-a-real-code-id", headers=_basic(ADMIN_USER, ADMIN_PASSWORD)
+    )
+
+    assert response.status_code == 404
+
+
+def test_member_cannot_delete_a_gate_code(admin_client, users_db):
+    admin_client.post("/accounts/api/gate-codes", json={"ttl_hours": 24})
+    [gate_code] = store.list_gate_codes(users_db)
+    member = _member_client(admin_client)
+
+    # Deliberately the MEMBER's own credentials here, not the admin's:
+    # check_auth's real-account path (see security.py) re-establishes the
+    # session as whichever identity the Basic Auth header names, so
+    # sending the admin's credentials on this request would silently
+    # re-authenticate this browser as admin and defeat the point of the
+    # test - see _member_client's docstring for the same header, used
+    # safely there because that call's identity doesn't matter.
+    response = member.delete(
+        f"/accounts/api/gate-codes/{gate_code['code_id']}", headers=_basic("alice", "hunter2pass")
+    )
+
+    assert response.status_code == 403
+
+
+def test_network_access_tab_lists_active_gate_codes(admin_client, users_db):
+    store.create_gate_code(users_db, created_by="admin", ttl_hours=1)
+
+    page = admin_client.get("/accounts/", headers=_basic(ADMIN_USER, ADMIN_PASSWORD)).get_data(as_text=True)
+
+    assert "Network access" in page

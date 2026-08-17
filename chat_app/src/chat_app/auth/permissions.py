@@ -89,6 +89,8 @@ SCOPES: dict[str, dict[str, object]] = {
             "account.delete_role_api",
             "account.create_invite_api",
             "account.delete_invite_api",
+            "account.create_gate_code_api",
+            "account.delete_gate_code_api",
         },
     },
 }

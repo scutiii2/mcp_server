@@ -57,7 +57,7 @@ button.danger { font-size: 12px; padding: 4px 8px; border: 1px solid #d9534f; bo
 button.danger:hover:not(:disabled) { background: #fdecea; }
 button.danger:disabled { opacity: 0.4; cursor: not-allowed; }
 
-#invite-result { font-size: 13px; margin-top: 8px; color: #333; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#invite-result, #gate-code-result { font-size: 13px; margin-top: 8px; color: #333; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 /* Generated-code display: monospace code + a one-click Copy button. Same
    shape reused in _shared/template/sidebar.css and

@@ -98,6 +98,7 @@ def manage_page():
         # for why this isn't just "role_ranks[name] <= viewer_rank".
         assignable_roles={r["name"]: _can_grant(viewer_rank, r["name"]) for r in roles},
         invites=store.list_invite_codes(settings.users_db_path),
+        gate_codes=store.list_gate_codes(settings.users_db_path),
         scope_catalog=[{"key": key, "label": entry["label"]} for key, entry in permissions.SCOPES.items()],
         admin_role=permissions.ADMIN_ROLE,
         executive_role=permissions.EXECUTIVE_ROLE,
@@ -262,4 +263,45 @@ def delete_invite_api(code_id: str):
         store.delete_invite_code(settings.users_db_path, code_id)
     except store.UnknownInvite:
         return _api_error(f"No such invite {code_id!r}.", 404)
+    return jsonify({"status": "ok"})
+
+
+@account_bp.post("/api/gate-codes")
+def create_gate_code_api():
+    """Mint a temporary Basic Auth password that satisfies the network
+    gate without tying to any identity - see security.check_auth's third
+    credential path. Admin-facing: TTL is a required choice (the account
+    manager's own form offers 1/24/168 hours), unlike the invite form's
+    optional "never expires" - a gate code with no expiry would
+    contradict "temporary" by definition (see auth/store.py's schema).
+    """
+    data = json_body()
+    try:
+        ttl_hours = float(data.get("ttl_hours"))
+    except (TypeError, ValueError):
+        return _api_error("ttl_hours is required and must be a number.")
+    if ttl_hours <= 0:
+        return _api_error("ttl_hours must be positive.")
+
+    issued = store.create_gate_code(settings.users_db_path, created_by=service.current_username(), ttl_hours=ttl_hours)
+    return (
+        jsonify(
+            {
+                "code_id": issued.code_id,
+                "code": issued.code,
+                "created_by": issued.created_by,
+                "created_at": issued.created_at,
+                "expires_at": issued.expires_at,
+            }
+        ),
+        201,
+    )
+
+
+@account_bp.delete("/api/gate-codes/<code_id>")
+def delete_gate_code_api(code_id: str):
+    try:
+        store.delete_gate_code(settings.users_db_path, code_id)
+    except store.UnknownGateCode:
+        return _api_error(f"No such gate code {code_id!r}.", 404)
     return jsonify({"status": "ok"})

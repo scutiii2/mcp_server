@@ -262,3 +262,60 @@ document.getElementById('invites-body').addEventListener('click', async (event) 
     showStatus(`Failed to delete invite code: ${err.message}`, true);
   }
 });
+
+function prependGateCodeRow(gateCode) {
+  const body = document.getElementById('gate-codes-body');
+  body.querySelector('.empty-row')?.closest('tr')?.remove();
+
+  const row = document.createElement('tr');
+  row.dataset.codeId = gateCode.code_id;
+  addCell(row, buildCopyButton(gateCode.code));
+  addCell(row, gateCode.created_by);
+  addCell(row, gateCode.created_at);
+  addCell(row, gateCode.expires_at);
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'delete-gate-code danger';
+  deleteBtn.textContent = 'Delete';
+  addCell(row, deleteBtn);
+
+  body.insertBefore(row, body.firstChild);
+}
+
+document.getElementById('create-gate-code-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const result = document.getElementById('gate-code-result');
+  result.textContent = 'Generating…';
+  try {
+    const data = await callApi('/accounts/api/gate-codes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl_hours: form.ttl_hours.value }),
+    });
+    result.textContent = '';
+    result.append(`Gate code (expires: ${data.expires_at}): `, buildCopyChip(data.code));
+    prependGateCodeRow(data);
+  } catch (err) {
+    result.textContent = `Failed to generate a code: ${err.message}`;
+  }
+});
+
+document.getElementById('gate-codes-body').addEventListener('click', async (event) => {
+  if (!event.target.classList.contains('delete-gate-code')) return;
+  const row = event.target.closest('tr');
+  const codeId = row.dataset.codeId;
+  const confirmed = await confirmModal({
+    title: 'Delete gate code?',
+    message: 'Anyone still holding it will no longer be able to use it to get through the network gate.',
+    confirmLabel: 'Delete',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await callApi(`/accounts/api/gate-codes/${encodeURIComponent(codeId)}`, { method: 'DELETE' });
+    location.reload();
+  } catch (err) {
+    showStatus(`Failed to delete gate code: ${err.message}`, true);
+  }
+});
