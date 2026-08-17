@@ -324,7 +324,8 @@ def test_gate_code_username_field_is_ignored(client, users_db):
 
     response = fresh.get("/api/providers", headers=_basic("literally-anything", issued.code), environ_base=REMOTE)
 
-    assert response.status_code == 401  # gate passed (not 403); 401 is check_login's JSON-API rejection
+    assert response.status_code == 401
+    assert response.get_json()["message"] == "Not logged in."  # gate passed (check_auth's own 401 says "Invalid credentials.")
 
 
 def test_expired_gate_code_is_rejected(client, users_db, monkeypatch):
@@ -368,18 +369,23 @@ def test_revoked_gate_code_is_rejected_immediately(client, users_db, monkeypatch
     response = fresh.get("/api/providers", headers=_basic("whoever", issued.code), environ_base=REMOTE)
 
     assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"].startswith("Basic ")
 
 
 def test_shared_pair_still_takes_priority_when_configured(client, monkeypatch):
-    """The shared pair (checked first) still works exactly as before -
-    using the already-logged-in `client` fixture rather than a fresh,
-    sessionless one, since the shared-pair path deliberately does not
-    establish a session (see check_auth's docstring): a sessionless client
-    would still get redirected by check_login right after, regardless of
-    whether check_auth itself passed."""
-    monkeypatch.setenv("CHAT_AUTH_USER", "me")
-    monkeypatch.setenv("CHAT_AUTH_PASSWORD", "s3cret")
+    """When Basic Auth credentials match BOTH the shared pair and a real
+    account, the shared pair (checked first) wins - which means no
+    session gets established (see check_auth's docstring: the shared
+    pair path deliberately doesn't call login()). If path 2 fired
+    instead, this would establish a session and a fresh client would get
+    200/302-to-overview instead of a redirect to /login."""
+    monkeypatch.setenv("CHAT_AUTH_USER", "test-admin")
+    monkeypatch.setenv("CHAT_AUTH_PASSWORD", "test-admin-pw-1")
+    fresh = client.application.test_client()
 
-    response = client.get("/api/providers", headers=_basic("me", "s3cret"), environ_base=REMOTE)
+    response = fresh.get(
+        "/", headers=_basic("test-admin", "test-admin-pw-1"), environ_base=REMOTE, follow_redirects=False
+    )
 
-    assert response.status_code == 200
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
