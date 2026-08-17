@@ -185,3 +185,64 @@ def test_malformed_json_fails_loudly(tmp_path: Path):
 
     with pytest.raises(ValueError, match="not valid JSON"):
         load_ollama_models(path)
+
+
+def test_staged_pipeline_defaults_to_false_when_absent(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {"providers": {"ollama": {"models": [{"id": "qwen2.5:7b", "label": "Qwen"}]}}},
+    )
+
+    models = load_ollama_models(path)
+
+    assert models == [ModelOption(id="qwen2.5:7b", label="Qwen", staged_pipeline=False)]
+
+
+def test_staged_pipeline_true_parses_into_model_options(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "providers": {
+                "ollama": {
+                    "models": [{"id": "phi4-mini:latest", "label": "Phi 4 Mini", "staged_pipeline": True}]
+                }
+            }
+        },
+    )
+
+    models = load_ollama_models(path)
+
+    assert models == [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", staged_pipeline=True)]
+
+
+def test_entry_with_non_bool_staged_pipeline_fails_loudly(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {"providers": {"ollama": {"models": [{"id": "qwen2.5:7b", "label": "Qwen", "staged_pipeline": "yes"}]}}},
+    )
+
+    with pytest.raises(ValueError, match=r"models\[0\].staged_pipeline"):
+        load_ollama_models(path)
+
+
+def test_recursive_chain_and_staged_pipeline_both_true_fails_loudly(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "providers": {
+                "ollama": {
+                    "models": [
+                        {
+                            "id": "phi4-mini:latest",
+                            "label": "Phi 4 Mini",
+                            "recursive_chain": True,
+                            "staged_pipeline": True,
+                        }
+                    ]
+                }
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        load_ollama_models(path)

@@ -92,6 +92,15 @@ class ModelOption:
     # meaningful for ollama_provider today - openai/claude's MODELS lists
     # don't set it, so it stays at its default there.
     recursive_chain: bool = False
+    # Whether this model uses the staged enumerate-execute-conclude
+    # pipeline (see services/llm/staged_pipeline.py) instead of
+    # ollama_provider.py's default single tool-calling loop. Only
+    # meaningful for ollama_provider today, same as recursive_chain above.
+    # Mutually exclusive with recursive_chain in practice - see
+    # infra/app_config.py's validation - since staged_pipeline's own
+    # Conclude phase already plays the "final answer" role recursive_chain
+    # reviews.
+    staged_pipeline: bool = False
 
 
 # model is optional - None means "use this provider's own default".

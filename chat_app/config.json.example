@@ -2,10 +2,10 @@
   "providers": {
     "ollama": {
       "models": [
-        { "id": "qwen2.5:3b", "label": "Qwen 2.5 3B (local)", "recursive_chain": false },
-        { "id": "llama3.2:1b", "label": "Llama 3.2 1B (local)", "recursive_chain": false },
-        { "id": "phi3:mini", "label": "Phi 3 Mini (local)", "recursive_chain": false },
-        { "id": "phi4-mini:latest", "label": "Phi 4 Mini (local)", "recursive_chain": false }
+        { "id": "qwen2.5:3b", "label": "Qwen 2.5 3B (local)", "recursive_chain": false, "staged_pipeline": false },
+        { "id": "llama3.2:1b", "label": "Llama 3.2 1B (local)", "recursive_chain": false, "staged_pipeline": false },
+        { "id": "phi3:mini", "label": "Phi 3 Mini (local)", "recursive_chain": false, "staged_pipeline": false },
+        { "id": "phi4-mini:latest", "label": "Phi 4 Mini (local)", "recursive_chain": false, "staged_pipeline": false }
       ]
     }
   }
