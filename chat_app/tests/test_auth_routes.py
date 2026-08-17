@@ -145,3 +145,37 @@ def test_generating_an_invite_requires_login(client, users_db, monkeypatch):
     _set_admin(monkeypatch)
 
     assert client.post("/api/invites").status_code == 401
+
+
+# --- self-service gate codes (sidebar quick-action) ------------------------
+
+
+def test_generating_a_gate_code_requires_login(client, users_db, monkeypatch):
+    _set_admin(monkeypatch)
+
+    assert client.post("/api/gate-codes").status_code == 401
+
+
+def test_logged_in_user_can_generate_a_gate_code(client, users_db, monkeypatch):
+    user, password = _set_admin(monkeypatch)
+    client.post("/login", data={"username": user, "password": password})
+
+    response = client.post("/api/gate-codes")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["code"]
+    assert data["expires_at"] is not None
+
+
+def test_generated_gate_code_carries_a_twenty_four_hour_ttl(client, users_db, monkeypatch):
+    user, password = _set_admin(monkeypatch)
+    client.post("/login", data={"username": user, "password": password})
+
+    from datetime import datetime
+
+    data = client.post("/api/gate-codes").get_json()
+    created = datetime.fromisoformat(data["created_at"])
+    expires = datetime.fromisoformat(data["expires_at"])
+
+    assert (expires - created).total_seconds() == pytest.approx(24 * 3600, abs=2)

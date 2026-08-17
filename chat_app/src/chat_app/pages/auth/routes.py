@@ -127,3 +127,23 @@ def create_invite():
             "expires_at": issued.expires_at,
         }
     )
+
+
+@auth_bp.post("/api/gate-codes")
+def create_gate_code():
+    """Mint a 24-hour gate code as the logged-in user - the sidebar's
+    self-service quick action, mirroring create_invite immediately above.
+    Fixed TTL, no options: an admin who wants to choose the expiry uses
+    the account manager's own gate-code form instead - see
+    pages/account/routes.py.
+    """
+    issued = store.create_gate_code(settings.users_db_path, created_by=service.current_username(), ttl_hours=24)
+    return jsonify(
+        {
+            "code_id": issued.code_id,
+            "code": issued.code,
+            "created_by": issued.created_by,
+            "created_at": issued.created_at,
+            "expires_at": issued.expires_at,
+        }
+    )

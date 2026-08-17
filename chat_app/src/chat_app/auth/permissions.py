@@ -75,7 +75,7 @@ SCOPES: dict[str, dict[str, object]] = {
     },
     "invites": {
         "label": "Generate invite codes",
-        "endpoints": {"auth.create_invite"},
+        "endpoints": {"auth.create_invite", "auth.create_gate_code"},
     },
     "accounts": {
         "label": "Account manager (create/remove users, manage roles)",

@@ -85,6 +85,30 @@ function buildCopyChip(code) {
 })();
 
 (function () {
+  const btn = document.getElementById('sidebar-generate-gate-code');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const result = document.getElementById('sidebar-gate-code-result');
+    result.textContent = 'Generating…';
+    try {
+      const response = await fetch('/api/gate-codes', { method: 'POST' });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
+      const data = await response.json();
+      result.textContent = '';
+      result.append('Code: ', buildCopyChip(data.code));
+      // Only defined on the account manager page (account/script.js,
+      // loaded before this file - see that page's index.html). Generating
+      // a code from the sidebar while the Network access tab is open
+      // should update its list the same as generating one from the tab's
+      // own form does, not leave it looking stale until a reload.
+      if (typeof prependGateCodeRow === 'function') prependGateCodeRow(data);
+    } catch (err) {
+      result.textContent = `Failed: ${err.message}`;
+    }
+  });
+})();
+
+(function () {
   // Identity chip: click to reveal a small "Log out" popover. Toggle on
   // click, close on outside click or Escape, keep aria-expanded in sync.
   const toggle = document.getElementById('sidebar-user-toggle');
