@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -78,3 +79,85 @@ def test_filter_tools_empty_meta_dict_is_treated_as_no_keywords():
     result = staged_pipeline._filter_tools([tool], "anything")
 
     assert result == [tool]
+
+
+def test_enumerate_plan_parses_a_valid_json_plan():
+    plan_json = json.dumps(
+        [
+            {"type": "tool_call", "detail": "check zima's health"},
+            {"type": "reasoning", "detail": "summarize the result"},
+        ]
+    )
+    message = SimpleNamespace(content=plan_json)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+
+    plan = staged_pipeline._enumerate_plan(fake_client, "phi4-mini:latest", "how is zima?", [])
+
+    assert plan == [
+        {"type": "tool_call", "detail": "check zima's health"},
+        {"type": "reasoning", "detail": "summarize the result"},
+    ]
+
+
+def test_enumerate_plan_falls_back_on_unparsable_json():
+    message = SimpleNamespace(content="not json at all")
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+
+    plan = staged_pipeline._enumerate_plan(fake_client, "phi4-mini:latest", "how is zima?", [])
+
+    assert plan == [{"type": "tool_call", "detail": "how is zima?"}]
+
+
+def test_enumerate_plan_falls_back_when_step_count_exceeds_the_cap():
+    oversized = json.dumps(
+        [{"type": "reasoning", "detail": f"step {i}"} for i in range(staged_pipeline._MAX_PLAN_STEPS + 1)]
+    )
+    message = SimpleNamespace(content=oversized)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+
+    plan = staged_pipeline._enumerate_plan(fake_client, "phi4-mini:latest", "q", [])
+
+    assert plan == [{"type": "tool_call", "detail": "q"}]
+
+
+def test_enumerate_plan_falls_back_on_an_unrecognized_step_type():
+    bad = json.dumps([{"type": "do_a_backflip", "detail": "??"}])
+    message = SimpleNamespace(content=bad)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+
+    plan = staged_pipeline._enumerate_plan(fake_client, "phi4-mini:latest", "q", [])
+
+    assert plan == [{"type": "tool_call", "detail": "q"}]
+
+
+def test_enumerate_plan_falls_back_on_an_empty_plan():
+    message = SimpleNamespace(content="[]")
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+
+    plan = staged_pipeline._enumerate_plan(fake_client, "phi4-mini:latest", "q", [])
+
+    assert plan == [{"type": "tool_call", "detail": "q"}]
+
+
+def test_enumerate_plan_sends_filtered_tool_names_and_descriptions_only():
+    """Enumerate's own request must stay small - full JSON schemas aren't
+    sent, just name + description (see module docstring)."""
+    tool = _tool("get_host_health_tool", keywords=None)
+    tool.description = "Check CPU, memory, disk."
+    message = SimpleNamespace(content="[]")
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_create = Mock(return_value=response)
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+
+    staged_pipeline._enumerate_plan(fake_client, "phi4-mini:latest", "how is zima?", [tool])
+
+    _, kwargs = fake_create.call_args
+    user_message = kwargs["messages"][1]["content"]
+    assert "get_host_health_tool" in user_message
+    assert "Check CPU, memory, disk." in user_message
+    assert "inputSchema" not in user_message and "properties" not in user_message
