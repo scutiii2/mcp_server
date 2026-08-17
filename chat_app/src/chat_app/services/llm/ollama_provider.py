@@ -61,6 +61,7 @@ from urllib.request import urlopen
 
 from chat_app.config import settings
 from chat_app.infra.app_config import load_ollama_models
+from chat_app.services.llm import staged_pipeline
 from chat_app.services.llm.base import (
     SYSTEM_PROMPT,
     ChatResult,
@@ -217,6 +218,13 @@ def _recursive_chain_enabled(model_name: str) -> bool:
     for model in MODELS:
         if model.id == model_name:
             return model.recursive_chain
+    return False
+
+
+def _staged_pipeline_enabled(model_name: str) -> bool:
+    for model in MODELS:
+        if model.id == model_name:
+            return model.staged_pipeline
     return False
 
 
@@ -377,16 +385,22 @@ def run_chat(
     history: list[dict[str, Any]],
     model: str | None = None,
     enabled_extensions: list[str] | None = None,
-    chat_id: str | None = None,  # read only by the staged_pipeline branch, added in a later task
+    chat_id: str | None = None,
 ) -> ChatResult:
     client = _get_client()
+    model_name = model or _DEFAULT_MODEL_ID
+
+    if _staged_pipeline_enabled(model_name):
+        return staged_pipeline.run(
+            client, question, history, model_name, chat_id, enabled_extensions, settings.staged_plans_db_path
+        )
+
     system_content = f"{SYSTEM_PROMPT}\n\n{_LOCAL_MODEL_TOOL_GUIDANCE}"
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_content}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
     tool_schemas = _tool_schemas(enabled_extensions)
-    model_name = model or _DEFAULT_MODEL_ID
     total_tokens: int | None = None
 
     answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used, tool_calls)

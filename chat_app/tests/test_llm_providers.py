@@ -19,7 +19,7 @@ from urllib.error import URLError
 import pytest
 
 from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
-from chat_app.services.llm.base import RecursiveRoundRecord, SYSTEM_PROMPT, ModelOption, ToolCallRecord
+from chat_app.services.llm.base import ChatResult, RecursiveRoundRecord, SYSTEM_PROMPT, ModelOption, ToolCallRecord
 
 
 def _fake_tool():
@@ -712,3 +712,40 @@ def test_ollama_not_in_automatic_order():
 
     assert "ollama" not in router.AUTOMATIC_ORDER
     assert "ollama" in router._PROVIDERS  # still registered - manually selectable
+
+def test_ollama_run_chat_dispatches_to_staged_pipeline_when_enabled(monkeypatch):
+    monkeypatch.setattr(
+        ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", staged_pipeline=True)]
+    )
+    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "phi4-mini:latest")
+    fake_result = ChatResult(response="from staged pipeline", provider_id="ollama", model="phi4-mini:latest")
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=SimpleNamespace()), \
+         patch("chat_app.services.llm.ollama_provider.staged_pipeline.run", return_value=fake_result) as mock_run:
+        result = ollama_provider.run_chat("hi", [], chat_id="chat-1")
+
+    assert result.response == "from staged pipeline"
+    args = mock_run.call_args[0]
+    assert args[1] == "hi"        # question
+    assert args[3] == "phi4-mini:latest"  # model_name
+    assert args[4] == "chat-1"    # chat_id
+
+
+def test_ollama_run_chat_uses_the_plain_tool_loop_when_staged_pipeline_disabled(monkeypatch):
+    """Default behavior (staged_pipeline unset/False) must be unchanged -
+    the plain _tool_loop path runs, staged_pipeline.run is never called."""
+    monkeypatch.setattr(
+        ollama_provider, "MODELS", [ModelOption(id="llama3.2:1b", label="Llama", staged_pipeline=False)]
+    )
+    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "llama3.2:1b")
+    message = SimpleNamespace(content="ok", tool_calls=None)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+
+    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]), \
+         patch("chat_app.services.llm.ollama_provider.staged_pipeline.run") as mock_staged_run:
+        result = ollama_provider.run_chat("hi", [])
+
+    assert result.response == "ok"
+    mock_staged_run.assert_not_called()

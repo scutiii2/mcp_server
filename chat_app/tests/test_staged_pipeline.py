@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from chat_app.services.llm import staged_pipeline
+from chat_app.services.llm import staged_pipeline, staged_plans_store
 from chat_app.services.llm.base import ToolCallRecord
 
 
@@ -264,3 +265,108 @@ def test_execute_tool_call_step_recovers_from_a_failing_tool():
         result = staged_pipeline._execute_tool_call_step(fake_client, "phi4-mini:latest", "check zima", [tool], [], [])
 
     assert result == "couldn't check, but here's what I know"
+
+
+def test_run_full_happy_path_with_no_ask_user_step(tmp_path: Path):
+    plan_json = json.dumps([{"type": "reasoning", "detail": "think"}])
+    enumerate_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=plan_json))])
+    execute_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="thought result"))])
+    conclude_response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Here is your answer."))]
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=Mock(side_effect=[enumerate_response, execute_response, conclude_response])
+            )
+        )
+    )
+    db = tmp_path / "staged_plans.db"
+
+    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+        result = staged_pipeline.run(fake_client, "how is zima?", [], "phi4-mini:latest", "chat-1", None, db)
+
+    assert result.response == "Here is your answer."
+    assert result.provider_id == "ollama"
+    assert staged_plans_store.get(db, "chat-1") is None  # nothing left paused
+
+
+def test_run_pauses_on_ask_user_and_persists_the_plan(tmp_path: Path):
+    plan_json = json.dumps([{"type": "ask_user", "detail": "which host do you mean?"}])
+    enumerate_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=plan_json))])
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=enumerate_response)))
+    )
+    db = tmp_path / "staged_plans.db"
+
+    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+        result = staged_pipeline.run(fake_client, "check my host", [], "phi4-mini:latest", "chat-1", None, db)
+
+    assert result.response == "which host do you mean?"
+    saved = staged_plans_store.get(db, "chat-1")
+    assert saved is not None
+    assert saved.step_index == 0
+    assert saved.model == "phi4-mini:latest"
+
+
+def test_run_resumes_a_paused_plan_and_completes_it(tmp_path: Path):
+    db = tmp_path / "staged_plans.db"
+    plan = [
+        {"type": "ask_user", "detail": "which host do you mean?"},
+        {"type": "reasoning", "detail": "summarize"},
+    ]
+    staged_plans_store.save(db, "chat-1", "ollama", "phi4-mini:latest", plan, 0, [])
+    execute_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="summarized"))])
+    conclude_response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Final answer about zima."))]
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(create=Mock(side_effect=[execute_response, conclude_response]))
+        )
+    )
+
+    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+        result = staged_pipeline.run(fake_client, "zima", [], "phi4-mini:latest", "chat-1", None, db)
+
+    assert result.response == "Final answer about zima."
+    assert staged_plans_store.get(db, "chat-1") is None
+
+
+def test_run_discards_a_resume_row_saved_under_a_different_model(tmp_path: Path):
+    """A paused plan saved under one model, then resumed after the user
+    switched models, must not be silently continued under the new
+    model's assumptions."""
+    db = tmp_path / "staged_plans.db"
+    staged_plans_store.save(db, "chat-1", "ollama", "phi4-mini:latest", [{"type": "ask_user", "detail": "q"}], 0, [])
+    plan_json = json.dumps([{"type": "reasoning", "detail": "fresh plan"}])
+    enumerate_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=plan_json))])
+    execute_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="fresh result"))])
+    conclude_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="fresh answer"))])
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=Mock(side_effect=[enumerate_response, execute_response, conclude_response])
+            )
+        )
+    )
+
+    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+        result = staged_pipeline.run(fake_client, "new question", [], "qwen2.5:7b", "chat-1", None, db)
+
+    assert result.response == "fresh answer"
+
+
+def test_run_with_no_chat_id_still_answers_an_ask_user_pause_but_cannot_persist(tmp_path: Path):
+    plan_json = json.dumps([{"type": "ask_user", "detail": "which host?"}])
+    enumerate_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=plan_json))])
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=enumerate_response)))
+    )
+    db = tmp_path / "staged_plans.db"
+
+    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+        result = staged_pipeline.run(fake_client, "check my host", [], "phi4-mini:latest", None, None, db)
+
+    assert result.response == "which host?"
+    assert not db.exists()  # nothing to persist against - no chat_id

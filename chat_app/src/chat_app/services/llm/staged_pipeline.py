@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from chat_app.services.llm.base import ToolCallRecord
-from chat_app.services.mcp_client import call_tool
+from chat_app.services.llm import staged_plans_store
+from chat_app.services.llm.base import ChatResult, ToolCallRecord
+from chat_app.services.mcp_client import call_tool, list_tools
 
 
 # Caps the Filter phase's own output - the point is keeping the Enumerate
@@ -290,3 +292,102 @@ def _execute_steps(
         results.append({"detail": step["detail"], "result": result_text})
 
     return None, calls_used
+
+
+_MAX_TOTAL_CALLS = 20  # Enumerate + every Execute-phase step combined, this turn
+
+_CONCLUDE_SYSTEM_PROMPT = (
+    "Write the final answer to the user's original question, using the "
+    "step results below. Plain, natural language only - never JSON, never "
+    "a numbered step-by-step transcript. This is the only thing the user "
+    "will see."
+)
+
+
+def _conclude(client: Any, model_name: str, question: str, results: list[dict[str, Any]]) -> str:
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": _CONCLUDE_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"Original question: {question}\n\nStep results:\n{_results_summary(results)}",
+            },
+        ],
+        extra_body={"options": {"num_ctx": _NUM_CTX, "num_predict": _NUM_PREDICT}},
+    )
+    return response.choices[0].message.content or ""
+
+
+def run(
+    client: Any,
+    question: str,
+    history: list[dict[str, Any]],
+    model_name: str,
+    chat_id: str | None,
+    enabled_extensions: list[str] | None,
+    db_path: Path,
+) -> ChatResult:
+    """The pipeline's entry point - see module docstring for the five
+    phases. `history` is intentionally unused here: each phase's own
+    prompt is deliberately small (see module docstring), unlike
+    ollama_provider._tool_loop's single continuous conversation, so the
+    prior transcript plays no role in these calls. total_tokens is left at
+    ChatResult's own default (None, meaning "not reported") - a known
+    simplification for this first version rather than plumbing usage
+    accumulation across five separate call sites.
+    """
+    tools_used: list[str] = []
+    tool_calls_log: list[Any] = []
+    all_tools = list_tools(enabled_extensions)
+
+    resumed = staged_plans_store.get(db_path, chat_id) if chat_id else None
+    if resumed is not None and resumed.model == model_name:
+        plan = resumed.plan
+        results = resumed.results
+        # The paused ask_user step's own slot never got a result (that's
+        # what paused it) - this turn's `question` IS the user's answer to
+        # it, so it becomes that step's result before Execute continues.
+        results.append({"detail": plan[resumed.step_index]["detail"], "result": question})
+        step_index = resumed.step_index + 1
+        calls_used_so_far = 1  # the paused turn's own Enumerate call
+    else:
+        # No resumable plan (none saved, expired, or saved under a
+        # different model) - start fresh.
+        filtered = _filter_tools(all_tools, question)
+        plan = _enumerate_plan(client, model_name, question, filtered)
+        results = []
+        step_index = 0
+        calls_used_so_far = 1  # the Enumerate call just made
+
+    calls_budget = max(_MAX_TOTAL_CALLS - calls_used_so_far, 0)
+    pause, _ = _execute_steps(
+        client, model_name, all_tools, plan, step_index, results, tools_used, tool_calls_log, calls_budget
+    )
+
+    if pause is not None:
+        # No chat_id means this pause can't be persisted - the question is
+        # still returned as the answer (the turn still works), it just
+        # can't be resumed automatically; the user's next message starts a
+        # fresh Enumerate instead, which naturally treats their answer as
+        # a new question.
+        if chat_id:
+            staged_plans_store.save(db_path, chat_id, "ollama", model_name, plan, pause.step_index, results)
+        return ChatResult(
+            response=pause.question,
+            tools_used=tools_used,
+            tool_calls=tool_calls_log,
+            provider_id="ollama",
+            model=model_name,
+        )
+
+    if chat_id:
+        staged_plans_store.delete(db_path, chat_id)
+    answer = _conclude(client, model_name, question, results)
+    return ChatResult(
+        response=answer,
+        tools_used=tools_used,
+        tool_calls=tool_calls_log,
+        provider_id="ollama",
+        model=model_name,
+    )
