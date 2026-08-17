@@ -257,3 +257,107 @@ def test_delete_invite_code_revokes_an_outstanding_code(db_path):
 def test_delete_invite_code_with_unknown_id_raises(db_path):
     with pytest.raises(store.UnknownInvite):
         store.delete_invite_code(db_path, "not-a-real-code-id")
+
+
+# --- gate codes --------------------------------------------------------
+
+
+def _gate_code(db_path, created_by="admin", ttl_hours=1):
+    return store.create_gate_code(db_path, created_by=created_by, ttl_hours=ttl_hours)
+
+
+def test_create_gate_code_is_valid_immediately(db_path):
+    issued = _gate_code(db_path)
+
+    assert store.gate_code_is_valid(db_path, issued.code) is True
+
+
+def test_wrong_gate_code_is_not_valid(db_path):
+    _gate_code(db_path)
+
+    assert store.gate_code_is_valid(db_path, "not-the-code") is False
+
+
+def test_gate_code_is_multi_use(db_path):
+    """Unlike an invite code, a gate code stays valid across many uses for
+    its whole window - there's no claim/race logic, since it isn't tied to
+    any one account."""
+    issued = _gate_code(db_path)
+
+    assert store.gate_code_is_valid(db_path, issued.code) is True
+    assert store.gate_code_is_valid(db_path, issued.code) is True
+
+
+def test_expired_gate_code_is_not_valid(db_path):
+    issued = _gate_code(db_path, ttl_hours=1)
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    conn.execute("UPDATE gate_codes SET expires_at = ? WHERE code_id = ?", (past, issued.code_id))
+    conn.commit()
+    conn.close()
+
+    assert store.gate_code_is_valid(db_path, issued.code) is False
+
+
+def test_list_gate_codes_excludes_and_purges_expired_rows(db_path):
+    issued = _gate_code(db_path, ttl_hours=1)
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    conn.execute("UPDATE gate_codes SET expires_at = ? WHERE code_id = ?", (past, issued.code_id))
+    conn.commit()
+    conn.close()
+
+    assert store.list_gate_codes(db_path) == []
+
+    # Purged outright, not just filtered - a direct query confirms the
+    # row itself is gone, mirroring how invite_codes has no lazy-GC
+    # precedent to compare against but delete_role's expired-invite path
+    # already relies on the same "expired rows don't linger forever" idea.
+    conn = sqlite3.connect(str(db_path))
+    remaining = conn.execute("SELECT 1 FROM gate_codes").fetchone()
+    conn.close()
+    assert remaining is None
+
+
+def test_list_gate_codes_includes_active_rows(db_path):
+    issued = _gate_code(db_path, created_by="root-admin")
+
+    [row] = store.list_gate_codes(db_path)
+
+    assert row["code_id"] == issued.code_id
+    assert row["created_by"] == "root-admin"
+    assert row["expires_at"] == issued.expires_at
+
+
+def test_delete_gate_code_revokes_it_immediately(db_path):
+    issued = _gate_code(db_path)
+
+    store.delete_gate_code(db_path, issued.code_id)
+
+    assert store.gate_code_is_valid(db_path, issued.code) is False
+    assert store.list_gate_codes(db_path) == []
+
+
+def test_delete_gate_code_with_unknown_id_raises(db_path):
+    with pytest.raises(store.UnknownGateCode):
+        store.delete_gate_code(db_path, "not-a-real-code-id")
+
+
+def test_any_gate_code_valid_reports_true_only_while_unexpired(db_path):
+    assert store.any_gate_code_valid(db_path) is False
+
+    issued = _gate_code(db_path, ttl_hours=1)
+    assert store.any_gate_code_valid(db_path) is True
+
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    conn.execute("UPDATE gate_codes SET expires_at = ? WHERE code_id = ?", (past, issued.code_id))
+    conn.commit()
+    conn.close()
+    assert store.any_gate_code_valid(db_path) is False

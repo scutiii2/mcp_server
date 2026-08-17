@@ -86,6 +86,10 @@ class UnknownInvite(Exception):
     """Raised by delete_invite_code() when the code_id doesn't exist."""
 
 
+class UnknownGateCode(Exception):
+    """Raised by delete_gate_code() when the code_id doesn't exist."""
+
+
 def _hash_password(salt: bytes, password: str) -> bytes:
     return hashlib.scrypt(
         password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=_KEY_LENGTH
@@ -144,6 +148,18 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gate_codes (
+            code_id TEXT PRIMARY KEY,
+            salt BLOB NOT NULL,
+            code_hash BLOB NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+        """
+    )
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         "INSERT OR IGNORE INTO roles (name, scopes, created_by, created_at) VALUES (?, '*', 'system', ?)",
@@ -167,6 +183,11 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     # Python after the fact.
     conn.create_function("password_matches", 3, _password_matches, deterministic=True)
     conn.create_function("invite_code_matches", 3, _invite_code_matches, deterministic=True)
+    # Same HMAC-SHA256 comparison as invite codes (see _invite_code_matches)
+    # registered under its own SQL name so gate_code_is_valid's query reads
+    # naturally - a gate code isn't an invite, even though the hashing
+    # approach is identical.
+    conn.create_function("gate_code_matches", 3, _invite_code_matches, deterministic=True)
     conn.commit()
     return conn
 
@@ -489,5 +510,98 @@ def register_user(db_path: Path, username: str, password: str, invite_code: str)
             conn.rollback()
             raise UsernameTaken(username) from None
         conn.commit()
+    finally:
+        conn.close()
+
+
+# --- gate codes ----------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class IssuedGateCode:
+    """What create_gate_code() hands back. ``code`` exists here and
+    nowhere else - only its salted HMAC is stored, same as IssuedInvite."""
+
+    code_id: str
+    code: str
+    created_by: str
+    created_at: str
+    expires_at: str
+
+
+def create_gate_code(db_path: Path, created_by: str, ttl_hours: float) -> IssuedGateCode:
+    conn = _connect(db_path)
+    try:
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        expires_at = (now + timedelta(hours=ttl_hours)).isoformat()
+        code = secrets.token_urlsafe(9)
+        code_id = secrets.token_urlsafe(12)
+        salt = secrets.token_bytes(16)
+        conn.execute(
+            "INSERT INTO gate_codes (code_id, salt, code_hash, created_by, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (code_id, salt, _hash_invite_code(salt, code), created_by, now_iso, expires_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return IssuedGateCode(code_id=code_id, code=code, created_by=created_by, created_at=now_iso, expires_at=expires_at)
+
+
+def list_gate_codes(db_path: Path) -> list[dict]:
+    """Still-valid gate codes, never the plaintext. Opportunistically
+    deletes expired rows first - lazy GC, no cron needed, so the table
+    doesn't grow unbounded from codes nobody ever revoked."""
+    conn = _connect(db_path)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("DELETE FROM gate_codes WHERE expires_at <= ?", (now,))
+        conn.commit()
+        rows = conn.execute(
+            "SELECT code_id, created_by, created_at, expires_at FROM gate_codes ORDER BY created_at DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {"code_id": code_id, "created_by": created_by, "created_at": created_at, "expires_at": expires_at}
+        for code_id, created_by, created_at, expires_at in rows
+    ]
+
+
+def gate_code_is_valid(db_path: Path, code: str) -> bool:
+    conn = _connect(db_path)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        row = conn.execute(
+            "SELECT 1 FROM gate_codes WHERE expires_at > ? AND gate_code_matches(salt, code_hash, ?) LIMIT 1",
+            (now, code),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def any_gate_code_valid(db_path: Path) -> bool:
+    """Whether at least one gate code is currently valid - used by
+    auth.service.network_gate_enabled() as one of the three activation
+    signals ("an admin minting one is itself a deliberate act")."""
+    conn = _connect(db_path)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        return conn.execute("SELECT 1 FROM gate_codes WHERE expires_at > ? LIMIT 1", (now,)).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def delete_gate_code(db_path: Path, code_id: str) -> None:
+    """Manual revocation - rejected immediately after this, since
+    gate_code_is_valid checks the live table on every call."""
+    conn = _connect(db_path)
+    try:
+        deleted = conn.execute("DELETE FROM gate_codes WHERE code_id = ?", (code_id,)).rowcount
+        conn.commit()
+        if deleted == 0:
+            raise UnknownGateCode(code_id)
     finally:
         conn.close()
