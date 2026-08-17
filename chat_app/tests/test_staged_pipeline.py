@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from chat_app.services.llm import staged_pipeline
+from chat_app.services.llm.base import ToolCallRecord
 
 
 def _tool(name: str, keywords: list[str] | None = None):
@@ -161,3 +162,105 @@ def test_enumerate_plan_sends_filtered_tool_names_and_descriptions_only():
     assert "get_host_health_tool" in user_message
     assert "Check CPU, memory, disk." in user_message
     assert "inputSchema" not in user_message and "properties" not in user_message
+
+
+def test_execute_steps_runs_a_tool_call_step_and_records_the_result():
+    tool = _tool("get_host_health_tool", keywords=["health"])
+    plan = [{"type": "tool_call", "detail": "check zima's health"}]
+    call = SimpleNamespace(id="call_1", function=SimpleNamespace(name="get_host_health_tool", arguments="{}"))
+    round_one = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=None, tool_calls=[call]))])
+    round_two = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="zima is healthy", tool_calls=None))]
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
+    )
+    tools_used: list[str] = []
+    tool_calls_log: list[ToolCallRecord] = []
+    results: list = []
+
+    with patch("chat_app.services.llm.staged_pipeline.call_tool", return_value="cpu 12%") as mock_call_tool:
+        pause, calls_used = staged_pipeline._execute_steps(
+            fake_client, "phi4-mini:latest", [tool], plan, 0, results, tools_used, tool_calls_log, calls_budget=10,
+        )
+
+    assert pause is None
+    assert calls_used == 1
+    assert results == [{"detail": "check zima's health", "result": "zima is healthy"}]
+    assert tools_used == ["get_host_health_tool"]
+    mock_call_tool.assert_called_once_with("get_host_health_tool", {})
+
+
+def test_execute_steps_stops_and_returns_a_pause_on_ask_user():
+    plan = [
+        {"type": "reasoning", "detail": "think about it"},
+        {"type": "ask_user", "detail": "which host do you mean?"},
+        {"type": "reasoning", "detail": "never reached"},
+    ]
+    reasoning_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="thought"))])
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=reasoning_response)))
+    )
+    results: list = []
+
+    pause, calls_used = staged_pipeline._execute_steps(
+        fake_client, "phi4-mini:latest", [], plan, 0, results, [], [], calls_budget=10,
+    )
+
+    assert pause == staged_pipeline._AskUserPause(step_index=1, question="which host do you mean?")
+    assert calls_used == 1  # only the reasoning step before the pause
+    assert results == [{"detail": "think about it", "result": "thought"}]
+
+
+def test_execute_steps_resumes_from_the_given_step_index():
+    plan = [
+        {"type": "ask_user", "detail": "already answered"},
+        {"type": "reasoning", "detail": "continue here"},
+    ]
+    reasoning_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="done"))])
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=reasoning_response)))
+    )
+    results = [{"detail": "already answered", "result": "the user's answer"}]
+
+    pause, calls_used = staged_pipeline._execute_steps(
+        fake_client, "phi4-mini:latest", [], plan, 1, results, [], [], calls_budget=10,
+    )
+
+    assert pause is None
+    assert calls_used == 1
+    assert results[-1] == {"detail": "continue here", "result": "done"}
+
+
+def test_execute_steps_stops_at_the_call_budget_without_erroring():
+    plan = [{"type": "reasoning", "detail": f"step {i}"} for i in range(5)]
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
+    results: list = []
+
+    pause, calls_used = staged_pipeline._execute_steps(
+        fake_client, "phi4-mini:latest", [], plan, 0, results, [], [], calls_budget=2,
+    )
+
+    assert pause is None
+    assert calls_used == 2
+    assert len(results) == 2
+
+
+def test_execute_tool_call_step_recovers_from_a_failing_tool():
+    tool = _tool("get_host_health_tool", keywords=None)
+    call = SimpleNamespace(id="call_1", function=SimpleNamespace(name="get_host_health_tool", arguments="{}"))
+    round_one = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=None, tool_calls=[call]))])
+    round_two = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="couldn't check, but here's what I know", tool_calls=None))
+        ]
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
+    )
+
+    with patch("chat_app.services.llm.staged_pipeline.call_tool", side_effect=RuntimeError("connection refused")):
+        result = staged_pipeline._execute_tool_call_step(fake_client, "phi4-mini:latest", "check zima", [tool], [], [])
+
+    assert result == "couldn't check, but here's what I know"

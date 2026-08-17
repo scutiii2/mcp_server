@@ -11,7 +11,11 @@ full design.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
+
+from chat_app.services.llm.base import ToolCallRecord
+from chat_app.services.mcp_client import call_tool
 
 
 # Caps the Filter phase's own output - the point is keeping the Enumerate
@@ -139,3 +143,150 @@ def _enumerate_plan(client: Any, model_name: str, question: str, filtered_tools:
     )
     content = response.choices[0].message.content or ""
     return _parse_plan(content, question)
+
+
+_MAX_STEP_TOOL_ROUNDS = 6  # mirrors ollama_provider._MAX_TOOL_CALL_ROUNDS's value
+
+_EXECUTE_TOOL_CALL_SYSTEM_PROMPT = (
+    "Complete this one step of a larger plan. Call a tool if it helps; "
+    "otherwise answer directly. Be concise - this result feeds a later "
+    "step, not the user."
+)
+
+
+def _tool_schemas_for(tools: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description or "",
+                "parameters": tool.inputSchema or {"type": "object", "properties": {}},
+            },
+        }
+        for tool in tools
+    ]
+
+
+def _execute_tool_call_step(
+    client: Any,
+    model_name: str,
+    detail: str,
+    all_tools: list[Any],
+    tools_used: list[str],
+    tool_calls_log: list[ToolCallRecord],
+) -> str:
+    """Runs one bounded tool-calling round trip for a single plan step,
+    scoped to just this step's own filtered tools (tighter than the
+    original question - see _filter_tools) - small-context is the whole
+    point of breaking Execute into per-step calls (see module docstring).
+    Returns the step's result text: either the model's own plain-text
+    reply (no tool needed after all), or a summary of the tool result(s)
+    it actually called.
+    """
+    step_tools = _filter_tools(all_tools, detail)
+    tool_schemas = _tool_schemas_for(step_tools)
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _EXECUTE_TOOL_CALL_SYSTEM_PROMPT},
+        {"role": "user", "content": detail},
+    ]
+
+    for _ in range(_MAX_STEP_TOOL_ROUNDS):
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            tools=tool_schemas if tool_schemas else None,
+            extra_body={"options": {"num_ctx": _NUM_CTX, "num_predict": _NUM_PREDICT}},
+        )
+        message = response.choices[0].message
+        tool_calls = getattr(message, "tool_calls", None) or []
+
+        if not tool_calls:
+            return message.content or ""
+
+        messages.append({"role": "assistant", "content": message.content, "tool_calls": tool_calls})
+        for call in tool_calls:
+            try:
+                arguments = json.loads(call.function.arguments or "{}")
+            except Exception:
+                arguments = {}
+            tools_used.append(call.function.name)
+            try:
+                result_text = call_tool(call.function.name, arguments)
+            except Exception as error:
+                result_text = f"Tool '{call.function.name}' failed: {error}"
+            tool_calls_log.append(ToolCallRecord(name=call.function.name, arguments=arguments, result=result_text))
+            messages.append({"role": "tool", "tool_call_id": call.id, "content": result_text})
+
+    return "Reached maximum tool-call rounds for this step without a final answer."
+
+
+def _results_summary(results: list[dict[str, Any]]) -> str:
+    if not results:
+        return "(none yet)"
+    return "\n".join(f"- {r['detail']}: {r['result']}" for r in results)
+
+
+def _execute_reasoning_step(client: Any, model_name: str, detail: str, prior_results_summary: str) -> str:
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": "Complete this one reasoning step of a larger plan, concisely."},
+            {"role": "user", "content": f"Prior results so far:\n{prior_results_summary}\n\nThis step: {detail}"},
+        ],
+        extra_body={"options": {"num_ctx": _NUM_CTX, "num_predict": _NUM_PREDICT}},
+    )
+    return response.choices[0].message.content or ""
+
+
+@dataclass
+class _AskUserPause:
+    step_index: int
+    question: str
+
+
+def _execute_steps(
+    client: Any,
+    model_name: str,
+    all_tools: list[Any],
+    plan: list[dict[str, str]],
+    step_index: int,
+    results: list[dict[str, Any]],
+    tools_used: list[str],
+    tool_calls_log: list[ToolCallRecord],
+    calls_budget: int,
+) -> tuple["_AskUserPause | None", int]:
+    """Walks `plan` from `step_index` onward, appending each step's
+    {"detail", "result"} to `results` in place. Stops early, without
+    consuming a step, once `calls_budget` calls have been made - the
+    overall per-turn call budget (see run() in a later task) - leaving
+    whatever steps didn't run simply absent from `results`; Conclude still
+    works from whatever's there. A tool_call step's own internal rounds
+    (see _execute_tool_call_step) are bounded separately by
+    _MAX_STEP_TOOL_ROUNDS and only ever count as one call against this
+    budget, to keep the budget accounting simple.
+
+    Returns (pause_or_none, calls_used) - calls_used is how many
+    Execute-phase steps this invocation actually completed, for the caller
+    to subtract from its own remaining per-turn budget.
+    """
+    calls_used = 0
+    for index in range(step_index, len(plan)):
+        if calls_used >= calls_budget:
+            break
+        step = plan[index]
+
+        if step["type"] == "ask_user":
+            return _AskUserPause(step_index=index, question=step["detail"]), calls_used
+
+        if step["type"] == "tool_call":
+            result_text = _execute_tool_call_step(
+                client, model_name, step["detail"], all_tools, tools_used, tool_calls_log
+            )
+        else:  # "reasoning" - the only remaining member of _STEP_TYPES
+            result_text = _execute_reasoning_step(client, model_name, step["detail"], _results_summary(results))
+
+        calls_used += 1
+        results.append({"detail": step["detail"], "result": result_text})
+
+    return None, calls_used
