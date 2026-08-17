@@ -83,6 +83,30 @@ def test_filter_tools_empty_meta_dict_is_treated_as_no_keywords():
     assert result == [tool]
 
 
+def test_filter_tools_keeps_a_tool_named_literally_in_the_text_with_no_keyword_overlap():
+    """Regression test: _ENUMERATE_SYSTEM_PROMPT instructs tool_call steps
+    to name the tool literally in `detail` (e.g. "call get_host_health_tool
+    with name=zima"), and _execute_tool_call_step re-filters against that
+    detail text. The tool's own declared keywords deliberately share no
+    tokens with its name here, so this only survives filtering if
+    _filter_tools also matches against the tool's own name tokens."""
+    tool = _tool("get_host_health_tool", keywords=["cpu", "memory", "disk", "uptime"])
+
+    result = staged_pipeline._filter_tools([tool], "call get_host_health_tool with name=zima")
+
+    assert result == [tool]
+
+
+def test_filter_tools_matches_a_keyword_immediately_followed_by_punctuation():
+    """Regression test: the old str.split() tokenization left "cpu?" as
+    one token, which never matched the bare keyword "cpu"."""
+    tool = _tool("get_host_health_tool", keywords=["cpu"])
+
+    result = staged_pipeline._filter_tools([tool], "how's the cpu?")
+
+    assert result == [tool]
+
+
 def test_enumerate_plan_parses_a_valid_json_plan():
     plan_json = json.dumps(
         [
@@ -186,7 +210,10 @@ def test_execute_steps_runs_a_tool_call_step_and_records_the_result():
         )
 
     assert pause is None
-    assert calls_used == 1
+    # Honest round-counting: this step made 2 real calls (one that
+    # produced the tool_call, one that produced the final answer), not a
+    # flat 1 - see the call-budget accounting fix in _execute_steps.
+    assert calls_used == 2
     assert results == [{"detail": "check zima's health", "result": "zima is healthy"}]
     assert tools_used == ["get_host_health_tool"]
     mock_call_tool.assert_called_once_with("get_host_health_tool", {})
@@ -262,9 +289,12 @@ def test_execute_tool_call_step_recovers_from_a_failing_tool():
     )
 
     with patch("chat_app.services.llm.staged_pipeline.call_tool", side_effect=RuntimeError("connection refused")):
-        result = staged_pipeline._execute_tool_call_step(fake_client, "phi4-mini:latest", "check zima", [tool], [], [])
+        result, rounds_used = staged_pipeline._execute_tool_call_step(
+            fake_client, "phi4-mini:latest", "check zima", [tool], [], []
+        )
 
     assert result == "couldn't check, but here's what I know"
+    assert rounds_used == 2  # one round that made the (failing) tool call, one that gave the final answer
 
 
 def test_run_full_happy_path_with_no_ask_user_step(tmp_path: Path):
@@ -370,3 +400,78 @@ def test_run_with_no_chat_id_still_answers_an_ask_user_pause_but_cannot_persist(
 
     assert result.response == "which host?"
     assert not db.exists()  # nothing to persist against - no chat_id
+
+
+def test_run_discards_a_resume_row_saved_under_a_different_provider_id(tmp_path: Path):
+    """A saved plan is only resumable when BOTH provider_id and model
+    match this turn's (design spec §3, phase 0) - not model alone. A row
+    somehow saved under a different provider_id (e.g. a future non-Ollama
+    caller of this same store) must not be silently continued."""
+    db = tmp_path / "staged_plans.db"
+    staged_plans_store.save(
+        db, "chat-1", "not-ollama", "phi4-mini:latest", [{"type": "ask_user", "detail": "q"}], 0, []
+    )
+    plan_json = json.dumps([{"type": "reasoning", "detail": "fresh plan"}])
+    enumerate_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=plan_json))])
+    execute_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="fresh result"))])
+    conclude_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="fresh answer"))])
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=Mock(side_effect=[enumerate_response, execute_response, conclude_response])
+            )
+        )
+    )
+
+    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+        result = staged_pipeline.run(fake_client, "new question", [], "phi4-mini:latest", "chat-1", None, db)
+
+    assert result.response == "fresh answer"
+
+
+def test_run_stops_at_the_call_budget_under_honest_round_counting_and_still_concludes(tmp_path: Path):
+    """Regression test for the call-budget accounting bug: a tool_call
+    step's internal rounds (up to _MAX_STEP_TOOL_ROUNDS each) must be
+    charged individually against _MAX_TOTAL_CALLS, not a flat 1 per step -
+    otherwise the budget can never actually fire, since _MAX_PLAN_STEPS
+    (8) is always smaller than _MAX_TOTAL_CALLS (20).
+
+    Five tool_call steps that each exhaust every one of their rounds
+    (never producing a final answer) would, under honest counting, blow
+    past the remaining budget (19, after Enumerate's own call) partway
+    through the 4th step - so only 4 of the 5 steps' full round budgets
+    are ever spent, the 5th step's rounds are never requested, and the
+    run still completes via Conclude using whatever partial results
+    exist. Under the old flat-1-per-step accounting, all 5 steps would
+    run to exhaustion (32 real calls total), which this test's fixed
+    number of mocked responses (26) would not have enough of to satisfy -
+    so this test also fails loudly under the old buggy accounting.
+    """
+    tool = _tool("get_host_health_tool", keywords=None)
+    plan_steps = [{"type": "tool_call", "detail": f"step {i}"} for i in range(5)]
+    plan_json = json.dumps(plan_steps)
+    enumerate_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=plan_json))])
+
+    call = SimpleNamespace(id="call_1", function=SimpleNamespace(name="get_host_health_tool", arguments="{}"))
+    exhausting_round = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=None, tool_calls=[call]))]
+    )
+    conclude_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Partial answer."))])
+
+    # Enumerate (1) + 4 fully-exhausted tool_call steps (4 * 6 rounds each)
+    # + Conclude (1) = 26. A 5th step's rounds must never be requested.
+    responses = (
+        [enumerate_response]
+        + [exhausting_round] * (staged_pipeline._MAX_STEP_TOOL_ROUNDS * 4)
+        + [conclude_response]
+    )
+    fake_create = Mock(side_effect=responses)
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+    db = tmp_path / "staged_plans.db"
+
+    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[tool]), \
+         patch("chat_app.services.llm.staged_pipeline.call_tool", return_value="ok"):
+        result = staged_pipeline.run(fake_client, "check 5 hosts", [], "phi4-mini:latest", "chat-1", None, db)
+
+    assert result.response == "Partial answer."
+    assert fake_create.call_count == 1 + staged_pipeline._MAX_STEP_TOOL_ROUNDS * 4 + 1

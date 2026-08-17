@@ -510,6 +510,30 @@ def test_api_chat_with_stale_chat_id_falls_back_to_creating_a_new_chat(client, c
     assert saved["messages"][-1]["content"] == "hi there"
 
 
+def test_api_chat_with_another_users_chat_id_does_not_resume_it(client, chats_db):
+    """A chat_id that exists but belongs to a different user must be
+    treated exactly like an unknown one (chats/store.py's own module
+    docstring: a foreign chat_id is indistinguishable from a nonexistent
+    one) - not threaded through to router.run_chat. Without this check, a
+    staged-pipeline Ollama model could resume another user's paused plan
+    and leak its accumulated tool-call results into this response."""
+    foreign_chat_id = chats_store.save_chat(chats_db, "someone-else", None, [{"role": "user", "content": "not mine"}])
+
+    with patch("chat_app.services.llm.router.run_chat") as mock_run_chat:
+        mock_run_chat.return_value = ChatResult(response="hi there", provider_id="openai")
+        response = client.post("/api/chat", json={"question": "hello", "chat_id": foreign_chat_id})
+
+    body = response.get_json()
+    assert body["chat_id"] != foreign_chat_id
+    mock_run_chat.assert_called_once()
+    assert mock_run_chat.call_args.kwargs["chat_id"] != foreign_chat_id
+    saved = chats_store.get_chat(chats_db, "test-admin", body["chat_id"])
+    assert saved["messages"][-1]["content"] == "hi there"
+    # The other user's chat is untouched by this request.
+    foreign = chats_store.get_chat(chats_db, "someone-else", foreign_chat_id)
+    assert foreign["messages"] == [{"role": "user", "content": "not mine"}]
+
+
 def test_list_chats_api_returns_only_the_current_users_chats(client, chats_db):
     mine = chats_store.save_chat(chats_db, "test-admin", None, [{"role": "user", "content": "mine"}])
     chats_store.save_chat(chats_db, "someone-else", None, [{"role": "user", "content": "not mine"}])

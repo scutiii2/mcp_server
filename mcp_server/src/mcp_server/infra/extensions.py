@@ -240,6 +240,13 @@ class ExtensionRegistry:
                     description=tool.description,
                     inputSchema=tool.inputSchema,
                     outputSchema=tool.outputSchema,
+                    # mcp.types.Tool aliases its "meta" field to "_meta" on
+                    # the wire without populate_by_name, and the model's
+                    # extra="allow" config means a keyword of meta= here
+                    # would silently create a stray extra attribute instead
+                    # of setting the real field - verified live against the
+                    # installed mcp==1.28.0. Don't "normalize" this back to
+                    # meta= - it would silently reintroduce that bug.
                     _meta=tool.meta,
                     annotations=tool.annotations,
                     icons=tool.icons,

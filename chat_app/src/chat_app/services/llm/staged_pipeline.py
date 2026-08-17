@@ -11,6 +11,7 @@ full design.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,52 +21,19 @@ from chat_app.services.llm.base import ChatResult, ToolCallRecord
 from chat_app.services.mcp_client import call_tool, list_tools
 
 
+# All six guardrail constants live together here, right after the imports,
+# rather than scattered across the file in whatever order each phase was
+# added in (that scattering is exactly why the call-budget under-counting
+# bug - see _execute_steps - was invisible to any single phase's review:
+# each phase's own reviewer only ever saw its own constant in isolation).
+# Every cap fails into "produce a usable degraded result," never into
+# raising out of the turn - consistent with every existing guardrail in
+# ollama_provider.py.
+
 # Caps the Filter phase's own output - the point is keeping the Enumerate
 # phase's prompt small (see module docstring), not just narrowing
 # relevance.
 _MAX_FILTERED_TOOLS = 8
-
-
-def _tool_keywords(tool: Any) -> list[str]:
-    """A tool with no `meta`, or a `meta` without a "keywords" entry, both
-    mean "not annotated" - not "no keywords" - see _filter_tools for why
-    that's treated as always-relevant (fail open) rather than
-    always-excluded."""
-    meta = getattr(tool, "meta", None) or {}
-    keywords = meta.get("keywords")
-    return keywords if isinstance(keywords, list) else []
-
-
-def _filter_tools(tools: list[Any], question: str) -> list[Any]:
-    """Deterministic, dependency-free relevance filter: lowercase-tokenize
-    `question`, keep any tool with at least one token in common with its
-    own declared keywords, plus every tool with no declared keywords at
-    all (fail-open - an unannotated extension tool must never become
-    silently uncallable just because nobody keyword-tagged it, it's only
-    less tightly filtered). Ranks matched tools by match count (most
-    relevant first; Python's sort is stable, so ties keep original order),
-    unlabeled tools after those, and caps the combined list at
-    _MAX_FILTERED_TOOLS - bounding the Enumerate phase's own prompt is the
-    actual point of this filter, so the cap applies even to fail-open
-    tools.
-    """
-    question_tokens = set(question.lower().split())
-
-    scored: list[tuple[int, Any]] = []
-    unlabeled: list[Any] = []
-    for tool in tools:
-        keywords = _tool_keywords(tool)
-        if not keywords:
-            unlabeled.append(tool)
-            continue
-        match_count = len({keyword.lower() for keyword in keywords} & question_tokens)
-        if match_count > 0:
-            scored.append((match_count, tool))
-
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    ranked = [tool for _, tool in scored] + unlabeled
-    return ranked[:_MAX_FILTERED_TOOLS]
-
 
 # Mirrors ollama_provider.py's own tuning (not imported from there -
 # ollama_provider.py imports this module to dispatch into it, so the
@@ -79,6 +47,93 @@ _NUM_PREDICT = 1024
 
 # Caps the Enumerate phase's own output.
 _MAX_PLAN_STEPS = 8
+
+# Caps a single tool_call step's own internal tool-calling rounds (mirrors
+# ollama_provider._MAX_TOOL_CALL_ROUNDS's value).
+_MAX_STEP_TOOL_ROUNDS = 6
+
+# Caps Enumerate + every real Execute-phase Ollama call combined, this
+# turn. _execute_steps charges each step's *actual* round count against
+# this (a tool_call step's own internal rounds, up to
+# _MAX_STEP_TOOL_ROUNDS; a reasoning step is always exactly 1), not a flat
+# 1 per step - otherwise this budget could never actually fire.
+_MAX_TOTAL_CALLS = 20
+
+# This module's own provider id, as recorded in staged_plans_store rows
+# (see run()'s save() call below) and in every ChatResult it returns. A
+# saved plan is only resumable when its provider_id AND model both match
+# this turn's (see run()'s resume check) - both, not just model, per the
+# design spec's phase-0 resume rule.
+_PROVIDER_ID = "ollama"
+
+
+def _tool_keywords(tool: Any) -> list[str]:
+    """A tool with no `meta`, or a `meta` without a "keywords" entry, both
+    mean "not annotated" - not "no keywords" - see _filter_tools for why
+    that's treated as always-relevant (fail open) rather than
+    always-excluded."""
+    meta = getattr(tool, "meta", None) or {}
+    keywords = meta.get("keywords")
+    return keywords if isinstance(keywords, list) else []
+
+
+_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+
+
+def _tokenize(text: str) -> set[str]:
+    """Regex tokenization (not str.split()) so trailing/attached
+    punctuation - e.g. the "cpu?" that "how's the CPU?".lower().split()
+    would produce - never prevents a match against a bare keyword like
+    "cpu"."""
+    return set(_TOKEN_PATTERN.findall(text.lower()))
+
+
+def _tool_name_tokens(tool: Any) -> set[str]:
+    """Tokens derived from the tool's own declared name, split on
+    underscores/hyphens and lowercased. Matched against in addition to
+    meta["keywords"] so a step whose `detail` names a tool explicitly (as
+    _ENUMERATE_SYSTEM_PROMPT instructs every tool_call step to do) always
+    survives filtering - independent of whether that tool has any
+    keywords declared at all."""
+    name = getattr(tool, "name", "") or ""
+    return _tokenize(name.replace("_", " ").replace("-", " "))
+
+
+def _filter_tools(tools: list[Any], text: str) -> list[Any]:
+    """Deterministic, dependency-free relevance filter: tokenize `text`
+    (the top-level Filter phase calls this with the user's question; the
+    Execute phase calls it again with a single step's own `detail` - see
+    _execute_tool_call_step), keep any tool with at least one token in
+    common with its own declared keywords OR its own name's tokens, plus
+    every tool with no declared keywords and no name-token match either
+    (fail-open - an unannotated extension tool must never become silently
+    uncallable just because nobody keyword-tagged it and its name doesn't
+    happen to appear in the text, it's only less tightly filtered). Ranks
+    matched tools by match count (most relevant first; Python's sort is
+    stable, so ties keep original order), unlabeled tools after those, and
+    caps the combined list at _MAX_FILTERED_TOOLS - bounding the Enumerate
+    phase's own prompt is the actual point of this filter, so the cap
+    applies even to fail-open tools.
+    """
+    text_tokens = _tokenize(text)
+
+    scored: list[tuple[int, Any]] = []
+    unlabeled: list[Any] = []
+    for tool in tools:
+        keywords = _tool_keywords(tool)
+        match_tokens = {keyword.lower() for keyword in keywords} | _tool_name_tokens(tool)
+        match_count = len(match_tokens & text_tokens)
+        if match_count > 0:
+            scored.append((match_count, tool))
+        elif not keywords:
+            unlabeled.append(tool)
+        # else: a labeled tool with zero overlap (by keyword or by its own
+        # name) is dropped.
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    ranked = [tool for _, tool in scored] + unlabeled
+    return ranked[:_MAX_FILTERED_TOOLS]
+
 
 _STEP_TYPES = {"tool_call", "reasoning", "ask_user"}
 
@@ -147,8 +202,6 @@ def _enumerate_plan(client: Any, model_name: str, question: str, filtered_tools:
     return _parse_plan(content, question)
 
 
-_MAX_STEP_TOOL_ROUNDS = 6  # mirrors ollama_provider._MAX_TOOL_CALL_ROUNDS's value
-
 _EXECUTE_TOOL_CALL_SYSTEM_PROMPT = (
     "Complete this one step of a larger plan. Call a tool if it helps; "
     "otherwise answer directly. Be concise - this result feeds a later "
@@ -177,14 +230,20 @@ def _execute_tool_call_step(
     all_tools: list[Any],
     tools_used: list[str],
     tool_calls_log: list[ToolCallRecord],
-) -> str:
+) -> tuple[str, int]:
     """Runs one bounded tool-calling round trip for a single plan step,
     scoped to just this step's own filtered tools (tighter than the
     original question - see _filter_tools) - small-context is the whole
     point of breaking Execute into per-step calls (see module docstring).
-    Returns the step's result text: either the model's own plain-text
-    reply (no tool needed after all), or a summary of the tool result(s)
-    it actually called.
+
+    Returns (result_text, rounds_used). result_text is either the model's
+    own plain-text reply (no tool needed after all), or a summary of the
+    tool result(s) it actually called. rounds_used is how many real Ollama
+    calls this step actually made (one per loop iteration, up to
+    _MAX_STEP_TOOL_ROUNDS) - the caller (_execute_steps) charges this real
+    count against the per-turn call budget instead of a flat 1 per step,
+    since a single step can make up to _MAX_STEP_TOOL_ROUNDS real calls on
+    its own.
     """
     step_tools = _filter_tools(all_tools, detail)
     tool_schemas = _tool_schemas_for(step_tools)
@@ -193,6 +252,7 @@ def _execute_tool_call_step(
         {"role": "user", "content": detail},
     ]
 
+    rounds_used = 0
     for _ in range(_MAX_STEP_TOOL_ROUNDS):
         response = client.chat.completions.create(
             model=model_name,
@@ -200,11 +260,12 @@ def _execute_tool_call_step(
             tools=tool_schemas if tool_schemas else None,
             extra_body={"options": {"num_ctx": _NUM_CTX, "num_predict": _NUM_PREDICT}},
         )
+        rounds_used += 1
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None) or []
 
         if not tool_calls:
-            return message.content or ""
+            return message.content or "", rounds_used
 
         messages.append({"role": "assistant", "content": message.content, "tool_calls": tool_calls})
         for call in tool_calls:
@@ -220,7 +281,7 @@ def _execute_tool_call_step(
             tool_calls_log.append(ToolCallRecord(name=call.function.name, arguments=arguments, result=result_text))
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result_text})
 
-    return "Reached maximum tool-call rounds for this step without a final answer."
+    return "Reached maximum tool-call rounds for this step without a final answer.", rounds_used
 
 
 def _results_summary(results: list[dict[str, Any]]) -> str:
@@ -260,17 +321,20 @@ def _execute_steps(
 ) -> tuple["_AskUserPause | None", int]:
     """Walks `plan` from `step_index` onward, appending each step's
     {"detail", "result"} to `results` in place. Stops early, without
-    consuming a step, once `calls_budget` calls have been made - the
-    overall per-turn call budget (see run() in a later task) - leaving
-    whatever steps didn't run simply absent from `results`; Conclude still
-    works from whatever's there. A tool_call step's own internal rounds
-    (see _execute_tool_call_step) are bounded separately by
-    _MAX_STEP_TOOL_ROUNDS and only ever count as one call against this
-    budget, to keep the budget accounting simple.
+    consuming a step, once `calls_budget` real Ollama calls have been made
+    - the overall per-turn call budget - leaving whatever steps didn't run
+    simply absent from `results`; Conclude still works from whatever's
+    there. A tool_call step's own internal rounds (see
+    _execute_tool_call_step, bounded by _MAX_STEP_TOOL_ROUNDS) are charged
+    against this budget at their real count, not a flat 1 per step -
+    a step can make up to _MAX_STEP_TOOL_ROUNDS real calls on its own, and
+    undercounting that would let the budget check never actually fire. A
+    reasoning step is always exactly 1 real call.
 
-    Returns (pause_or_none, calls_used) - calls_used is how many
-    Execute-phase steps this invocation actually completed, for the caller
-    to subtract from its own remaining per-turn budget.
+    Returns (pause_or_none, calls_used) - calls_used is the real number of
+    Ollama calls this invocation actually made across every step it
+    completed, for the caller to subtract from its own remaining per-turn
+    budget.
     """
     calls_used = 0
     for index in range(step_index, len(plan)):
@@ -282,19 +346,18 @@ def _execute_steps(
             return _AskUserPause(step_index=index, question=step["detail"]), calls_used
 
         if step["type"] == "tool_call":
-            result_text = _execute_tool_call_step(
+            result_text, step_calls = _execute_tool_call_step(
                 client, model_name, step["detail"], all_tools, tools_used, tool_calls_log
             )
         else:  # "reasoning" - the only remaining member of _STEP_TYPES
             result_text = _execute_reasoning_step(client, model_name, step["detail"], _results_summary(results))
+            step_calls = 1
 
-        calls_used += 1
+        calls_used += step_calls
         results.append({"detail": step["detail"], "result": result_text})
 
     return None, calls_used
 
-
-_MAX_TOTAL_CALLS = 20  # Enumerate + every Execute-phase step combined, this turn
 
 _CONCLUDE_SYSTEM_PROMPT = (
     "Write the final answer to the user's original question, using the "
@@ -342,7 +405,7 @@ def run(
     all_tools = list_tools(enabled_extensions)
 
     resumed = staged_plans_store.get(db_path, chat_id) if chat_id else None
-    if resumed is not None and resumed.model == model_name:
+    if resumed is not None and resumed.provider_id == _PROVIDER_ID and resumed.model == model_name:
         plan = resumed.plan
         results = resumed.results
         # The paused ask_user step's own slot never got a result (that's
@@ -372,12 +435,12 @@ def run(
         # fresh Enumerate instead, which naturally treats their answer as
         # a new question.
         if chat_id:
-            staged_plans_store.save(db_path, chat_id, "ollama", model_name, plan, pause.step_index, results)
+            staged_plans_store.save(db_path, chat_id, _PROVIDER_ID, model_name, plan, pause.step_index, results)
         return ChatResult(
             response=pause.question,
             tools_used=tools_used,
             tool_calls=tool_calls_log,
-            provider_id="ollama",
+            provider_id=_PROVIDER_ID,
             model=model_name,
         )
 
@@ -388,6 +451,6 @@ def run(
         response=answer,
         tools_used=tools_used,
         tool_calls=tool_calls_log,
-        provider_id="ollama",
+        provider_id=_PROVIDER_ID,
         model=model_name,
     )

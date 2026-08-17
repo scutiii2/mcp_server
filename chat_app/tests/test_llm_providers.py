@@ -713,6 +713,7 @@ def test_ollama_not_in_automatic_order():
     assert "ollama" not in router.AUTOMATIC_ORDER
     assert "ollama" in router._PROVIDERS  # still registered - manually selectable
 
+
 def test_ollama_run_chat_dispatches_to_staged_pipeline_when_enabled(monkeypatch):
     monkeypatch.setattr(
         ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", staged_pipeline=True)]

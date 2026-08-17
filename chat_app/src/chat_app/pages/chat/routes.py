@@ -193,6 +193,22 @@ def chat_api():
     # passing a not-yet-persisted id straight to the later update call
     # would raise UnknownChat against its own id.
     chat_id = data.get("chat_id")
+    if chat_id is not None:
+        # A client-supplied chat_id must be verified as belonging to the
+        # current user *before* it's threaded into router.run_chat -
+        # staged_pipeline.run() resumes a paused plan keyed by chat_id, and
+        # without this check an authenticated user who obtained another
+        # user's chat_id (leaked, shared, or guessed) could resume that
+        # user's paused plan and read its accumulated tool-call results.
+        # chats_store's own module docstring states the invariant this
+        # relies on: a chat_id belonging to another user is
+        # indistinguishable from a nonexistent one, so a None result here
+        # covers both "doesn't exist" and "isn't yours" - treated exactly
+        # like no chat_id being supplied at all (mint a fresh one below),
+        # same as the UnknownChat fallback later in this function already
+        # does for the "doesn't exist" half of that pair.
+        if chats_store.get_chat(settings.chats_db_path, service.current_username(), chat_id) is None:
+            chat_id = None
     if chat_id is None:
         try:
             chat_id = chats_store.save_chat(settings.chats_db_path, service.current_username(), None, [])

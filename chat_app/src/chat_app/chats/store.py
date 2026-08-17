@@ -71,7 +71,13 @@ def _derive_title(messages: list[dict]) -> str:
 
 def save_chat(db_path: Path, username: str, chat_id: str | None, messages: list[dict]) -> str:
     """Create (chat_id is None) or overwrite (chat_id given) a chat's
-    full transcript. Returns the chat id either way."""
+    full transcript. Returns the chat id either way.
+
+    The overwrite (UPDATE) branch also replaces `title` when the existing
+    title is still the "New chat" placeholder - this lets a chat created
+    with an empty transcript up front (see pages/chat/routes.py's early
+    chat_id minting) pick up a real title on its next save, without ever
+    touching a title the user set via rename_chat."""
     conn = _connect(db_path)
     try:
         now = datetime.now(timezone.utc).isoformat()
