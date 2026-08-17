@@ -75,7 +75,7 @@ SCOPES: dict[str, dict[str, object]] = {
     },
     "invites": {
         "label": "Generate invite codes",
-        "endpoints": {"auth.create_invite", "auth.create_gate_code"},
+        "endpoints": {"auth.create_invite"},
     },
     "accounts": {
         "label": "Account manager (create/remove users, manage roles)",
@@ -91,6 +91,12 @@ SCOPES: dict[str, dict[str, object]] = {
             "account.delete_invite_api",
             "account.create_gate_code_api",
             "account.delete_gate_code_api",
+            # Not "invites" like auth.create_invite: minting a gate code
+            # switches the network gate on for the WHOLE app (see
+            # security.check_auth / auth.service.network_gate_enabled),
+            # not just for the minting user - too consequential for the
+            # default member-level "invites" scope every account gets.
+            "auth.create_gate_code",
         },
     },
 }

@@ -179,3 +179,25 @@ def test_generated_gate_code_carries_a_twenty_four_hour_ttl(client, users_db, mo
     expires = datetime.fromisoformat(data["expires_at"])
 
     assert (expires - created).total_seconds() == pytest.approx(24 * 3600, abs=2)
+
+
+def test_member_cannot_generate_a_gate_code_via_the_sidebar(client, users_db, monkeypatch):
+    """Unlike auth.create_invite (the "invites" scope, granted to every
+    member by default), auth.create_gate_code is gated by "accounts" -
+    minting a gate code switches the network gate on for the whole app,
+    not just for the minting user, which is too consequential to hand
+    every account by default. See permissions.py's SCOPES["accounts"]."""
+    user, password = _set_admin(monkeypatch)
+    client.post("/login", data={"username": user, "password": password})
+
+    invite = client.post("/api/invites")
+    code = invite.get_json()["code"]
+
+    from chat_app.app import create_app
+
+    member = create_app().test_client()
+    member.post("/register", data={"username": "alice", "password": "hunter2pass", "invite_code": code})
+
+    response = member.post("/api/gate-codes")
+
+    assert response.status_code == 403

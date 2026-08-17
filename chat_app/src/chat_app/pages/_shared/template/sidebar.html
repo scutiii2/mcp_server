@@ -65,12 +65,16 @@
   </div>
   {% endif %}
 
-  {% if 'invites' in scopes %}
+  {% if 'invites' in scopes or 'accounts' in scopes %}
   <div class="sidebar-invite">
+    {% if 'invites' in scopes %}
     <button id="sidebar-generate-invite" type="button" class="sidebar-invite-btn">+ Invite code</button>
     <p id="sidebar-invite-result" class="sidebar-invite-result"></p>
+    {% endif %}
+    {% if 'accounts' in scopes %}
     <button id="sidebar-generate-gate-code" type="button" class="sidebar-invite-btn">+ Gate code</button>
     <p id="sidebar-gate-code-result" class="sidebar-invite-result"></p>
+    {% endif %}
   </div>
   {% endif %}
 
