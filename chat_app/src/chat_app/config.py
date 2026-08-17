@@ -63,6 +63,11 @@ class Settings:
     # Per-user chat history - see chats/store.py. Mirrors users_db_path
     # immediately above it (relative to CWD by default, same convention).
     chats_db_path: Path = Path(_env("CHATS_DB_PATH", "data/chats.db"))
+    # Paused staged-pipeline plans (see services/llm/staged_plans_store.py) -
+    # bridges one chat turn to the next when a plan pauses on an ask_user
+    # step. Mirrors chats_db_path immediately above it: own file, relative
+    # to CWD by default, same convention.
+    staged_plans_db_path: Path = Path(_env("STAGED_PLANS_DB_PATH", "data/staged_plans.db"))
     # Where logging_setup.configure_logging() writes server.log and
     # errors.report() writes per-reference error files. Relative to CWD by
     # default, same convention as the paths above.
