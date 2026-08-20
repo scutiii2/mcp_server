@@ -114,6 +114,18 @@ def _filter_tools(tools: list[Any], text: str) -> list[Any]:
     caps the combined list at _MAX_FILTERED_TOOLS - bounding the Enumerate
     phase's own prompt is the actual point of this filter, so the cap
     applies even to fail-open tools.
+
+    Falls back to the first _MAX_FILTERED_TOOLS of `tools` unfiltered if
+    every tool gets dropped. Confirmed live: every built-in tool declares
+    keywords (test_tool_keywords.py enforces this), so a capability
+    question like "give me the list of tools you have" - whose own words
+    share no token with any tool-specific keyword ("host", "health",
+    "otp", ...) - matches nothing and drops every labeled tool, leaving
+    Enumerate a genuinely empty tool list for exactly the question most
+    likely to ask about them. Downstream phases then have no grounding but
+    to claim there are none. An empty result is never more useful than an
+    unfiltered one, so treat "nothing matched" as "filtering doesn't apply
+    here" rather than "there's nothing to offer."
     """
     text_tokens = _tokenize(text)
 
@@ -132,11 +144,26 @@ def _filter_tools(tools: list[Any], text: str) -> list[Any]:
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
     ranked = [tool for _, tool in scored] + unlabeled
+    if not ranked and tools:
+        return tools[:_MAX_FILTERED_TOOLS]
     return ranked[:_MAX_FILTERED_TOOLS]
 
 
 _STEP_TYPES = {"tool_call", "reasoning", "ask_user"}
 
+# The next-to-last sentence guards a failure mode confirmed live
+# (qwen2.5:3b, "give me the list of tools you have"): once _filter_tools's
+# fail-open fallback (see its docstring) started showing Enumerate the
+# real tool list for exactly this kind of question, the model planned a
+# "tool_call" step per tool to "demonstrate" them - get_host_health_tool
+# (guessing "zima", the example name from the tool's own description),
+# then request_otp_tool and verify_otp_tool with missing/null arguments,
+# all three failing. Nothing here previously told it that a question
+# ABOUT its tools isn't a reason to USE one - same gap
+# _LOCAL_MODEL_TOOL_GUIDANCE closes for ollama_provider.py's plain loop
+# (recursive_chain models get that one for free, since recursive_chain is
+# just extra rounds on the same conversation - it's only staged_pipeline,
+# with its own separate per-phase prompts, that needed its own copy).
 _ENUMERATE_SYSTEM_PROMPT = (
     "You are planning how to answer a question, not answering it yet. "
     "Given the question and the tools available, return a JSON array of "
@@ -147,8 +174,11 @@ _ENUMERATE_SYSTEM_PROMPT = (
     'the tool and what to pass it in detail). Use "reasoning" for a step '
     'that just needs you to think something through with no tool. Use '
     '"ask_user" for a step where you must ask the user a question before '
-    "you can continue - detail is the exact question to ask. Keep the "
-    "plan short: as few steps as the question actually needs."
+    "you can continue - detail is the exact question to ask. If the user "
+    "is only asking what tools you have, what you can do, or to list or "
+    "describe your tools, that is a question ABOUT them, not a reason to "
+    'use one - plan a single "reasoning" step, not a "tool_call" step. '
+    "Keep the plan short: as few steps as the question actually needs."
 )
 
 
@@ -202,10 +232,19 @@ def _enumerate_plan(client: Any, model_name: str, question: str, filtered_tools:
     return _parse_plan(content, question)
 
 
+# Defense-in-depth alongside _ENUMERATE_SYSTEM_PROMPT's own guard above:
+# this is what actually runs for EVERY tool_call step, including
+# _fallback_plan's single step (Enumerate's JSON came back unparsable or
+# malformed - easy for a 3B model) - so even when Enumerate still produces
+# a tool_call step for a listing/capability question, the model executing
+# it gets told not to call a tool just because it's in scope.
 _EXECUTE_TOOL_CALL_SYSTEM_PROMPT = (
     "Complete this one step of a larger plan. Call a tool if it helps; "
-    "otherwise answer directly. Be concise - this result feeds a later "
-    "step, not the user."
+    "otherwise answer directly. If this step is only asking what tools "
+    "are available or to list or describe them, that is a question ABOUT "
+    "your tools, not a reason to call one - answer directly using the "
+    "names and descriptions of the tools you were given. Be concise - "
+    "this result feeds a later step, not the user."
 )
 
 
@@ -290,12 +329,30 @@ def _results_summary(results: list[dict[str, Any]]) -> str:
     return "\n".join(f"- {r['detail']}: {r['result']}" for r in results)
 
 
-def _execute_reasoning_step(client: Any, model_name: str, detail: str, prior_results_summary: str) -> str:
+def _execute_reasoning_step(
+    client: Any, model_name: str, detail: str, prior_results_summary: str, tools_summary: str
+) -> str:
+    """`tools_summary` (see run()) is the only reason a reasoning step can
+    correctly answer a question about the assistant's own tools - Enumerate
+    is otherwise the *only* phase shown any tool names/descriptions at all
+    (see module docstring for the full call sequence), so without this a
+    "reasoning" step (which is exactly what Enumerate plans for a
+    capability question like "what tools do you have" - nothing needs to
+    be *called*) had zero grounding and could only fabricate an answer.
+    Confirmed live: qwen2.5:3b claimed "I don't have any tools at all" this
+    way despite tools being configured and offered.
+    """
     response = client.chat.completions.create(
         model=model_name,
         messages=[
             {"role": "system", "content": "Complete this one reasoning step of a larger plan, concisely."},
-            {"role": "user", "content": f"Prior results so far:\n{prior_results_summary}\n\nThis step: {detail}"},
+            {
+                "role": "user",
+                "content": (
+                    f"Tools available to you:\n{tools_summary}\n\n"
+                    f"Prior results so far:\n{prior_results_summary}\n\nThis step: {detail}"
+                ),
+            },
         ],
         extra_body={"options": {"num_ctx": _NUM_CTX, "num_predict": _NUM_PREDICT}},
     )
@@ -312,6 +369,7 @@ def _execute_steps(
     client: Any,
     model_name: str,
     all_tools: list[Any],
+    tools_summary: str,
     plan: list[dict[str, str]],
     step_index: int,
     results: list[dict[str, Any]],
@@ -350,7 +408,9 @@ def _execute_steps(
                 client, model_name, step["detail"], all_tools, tools_used, tool_calls_log
             )
         else:  # "reasoning" - the only remaining member of _STEP_TYPES
-            result_text = _execute_reasoning_step(client, model_name, step["detail"], _results_summary(results))
+            result_text = _execute_reasoning_step(
+                client, model_name, step["detail"], _results_summary(results), tools_summary
+            )
             step_calls = 1
 
         calls_used += step_calls
@@ -367,14 +427,23 @@ _CONCLUDE_SYSTEM_PROMPT = (
 )
 
 
-def _conclude(client: Any, model_name: str, question: str, results: list[dict[str, Any]]) -> str:
+def _conclude(client: Any, model_name: str, question: str, results: list[dict[str, Any]], tools_summary: str) -> str:
+    """`tools_summary` (see run()): same reasoning as
+    _execute_reasoning_step - Conclude is the phase that actually writes
+    what the user sees, and previously had no way to answer a question
+    about the assistant's own tools since nothing upstream of it (besides
+    Enumerate, which never speaks to the user) was ever shown the tool
+    list."""
     response = client.chat.completions.create(
         model=model_name,
         messages=[
             {"role": "system", "content": _CONCLUDE_SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": f"Original question: {question}\n\nStep results:\n{_results_summary(results)}",
+                "content": (
+                    f"Tools available to you:\n{tools_summary}\n\n"
+                    f"Original question: {question}\n\nStep results:\n{_results_summary(results)}"
+                ),
             },
         ],
         extra_body={"options": {"num_ctx": _NUM_CTX, "num_predict": _NUM_PREDICT}},
@@ -403,6 +472,12 @@ def run(
     tools_used: list[str] = []
     tool_calls_log: list[Any] = []
     all_tools = list_tools(enabled_extensions)
+    # Full inventory (not the Enumerate-only `filtered` list below), for
+    # _execute_reasoning_step and _conclude - see both docstrings. Neither
+    # of those calls is frequent enough (at most one reasoning step, and
+    # exactly one Conclude, per turn) for the context-budget concern that
+    # motivates filtering Enumerate's own prompt to matter here.
+    tools_summary = _tool_summaries(all_tools)
 
     resumed = staged_plans_store.get(db_path, chat_id) if chat_id else None
     if resumed is not None and resumed.provider_id == _PROVIDER_ID and resumed.model == model_name:
@@ -425,7 +500,8 @@ def run(
 
     calls_budget = max(_MAX_TOTAL_CALLS - calls_used_so_far, 0)
     pause, _ = _execute_steps(
-        client, model_name, all_tools, plan, step_index, results, tools_used, tool_calls_log, calls_budget
+        client, model_name, all_tools, tools_summary, plan, step_index, results, tools_used, tool_calls_log,
+        calls_budget,
     )
 
     if pause is not None:
@@ -446,7 +522,7 @@ def run(
 
     if chat_id:
         staged_plans_store.delete(db_path, chat_id)
-    answer = _conclude(client, model_name, question, results)
+    answer = _conclude(client, model_name, question, results, tools_summary)
     return ChatResult(
         response=answer,
         tools_used=tools_used,

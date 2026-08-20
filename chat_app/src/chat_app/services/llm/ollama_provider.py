@@ -188,6 +188,14 @@ _NUM_PREDICT = 1024
 # top of SYSTEM_PROMPT (never replacing it) and only for this provider -
 # the cloud providers' own tool-calling is already reliable and doesn't
 # need this.
+#
+# The last sentence guards the opposite failure mode - also observed live
+# (qwen2.5:3b, asked "give me the list of tools you have"): rather than
+# describing its tools in text, the model called get_host_health_tool with
+# no arguments, failed the tool's required "name" field, and kept retrying
+# the same broken call. Nothing above told it that a question ABOUT its
+# tools isn't a request to USE one - it conflated "this message mentions
+# tools" with "call a tool now."
 _LOCAL_MODEL_TOOL_GUIDANCE = (
     "You are running locally via Ollama with real tool-calling support. "
     "When you need a tool, call it using your native function-calling "
@@ -195,7 +203,12 @@ _LOCAL_MODEL_TOOL_GUIDANCE = (
     "pretend HTTP request as text in your reply. Only ever call tools "
     "that were actually offered to you in this request; do not invent or "
     "assume any other platform, API, or execution environment (for "
-    "example a cloud provider) that wasn't mentioned."
+    "example a cloud provider) that wasn't mentioned. If the user asks "
+    "what tools you have, what you can do, or to list or describe your "
+    "tools, that is a question ABOUT your tools, not a request to CALL "
+    "one - answer directly in plain text using the names and "
+    "descriptions of the tools you were given in this request, and do "
+    "not invoke a tool just because the conversation is about tools."
 )
 
 _MAX_TOOL_CALL_ROUNDS = 6

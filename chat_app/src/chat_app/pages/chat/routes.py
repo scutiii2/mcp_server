@@ -164,6 +164,7 @@ def delete_chat_api(chat_id):
 @chat_bp.post("/api/chat")
 def chat_api():
     data = json_body()
+    print(data)
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"response": "Please enter a question."})

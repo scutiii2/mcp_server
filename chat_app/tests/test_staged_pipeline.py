@@ -49,12 +49,27 @@ def test_filter_tools_keeps_a_tool_with_no_declared_keywords_fail_open():
     assert result == [unlabeled]
 
 
-def test_filter_tools_drops_a_labeled_tool_with_no_overlap():
+def test_filter_tools_drops_a_labeled_tool_with_no_overlap_when_another_tool_matches():
+    health = _tool("get_host_health_tool", keywords=["cpu", "memory"])
     otp = _tool("request_otp_tool", keywords=["otp", "passcode"])
 
-    result = staged_pipeline._filter_tools([otp], "how is the cpu doing?")
+    result = staged_pipeline._filter_tools([health, otp], "how is the cpu doing?")
 
-    assert result == []
+    assert result == [health]
+
+
+def test_filter_tools_falls_back_to_the_full_list_when_nothing_matches():
+    """Regression test: a capability question like "give me the list of
+    tools you have" shares no token with any tool-specific keyword, so
+    every labeled tool would otherwise get dropped and Enumerate would be
+    shown zero tools for exactly the question most likely to ask about
+    them - see _filter_tools's docstring."""
+    health = _tool("get_host_health_tool", keywords=["cpu", "memory"])
+    otp = _tool("request_otp_tool", keywords=["otp", "passcode"])
+
+    result = staged_pipeline._filter_tools([health, otp], "give me the list of tools you have")
+
+    assert result == [health, otp]
 
 
 def test_filter_tools_ranks_more_matches_first():
@@ -206,7 +221,8 @@ def test_execute_steps_runs_a_tool_call_step_and_records_the_result():
 
     with patch("chat_app.services.llm.staged_pipeline.call_tool", return_value="cpu 12%") as mock_call_tool:
         pause, calls_used = staged_pipeline._execute_steps(
-            fake_client, "phi4-mini:latest", [tool], plan, 0, results, tools_used, tool_calls_log, calls_budget=10,
+            fake_client, "phi4-mini:latest", [tool], "", plan, 0, results, tools_used, tool_calls_log,
+            calls_budget=10,
         )
 
     assert pause is None
@@ -232,7 +248,7 @@ def test_execute_steps_stops_and_returns_a_pause_on_ask_user():
     results: list = []
 
     pause, calls_used = staged_pipeline._execute_steps(
-        fake_client, "phi4-mini:latest", [], plan, 0, results, [], [], calls_budget=10,
+        fake_client, "phi4-mini:latest", [], "", plan, 0, results, [], [], calls_budget=10,
     )
 
     assert pause == staged_pipeline._AskUserPause(step_index=1, question="which host do you mean?")
@@ -252,7 +268,7 @@ def test_execute_steps_resumes_from_the_given_step_index():
     results = [{"detail": "already answered", "result": "the user's answer"}]
 
     pause, calls_used = staged_pipeline._execute_steps(
-        fake_client, "phi4-mini:latest", [], plan, 1, results, [], [], calls_budget=10,
+        fake_client, "phi4-mini:latest", [], "", plan, 1, results, [], [], calls_budget=10,
     )
 
     assert pause is None
@@ -267,7 +283,7 @@ def test_execute_steps_stops_at_the_call_budget_without_erroring():
     results: list = []
 
     pause, calls_used = staged_pipeline._execute_steps(
-        fake_client, "phi4-mini:latest", [], plan, 0, results, [], [], calls_budget=2,
+        fake_client, "phi4-mini:latest", [], "", plan, 0, results, [], [], calls_budget=2,
     )
 
     assert pause is None

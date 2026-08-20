@@ -148,7 +148,18 @@ def test_ollama_run_chat_adds_local_model_tool_guidance_to_the_system_prompt():
     native tool-calling mechanism, or writing a tool call as prose
     instead of a real tool_calls entry - an explicit nudge against both,
     layered on top of the shared SYSTEM_PROMPT rather than replacing it
-    (cloud providers don't need this and don't get it)."""
+    (cloud providers don't need this and don't get it).
+
+    Pins model="llama3.2:1b" rather than relying on the default model
+    (whichever config.json lists first): this guidance is only ever added
+    on the plain _tool_loop path, and staged_pipeline-enabled models (see
+    ModelOption.staged_pipeline) use a completely different, multi-call
+    prompt sequence with no single "the system message" to assert
+    against. Which model is first/default in config.json is a runtime
+    deployment choice this test shouldn't depend on - llama3.2:1b is
+    guaranteed plain-loop (recursive_chain, not staged_pipeline) by
+    infra/app_config.py's own mutual-exclusion validation.
+    """
     message = SimpleNamespace(content="ok", tool_calls=None)
     response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
     fake_create = Mock(return_value=response)
@@ -156,7 +167,7 @@ def test_ollama_run_chat_adds_local_model_tool_guidance_to_the_system_prompt():
 
     with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
          patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
-        ollama_provider.run_chat("hi", [])
+        ollama_provider.run_chat("hi", [], model="llama3.2:1b")
 
     _, kwargs = fake_create.call_args
     system_message = kwargs["messages"][0]

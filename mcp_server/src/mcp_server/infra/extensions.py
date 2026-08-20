@@ -76,8 +76,10 @@ from __future__ import annotations
 import asyncio
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from mcp import types
 from mcp.client.session import ClientSession
@@ -104,6 +106,38 @@ NAMESPACE_SEPARATOR = "__"
 # hung or slow-starting upstream process can't stall this server's own
 # startup indefinitely - see ExtensionRegistry._connect_one.
 CONNECT_TIMEOUT_SECONDS = 10.0
+
+
+async def _check_tcp_reachable(url: str) -> None:
+    """Raise a plain, ordinary exception if `url`'s host:port won't accept
+    a TCP connection - without ever calling streamablehttp_client. See
+    ExtensionRegistry._open_and_list's docstring for the full story; the
+    short version is that a real connect failure (bad DNS, refused
+    connection) reaching streamablehttp_client crashes this whole server,
+    across three different attempts to bound/catch it from our side, so
+    the fix that actually holds is to never let a host we already know is
+    unreachable reach that code path at all.
+
+    asyncio.open_connection()/wait_for(), not anyio: this performs a raw
+    socket connect through plain asyncio, which creates no anyio task
+    group and therefore has no cancel-scope tree for a failure here to
+    corrupt - unlike everything inside streamablehttp_client. Immediately
+    closes the probe socket either way; this only ever answers "is anyone
+    listening," the real connection is opened separately right after this
+    returns.
+    """
+    parsed = urlsplit(url)
+    if parsed.hostname is None:
+        raise ValueError(f"Extension URL has no host: {url!r}")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    _reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(parsed.hostname, port), timeout=CONNECT_TIMEOUT_SECONDS
+    )
+    writer.close()
+    try:
+        await writer.wait_closed()
+    except Exception:  # noqa: BLE001 - this was only ever a reachability probe
+        pass
 
 
 @dataclass
@@ -207,11 +241,21 @@ class ExtensionRegistry:
         # immediate instead.
         local_stack = AsyncExitStack()
         try:
-            session, listed = await asyncio.wait_for(
-                self._open_and_list(local_stack, config), timeout=CONNECT_TIMEOUT_SECONDS
-            )
+            # No external timeout wrapper (neither asyncio.wait_for nor
+            # anyio.fail_after) around this call - see _open_and_list's
+            # docstring for why both were tried and both corrupted anyio's
+            # cancel-scope tree for this server's one long-lived task.
+            # CONNECT_TIMEOUT_SECONDS is instead threaded into
+            # ClientSession itself, whose own request-handling code bounds
+            # each request with a *correctly* scoped anyio.fail_after -
+            # one that only wraps waiting for that request's response,
+            # never the transport's task-group-owning connect step.
+            session, listed = await self._open_and_list(local_stack, config)
         except Exception as error:  # noqa: BLE001 - one bad extension must not block the others
-            await local_stack.aclose()
+            try:
+                await local_stack.aclose()
+            except Exception:  # noqa: BLE001 - a messy close must not escape a failed connect
+                pass
             status = ExtensionStatus(
                 id=extension_id,
                 label=config.label,
@@ -320,19 +364,63 @@ class ExtensionRegistry:
         """Open the upstream connection - spawning a subprocess (stdio) or
         connecting to a URL (http), depending on `config.transport` - then
         complete the MCP handshake and ask what it offers. Split out from
-        _connect_one so the whole sequence can be wrapped in one
-        asyncio.wait_for without the timeout logic and the
-        try/except/cleanup logic tangling together.
+        _connect_one so the connect sequence and the try/except/cleanup
+        logic around it don't tangle together.
+
+        No caller-side timeout wrapper around this whole function (neither
+        asyncio.wait_for nor anyio.fail_after - both were tried and both
+        corrupted anyio's cancel-scope tree for this server's single
+        long-lived task, because streamablehttp_client/stdio_client open an
+        anyio task group here that's meant to outlive this function -
+        local_stack's ownership is handed to the registry's long-lived
+        per-extension stack (see _connect_one) so the connection stays
+        usable for the extension's whole life, not just for this call.
+        Wrapping "connect AND keep the task group open past this function
+        returning" in any scope that itself gets exited here - by
+        asyncio.wait_for's cross-task cancellation, or by anyio.fail_after
+        exiting its `with` block - while a task group opened *inside* it is
+        still alive is a scope-nesting violation anyio doesn't recover from
+        cleanly. Confirmed live, twice.
+
+        A THIRD attempt - dropping the wrapper entirely and passing
+        CONNECT_TIMEOUT_SECONDS as ClientSession's own read_timeout_seconds
+        instead, so the SDK's own correctly-scoped anyio.fail_after inside
+        send_request() would bound initialize()/list_tools() - still
+        crashed the same way, which showed the wrapper was never actually
+        the root cause. Read mcp/client/streamable_http.py directly:
+        streamable_http_client's `async with anyio.create_task_group() as
+        tg:` spawns the request-writing coroutine (`post_writer`) as tg's
+        OWN child task via `tg.start_soon(...)`, separate from whatever
+        task is awaiting a response through ClientSession. A real connect
+        failure there (bad DNS, refused connection - not a timeout) makes
+        post_writer's task raise, which cancels tg from a task other than
+        the one that entered it, and unwinding that through the suspended
+        `@asynccontextmanager` generator (forcing it via athrow() to run
+        its `finally`) hits the exact same cross-task cancel-scope bug -
+        confirmed unrelated to anything in this file, since by this third
+        attempt nothing here was wrapping the call at all anymore.
+
+        The fix that actually holds: never let a host we already know is
+        down reach streamablehttp_client in the first place. See
+        _check_tcp_reachable - a plain asyncio TCP probe with no anyio
+        task group of its own, so it can't trigger this bug, run before
+        streamablehttp_client for the http branch below. CONNECT_TIMEOUT_
+        SECONDS still bounds initialize()/list_tools() via
+        read_timeout_seconds for whatever this probe can't catch (TCP
+        accepts, but the MCP handshake itself hangs or is refused).
         """
         if config.transport == "http":
             assert config.url is not None  # guaranteed by _build_extension/the POST route
+            await _check_tcp_reachable(config.url)
             read_stream, write_stream, _get_session_id = await local_stack.enter_async_context(
                 streamablehttp_client(config.url)
             )
         else:
             params = StdioServerParameters(command=config.command, args=config.args)
             read_stream, write_stream = await local_stack.enter_async_context(stdio_client(params))
-        session = await local_stack.enter_async_context(ClientSession(read_stream, write_stream))
+        session = await local_stack.enter_async_context(
+            ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=CONNECT_TIMEOUT_SECONDS))
+        )
         await session.initialize()
         listed = await session.list_tools()
         return session, listed
