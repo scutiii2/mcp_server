@@ -25,3 +25,5 @@ zip_versions/
 # Local git worktrees used for isolated feature work (superpowers
 # subagent-driven-development) - scratch checkouts, not source.
 .worktrees/
+
+MCPServer.yaml

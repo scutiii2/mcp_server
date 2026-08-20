@@ -1,0 +1,15 @@
+Good news on the crash: it's not actually crash-looping — the log shows a clean fresh pip install + Flask startup + it even served two real requests (GET /api/providers, GET /api/extensions at 02:27:02) before whatever stopped it. Exit 137 right after a docker stop/rm is normal for Flask's dev server — it doesn't handle SIGTERM gracefully, so Docker escalates to SIGKILL after the grace period. Not a separate problem as long as it's not dying on its own once running.
+
+The real finding: .Config.Env on this freshly created container still has the key baked in, confirmed at creation time — so ZimaOS is deploying from somewhere other than the YAML you've been pasting to me, and the find just missed it (via -xdev, or it's DB-backed rather than a flat file). Skip guessing the path — ask Docker itself, since compose always tags containers with where they came from:
+
+docker inspect chat-app --format '{{json .Config.Labels}}'
+
+Look for com.docker.compose.project.config_files in the output — that's the absolute path to the actual compose file used to create this container. Once you have it:
+
+grep -n OPENAI_API_KEY <that-path>
+
+If it's there, that's the real source of truth (edit it directly, ignore the ZimaOS GUI's YAML editor for this), then:
+
+docker compose -f <that-path> up -d --force-recreate chat_app
+
+That bypasses the GUI entirely and guarantees the container is rebuilt from whatever's actually in that file. Paste back what the labels command shows.
