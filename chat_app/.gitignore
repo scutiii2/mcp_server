@@ -17,7 +17,8 @@ dist/
 Thumbs.db
 
 # --- Flask / instance ---
-instance/
+src/instance/*
+!src/instance/README.md
 .webassets-cache
 
 # --- Testing / coverage ---
@@ -40,8 +41,10 @@ ENV/
 # --- AuthTemplate runtime/generated data (per spec) ---
 src/secrets/*
 !src/secrets/*.env.example
+!src/secrets/README.md
 src/logs/
-src/data/
+src/data/*
+!src/data/README.md
 
 # --- Git worktrees ---
 .worktrees/
