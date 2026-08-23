@@ -1127,6 +1127,19 @@ function buildChatHistoryItem(chat) {
   controls.appendChild(deleteBtn);
 
   item.appendChild(controls);
+
+  // The whole row navigates to this chat, not just the title text -
+  // except clicks on the rename/delete controls (handled above) or the
+  // rename `<input>` that replaces the title while renaming (see
+  // startRenameChat), and except the link itself, which already
+  // navigates on its own via the browser's native anchor behavior.
+  item.addEventListener('click', e => {
+    if (e.target.closest('.chat-history-controls')) return;
+    if (e.target.closest('.chat-history-rename-input')) return;
+    if (e.target.closest('a.chat-history-link')) return;
+    window.location.href = link.href;
+  });
+
   return item;
 }
 

@@ -462,6 +462,7 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   gap: 6px;
   padding: 6px 8px;
   border-radius: 6px;
+  cursor: pointer;
 }
 .chat-history-item:hover { background: #f5f5f4; }
 .chat-history-item.active { background: var(--code-bg); }
