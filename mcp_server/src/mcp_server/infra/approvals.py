@@ -121,7 +121,7 @@ def request_approval(
     )
     approve_url = f"{(base_url or settings.public_base_url).rstrip('/')}/approvals/{token}"
 
-    email_config = load_email_config(config_path or settings.config_path)
+    email_config = load_email_config(config_path or settings.email_config_path)
     send_email(
         email_config,
         subject=f"Approval needed: {summary}",

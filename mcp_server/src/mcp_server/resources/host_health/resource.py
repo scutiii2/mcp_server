@@ -20,7 +20,7 @@ from mcp_server.server import mcp
 def host_health(name: str) -> str:
     """Current CPU, memory, disk and uptime for a configured host.
 
-    `name` is the key under "hosts" in config.json, not a hostname.
+    `name` is a key in config_hosts.json, not a hostname.
     """
-    config = load_host_config(settings.config_path, name)
+    config = load_host_config(settings.hosts_config_path, name)
     return format_report(collect(config))

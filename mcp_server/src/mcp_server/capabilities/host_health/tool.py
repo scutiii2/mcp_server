@@ -31,4 +31,4 @@ def get_host_health_tool(name: str) -> HostHealthResult:
     one of them (load average on Linux, CPU percentage on Windows), and
     the other is left empty rather than guessed.
     """
-    return domain.check(settings.config_path, name)
+    return domain.check(settings.hosts_config_path, name)

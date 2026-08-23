@@ -125,7 +125,7 @@ async def create_extension(request: Request) -> JSONResponse:
         transport="http",
         url=url,
     )
-    status = await extensions.add_extension(config, settings.config_path)
+    status = await extensions.add_extension(config, settings.extensions_config_path)
     if status is None:
         # Only possible if this route were somehow reachable before
         # install_extensions() ran, which run.py's startup order doesn't
@@ -139,7 +139,7 @@ async def delete_extension(request: Request) -> Response:
     """Disconnect and forget a runtime extension - see
     extensions.remove_extension. 404 for an unknown id, 204 on success."""
     extension_id = request.path_params["extension_id"]
-    removed = await extensions.remove_extension(extension_id, settings.config_path)
+    removed = await extensions.remove_extension(extension_id, settings.extensions_config_path)
     if not removed:
         return JSONResponse({"error": f"Unknown extension {extension_id!r}"}, status_code=404)
     return Response(status_code=204)

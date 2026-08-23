@@ -39,10 +39,7 @@ def known_host_names(config_path: Path) -> list[str]:
     when someone already got a name wrong - failing then would replace a
     helpful message with a confusing one.
     """
-    section = load_config(config_path).get("hosts")
-    if not isinstance(section, dict):
-        return []
-    return sorted(section)
+    return sorted(load_config(config_path))
 
 
 def check(config_path: Path, name: str) -> HostHealthResult:

@@ -27,8 +27,8 @@ HOSTS = {
 
 
 def _config(tmp_path: Path) -> Path:
-    path = tmp_path / "config.json"
-    path.write_text(json.dumps({"hosts": HOSTS}), encoding="utf-8")
+    path = tmp_path / "config_hosts.json"
+    path.write_text(json.dumps(HOSTS), encoding="utf-8")
     return path
 
 
@@ -77,9 +77,12 @@ def test_names_are_listed_even_when_a_host_secret_is_unset(tmp_path: Path, monke
         domain.check(_config(tmp_path), "nope")
 
 
-def test_no_hosts_section_says_so_rather_than_listing_nothing(tmp_path: Path):
-    path = tmp_path / "config.json"
-    path.write_text(json.dumps({"email": {}}), encoding="utf-8")
+def test_empty_hosts_file_says_so_rather_than_listing_nothing(tmp_path: Path):
+    """config_hosts.json's whole content *is* the hosts map now, so an
+    empty "{}" - a fresh install with no host inventory yet - is the
+    "no hosts configured" state, not a malformed document."""
+    path = tmp_path / "config_hosts.json"
+    path.write_text(json.dumps({}), encoding="utf-8")
 
     with pytest.raises(KeyError, match="No hosts are configured"):
         domain.check(path, "zima")

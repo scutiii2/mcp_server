@@ -515,17 +515,15 @@ def _real_extension_config() -> ExtensionConfig:
 
 @pytest.mark.anyio
 async def test_real_fixture_server_end_to_end(tmp_path: Path):
-    config_path = tmp_path / "config.json"
+    config_path = tmp_path / "config_extensions.json"
     config_path.write_text(
         json.dumps(
             {
-                "extensions": {
-                    "reference": {
-                        "label": "Reference Extension (dev fixture)",
-                        "description": "Dev fixture",
-                        "command": sys.executable,
-                        "args": ["-m", "mcp_server._fixtures.reference_extension_server"],
-                    }
+                "reference": {
+                    "label": "Reference Extension (dev fixture)",
+                    "description": "Dev fixture",
+                    "command": sys.executable,
+                    "args": ["-m", "mcp_server._fixtures.reference_extension_server"],
                 }
             }
         ),

@@ -37,7 +37,7 @@ def request_otp_tool(recipient: str | None = None) -> RequestOtpResult:
     Anything else is refused, and the refusal names what would have been
     accepted. Omit it to use the first configured approver.
     """
-    email_config = load_email_config(settings.config_path)
+    email_config = load_email_config(settings.email_config_path)
     return domain.request_otp(email_config, db_path=settings.otp_path, recipient=recipient)
 
 
