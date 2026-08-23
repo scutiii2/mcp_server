@@ -1,7 +1,10 @@
 [project]
-name = "sap-mcp-server"
+# The distribution and console-script name. The importable package is
+# `src` (see the wheel target below), matching chat_app's layout - a
+# dist name differing from the module it installs is normal in Python.
+name = "mcp-server"
 version = "0.1.0"
-description = "SAP AIOps MCP tool server"
+description = "MCP tool server"
 requires-python = ">=3.11"
 dependencies = [
     "mcp==1.28.0",
@@ -10,24 +13,17 @@ dependencies = [
     "paramiko==5.0.0",
     "uvicorn==0.49.0",
     "python-dotenv==1.2.2",
-    "hdbcli>=2.19",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-# pyrfc requires SAP's proprietary NW RFC SDK to even install - not a
-# plain pip package the way hdbcli is; you need SAP's compiled library
-# files, gated behind SAP support portal access. Named "rfc" rather than
-# "dumps" specifically since other RFC-based categories (Jobs) will need
-# the same dependency.
-rfc = ["pyrfc>=3.3"]
 
 [project.scripts]
-sap-mcp-server = "mcp_server.run:main"
+mcp-server = "src.run:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcp_server"]
+packages = ["src"]

@@ -1,0 +1,16 @@
+<div class="account-menu{% if dropup %} account-menu-dropup{% endif %}">
+  <button type="button" class="account-menu-trigger" data-account-menu-trigger aria-haspopup="true" aria-expanded="false">
+    <span class="nav-icon">{{ current_user.username[0]|upper }}</span>
+    <span class="account-menu-name nav-label">{{ current_user.username }}</span>
+    <span class="account-menu-chevron" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>
+    </span>
+  </button>
+  <div class="account-menu-dropdown" data-account-menu-dropdown hidden>
+    {% for page in account_menu_pages %}
+    <a href="{{ page.url_prefix }}" title="{{ page.description or '' }}">{{ page.name }}</a>
+    {% endfor %}
+    {% if account_menu_pages %}<hr>{% endif %}
+    <a href="{{ url_for('auth.logout') }}" class="account-menu-logout">Logout</a>
+  </div>
+</div>

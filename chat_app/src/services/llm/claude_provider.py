@@ -1,0 +1,149 @@
+"""Anthropic Messages API provider.
+
+Deliberately mirrors ``openai_provider.py``'s structure so the two are easy
+to compare, but the wire format is genuinely different in three ways:
+  - tool schemas use ``input_schema`` (not ``parameters``)
+  - a tool call arrives as a ``tool_use`` content block, with ``.input``
+    already a parsed dict (OpenAI instead gives a JSON string you must
+    ``json.loads`` yourself)
+  - you reply with a ``tool_result`` block referencing ``tool_use_id``,
+    inside a new user-role message - not a top-level item keyed by
+    ``call_id`` the way OpenAI's Responses API expects
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+from anthropic import Anthropic, RateLimitError
+
+from src.services.llm.settings import settings
+from src.services.llm import cooldown
+from src.services.llm.base import SYSTEM_PROMPT, ChatResult, ModelOption, ProviderSpec, ToolCallRecord
+from src.services.mcp_client import call_tool, list_tools
+
+
+PROVIDER_ID = "claude"
+
+# Model IDs and labels per the current Claude lineup.
+MODELS = [
+    ModelOption(id="claude-opus-4-8", label="Claude Opus 4.8 (most capable)"),
+    ModelOption(id="claude-sonnet-5", label="Claude Sonnet 5 (balanced)"),
+    ModelOption(id="claude-haiku-4-5-20251001", label="Claude Haiku 4.5 (fast/cheap)"),
+]
+
+_client: Anthropic | None = None
+
+
+def _get_client() -> Anthropic:
+    global _client
+    if _client is None:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not configured")
+        _client = Anthropic(api_key=api_key)
+    return _client
+
+
+def has_api_key() -> bool:
+    return bool(os.getenv("ANTHROPIC_API_KEY"))
+
+
+def is_available() -> bool:
+    return has_api_key() and not cooldown.is_in_cooldown(PROVIDER_ID)
+
+
+def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": tool.name,
+            "description": tool.description or "",
+            "input_schema": tool.inputSchema or {"type": "object", "properties": {}},
+        }
+        for tool in list_tools(enabled_extensions)
+    ]
+
+
+def run_chat(
+    question: str,
+    history: list[dict[str, Any]],
+    model: str | None = None,
+    enabled_extensions: list[str] | None = None,
+    chat_id: str | None = None,  # unused here - see base.py's RunChatFn comment
+) -> ChatResult:
+    client = _get_client()
+    model_name = model or settings.claude_model
+    messages: list[dict[str, Any]] = [*history, {"role": "user", "content": question}]
+    tools_used: list[str] = []
+    tool_calls: list[ToolCallRecord] = []
+    tool_schemas = _tool_schemas(enabled_extensions)
+    # Every round of this loop is a real, separately-billed API call, so a
+    # multi-tool-call answer's total is the sum across all rounds, not just
+    # the final one. Anthropic's usage object has input_tokens/output_tokens
+    # but no total_tokens field of its own - always present on this API, so
+    # this stays a plain int rather than the optional/"unknown" handling the
+    # other providers need.
+    total_tokens = 0
+
+    try:
+        for _ in range(6):
+            response = client.messages.create(
+                model=model_name,
+                max_tokens=2048,
+                system=SYSTEM_PROMPT,
+                messages=messages,
+                tools=tool_schemas,
+            )
+            total_tokens += response.usage.input_tokens + response.usage.output_tokens
+
+            if response.stop_reason != "tool_use":
+                text = "".join(block.text for block in response.content if block.type == "text")
+                return ChatResult(
+                    response=text,
+                    tools_used=tools_used,
+                    tool_calls=tool_calls,
+                    provider_id=PROVIDER_ID,
+                    model=model_name,
+                    total_tokens=total_tokens,
+                )
+
+            messages.append({"role": "assistant", "content": response.content})
+
+            tool_results: list[dict[str, Any]] = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+                tools_used.append(block.name)
+                try:
+                    result_text = call_tool(block.name, block.input)
+                except Exception as error:
+                    result_text = f"Tool '{block.name}' failed: {error}"
+                tool_calls.append(ToolCallRecord(name=block.name, arguments=block.input, result=result_text))
+                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text})
+
+            messages.append({"role": "user", "content": tool_results})
+    except RateLimitError as error:
+        seconds = cooldown.extract_retry_after_seconds(error) or cooldown.DEFAULT_COOLDOWN_SECONDS
+        cooldown.start_cooldown(PROVIDER_ID, seconds)
+        raise
+
+    return ChatResult(
+        response="Reached maximum tool-call rounds without a final answer.",
+        tools_used=tools_used,
+        tool_calls=tool_calls,
+        provider_id=PROVIDER_ID,
+        model=model_name,
+        total_tokens=total_tokens,
+    )
+
+
+PROVIDER = ProviderSpec(
+    id=PROVIDER_ID,
+    label="Claude",
+    has_api_key=has_api_key,
+    is_available=is_available,
+    run_chat=run_chat,
+    models=MODELS,
+    default_model_id=settings.claude_model,
+)

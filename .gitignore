@@ -1,8 +1,47 @@
-.env
-config.json
 __pycache__/
 *.pyc
 .venv/
+venv_*/
 *.egg-info/
 
+# mcp_server's real config/secrets/runtime-state, mirroring chat_app's
+# src/configs + src/secrets + src/data split. config_*.json holds
+# structure (committed) with ${VAR} placeholders for anything sensitive;
+# secret_*.env holds the real values (gitignored) those placeholders
+# resolve to. Both keep an .example twin, which IS committed.
+/mcp_server/src/secrets/*
+!/mcp_server/src/secrets/*.example
+!/mcp_server/src/secrets/README.md
+
+# mcp_server's real host inventory and approver/SMTP-account addresses.
+# The equivalent data lived in the old root-level config.json, which was
+# gitignored outright - these two carry the same real deployment details
+# (no literal secrets, those are all ${VAR}) and keep the same treatment.
+# config_extensions.json and config_capabilities.json are NOT listed
+# here - low-sensitivity structure, tracked normally like their
+# .example twins.
+/mcp_server/src/configs/config_hosts.json
+/mcp_server/src/configs/config_email.json
+
+# Runtime state, not source: pending approval requests, one-time-code
+# records, and any capability's own data/ (e.g. capabilities/otp/data/).
+# All hold security-relevant material or are regenerated on every run.
+/mcp_server/src/data/*
+!/mcp_server/src/data/README.md
+*.db
+
+# Runtime logs: combined server.log plus one file per error reference id
+# (see chat_app/mcp_server's logging_setup.py / errors.py). Regenerated
+# on every run, not source. Anchored to each app's own root (not a bare
+# "logs/") - unanchored, this also matched chat_app's SOURCE blueprint at
+# pages/logs/, silently excluding it from version control entirely.
+/chat_app/logs/
+/mcp_server/src/logs/
+
 zip_versions/
+
+# Local git worktrees used for isolated feature work (superpowers
+# subagent-driven-development) - scratch checkouts, not source.
+.worktrees/
+
+MCPServer.yaml

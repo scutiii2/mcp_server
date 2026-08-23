@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "content_security_policy": "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com",
+  "hsts_max_age": 31536000,
+  "force_https": false,
+  "csrf_enabled": true
+}

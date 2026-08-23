@@ -1,0 +1,12 @@
+{
+  "providers": {
+    "ollama": {
+      "models": [
+        { "id": "qwen2.5:3b", "label": "Qwen 2.5 3B S", "recursive_chain": false, "staged_pipeline": true },
+        { "id": "llama3.2:1b", "label": "Llama 3.2 1B S", "recursive_chain": false, "staged_pipeline": true },
+        { "id": "phi4-mini:latest", "label": "Phi 4 Mini S", "recursive_chain": false, "staged_pipeline": true },
+        { "id": "gemma4:12b", "label": "Gemma 4 12B S", "recursive_chain": false, "staged_pipeline": true }
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "zima": {
+    "hostname": "127.0.0.1",
+    "user": "root",
+    "os": "linux",
+    "key": "/root/.ssh/id_ed25519"
+  },
+  "desktop": {
+    "hostname": "192.168.1.20",
+    "user": "YourWindowsUser",
+    "os": "windows",
+    "password": "${DESKTOP_SSH_PASSWORD}"
+  }
+}

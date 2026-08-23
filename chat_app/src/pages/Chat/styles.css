@@ -1,0 +1,518 @@
+/* Design direction: this extends /capabilities's existing palette
+   rather than inventing a new one - blue = tool/action (matches its
+   .badge-tool), green = resource/data (matches its .badge-resource).
+   Applied here as a left-edge "rail" per message role: user (blue,
+   initiating), assistant (green, delivering information), system
+   (muted amber, meta commentary about the conversation itself). That
+   rail is the one deliberate signature device on this page - everything
+   else stays quiet and undecorated on purpose. */
+:root {
+  --ink: #14181f;
+  --ink-muted: #6b7280;
+  --paper: #fbfbfa;
+  --panel-border: #e5e5e2;
+  --rail-user: #185fa5;
+  --rail-assistant: #3b6d11;
+  --rail-system: #a6790f;
+  --code-bg: #f1f1ef;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* .page-content gets a max-width and margin: 0 auto so it centers within
+   the space this project's shared flex layout (__shared__/shared.css)
+   already gives <main> next to the sidebar - body itself has no
+   width/centering opinion of its own. */
+body {
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.page-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-width: 1400px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.toprow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--panel-border);
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.selectors { display: flex; gap: 6px; }
+
+select {
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  color: var(--ink);
+}
+select option:disabled { color: #aaa; }
+#model.hidden { display: none; }
+
+#log {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 12px;
+  background: white;
+  overflow-y: auto;
+}
+
+.msg { margin: 10px; padding: 8px 14px; border-left: 3px solid transparent; }
+
+.msg-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.msg-content { font-size: 15px; line-height: 1.55; white-space: pre-wrap; }
+.msg-content > *:first-child { margin-top: 0; }
+.msg-content > *:last-child { margin-bottom: 0; }
+
+.msg.user { border-left-color: var(--rail-user); }
+.msg.user .msg-label { color: var(--rail-user); }
+
+.msg.assistant { border-left-color: var(--rail-assistant); }
+.msg.assistant .msg-label { color: var(--rail-assistant); }
+.msg.assistant .msg-content { white-space: normal; } /* real rendered HTML now, not raw pre-wrapped text */
+
+.msg.system {
+  border-left-color: var(--rail-system);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-style: italic;
+  padding: 6px 14px;
+  margin: 4px 10px;
+}
+
+/* Elapsed-time footer, ticking below the thinking bubble while a request
+   is in flight, then relocated into the assistant bubble it timed once
+   the reply lands - kept as its own class rather than reusing .msg.system
+   since it lives *inside* a message wrapper, not as a separate log entry. */
+.msg-timer {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: 6px;
+}
+
+.msg.thinking { opacity: 0.75; }
+@media (prefers-reduced-motion: no-preference) {
+  .msg.thinking { animation: pulse 1.4s ease-in-out infinite; }
+}
+@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+/* Markdown rendered inside assistant messages */
+.msg-content :is(h1, h2, h3) {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 4px;
+  margin: 14px 0 8px;
+}
+.msg-content p { margin: 0 0 10px; }
+.msg-content ul, .msg-content ol { margin: 0 0 10px; padding-left: 22px; }
+.msg-content li { margin-bottom: 4px; }
+.msg-content li::marker { color: var(--rail-assistant); }
+.msg-content strong { color: var(--ink); font-weight: 700; }
+.msg-content code {
+  font-family: var(--mono);
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 13px;
+}
+.msg-content pre {
+  background: var(--code-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0 0 10px;
+}
+.msg-content pre code { background: none; padding: 0; }
+.msg-content a { color: var(--rail-user); }
+
+#row { display: flex; gap: 8px; flex-shrink: 0; }
+#q-wrap { position: relative; flex: 1; }
+#q {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 15px;
+}
+#q:disabled { opacity: 0.6; }
+#q:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 2px solid var(--rail-user);
+  outline-offset: 1px;
+}
+
+.cmd-suggestions {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin: 0 0 4px;
+  padding: 4px;
+  list-style: none;
+  background: white;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 10;
+}
+.cmd-suggestions.hidden { display: none; }
+.cmd-suggestion {
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cmd-suggestion.active { background: var(--code-bg); }
+.cmd-suggestion-desc { color: var(--ink-muted); font-size: 12px; white-space: nowrap; }
+
+button {
+  padding: 8px 18px;
+  border: none;
+  background: var(--ink);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+button:hover:not(:disabled) { background: #000; }
+button:disabled { background: #a8a8a8; cursor: not-allowed; }
+
+@media (max-width: 520px) {
+  .page-content { padding: 16px 12px; }
+  .toprow { flex-direction: column; align-items: flex-start; }
+  .msg { margin: 8px 4px; }
+}
+
+/* Extensions sidebar - a slide-in drawer rather than a permanent side
+   column, since the page's single centered layout (max-width: 720px on
+   body) has no spare width for one. Toggled from the toprow button;
+   entirely off-screen (transform, not just visually hidden) when closed,
+   with aria-hidden kept in sync so a screen reader doesn't announce its
+   contents while it's off-screen. Status dot reuses the existing
+   blue/green badge language from /capabilities: green for "connected"
+   (same --rail-assistant used for the assistant message rail), a new
+   red for "error" since neither existing accent color reads as a
+   problem. */
+.ext-toggle-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+}
+.ext-toggle-btn:hover { background: #f5f5f4; }
+.ext-toggle-btn.has-enabled { border-color: var(--rail-assistant); color: var(--rail-assistant); }
+
+.ext-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 20;
+}
+.ext-overlay.hidden { display: none; }
+
+.ext-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 320px;
+  max-width: 90vw;
+  background: var(--paper);
+  border-left: 1px solid var(--panel-border);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.12);
+  padding: 18px;
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  z-index: 21;
+  box-sizing: border-box;
+}
+.ext-panel.open { transform: translateX(0); }
+
+.ext-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.ext-panel-header h2 { font-size: 15px; font-weight: 500; margin: 0; }
+.ext-close-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-muted);
+  padding: 2px 6px;
+}
+.ext-close-btn:hover { color: var(--ink); }
+
+.ext-sub { font-size: 12px; color: var(--ink-muted); margin: 4px 0 16px; }
+.ext-empty { font-size: 13px; color: var(--ink-muted); font-style: italic; }
+.ext-error-banner {
+  background: #fde8e8;
+  border: 1px solid #f3b4b4;
+  color: #8a2c2c;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.ext-error-banner.hidden { display: none; }
+
+/* Add-extension form - sits between the error banner and the list, same
+   spacing rhythm as the rest of the panel (16px below the subtitle,
+   12px-ish gaps matching .ext-error-banner's margin-bottom). Inputs share
+   the same border/radius/font-size as the top-row <select>s so the whole
+   page's form controls read as one language. */
+.ext-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.ext-add-form input {
+  flex: 1 1 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  color: var(--ink);
+}
+.ext-add-form input:focus-visible {
+  outline: 2px solid var(--rail-user);
+  outline-offset: 1px;
+}
+.ext-add-form button {
+  padding: 6px 14px;
+  font-size: 13px;
+  flex: 1 1 100%;
+}
+.ext-add-error {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.ext-add-error.hidden { display: none; }
+.ext-add-error-text {
+  font-size: 11px;
+  color: #c0392b;
+  margin: 0;
+}
+
+/* Connectivity-shaped failures add two things below the headline: a
+   muted "Details: ..." line carrying the original technical message
+   (never lost, just no longer the headline), and a collapsed disclosure
+   of likely causes so the panel isn't guessing which one applies. Both
+   sit on the same tone as .ext-sub / .ext-item-desc - muted, 11-12px,
+   no jargon. */
+.ext-add-error-details {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 4px 0 0;
+}
+.ext-add-error-details.hidden { display: none; }
+.ext-add-error-help-toggle {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ext-add-error-help-toggle:hover { background: none !important; color: var(--ink); }
+.ext-add-error-help-toggle:focus-visible { outline: 2px solid var(--rail-user); outline-offset: 1px; }
+.ext-add-error-help-toggle.hidden { display: none; }
+.ext-add-error-help-list {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.ext-add-error-help-list li { margin-bottom: 2px; }
+.ext-add-error-help-list.hidden { display: none; }
+
+.ext-item {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: white;
+}
+.ext-item-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ext-item-label { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.ext-item-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.ext-remove-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-muted);
+  padding: 2px 4px;
+}
+.ext-remove-btn:hover { color: #c0392b; }
+.ext-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ext-status-dot.connected { background: var(--rail-assistant); }
+.ext-status-dot.error { background: #c0392b; }
+.ext-item-desc { font-size: 12px; color: var(--ink-muted); margin: 4px 0 0; }
+.ext-item-error { font-size: 11px; color: #c0392b; margin: 4px 0 0; }
+
+/* Toggle switch - a plain checkbox styled as a slider, so it stays a
+   real, keyboard-operable, screen-reader-friendly <input type=checkbox>
+   underneath rather than a div with a click handler. */
+.ext-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
+.ext-switch input { opacity: 0; width: 0; height: 0; }
+.ext-switch-slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: #ccc;
+  border-radius: 20px;
+  transition: background 0.15s ease;
+}
+.ext-switch-slider::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+.ext-switch input:checked + .ext-switch-slider { background: var(--rail-assistant); }
+.ext-switch input:checked + .ext-switch-slider::before { transform: translateX(14px); }
+.ext-switch input:focus-visible + .ext-switch-slider { outline: 2px solid var(--rail-user); outline-offset: 2px; }
+
+/* Chat-history panel - new for this port. MCPArchitecture rendered
+   #chat-history-list inside its own _shared sidebar (sidebar.css,
+   not ported here - this project's own __shared__/sidebar.html
+   replaces it and has no chat-history concept). script.js still
+   targets these exact class/id names unchanged, so this panel
+   supplies them as a column inside Chat's own page content instead. */
+.chat-layout {
+  display: flex;
+  gap: 20px;
+  /* Bounded to the viewport (minus <main>'s 2rem top/bottom padding from
+     shared.css), not left to grow with content, so the log column below
+     can flex to fill the remaining height and scroll internally instead
+     of the whole page growing taller than the viewport as messages pile
+     up - the height analog of the earlier .page-content width fix. */
+  height: calc(100vh - 4rem);
+}
+.chat-history-panel {
+  width: 220px;
+  flex-shrink: 0;
+  padding-top: 40px;
+  height: 100%;
+  overflow-y: auto;
+}
+.sidebar-new-chat-btn {
+  display: block;
+  text-align: center;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 13px;
+}
+.sidebar-new-chat-btn:hover { background: #f5f5f4; }
+.chat-history-list { display: flex; flex-direction: column; gap: 4px; }
+.chat-history-empty { font-size: 12px; color: var(--ink-muted); font-style: italic; padding: 4px 8px; }
+.chat-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.chat-history-item:hover { background: #f5f5f4; }
+.chat-history-item.active { background: var(--code-bg); }
+.chat-history-text { display: flex; flex-direction: column; min-width: 0; }
+.chat-history-link {
+  font-size: 13px;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-history-time { font-size: 11px; color: var(--ink-muted); }
+.chat-history-controls { display: flex; gap: 2px; flex-shrink: 0; }
+.chat-history-rename-btn, .chat-history-delete-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 13px;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.chat-history-rename-btn:hover, .chat-history-delete-btn:hover { color: var(--ink); }
+.chat-history-rename-input {
+  font-size: 13px;
+  padding: 2px 6px;
+  border: 1px solid var(--rail-user);
+  border-radius: 4px;
+  width: 100%;
+}
+@media (max-width: 700px) {
+  /* Stacked layout on narrow viewports reverts to natural document height
+     - a fixed viewport-height column doesn't make sense once the history
+     panel and chat column are on top of each other instead of side by
+     side, so this un-does the height-bounded/flex-column treatment above
+     and lets #log fall back to a plain scrollable box instead. */
+  .chat-layout { flex-direction: column; height: auto; }
+  .chat-history-panel { width: 100%; padding-top: 0; height: auto; max-height: 240px; }
+  .page-content { height: auto; }
+  #log { flex: none; min-height: 320px; max-height: 60vh; }
+}

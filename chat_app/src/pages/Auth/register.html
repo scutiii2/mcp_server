@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('auth.static', filename='style.css') }}">
+<div class="auth-card">
+  <h1>Register</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ url_for('auth.register') }}" data-auth-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" required autofocus>
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required>
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required>
+    <label for="invite_code">Invite Code</label>
+    <input type="text" id="invite_code" name="invite_code" required>
+    <button type="submit">Register</button>
+  </form>
+  <p><a href="{{ url_for('auth.login') }}">Already have an account? Log in</a></p>
+</div>
+<script src="{{ url_for('auth.static', filename='script.js') }}"></script>
+{% endblock %}

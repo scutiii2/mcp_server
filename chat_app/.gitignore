@@ -1,0 +1,50 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Flask / instance ---
+src/instance/*
+!src/instance/README.md
+.webassets-cache
+
+# --- Testing / coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- AuthTemplate runtime/generated data (per spec) ---
+src/secrets/*
+!src/secrets/*.env.example
+!src/secrets/README.md
+src/logs/
+src/data/*
+!src/data/README.md
+
+# --- Git worktrees ---
+.worktrees/

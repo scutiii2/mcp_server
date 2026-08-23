@@ -1,0 +1,27 @@
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-top">
+    <a class="sidebar-overview-link" href="{{ url_for('overview.index') }}" title="Overview">
+      {% if app_logo_url %}
+      <span class="nav-icon nav-icon-logo"><img src="{{ app_logo_url }}" alt=""></span>
+      {% else %}
+      <span class="nav-icon">🏠</span>
+      {% endif %}
+      <span class="nav-label">Overview</span>
+    </a>
+    <button type="button" id="sidebar-toggle" aria-expanded="true" aria-controls="sidebar-links" title="Collapse sidebar">☰</button>
+  </div>
+  <ul class="nav-links" id="sidebar-links">
+    {% for page in nav_pages %}
+    <li>
+      <a href="{{ page.url_prefix }}"{% if request.path.startswith(page.url_prefix) %} class="active"{% endif %} title="{{ page.name }}">
+        <span class="nav-icon">{{ page.name[0] }}</span><span class="nav-label">{{ page.name }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="sidebar-footer">
+    {% with dropup = true %}
+    {% include "account_menu.html" %}
+    {% endwith %}
+  </div>
+</nav>
