@@ -10,7 +10,9 @@ docs/superpowers/specs/2026-08-22-chat-capabilities-port-design.md.
 
 from __future__ import annotations
 
+import json
 import re
+import urllib.error
 
 from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user
@@ -18,12 +20,20 @@ from flask_login import current_user
 from src.services.authz import has_permission, register_permission, require_login, require_permission
 from src.services.mcp_client import (
     call_tool,
+    fetch_capabilities,
     fetch_extensions,
     list_resource_templates,
     list_tools,
     read_resource,
+    set_capability_enabled,
 )
-from src.services.tool_capabilities import capability_for_resource, capability_for_tool
+from src.services.tool_capabilities import (
+    capability_for_resource,
+    capability_for_tool,
+    is_real_capability,
+    label_for_capability,
+    resource_capability_ids,
+)
 from src.services.tool_titles import title_for
 
 
@@ -31,13 +41,19 @@ blueprint = Blueprint(
     "capabilities", __name__, template_folder=".", static_folder=".", static_url_path="/static"
 )
 
-PAGE_PERMISSION = ("capabilities.view", "capabilities.try")
+PAGE_PERMISSION = ("capabilities.view", "capabilities.try", "capabilities.manage")
 PAGE_DESCRIPTION = "Browse and try MCP server tools and resources live."
 PAGE_LAYOUT = "full"
 CSRF_EXEMPT = True
 
 register_permission("capabilities.view")
 register_permission("capabilities.try")
+# Separate from "try": toggling a capability changes what mcp_server
+# offers to every caller (any chat_app user, any other MCP client), not
+# just this session's own tool call - a different, higher risk tier than
+# "try" grants, so it's a permission of its own rather than piggybacking
+# on capabilities.try.
+register_permission("capabilities.manage")
 
 
 def _fetch_extensions_or_empty() -> list[dict]:
@@ -45,6 +61,19 @@ def _fetch_extensions_or_empty() -> list[dict]:
         return fetch_extensions()
     except Exception:  # noqa: BLE001 - degrade to built-ins only, don't blank the page
         return []
+
+
+def _fetch_capability_states_or_empty() -> dict[str, bool]:
+    """{"host_health": True, "otp": False, ...} - live from mcp_server,
+    not the config file, so a change made from another tab/user shows up
+    on the next page load. Same degrade-gracefully reasoning as
+    _fetch_extensions_or_empty(): an unreachable mcp_server shouldn't
+    blank the whole page, it should just mean no toggle state (and no
+    switches, see capabilities.html) is shown."""
+    try:
+        return {status["name"]: status["enabled"] for status in fetch_capabilities()}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _serialize_tools(extensions: list[dict] | None = None) -> list[dict]:
@@ -87,24 +116,60 @@ def _group_tools_by_extension(tools: list[dict], extensions: list[dict]) -> list
     ]
 
 
-def _group_tools_by_capability(tools: list[dict]) -> list[dict]:
-    grouped: dict[str, list[dict]] = {}
+def _capability_group_meta(capability_id: str, capability_states: dict[str, bool]) -> dict:
+    """The id/label/enabled/toggleable fields common to a tool group and
+    a resource group - factored out so the two group functions below
+    can't drift on what a "capability group" carries.
+
+    ``enabled`` defaults to True when mcp_server didn't report this id
+    at all (unreachable mcp_server, or a real capability id this
+    deployment's mcp_server predates) - same "absent means enabled"
+    default mcp_server's own capability_enabled() uses, so a
+    can't-currently-know state doesn't read as "disabled".
+    """
+    return {
+        "id": capability_id,
+        "label": label_for_capability(capability_id),
+        "enabled": capability_states.get(capability_id, True),
+        "toggleable": is_real_capability(capability_id) and capability_id in capability_states,
+    }
+
+
+def _group_tools_by_capability(tools: list[dict], capability_states: dict[str, bool]) -> list[dict]:
+    # Seeded from capability_states, not just from `tools`: a disabled
+    # capability has no tools in the live list at all (mcp_server never
+    # registered them), so building groups purely from `tools` would
+    # make a disabled capability's group vanish - with no switch left
+    # anywhere on the page to turn it back on. Seeding first means every
+    # capability mcp_server knows about always gets a group, empty or not.
+    grouped: dict[str, list[dict]] = {name: [] for name in capability_states}
     for tool in tools:
         if tool["extension_id"] is not None:
             continue
-        label = capability_for_tool(tool["name"])
-        grouped.setdefault(label, []).append(tool)
+        capability_id = capability_for_tool(tool["name"])
+        grouped.setdefault(capability_id, []).append(tool)
 
-    return [{"label": label, "tools": tools_for_label} for label, tools_for_label in grouped.items()]
+    return [
+        {**_capability_group_meta(capability_id, capability_states), "tools": tools_for_id}
+        for capability_id, tools_for_id in grouped.items()
+    ]
 
 
-def _group_resources_by_capability(resources: list[dict]) -> list[dict]:
-    grouped: dict[str, list[dict]] = {}
+def _group_resources_by_capability(resources: list[dict], capability_states: dict[str, bool]) -> list[dict]:
+    # Same "seed before populating" reasoning as _group_tools_by_capability
+    # above, scoped to capabilities that actually own a resource - seeding
+    # from every known capability would also produce an empty, pointless
+    # resource group for a tool-only capability like "otp".
+    seed_ids = capability_states.keys() & resource_capability_ids()
+    grouped: dict[str, list[dict]] = {name: [] for name in seed_ids}
     for resource in resources:
-        label = capability_for_resource(resource["name"])
-        grouped.setdefault(label, []).append(resource)
+        capability_id = capability_for_resource(resource["name"])
+        grouped.setdefault(capability_id, []).append(resource)
 
-    return [{"label": label, "resources": resources_for_label} for label, resources_for_label in grouped.items()]
+    return [
+        {**_capability_group_meta(capability_id, capability_states), "resources": resources_for_id}
+        for capability_id, resources_for_id in grouped.items()
+    ]
 
 
 def _extract_uri_params(uri_template: str) -> list[str]:
@@ -131,7 +196,14 @@ def _serialize_resources() -> list[dict]:
 @blueprint.route("/")
 @require_login()
 def browse():
-    if not (has_permission(current_user, "capabilities.view") or has_permission(current_user, "capabilities.try")):
+    can_view = has_permission(current_user, "capabilities.view")
+    can_try = has_permission(current_user, "capabilities.try")
+    can_manage = has_permission(current_user, "capabilities.manage")
+    # Matches PAGE_PERMISSION's tuple semantics (visible to an account
+    # holding any one of these) - a manage-only account must be able to
+    # reach the page to use the permission it has, the same way a
+    # try-only or view-only account already can.
+    if not (can_view or can_try or can_manage):
         abort(403)
 
     extensions_catalog = _fetch_extensions_or_empty()
@@ -151,9 +223,10 @@ def browse():
         resources_error = str(exc)
 
     error = tools_error or resources_error
+    capability_states = _fetch_capability_states_or_empty()
     extensions = _group_tools_by_extension(tools, extensions_catalog)
-    tool_capability_groups = _group_tools_by_capability(tools)
-    resource_capability_groups = _group_resources_by_capability(resources)
+    tool_capability_groups = _group_tools_by_capability(tools, capability_states)
+    resource_capability_groups = _group_resources_by_capability(resources, capability_states)
     return render_template(
         "capabilities.html",
         tools=tools,
@@ -161,6 +234,7 @@ def browse():
         tool_capability_groups=tool_capability_groups,
         resources=resources,
         resource_capability_groups=resource_capability_groups,
+        can_manage_capabilities=can_manage,
         error=error,
     )
 
@@ -200,3 +274,34 @@ def read_resource_route():
         return jsonify({"status": "ok", "result": result})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+def _forward_mcp_server_error(exc: urllib.error.HTTPError):
+    """Same shape as Chat/__index__.py's _forward_extension_error - not
+    shared code, since each page's blueprint module is self-contained
+    (see pages/README.md), but the reasoning is identical: mcp_server's
+    own error message (a 404 naming the unknown capability, a 400
+    naming the bad body) is more useful to whoever's looking at this
+    than a generic "request failed"."""
+    try:
+        body = json.loads(exc.read().decode("utf-8"))
+        message = body.get("error") or f"mcp_server returned {exc.code}."
+    except Exception:  # noqa: BLE001 - body wasn't parseable JSON
+        message = f"mcp_server returned {exc.code}."
+    return jsonify({"error": message}), exc.code
+
+
+@blueprint.route("/api/capabilities/<name>/toggle", methods=["POST"])
+@require_permission("capabilities.manage")
+def toggle_capability(name: str):
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        return jsonify({"error": "'enabled' (boolean) is required"}), 400
+    try:
+        status = set_capability_enabled(name, enabled)
+        return jsonify(status)
+    except urllib.error.HTTPError as exc:
+        return _forward_mcp_server_error(exc)
+    except Exception as exc:  # noqa: BLE001 - e.g. mcp_server unreachable
+        return jsonify({"error": str(exc)}), 502

@@ -171,3 +171,41 @@ def remove_extension(extension_id: str) -> None:
     request = Request(f"{_extensions_url()}/{extension_id}", method="DELETE")
     with urlopen(request, timeout=10):
         return None
+
+
+def _capabilities_url() -> str:
+    """mcp_server's /capabilities endpoint - a sibling of /extensions on
+    the same origin, built the same way (see _extensions_url() above)."""
+    split = urlsplit(settings.mcp_server_url)
+    return f"{split.scheme}://{split.netloc}/capabilities"
+
+
+def fetch_capabilities() -> list[dict[str, Any]]:
+    """Which built-in capabilities mcp_server currently has enabled -
+    ``[{"name": "host_health", "enabled": true}, ...]``. Live state, not
+    the config file: reflects any PATCH already applied, including one
+    from another browser tab or another user. Same failure behavior as
+    fetch_extensions()/fetch_commands() - raises on any failure, caller
+    decides how to surface it."""
+    with urlopen(_capabilities_url(), timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def set_capability_enabled(name: str, enabled: bool) -> dict[str, Any]:
+    """PATCH one capability's enabled state on mcp_server - takes effect
+    immediately on the live server, no restart (see
+    capability_registry.py on that side). Returns the updated
+    ``{"name", "enabled"}``. Raises ``urllib.error.HTTPError`` for a 404
+    (unknown capability) or 400 (malformed body), same as
+    add_extension/remove_extension above - left to propagate so the
+    route layer can forward mcp_server's own status.
+    """
+    payload = json.dumps({"enabled": enabled}).encode("utf-8")
+    request = Request(
+        f"{_capabilities_url()}/{name}",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="PATCH",
+    )
+    with urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))

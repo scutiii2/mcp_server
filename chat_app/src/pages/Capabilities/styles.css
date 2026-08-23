@@ -106,9 +106,12 @@ pre.result { display: none; background: #f5f5f5; padding: 10px 12px; border-radi
 
 /* Per-capability accordion groups (built-in tools/resources, grouped by
    e.g. "Host Health"/"OTP" - see tool_capabilities.py) - same card
-   language and header/chevron/body mechanics as .ext-group above, minus
-   the status dot and toggle switch: built-ins have no enabled/disabled
-   concept and no connection status, so that markup doesn't apply here. */
+   language and header/chevron/body mechanics as .ext-group above. Also
+   reuses .ext-switch for the toggle switch (only rendered for an account
+   holding capabilities.manage - see capabilities.html/script.js), same
+   markup and behavior, different backing state: mcp_server's live
+   enabled/disabled toggle rather than extensions' per-browser
+   localStorage preference. */
 .capability-group { border: 1px solid #e2e2e2; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
 .capability-group-header {
   padding: 14px 18px;
@@ -125,3 +128,11 @@ pre.result { display: none; background: #f5f5f5; padding: 10px 12px; border-radi
 .capability-group-body { display: none; padding: 12px 18px 18px; border-top: 1px solid #eee; }
 .capability-group.open .capability-group-body { display: block; }
 .capability-group-body .tool:last-child { margin-bottom: 0; }
+.capability-group-placeholder { color: #999; font-size: 13px; font-style: italic; margin: 0; }
+
+/* A disabled capability's own label/count dim slightly - same "this
+   exists but is off" language as a disabled form control, without
+   needing a second status-dot-like element next to the switch that's
+   already showing the same state. */
+.capability-group.disabled .capability-group-label,
+.capability-group.disabled .capability-group-count { color: #999; }

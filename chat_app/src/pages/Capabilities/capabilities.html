@@ -48,16 +48,26 @@
 {% endmacro %}
 
 {% for group in tool_capability_groups %}
-<div class="capability-group" data-capability-label="{{ group.label }}">
+<div class="capability-group{{ ' disabled' if group.toggleable and not group.enabled else '' }}"
+     data-capability-id="{{ group.id }}" data-capability-label="{{ group.label }}">
   <div class="capability-group-header">
     <span class="capability-group-chevron">&#9656;</span>
     <span class="capability-group-label">{{ group.label }}</span>
     <span class="capability-group-count">{{ group.tools|length }} tool{{ '' if group.tools|length == 1 else 's' }}</span>
+    {% if can_manage_capabilities and group.toggleable %}
+    <label class="ext-switch capability-switch">
+      <input type="checkbox" class="capability-group-toggle" {{ 'checked' if group.enabled else '' }}>
+      <span class="ext-switch-slider"></span>
+    </label>
+    {% endif %}
   </div>
   <div class="capability-group-body">
     {% for tool in group.tools %}
       {{ render_tool_card(tool) }}
     {% endfor %}
+    {% if group.toggleable and not group.enabled %}
+    <p class="capability-group-placeholder">Disabled &mdash; turn on to use this capability's tools.</p>
+    {% endif %}
   </div>
 </div>
 {% endfor %}
@@ -128,16 +138,26 @@
 
 {% for group in resource_capability_groups %}
 {% set group_idx = loop.index %}
-<div class="capability-group" data-capability-label="{{ group.label }}">
+<div class="capability-group{{ ' disabled' if group.toggleable and not group.enabled else '' }}"
+     data-capability-id="{{ group.id }}" data-capability-label="{{ group.label }}">
   <div class="capability-group-header">
     <span class="capability-group-chevron">&#9656;</span>
     <span class="capability-group-label">{{ group.label }}</span>
     <span class="capability-group-count">{{ group.resources|length }} resource{{ '' if group.resources|length == 1 else 's' }}</span>
+    {% if can_manage_capabilities and group.toggleable %}
+    <label class="ext-switch capability-switch">
+      <input type="checkbox" class="capability-group-toggle" {{ 'checked' if group.enabled else '' }}>
+      <span class="ext-switch-slider"></span>
+    </label>
+    {% endif %}
   </div>
   <div class="capability-group-body">
     {% for resource in group.resources %}
       {{ render_resource_card(resource, group_idx ~ '-' ~ loop.index) }}
     {% endfor %}
+    {% if group.toggleable and not group.enabled %}
+    <p class="capability-group-placeholder">Disabled &mdash; turn on to use this capability's resources.</p>
+    {% endif %}
   </div>
 </div>
 {% endfor %}

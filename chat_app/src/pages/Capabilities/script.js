@@ -108,9 +108,10 @@ initCapabilitySections();
 // "OTP") - see tool_capabilities.py. Same open/closed mechanics as
 // .ext-group above (toggle .open on header click), collapsed by default
 // for visual consistency with the extension groups sitting right below
-// them in the Tools section. Unlike .ext-group, there's no toggle switch
-// or status dot to wire up - built-ins have no enabled/disabled concept
-// and no connection status, so this is simpler than initExtGroups().
+// them in the Tools section. The toggle switch (only rendered for an
+// account holding capabilities.manage - see capabilities.html) is wired
+// separately below, same reasoning as initExtGroups' switchLabel
+// stopPropagation: it must never also fire this header's expand/collapse.
 function initCapabilityGroups() {
   const groups = document.querySelectorAll('.capability-group');
   for (const group of groups) {
@@ -122,6 +123,49 @@ function initCapabilityGroups() {
 }
 
 initCapabilityGroups();
+
+// Unlike .ext-group's switch (a client-only, per-browser localStorage
+// preference - see the top of this file), this one calls mcp_server
+// through chat_app's own /api/capabilities/<id>/toggle route: it's a
+// real, server-side, every-caller-affecting change. A successful toggle
+// reloads the page rather than patching the DOM in place - the true new
+// tool/resource list (including counts, and any group whose tools just
+// appeared or disappeared) only exists after browse() re-fetches it from
+// mcp_server, which a client-side patch can't fabricate.
+function initCapabilityToggles() {
+  const groups = document.querySelectorAll('.capability-group');
+  for (const group of groups) {
+    const checkbox = group.querySelector('.capability-group-toggle');
+    if (!checkbox) continue; // no capabilities.manage permission - nothing to wire up
+
+    const switchLabel = group.querySelector('.capability-switch');
+    switchLabel.addEventListener('click', event => event.stopPropagation());
+
+    checkbox.addEventListener('change', async () => {
+      const capabilityId = group.dataset.capabilityId;
+      const enabled = checkbox.checked;
+      checkbox.disabled = true;
+      try {
+        const res = await fetch(`/capabilities/api/capabilities/${encodeURIComponent(capabilityId)}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Request failed (${res.status})`);
+        }
+        window.location.reload();
+      } catch (err) {
+        alert(`Could not ${enabled ? 'enable' : 'disable'} this capability: ${err}`);
+        checkbox.checked = !enabled; // revert the switch to its actual (unchanged) state
+        checkbox.disabled = false;
+      }
+    });
+  }
+}
+
+initCapabilityToggles();
 
 // --- Tool/resource card toggles and forms --------------------------------
 // Moved out of inline onclick/onsubmit attributes (which this app's CSP

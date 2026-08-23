@@ -252,3 +252,57 @@ def test_remove_extension_propagates_http_error_with_status_code_intact():
             mcp_client.remove_extension("unknown")
 
     assert exc_info.value.code == 404
+
+
+def test_fetch_capabilities_builds_url_from_mcp_server_base_and_returns_parsed_json():
+    fake_payload = [{"name": "host_health", "enabled": True}, {"name": "otp", "enabled": False}]
+    captured_url = {}
+
+    def _fake_urlopen(url, timeout=None):
+        captured_url["url"] = url
+        return _fake_response(fake_payload)
+
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+        result = mcp_client.fetch_capabilities()
+
+    assert result == fake_payload
+    assert captured_url["url"] == "http://127.0.0.1:8010/capabilities"
+
+
+def test_set_capability_enabled_patches_json_and_returns_parsed_status():
+    updated = {"name": "otp", "enabled": False}
+    captured = {}
+
+    def _fake_urlopen(request, timeout=None):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["headers"] = dict(request.header_items())
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return _fake_response(updated)
+
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+        result = mcp_client.set_capability_enabled("otp", False)
+
+    assert result == updated
+    assert captured["url"] == "http://127.0.0.1:8010/capabilities/otp"
+    assert captured["method"] == "PATCH"
+    assert captured["headers"]["Content-type"] == "application/json"
+    assert captured["body"] == {"enabled": False}
+
+
+def test_set_capability_enabled_propagates_http_error_with_status_code_intact():
+    """A 404 for an unknown capability name must reach the caller with
+    .code intact, same reasoning as add_extension's equivalent test."""
+    error = urllib.error.HTTPError(
+        url="http://127.0.0.1:8010/capabilities/nonexistent",
+        code=404,
+        msg="Not Found",
+        hdrs=None,
+        fp=None,
+    )
+
+    with patch("src.services.mcp_client.urlopen", side_effect=error):
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            mcp_client.set_capability_enabled("nonexistent", True)
+
+    assert exc_info.value.code == 404
