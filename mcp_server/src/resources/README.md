@@ -33,9 +33,10 @@ def host_health(name: str) -> str:
 3. `resources/<name>/domain.py`.
 4. `resources/<name>/resource.py`, decorated with `@mcp.resource("<scheme>://...")`.
 5. In `run.py`, add the import. If a capability toggle already governs
-   this resource (see below), gate it behind the same
-   `capability_enabled(...)` check; otherwise import it unconditionally,
-   the same as any other always-on resource.
+   this resource (see below), add it inside that capability's existing
+   `capability_registry.capturing(mcp, "<name>")` block; otherwise wrap
+   it in its own `capturing(mcp, "<name>")` block so it gets its own
+   independent toggle.
 
 ## If a capability wraps this resource
 
@@ -53,9 +54,11 @@ split makes sense for a new resource too:
   dependency points this direction (deleting the capability wrapper
   should leave the resource fully working).
 - One toggle entry in `../configs/config_capabilities.json` governs
-  both - `run.py` imports the resource and the capability's tool under
-  the same `capability_enabled(_capabilities_config, "<name>")` check.
+  both - `run.py` imports the resource and the capability's tool inside
+  the *same* `capability_registry.capturing(mcp, "<name>")` block, so
+  toggling `<name>` off/on live (via `PATCH /capabilities/<name>`,
+  chat_app's Capabilities page) removes/restores both together.
 
 A resource with no model-facing use doesn't need a matching capability
-at all - it's a normal, ungated (or independently toggled) import in
-`run.py`.
+at all - it's a normal, independently-`capturing()`-wrapped import in
+`run.py`, toggleable on its own.

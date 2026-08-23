@@ -25,10 +25,10 @@ mechanics); paths come from `Settings.hosts_config_path` /
   { "host_health": { "enabled": true }, "otp": { "enabled": false } }
   ```
 
-  Read once at startup by `run.py`, which skips a disabled capability's
-  tool-registering import entirely - it won't appear in `list_tools()`,
-  `/commands`, or chat_app's capabilities page. Restart the server for a
-  change to take effect.
+  Applied at startup by `run.py`, and also written to at runtime by
+  `PATCH /capabilities/{name}` (see `capability_routes.py`) - toggling
+  a capability through that route takes effect immediately, no restart
+  needed, the same as `POST`/`DELETE /extensions` above for extensions.
 
 Each file's top-level JSON *is* its content - there's no wrapper key.
 Anything sensitive is a `${VAR}` placeholder resolved from

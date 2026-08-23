@@ -1,4 +1,8 @@
 {
-  "host_health": { "enabled": true },
-  "otp": { "enabled": true }
+  "host_health": {
+    "enabled": true
+  },
+  "otp": {
+    "enabled": true
+  }
 }

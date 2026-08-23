@@ -25,6 +25,7 @@ from src.infra.app_config import (
     load_host_config,
     load_hosts_config,
     resolve_section,
+    save_capabilities_config,
     save_extension_config,
 )
 
@@ -867,3 +868,32 @@ def test_capability_explicitly_enabled_is_true(tmp_path: Path):
     path = _write(tmp_path, {"otp": {"enabled": True}})
 
     assert capability_enabled(load_capabilities_config(path), "otp") is True
+
+
+def test_save_capabilities_config_creates_a_missing_file(tmp_path: Path):
+    """The one loader in this module that must not require the file to
+    already exist - it's the write path a fresh deployment's first
+    toggle goes through."""
+    path = tmp_path / "config_capabilities.json"
+
+    save_capabilities_config(path, "otp", False)
+
+    assert load_capabilities_config(path) == {"otp": {"enabled": False}}
+
+
+def test_save_capabilities_config_overwrites_an_existing_entry(tmp_path: Path):
+    path = _write(tmp_path, {"otp": {"enabled": True}})
+
+    save_capabilities_config(path, "otp", False)
+
+    assert load_capabilities_config(path) == {"otp": {"enabled": False}}
+
+
+def test_save_capabilities_config_preserves_other_capabilities(tmp_path: Path):
+    path = _write(tmp_path, {"host_health": {"enabled": True}})
+
+    save_capabilities_config(path, "otp", False)
+
+    data = load_capabilities_config(path)
+    assert data["host_health"] == {"enabled": True}
+    assert data["otp"] == {"enabled": False}

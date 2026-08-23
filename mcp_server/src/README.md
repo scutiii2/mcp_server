@@ -32,10 +32,11 @@ reads `from src.foo import bar`, matching chat_app's layout.
   decorated function's module path.
 - `errors.py` - turns an unexpected exception into a safe-to-display
   message plus a logged reference id.
-- `approval_routes.py`, `extension_routes.py`, `command_routes.py` -
-  plain HTTP routes (not MCP tools) mounted alongside the MCP surface:
-  where a human approves a gated action, where extensions are
-  listed/added/removed, and where chat_app discovers slash commands.
+- `approval_routes.py`, `extension_routes.py`, `command_routes.py`,
+  `capability_routes.py` - plain HTTP routes (not MCP tools) mounted
+  alongside the MCP surface: where a human approves a gated action,
+  where extensions are listed/added/removed, where chat_app discovers
+  slash commands, and where a capability is turned on/off live.
 
 ## Runtime data (not code)
 

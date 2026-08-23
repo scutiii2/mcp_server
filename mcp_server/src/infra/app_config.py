@@ -594,9 +594,12 @@ def delete_extension_config(config_path: Path, extension_id: str) -> None:
 
 
 # --- capabilities ----------------------------------------------------------
-# Which built-in capabilities (src/capabilities/<name>/) are
-# enabled. Read once at startup by run.py, which skips a disabled
-# capability's tool-registering import entirely - see that module.
+# Which built-in capabilities (src/capabilities/<name>/) are enabled.
+# Read at startup by run.py, which applies the state to the live
+# FastMCP instance via infra/capability_registry.py, and written by
+# capability_routes.py's PATCH /capabilities/<name> - the same route
+# also applies the change live, so this file and the running server
+# never disagree about which capabilities are on.
 
 
 def load_capabilities_config(config_path: Path) -> dict[str, dict[str, Any]]:
@@ -627,3 +630,17 @@ def capability_enabled(config: dict[str, dict[str, Any]], name: str) -> bool:
     if not isinstance(entry, dict):
         return True
     return bool(entry.get("enabled", True))
+
+
+def save_capabilities_config(config_path: Path, name: str, enabled: bool) -> None:
+    """Persist one capability's enabled state, leaving every other entry
+    untouched. Mirrors save_extension_config's shape.
+
+    Missing file is fine here - unlike every ``load_*``/``save_extension_*``
+    function above, which all require config_extensions.json to already
+    exist: this is the first thing to ever write config_capabilities.json
+    for a deployment that has never toggled anything before.
+    """
+    data = load_config(config_path) if config_path.exists() else {}
+    data.setdefault(name, {})["enabled"] = enabled
+    _write_config(config_path, data)

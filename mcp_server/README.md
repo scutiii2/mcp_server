@@ -56,8 +56,14 @@ shape every capability follows and how to add a new one:
 - [`capabilities/host_health/README.md`](src/capabilities/host_health/README.md)
 - [`capabilities/otp/README.md`](src/capabilities/otp/README.md)
 
-Every capability can be turned off without touching code - see
-`src/configs/README.md`'s section on `config_capabilities.json`.
+Every capability can be turned off without touching code, live - no
+restart needed. `GET /capabilities` lists each one's current state;
+`PATCH /capabilities/{name}` (body `{"enabled": bool}`) toggles it,
+persists the change to `config_capabilities.json`, and adds/removes its
+tools and resources from the running server, all in one request - see
+`src/capability_routes.py` and `src/infra/README.md`'s
+`capability_registry.py` entry. This is what chat_app's Capabilities
+page's per-capability switch calls.
 
 Client-readable URI resources follow the same pattern one level over -
 see [`src/resources/README.md`](src/resources/README.md).

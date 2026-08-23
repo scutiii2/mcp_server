@@ -52,18 +52,23 @@ exposing an MCP server that already exists elsewhere.
    { "<name>": { "enabled": true } }
    ```
 
-7. In `run.py`, gate the import behind `capability_enabled(...)`,
-   following `host_health`/`otp`:
+7. In `run.py`, wrap the import in
+   `capability_registry.capturing(mcp, "<name>")`, following
+   `host_health`/`otp`:
 
    ```python
-   if capability_enabled(_capabilities_config, "<name>"):
+   with capability_registry.capturing(mcp, "<name>"):
        from src.capabilities.<name> import tool as <name>_tool
-
-       _enabled_capabilities.append("<name>")
    ```
 
    Importing the module is what runs its `@mcp.tool()` decorator and
-   registers it - skipping the import is the entire toggle mechanism.
+   registers it; `capturing()` records exactly what got registered so
+   the capability can be disabled - and, unlike the old "skip the
+   import" mechanism, re-enabled live - later. See
+   `infra/README.md`'s `capability_registry.py` entry for how toggling
+   actually works, and `capability_routes.py` for the
+   `PATCH /capabilities/{name}` route chat_app's Capabilities page
+   calls to do it.
 
 If the new capability wraps a resource (a client-readable URI, not just
 a model-callable tool - see `src/resources/README.md`), have the

@@ -23,6 +23,7 @@ for _env_file in sorted(_SECRETS_DIR.glob("*.env")):
     load_dotenv(_env_file)
 
 from src.config import settings  # noqa: E402
+from src.infra import capability_registry  # noqa: E402
 from src.infra.app_config import capability_enabled, load_capabilities_config  # noqa: E402
 from src.utils.logging_setup import configure_logging  # noqa: E402
 from src.server import mcp  # noqa: E402
@@ -41,26 +42,29 @@ _capabilities_config = load_capabilities_config(settings.capabilities_config_pat
 # section - and add a toggle entry to config_capabilities.json /
 # config_capabilities.json.example.
 #
-# Importing a capability's tool/resource module is what runs its
-# @mcp.tool()/@mcp.resource() decorator and registers it - so skipping
-# the import, when config_capabilities.json disables it, is the entire
-# mechanism: a disabled capability never appears in list_tools(),
-# /commands, or chat_app's capabilities page.
+# Every capability imports unconditionally now, even a disabled one -
+# capability_registry.capturing() needs the import to actually happen so
+# it can capture what got registered, which is what makes toggling a
+# capability back on later possible without re-importing (Python caches
+# modules, so a second import wouldn't re-run the @mcp.tool() decorators
+# anyway). Disabled state is applied immediately below, via the same
+# registry a live PATCH /capabilities/{name} request uses later - see
+# capability_routes.py and infra/capability_registry.py.
 #
-# host_health appears twice on purpose when enabled: the resource serves
-# clients that read a URI, the capability serves models that can only see
-# tools. Same domain logic underneath, same toggle entry governs both -
-# see capabilities/host_health/domain.py.
-_enabled_capabilities: list[str] = []
-if capability_enabled(_capabilities_config, "host_health"):
+# host_health appears twice on purpose: the resource serves clients that
+# read a URI, the capability serves models that can only see tools. Same
+# domain logic underneath, same toggle entry (and the same `capturing`
+# block) governs both - see capabilities/host_health/domain.py.
+with capability_registry.capturing(mcp, "host_health"):
     from src.capabilities.host_health import tool as host_health_tool  # noqa: E402,F401
     from src.resources.host_health import resource as host_health_resource  # noqa: E402,F401
 
-    _enabled_capabilities.append("host_health")
-if capability_enabled(_capabilities_config, "otp"):
+with capability_registry.capturing(mcp, "otp"):
     from src.capabilities.otp import tool as otp_tool  # noqa: E402,F401
 
-    _enabled_capabilities.append("otp")
+for _name in capability_registry.names():
+    if not capability_enabled(_capabilities_config, _name):
+        capability_registry.set_enabled(mcp, _name, False)
 
 
 async def _serve() -> None:
@@ -116,15 +120,19 @@ async def _serve() -> None:
             resource_count = f"unknown ({error})"
 
         from src.approval_routes import install_approval_routes
+        from src.capability_routes import install_capability_routes
         from src.command_routes import install_command_routes
         from src.extension_routes import install_extension_routes
         from src.infra import approvals
 
+        enabled_capabilities = [
+            name for name in capability_registry.names() if capability_registry.is_enabled(name)
+        ]
         banner = [
             "MCP server",
             f"  Endpoint : http://{settings.host}:{settings.port}/mcp",
             f"  Config   : {settings.configs_dir}",
-            f"  Capabilities: {', '.join(sorted(_enabled_capabilities)) or 'none'}",
+            f"  Capabilities: {', '.join(enabled_capabilities) or 'none'}",
             f"  Tools    : {len(tool_names)}",
             *(f"    - {name}" for name in tool_names),
             f"  Resources: {resource_count}",
@@ -162,6 +170,12 @@ async def _serve() -> None:
         # "/" commands - also a plain HTTP route, same reasoning. See
         # command_routes.py.
         install_command_routes(app)
+        # Where a human (chat_app's Capabilities page) turns a built-in
+        # capability on/off live - also a plain HTTP route, same
+        # reasoning as install_approval_routes above: this changes what
+        # every caller of this server can do, not something a model
+        # should be able to do to itself. See capability_routes.py.
+        install_capability_routes(app)
 
         # uvicorn.Server(...).serve() rather than the uvicorn.run()
         # convenience function: run() calls asyncio.run() itself, which

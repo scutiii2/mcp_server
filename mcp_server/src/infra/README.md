@@ -10,9 +10,19 @@ where that logic lives instead.
   `load_extensions_config`/`load_extension_config`, plus
   `save_extension_config`/`delete_extension_config` for the runtime
   add/remove routes, and `load_capabilities_config`/
-  `capability_enabled` for the toggle). Read its module docstring first
-  - the `${VAR}` substitution convention and per-entry resolution
-  behavior are documented there once rather than repeated per loader.
+  `capability_enabled`/`save_capabilities_config` for the capability
+  toggle). Read its module docstring first - the `${VAR}` substitution
+  convention and per-entry resolution behavior are documented there
+  once rather than repeated per loader.
+- **`capability_registry.py`** - the live half of the capability
+  toggle: `capturing()` wraps a capability's import block in `run.py`
+  and records exactly what it registered; `set_enabled()` adds/removes
+  those tools/resource templates from the running `mcp` instance.
+  `capability_routes.py`'s `PATCH /capabilities/{name}` is the only
+  caller outside startup. Read its module docstring for why this reaches
+  into a couple of FastMCP's private dicts (no public way to remove a
+  resource template) and why it captures actual `Tool`/`ResourceTemplate`
+  objects rather than bare functions.
 - **`ssh.py`** - `SSHClient`, the one paramiko-connecting code path in
   this server. Host-key verification, auth fallback (key then
   password), and command execution all go through here.
