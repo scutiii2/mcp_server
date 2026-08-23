@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from chat_app.services.llm import staged_plans_store
+from src.services.llm import staged_plans_store
 
 
 def test_save_then_get_roundtrips_the_plan(tmp_path: Path):

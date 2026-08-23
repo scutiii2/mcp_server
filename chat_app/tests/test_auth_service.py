@@ -1,78 +1,170 @@
-"""Unit tests for auth/service.py's network-gate helpers - see security.py's
-check_auth for how these feed into the merged credential paths."""
+from werkzeug.security import check_password_hash, generate_password_hash
 
-from __future__ import annotations
-
-import dataclasses
-import sqlite3
-from datetime import datetime, timedelta, timezone
-
-import pytest
-
-from chat_app.auth import service, store
-from chat_app.config import settings as base_settings
+from src.models import Account, InviteOTP, db
+from src.services import auth_service, otp_service
 
 
-@pytest.fixture(autouse=True)
-def no_signals(monkeypatch):
-    """Default state: every activation signal off."""
-    monkeypatch.delenv("CHAT_AUTH_USER", raising=False)
-    monkeypatch.delenv("CHAT_AUTH_PASSWORD", raising=False)
-    monkeypatch.delenv("CHAT_NETWORK_ACCESS_ENABLED", raising=False)
+def test_verify_credentials_returns_account_for_correct_password(app):
+    with app.app_context():
+        account = Account(
+            username="carol",
+            email="carol@example.com",
+            password_hash=generate_password_hash("correct-horse"),
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        result = auth_service.verify_credentials(db.session, "carol", "correct-horse")
+
+    assert result is not None
+    assert result.username == "carol"
 
 
-@pytest.fixture
-def users_db(tmp_path, monkeypatch):
-    """Same isolation approach as conftest.py's users_db fixture - points
-    the module's own (frozen, import-time) settings reference at a fresh
-    per-test SQLite file."""
-    test_settings = dataclasses.replace(base_settings, users_db_path=tmp_path / "users.db")
-    monkeypatch.setattr(service, "settings", test_settings)
-    return test_settings.users_db_path
+def test_verify_credentials_returns_none_for_wrong_password(app):
+    with app.app_context():
+        account = Account(
+            username="dave",
+            email="dave@example.com",
+            password_hash=generate_password_hash("correct-horse"),
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        result = auth_service.verify_credentials(db.session, "dave", "wrong-password")
+
+    assert result is None
 
 
-def test_gate_is_off_with_no_signal(users_db):
-    assert service.network_gate_enabled() is False
+def test_verify_credentials_returns_none_for_unknown_username(app):
+    with app.app_context():
+        result = auth_service.verify_credentials(db.session, "ghost", "whatever")
+
+    assert result is None
 
 
-def test_shared_pair_turns_the_gate_on(users_db, monkeypatch):
-    monkeypatch.setenv("CHAT_AUTH_USER", "me")
-    monkeypatch.setenv("CHAT_AUTH_PASSWORD", "s3cret")
+def test_verify_credentials_returns_none_for_inactive_account(app):
+    with app.app_context():
+        account = Account(
+            username="erin",
+            email="erin@example.com",
+            password_hash=generate_password_hash("correct-horse"),
+            is_active=False,
+        )
+        db.session.add(account)
+        db.session.commit()
 
-    assert service.network_gate_enabled() is True
+        result = auth_service.verify_credentials(db.session, "erin", "correct-horse")
 
-
-def test_half_configured_shared_pair_does_not_turn_the_gate_on(users_db, monkeypatch):
-    monkeypatch.setenv("CHAT_AUTH_USER", "me")
-
-    assert service.network_gate_enabled() is False
-
-
-def test_network_access_enabled_env_var_turns_the_gate_on(users_db, monkeypatch):
-    monkeypatch.setenv("CHAT_NETWORK_ACCESS_ENABLED", "1")
-
-    assert service.network_gate_enabled() is True
+    assert result is None
 
 
-def test_a_valid_gate_code_turns_the_gate_on(users_db):
-    store.create_gate_code(users_db, created_by="admin", ttl_hours=1)
+def test_record_login_attempt_persists_row(app):
+    with app.app_context():
+        attempt = auth_service.record_login_attempt(db.session, "203.0.113.4", None, False)
 
-    assert service.network_gate_enabled() is True
-
-
-def test_an_expired_gate_code_does_not_turn_the_gate_on(users_db):
-    issued = store.create_gate_code(users_db, created_by="admin", ttl_hours=1)
-    conn = sqlite3.connect(str(users_db))
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    conn.execute("UPDATE gate_codes SET expires_at = ? WHERE code_id = ?", (past, issued.code_id))
-    conn.commit()
-    conn.close()
-
-    assert service.network_gate_enabled() is False
+        assert attempt.id is not None
+        assert attempt.success is False
 
 
-def test_gate_code_grants_access_checks_the_password_only(users_db):
-    issued = store.create_gate_code(users_db, created_by="admin", ttl_hours=1)
+def test_register_account_creates_account_and_consumes_invite(app):
+    with app.app_context():
+        inviter = Account(username="admin", email="admin@example.com", password_hash="hashed")
+        db.session.add(inviter)
+        db.session.commit()
 
-    assert service.gate_code_grants_access(issued.code) is True
-    assert service.gate_code_grants_access("wrong-code") is False
+        invite, code = otp_service.create_invite(db.session, inviter.id, "newbie@example.com", "manual")
+
+        account = auth_service.register_account(db.session, "newbie", "newbie@example.com", "s3cret!", code)
+
+        assert account is not None
+        assert account.username == "newbie"
+        assert account.roles == []
+
+        refreshed_invite = db.session.get(InviteOTP, invite.id)
+        assert refreshed_invite.used_at is not None
+
+
+def test_register_account_rejects_invalid_invite_code(app):
+    with app.app_context():
+        account = auth_service.register_account(db.session, "nope", "nope@example.com", "pw", "bad-code")
+
+    assert account is None
+
+
+def test_register_account_rejects_reused_invite_code(app):
+    with app.app_context():
+        inviter = Account(username="admin2", email="admin2@example.com", password_hash="hashed")
+        db.session.add(inviter)
+        db.session.commit()
+
+        invite, code = otp_service.create_invite(db.session, inviter.id, None, "manual")
+        first = auth_service.register_account(db.session, "first", "first@example.com", "pw", code)
+        second = auth_service.register_account(db.session, "second", "second@example.com", "pw", code)
+
+    assert first is not None
+    assert second is None
+
+
+def test_init_login_manager_user_loader_returns_account(app):
+    auth_service.init_login_manager(app)
+
+    with app.app_context():
+        account = Account(username="frank", email="frank@example.com", password_hash="hashed")
+        db.session.add(account)
+        db.session.commit()
+
+        loaded = auth_service.login_manager._user_callback(str(account.id))
+
+    assert loaded is not None
+    assert loaded.username == "frank"
+
+
+def test_update_account_profile_succeeds_with_correct_password(app):
+    with app.app_context():
+        account = Account(
+            username="profile_user",
+            email="old@example.com",
+            password_hash=generate_password_hash("current-pw"),
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        success = auth_service.update_account_profile(
+            db.session, account, "current-pw", "new@example.com", None
+        )
+
+        assert success is True
+        assert account.email == "new@example.com"
+
+
+def test_update_account_profile_fails_with_wrong_password(app):
+    with app.app_context():
+        account = Account(
+            username="profile_user2",
+            email="unchanged@example.com",
+            password_hash=generate_password_hash("current-pw"),
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        success = auth_service.update_account_profile(
+            db.session, account, "wrong-pw", "new@example.com", None
+        )
+
+        assert success is False
+        assert account.email == "unchanged@example.com"
+
+
+def test_update_account_profile_updates_password_hash(app):
+    with app.app_context():
+        account = Account(
+            username="profile_user3",
+            email="profile_user3@example.com",
+            password_hash=generate_password_hash("old-pw"),
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        auth_service.update_account_profile(db.session, account, "old-pw", None, "new-pw")
+
+        assert check_password_hash(account.password_hash, "new-pw")

@@ -7,14 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
-from chat_app.services.llm import cooldown, router
-from chat_app.services.llm.base import ChatResult, ModelAvailability, ModelAvailabilityCheck, ModelOption
+from src.services.llm import cooldown, router
+from src.services.llm.base import ChatResult, ModelAvailability, ModelAvailabilityCheck, ModelOption
 
 
 def _patch_run_chat(provider_id: str, **kwargs):
     """Patch the run_chat a provider will actually dispatch to.
 
-    Patching ``chat_app.services.llm.claude_provider.run_chat`` does NOT
+    Patching ``src.services.llm.claude_provider.run_chat`` does NOT
     work here: each provider module builds its ``PROVIDER = ProviderSpec(
     run_chat=run_chat, ...)`` at import time, so the spec holds a direct
     reference to the original function. Rebinding the module attribute

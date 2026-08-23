@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from chat_app.services.tool_titles import title_for
+from src.services.tool_titles import title_for
 
 
 def test_override_is_used_when_present():
@@ -12,7 +12,7 @@ def test_override_is_used_when_present():
     an entry rather than asserting against a real one - the mechanism is
     what matters, and hardcoding a name here would just become the next
     stale reference."""
-    with patch.dict("chat_app.services.tool_titles._OVERRIDES", {"get_cpu_usage_tool": "Get CPU Usage"}):
+    with patch.dict("src.services.tool_titles._OVERRIDES", {"get_cpu_usage_tool": "Get CPU Usage"}):
         assert title_for("get_cpu_usage_tool") == "Get CPU Usage"
 
 

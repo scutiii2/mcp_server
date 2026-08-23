@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block sidebar %}{% include "sidebar.html" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('logs.static', filename='style.css') }}">
+<h1>Logs</h1>
+
+<div data-tabs>
+  <div class="tabs" role="tablist">
+    {% if can_view_logs %}
+    <button type="button" class="tab-btn{% if active_tab == 'logs' %} active{% endif %}" data-tab="logs">Logs</button>
+    {% endif %}
+    {% if can_view_errors %}
+    <button type="button" class="tab-btn{% if active_tab == 'errors' %} active{% endif %}" data-tab="errors">Errors</button>
+    {% endif %}
+    {% if can_view_chat_traces %}
+    <button type="button" class="tab-btn{% if active_tab == 'chat_traces' %} active{% endif %}" data-tab="chat_traces">Chat traces</button>
+    {% endif %}
+  </div>
+
+  {% if can_view_logs %}
+  <section class="tab-panel" data-tab-panel="logs"{% if active_tab != 'logs' %} hidden{% endif %}>
+    <form method="get">
+      <input type="hidden" name="tab" value="logs">
+      {% if can_view_errors %}<input type="hidden" name="errors_actor" value="{{ errors_actor }}">{% endif %}
+      {% if can_view_chat_traces %}<input type="hidden" name="chat_traces_actor" value="{{ chat_traces_actor }}">{% endif %}
+      <label for="logs_actor">Show entries for</label>
+      <select id="logs_actor" name="logs_actor" onchange="this.form.submit()">
+        <option value="server"{% if logs_actor == "server" %} selected{% endif %}>Server</option>
+        {% for account in accounts %}
+        <option value="{{ account.id }}"{% if logs_actor == account.id|string %} selected{% endif %}>{{ account.username }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    <ul class="log-entries">
+      {% for entry in log_entries %}
+      <li class="log-entry">
+        <span class="log-entry-time">{{ entry.created_at }}</span>
+        <span class="log-entry-source">{{ entry.source }}</span>
+        <span class="log-entry-message">{{ entry.message }}</span>
+      </li>
+      {% else %}
+      <li class="log-entry-empty">No log entries yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if can_view_errors %}
+  <section class="tab-panel" data-tab-panel="errors"{% if active_tab != 'errors' %} hidden{% endif %}>
+    <form method="get">
+      <input type="hidden" name="tab" value="errors">
+      {% if can_view_logs %}<input type="hidden" name="logs_actor" value="{{ logs_actor }}">{% endif %}
+      {% if can_view_chat_traces %}<input type="hidden" name="chat_traces_actor" value="{{ chat_traces_actor }}">{% endif %}
+      <label for="errors_actor">Show entries for</label>
+      <select id="errors_actor" name="errors_actor" onchange="this.form.submit()">
+        <option value="server"{% if errors_actor == "server" %} selected{% endif %}>Server</option>
+        {% for account in accounts %}
+        <option value="{{ account.id }}"{% if errors_actor == account.id|string %} selected{% endif %}>{{ account.username }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    <ul class="log-entries">
+      {% for entry in error_entries %}
+      <li class="log-entry">
+        <span class="log-entry-time">{{ entry.created_at }}</span>
+        <span class="log-entry-source">{{ entry.source }}</span>
+        <span class="log-entry-message">{{ entry.message }}</span>
+        {% if entry.details %}
+        <details class="log-entry-details">
+          <summary>Details</summary>
+          <pre>{{ entry.details }}</pre>
+        </details>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="log-entry-empty">No error entries yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if can_view_chat_traces %}
+  <section class="tab-panel" data-tab-panel="chat_traces"{% if active_tab != 'chat_traces' %} hidden{% endif %}>
+    <form method="get">
+      <input type="hidden" name="tab" value="chat_traces">
+      {% if can_view_logs %}<input type="hidden" name="logs_actor" value="{{ logs_actor }}">{% endif %}
+      {% if can_view_errors %}<input type="hidden" name="errors_actor" value="{{ errors_actor }}">{% endif %}
+      <label for="chat_traces_actor">Show entries for</label>
+      <select id="chat_traces_actor" name="chat_traces_actor" onchange="this.form.submit()">
+        <option value="server"{% if chat_traces_actor == "server" %} selected{% endif %}>Server</option>
+        {% for account in accounts %}
+        <option value="{{ account.id }}"{% if chat_traces_actor == account.id|string %} selected{% endif %}>{{ account.username }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    <ul class="log-entries">
+      {% for entry in chat_trace_entries %}
+      <li class="log-entry">
+        <span class="log-entry-time">{{ entry.created_at }}</span>
+        <span class="log-entry-source">{{ entry.source }}</span>
+        <span class="log-entry-message">{{ entry.message }}</span>
+        {% if entry.details %}
+        <details class="log-entry-details">
+          <summary>Details</summary>
+          <pre>{{ entry.details }}</pre>
+        </details>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="log-entry-empty">No chat-turn entries yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

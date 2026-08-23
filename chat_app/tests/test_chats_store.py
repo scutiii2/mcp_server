@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from chat_app.chats import store
+from src.services import chats_store as store
 
 
 @pytest.fixture

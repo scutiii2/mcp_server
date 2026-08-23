@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from chat_app.services.llm import cooldown
+from src.services.llm import cooldown
 
 
 def test_not_in_cooldown_by_default():

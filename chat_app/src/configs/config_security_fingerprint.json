@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "signals": ["user_agent", "accept_language", "ip_subnet"],
+  "new_device_behavior": "log_only",
+  "trust_duration_days": 30
+}

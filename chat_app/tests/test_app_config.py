@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from chat_app.infra.app_config import load_ollama_models
-from chat_app.services.llm.base import ModelOption
+from src.services.llm.app_config import load_ollama_models
+from src.services.llm.base import ModelOption
 
 
 def _write(tmp_path: Path, data: dict) -> Path:

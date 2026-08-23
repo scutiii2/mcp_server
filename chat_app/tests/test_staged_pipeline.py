@@ -7,8 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from chat_app.services.llm import staged_pipeline, staged_plans_store
-from chat_app.services.llm.base import ToolCallRecord
+from src.services.llm import staged_pipeline, staged_plans_store
+from src.services.llm.base import ToolCallRecord
 
 
 def _tool(name: str, keywords: list[str] | None = None):
@@ -219,7 +219,7 @@ def test_execute_steps_runs_a_tool_call_step_and_records_the_result():
     tool_calls_log: list[ToolCallRecord] = []
     results: list = []
 
-    with patch("chat_app.services.llm.staged_pipeline.call_tool", return_value="cpu 12%") as mock_call_tool:
+    with patch("src.services.llm.staged_pipeline.call_tool", return_value="cpu 12%") as mock_call_tool:
         pause, calls_used = staged_pipeline._execute_steps(
             fake_client, "phi4-mini:latest", [tool], "", plan, 0, results, tools_used, tool_calls_log,
             calls_budget=10,
@@ -304,7 +304,7 @@ def test_execute_tool_call_step_recovers_from_a_failing_tool():
         chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
     )
 
-    with patch("chat_app.services.llm.staged_pipeline.call_tool", side_effect=RuntimeError("connection refused")):
+    with patch("src.services.llm.staged_pipeline.call_tool", side_effect=RuntimeError("connection refused")):
         result, rounds_used = staged_pipeline._execute_tool_call_step(
             fake_client, "phi4-mini:latest", "check zima", [tool], [], []
         )
@@ -329,7 +329,7 @@ def test_run_full_happy_path_with_no_ask_user_step(tmp_path: Path):
     )
     db = tmp_path / "staged_plans.db"
 
-    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+    with patch("src.services.llm.staged_pipeline.list_tools", return_value=[]):
         result = staged_pipeline.run(fake_client, "how is zima?", [], "phi4-mini:latest", "chat-1", None, db)
 
     assert result.response == "Here is your answer."
@@ -345,7 +345,7 @@ def test_run_pauses_on_ask_user_and_persists_the_plan(tmp_path: Path):
     )
     db = tmp_path / "staged_plans.db"
 
-    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+    with patch("src.services.llm.staged_pipeline.list_tools", return_value=[]):
         result = staged_pipeline.run(fake_client, "check my host", [], "phi4-mini:latest", "chat-1", None, db)
 
     assert result.response == "which host do you mean?"
@@ -372,7 +372,7 @@ def test_run_resumes_a_paused_plan_and_completes_it(tmp_path: Path):
         )
     )
 
-    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+    with patch("src.services.llm.staged_pipeline.list_tools", return_value=[]):
         result = staged_pipeline.run(fake_client, "zima", [], "phi4-mini:latest", "chat-1", None, db)
 
     assert result.response == "Final answer about zima."
@@ -397,7 +397,7 @@ def test_run_discards_a_resume_row_saved_under_a_different_model(tmp_path: Path)
         )
     )
 
-    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+    with patch("src.services.llm.staged_pipeline.list_tools", return_value=[]):
         result = staged_pipeline.run(fake_client, "new question", [], "qwen2.5:7b", "chat-1", None, db)
 
     assert result.response == "fresh answer"
@@ -411,7 +411,7 @@ def test_run_with_no_chat_id_still_answers_an_ask_user_pause_but_cannot_persist(
     )
     db = tmp_path / "staged_plans.db"
 
-    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+    with patch("src.services.llm.staged_pipeline.list_tools", return_value=[]):
         result = staged_pipeline.run(fake_client, "check my host", [], "phi4-mini:latest", None, None, db)
 
     assert result.response == "which host?"
@@ -439,7 +439,7 @@ def test_run_discards_a_resume_row_saved_under_a_different_provider_id(tmp_path:
         )
     )
 
-    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[]):
+    with patch("src.services.llm.staged_pipeline.list_tools", return_value=[]):
         result = staged_pipeline.run(fake_client, "new question", [], "phi4-mini:latest", "chat-1", None, db)
 
     assert result.response == "fresh answer"
@@ -485,8 +485,8 @@ def test_run_stops_at_the_call_budget_under_honest_round_counting_and_still_conc
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
     db = tmp_path / "staged_plans.db"
 
-    with patch("chat_app.services.llm.staged_pipeline.list_tools", return_value=[tool]), \
-         patch("chat_app.services.llm.staged_pipeline.call_tool", return_value="ok"):
+    with patch("src.services.llm.staged_pipeline.list_tools", return_value=[tool]), \
+         patch("src.services.llm.staged_pipeline.call_tool", return_value="ok"):
         result = staged_pipeline.run(fake_client, "check 5 hosts", [], "phi4-mini:latest", "chat-1", None, db)
 
     assert result.response == "Partial answer."

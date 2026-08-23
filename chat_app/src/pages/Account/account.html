@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block sidebar %}{% include "sidebar.html" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('account.static', filename='style.css') }}">
+<h1>Account</h1>
+
+<p class="account-field">Username: <strong>{{ current_user.username }}</strong></p>
+<p class="account-field">Email: <strong>{{ current_user.email }}</strong></p>
+
+{% if can_edit %}
+<form method="post" action="{{ url_for('account.profile') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+  <label for="email">New email</label>
+  <input type="email" id="email" name="email" placeholder="{{ current_user.email }}">
+  <label for="new_password">New password</label>
+  <input type="password" id="new_password" name="new_password">
+  <label for="current_password">Current password (required to save)</label>
+  <input type="password" id="current_password" name="current_password" required>
+  <button type="submit">Save Changes</button>
+</form>
+{% else %}
+<p>Contact an administrator to update your profile.</p>
+{% endif %}
+{% endblock %}

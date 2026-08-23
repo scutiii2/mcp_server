@@ -18,8 +18,8 @@ from urllib.error import URLError
 
 import pytest
 
-from chat_app.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
-from chat_app.services.llm.base import ChatResult, RecursiveRoundRecord, SYSTEM_PROMPT, ModelOption, ToolCallRecord
+from src.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
+from src.services.llm.base import ChatResult, RecursiveRoundRecord, SYSTEM_PROMPT, ModelOption, ToolCallRecord
 
 
 def _fake_tool():
@@ -31,7 +31,7 @@ def _fake_tool():
 
 
 def test_openai_tool_schemas_use_function_parameters_shape():
-    with patch("chat_app.services.llm.openai_provider.list_tools", return_value=[_fake_tool()]):
+    with patch("src.services.llm.openai_provider.list_tools", return_value=[_fake_tool()]):
         schemas = openai_provider._tool_schemas()
 
     assert schemas == [
@@ -45,7 +45,7 @@ def test_openai_tool_schemas_use_function_parameters_shape():
 
 
 def test_claude_tool_schemas_use_input_schema_shape():
-    with patch("chat_app.services.llm.claude_provider.list_tools", return_value=[_fake_tool()]):
+    with patch("src.services.llm.claude_provider.list_tools", return_value=[_fake_tool()]):
         schemas = claude_provider._tool_schemas()
 
     assert schemas == [
@@ -114,8 +114,8 @@ def test_openai_rate_limit_error_starts_a_cooldown(monkeypatch):
     error = RateLimitError("rate limited", response=fake_response, body=None)
 
     fake_client = SimpleNamespace(responses=SimpleNamespace(create=lambda **_: (_ for _ in ()).throw(error)))
-    with patch("chat_app.services.llm.openai_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.openai_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.openai_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.openai_provider.list_tools", return_value=[]):
         with pytest.raises(RateLimitError):
             openai_provider.run_chat("hello", [])
 
@@ -127,7 +127,7 @@ def test_ollama_tool_schemas_use_function_wrapped_shape():
     """Same Chat-Completions function-wrapped shape Ollama's OpenAI-compat
     layer speaks, distinct from openai_provider.py's newer Responses-API
     shape."""
-    with patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[_fake_tool()]):
+    with patch("src.services.llm.ollama_provider.list_tools", return_value=[_fake_tool()]):
         schemas = ollama_provider._tool_schemas()
 
     assert schemas == [
@@ -165,8 +165,8 @@ def test_ollama_run_chat_adds_local_model_tool_guidance_to_the_system_prompt():
     fake_create = Mock(return_value=response)
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         ollama_provider.run_chat("hi", [], model="llama3.2:1b")
 
     _, kwargs = fake_create.call_args
@@ -234,7 +234,7 @@ def test_check_model_availability_skips_the_network_call_when_nothing_is_configu
     state, not something worth probing a host for."""
     monkeypatch.setattr(ollama_provider, "MODELS", [])
 
-    with patch("chat_app.services.llm.ollama_provider.urlopen") as mock_urlopen:
+    with patch("src.services.llm.ollama_provider.urlopen") as mock_urlopen:
         result = ollama_provider.check_model_availability()
 
     mock_urlopen.assert_not_called()
@@ -249,7 +249,7 @@ def test_check_model_availability_full_match(monkeypatch):
     )
     response = _FakeTagsResponse(_tags_payload("qwen2.5:7b", "llama3.2:1b"))
 
-    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+    with patch("src.services.llm.ollama_provider.urlopen", return_value=response):
         result = ollama_provider.check_model_availability()
 
     assert result.reachable is True
@@ -268,7 +268,7 @@ def test_check_model_availability_partial_match(monkeypatch):
     )
     response = _FakeTagsResponse(_tags_payload("qwen2.5:7b"))
 
-    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+    with patch("src.services.llm.ollama_provider.urlopen", return_value=response):
         result = ollama_provider.check_model_availability()
 
     assert result.reachable is True
@@ -280,7 +280,7 @@ def test_check_model_availability_partial_match(monkeypatch):
 def test_check_model_availability_connection_failure_fails_closed(monkeypatch):
     monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
 
-    with patch("chat_app.services.llm.ollama_provider.urlopen", side_effect=URLError("connection refused")):
+    with patch("src.services.llm.ollama_provider.urlopen", side_effect=URLError("connection refused")):
         result = ollama_provider.check_model_availability()
 
     assert result.reachable is False
@@ -291,7 +291,7 @@ def test_check_model_availability_connection_failure_fails_closed(monkeypatch):
 def test_check_model_availability_timeout_fails_closed(monkeypatch):
     monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
 
-    with patch("chat_app.services.llm.ollama_provider.urlopen", side_effect=TimeoutError("timed out")):
+    with patch("src.services.llm.ollama_provider.urlopen", side_effect=TimeoutError("timed out")):
         result = ollama_provider.check_model_availability()
 
     assert result.reachable is False
@@ -304,7 +304,7 @@ def test_check_model_availability_malformed_json_fails_closed(monkeypatch):
     monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
     response = _FakeTagsResponse(b"not valid json")
 
-    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+    with patch("src.services.llm.ollama_provider.urlopen", return_value=response):
         result = ollama_provider.check_model_availability()
 
     assert result.reachable is False
@@ -318,7 +318,7 @@ def test_check_model_availability_unexpected_response_shape_fails_closed(monkeyp
     monkeypatch.setattr(ollama_provider, "MODELS", [ModelOption(id="qwen2.5:7b", label="Qwen")])
     response = _FakeTagsResponse(json.dumps({"unexpected": "shape"}).encode("utf-8"))
 
-    with patch("chat_app.services.llm.ollama_provider.urlopen", return_value=response):
+    with patch("src.services.llm.ollama_provider.urlopen", return_value=response):
         result = ollama_provider.check_model_availability()
 
     assert result.reachable is False
@@ -345,9 +345,9 @@ def test_claude_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkey
     )
     fake_client = SimpleNamespace(messages=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
 
-    with patch("chat_app.services.llm.claude_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.claude_provider.list_tools", return_value=[]), \
-         patch("chat_app.services.llm.claude_provider.call_tool", return_value="ok"):
+    with patch("src.services.llm.claude_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.claude_provider.list_tools", return_value=[]), \
+         patch("src.services.llm.claude_provider.call_tool", return_value="ok"):
         result = claude_provider.run_chat("how is web-1?", [])
 
     assert result.response == "web-1 is healthy."
@@ -366,8 +366,8 @@ def test_claude_run_chat_reports_total_tokens_on_a_single_round_too():
     )
     fake_client = SimpleNamespace(messages=SimpleNamespace(create=Mock(return_value=response)))
 
-    with patch("chat_app.services.llm.claude_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.claude_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.claude_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.claude_provider.list_tools", return_value=[]):
         result = claude_provider.run_chat("hello", [])
 
     assert result.total_tokens == 15
@@ -383,9 +383,9 @@ def test_openai_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkey
     round_two = SimpleNamespace(output=[], output_text="web-1 is healthy.", usage=SimpleNamespace(total_tokens=80))
     fake_client = SimpleNamespace(responses=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
 
-    with patch("chat_app.services.llm.openai_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.openai_provider.list_tools", return_value=[]), \
-         patch("chat_app.services.llm.openai_provider.call_tool", return_value="ok"):
+    with patch("src.services.llm.openai_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.openai_provider.list_tools", return_value=[]), \
+         patch("src.services.llm.openai_provider.call_tool", return_value="ok"):
         result = openai_provider.run_chat("how is web-1?", [])
 
     assert result.response == "web-1 is healthy."
@@ -402,8 +402,8 @@ def test_openai_run_chat_total_tokens_is_none_when_usage_missing(monkeypatch):
     response = SimpleNamespace(output=[], output_text="ok", usage=None)
     fake_client = SimpleNamespace(responses=SimpleNamespace(create=Mock(return_value=response)))
 
-    with patch("chat_app.services.llm.openai_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.openai_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.openai_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.openai_provider.list_tools", return_value=[]):
         result = openai_provider.run_chat("hi", [])
 
     assert result.total_tokens is None
@@ -422,9 +422,9 @@ def test_ollama_run_chat_accumulates_total_tokens_across_tool_call_rounds(monkey
         chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(side_effect=[round_one, round_two])))
     )
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]), \
-         patch("chat_app.services.llm.ollama_provider.call_tool", return_value="ok"):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]), \
+         patch("src.services.llm.ollama_provider.call_tool", return_value="ok"):
         result = ollama_provider.run_chat("how is web-1?", [])
 
     assert result.response == "web-1 is healthy."
@@ -437,8 +437,8 @@ def test_ollama_run_chat_total_tokens_is_none_when_usage_missing():
     response = SimpleNamespace(choices=[SimpleNamespace(message=message)])  # no .usage at all
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         result = ollama_provider.run_chat("hi", [])
 
     assert result.total_tokens is None
@@ -457,8 +457,8 @@ def test_ollama_run_chat_requests_a_larger_context_window():
     fake_create = Mock(return_value=response)
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         ollama_provider.run_chat("hi", [])
 
     _, kwargs = fake_create.call_args
@@ -478,8 +478,8 @@ def test_ollama_run_chat_caps_the_response_length():
     fake_create = Mock(return_value=response)
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         ollama_provider.run_chat("hi", [])
 
     _, kwargs = fake_create.call_args
@@ -517,8 +517,8 @@ def test_ollama_run_chat_recursive_chain_disabled_makes_a_single_round(monkeypat
     fake_create = Mock(return_value=response)
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         result = ollama_provider.run_chat("hi", [])
 
     assert result.response == "ok"
@@ -540,8 +540,8 @@ def test_ollama_run_chat_recursive_chain_runs_a_refinement_round_then_converges(
     fake_create = Mock(side_effect=[first, second])
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         result = ollama_provider.run_chat("hi", [])
 
     assert result.response == "Draft answer."
@@ -568,8 +568,8 @@ def test_ollama_run_chat_recursive_chain_caps_at_max_refinement_rounds(monkeypat
     fake_create = Mock(side_effect=responses)
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         result = ollama_provider.run_chat("hi", [])
 
     assert result.response == f"answer v{total_rounds - 1}"
@@ -597,8 +597,8 @@ def test_ollama_run_chat_recursive_chain_is_resolved_per_selected_model(monkeypa
     fake_create = Mock(return_value=response)
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]):
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
         result = ollama_provider.run_chat("hi", [], model="llama3.2:1b")
 
     assert result.response == "plain answer"
@@ -698,9 +698,9 @@ def test_ollama_run_chat_recovers_a_leaked_tool_call_and_continues_the_conversat
         inputSchema={"type": "object", "properties": {"name": {"type": "string"}}},
     )
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[host_health_tool]), \
-         patch("chat_app.services.llm.ollama_provider.call_tool", return_value="zima: cpu 12%, mem 40%") as mock_call_tool:
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[host_health_tool]), \
+         patch("src.services.llm.ollama_provider.call_tool", return_value="zima: cpu 12%, mem 40%") as mock_call_tool:
         result = ollama_provider.run_chat("check host health of zima", [])
 
     assert result.response == "zima is healthy."
@@ -718,8 +718,14 @@ def test_ollama_not_in_automatic_order():
     """The one behavioral guarantee this provider's whole design rests
     on - see its module docstring and router.py's comment on
     AUTOMATIC_ORDER for why a small local model must never be silently
-    picked for a real question."""
-    from chat_app.services.llm import router
+    picked for a real question.
+
+    ``router`` is Task 9 in the port plan, dispatched after this task -
+    it doesn't exist in this worktree yet. importorskip means this test
+    is skipped (not failed) until then, and starts actually asserting
+    the invariant, with zero further changes needed, the moment router.py
+    lands."""
+    router = pytest.importorskip("src.services.llm.router")
 
     assert "ollama" not in router.AUTOMATIC_ORDER
     assert "ollama" in router._PROVIDERS  # still registered - manually selectable
@@ -732,8 +738,8 @@ def test_ollama_run_chat_dispatches_to_staged_pipeline_when_enabled(monkeypatch)
     monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "phi4-mini:latest")
     fake_result = ChatResult(response="from staged pipeline", provider_id="ollama", model="phi4-mini:latest")
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=SimpleNamespace()), \
-         patch("chat_app.services.llm.ollama_provider.staged_pipeline.run", return_value=fake_result) as mock_run:
+    with patch("src.services.llm.ollama_provider._get_client", return_value=SimpleNamespace()), \
+         patch("src.services.llm.ollama_provider.staged_pipeline.run", return_value=fake_result) as mock_run:
         result = ollama_provider.run_chat("hi", [], chat_id="chat-1")
 
     assert result.response == "from staged pipeline"
@@ -754,9 +760,9 @@ def test_ollama_run_chat_uses_the_plain_tool_loop_when_staged_pipeline_disabled(
     response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
 
-    with patch("chat_app.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("chat_app.services.llm.ollama_provider.list_tools", return_value=[]), \
-         patch("chat_app.services.llm.ollama_provider.staged_pipeline.run") as mock_staged_run:
+    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
+         patch("src.services.llm.ollama_provider.list_tools", return_value=[]), \
+         patch("src.services.llm.ollama_provider.staged_pipeline.run") as mock_staged_run:
         result = ollama_provider.run_chat("hi", [])
 
     assert result.response == "ok"

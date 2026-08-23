@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from chat_app.services.tool_capabilities import capability_for_resource, capability_for_tool
+from src.services.tool_capabilities import capability_for_resource, capability_for_tool
 
 
 def test_known_builtin_tools_map_to_their_capability_label():

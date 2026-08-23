@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block sidebar %}{% include "sidebar.html" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('admin.static', filename='style.css') }}">
+<h1>Admin</h1>
+
+<div data-tabs>
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab-btn{% if active_tab == 'roles' %} active{% endif %}" data-tab="roles">Roles</button>
+    <button type="button" class="tab-btn{% if active_tab == 'accounts' %} active{% endif %}" data-tab="accounts">Accounts</button>
+    <button type="button" class="tab-btn{% if active_tab == 'invites' %} active{% endif %}" data-tab="invites">Invites</button>
+  </div>
+
+  <section class="tab-panel" data-tab-panel="roles"{% if active_tab != 'roles' %} hidden{% endif %}>
+    <form method="post" action="{{ url_for('admin.create_role') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+      <input type="text" name="name" placeholder="Role name" required>
+      <input type="text" name="description" placeholder="Description">
+      <button type="submit">Create Role</button>
+    </form>
+
+    {% for role in roles %}
+    <div class="role">
+      <div class="role-header">
+        <form method="post" action="{{ url_for('admin.update_role', role_id=role.id) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+          <input type="text" name="name" value="{{ role.name }}" required>
+          <input type="text" name="description" value="{{ role.description or '' }}" placeholder="Description">
+          <button type="submit">Save</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.delete_role', role_id=role.id) }}" class="inline" data-confirm="Delete role '{{ role.name }}'? This removes it from every account and cannot be undone.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+          <button type="submit">Delete</button>
+        </form>
+      </div>
+      <ul>
+        {% for permission in role.permissions %}
+        <li>
+          {{ permission.name }}
+          <form method="post" action="{{ url_for('admin.remove_permission', role_id=role.id) }}" class="inline" data-confirm="Revoke '{{ permission.name }}' from role '{{ role.name }}'?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+            <input type="hidden" name="permission_name" value="{{ permission.name }}">
+            <button type="submit">Revoke</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="{{ url_for('admin.assign_permission', role_id=role.id) }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+        <select name="permission_name">
+          {% for permission_name in available_permissions %}
+          <option value="{{ permission_name }}">{{ permission_name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Grant Permission</button>
+      </form>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="tab-panel" data-tab-panel="accounts"{% if active_tab != 'accounts' %} hidden{% endif %}>
+    {% for account in accounts %}
+    <div class="account">
+      <h3>{{ account.username }}{% if account.is_protected %} (protected){% endif %}</h3>
+      <p>
+        Roles:
+        {% for role in account.roles %}
+        {{ role.name }}
+        <form method="post" action="{{ url_for('admin.remove_role', account_id=account.id) }}" class="inline" data-confirm="Remove role '{{ role.name }}' from '{{ account.username }}'?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+          <input type="hidden" name="role_id" value="{{ role.id }}">
+          <button type="submit" {% if account.is_protected %}disabled{% endif %}>Remove</button>
+        </form>
+        {% endfor %}
+      </p>
+      <form method="post" action="{{ url_for('admin.assign_role', account_id=account.id) }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+        <select name="role_id">
+          {% for role in roles %}
+          <option value="{{ role.id }}">{{ role.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Assign Role</button>
+      </form>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="tab-panel" data-tab-panel="invites"{% if active_tab != 'invites' %} hidden{% endif %}>
+    <form method="post" action="{{ url_for('admin.create_invite') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+      <input type="email" name="invitee_email" placeholder="Invitee email (optional for manual delivery)">
+      <select name="delivery_method">
+        <option value="manual">Manual (show code on screen)</option>
+        <option value="email">Auto-email</option>
+      </select>
+      <button type="submit">Generate Invite</button>
+    </form>
+
+    <ul id="invites-list">
+      {% for invite in invites %}
+      <li>
+        <span>
+          {{ invite.invitee_email or "(no email)" }} —
+          {% if invite.used_at %}used{% else %}pending{% endif %}
+          (expires {{ invite.expires_at }})
+        </span>
+        <form method="post" action="{{ url_for('admin.remove_invite', invite_id=invite.id) }}" class="inline" data-confirm="Remove this invite?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+          <button type="submit">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

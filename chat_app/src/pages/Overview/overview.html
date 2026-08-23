@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<header class="overview-header">
+  {% include "account_menu.html" %}
+</header>
+<h1 class="overview-title">Overview</h1>
+<div class="tiles">
+  {% for page in nav_pages %}
+  <a class="tile" href="{{ page.url_prefix }}">
+    <span class="tile-icon">{{ page.name[0] }}</span>
+    <span class="tile-name">{{ page.name }}</span>
+    {% if page.description %}<span class="tile-description">{{ page.description }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
