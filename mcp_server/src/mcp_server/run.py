@@ -6,14 +6,24 @@ Run with:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 # Must run before any mcp_server.* import: Settings' field defaults read
-# os.getenv() at class-definition time (i.e. at import time), so .env needs
-# to be loaded into the environment first or those defaults never see it.
+# os.getenv() at class-definition time (i.e. at import time), so every
+# secrets/*.env file needs to be loaded into the environment first or
+# those defaults never see it. Loaded from every *.env file in
+# src/secrets/ rather than one fixed name, mirroring src/configs/'s
+# one-file-per-concern split (secret_app.env, secret_smtp.env,
+# secret_ssh.env today; a future capability that owns a real secret adds
+# its own file here with zero changes to this loop).
 from dotenv import load_dotenv
 
-load_dotenv()
+_SECRETS_DIR = Path("src/secrets")
+for _env_file in sorted(_SECRETS_DIR.glob("*.env")):
+    load_dotenv(_env_file)
 
 from mcp_server.config import settings  # noqa: E402
+from mcp_server.infra.app_config import capability_enabled, load_capabilities_config  # noqa: E402
 from mcp_server.logging_setup import configure_logging  # noqa: E402
 from mcp_server.server import mcp  # noqa: E402
 
@@ -22,21 +32,35 @@ from mcp_server.server import mcp  # noqa: E402
 # not just log lines written after some later point in startup.
 configure_logging(settings.log_dir)
 
+_capabilities_config = load_capabilities_config(settings.capabilities_config_path)
+
 # Import order = the order tools/resources appear in their respective
 # list calls. Add each new capability's tool/resource module here as it's
 # built, following the pattern in capabilities/<name>/ (contract.py /
 # domain.py / tool.py) described in the README's "Adding a new tool"
-# section.
+# section - and add a toggle entry to config_capabilities.json /
+# config_capabilities.json.example.
 #
-# These imports look unused - they are not. Importing the module is what
-# runs its @mcp.tool()/@mcp.resource() decorator and registers it.
+# Importing a capability's tool/resource module is what runs its
+# @mcp.tool()/@mcp.resource() decorator and registers it - so skipping
+# the import, when config_capabilities.json disables it, is the entire
+# mechanism: a disabled capability never appears in list_tools(),
+# /commands, or chat_app's capabilities page.
 #
-# host_health appears twice on purpose: the resource serves clients that
-# read a URI, the capability serves models that can only see tools. Same
-# domain logic underneath - see capabilities/host_health/domain.py.
-from mcp_server.capabilities.host_health import tool as host_health_tool  # noqa: E402,F401
-from mcp_server.capabilities.otp import tool as otp_tool  # noqa: E402,F401
-from mcp_server.resources.host_health import resource as host_health_resource  # noqa: E402,F401
+# host_health appears twice on purpose when enabled: the resource serves
+# clients that read a URI, the capability serves models that can only see
+# tools. Same domain logic underneath, same toggle entry governs both -
+# see capabilities/host_health/domain.py.
+_enabled_capabilities: list[str] = []
+if capability_enabled(_capabilities_config, "host_health"):
+    from mcp_server.capabilities.host_health import tool as host_health_tool  # noqa: E402,F401
+    from mcp_server.resources.host_health import resource as host_health_resource  # noqa: E402,F401
+
+    _enabled_capabilities.append("host_health")
+if capability_enabled(_capabilities_config, "otp"):
+    from mcp_server.capabilities.otp import tool as otp_tool  # noqa: E402,F401
+
+    _enabled_capabilities.append("otp")
 
 
 async def _serve() -> None:
@@ -68,7 +92,7 @@ async def _serve() -> None:
         # infra/extensions.py), so connecting first is what makes the
         # merged list below - and therefore the "Tools" count and bullet
         # list - include them.
-        extension_statuses = await extensions.install_extensions(mcp, settings.config_path)
+        extension_statuses = await extensions.install_extensions(mcp, settings.extensions_config_path)
 
         # extensions.merged_list_tools(), not mcp.list_tools(): proxied
         # tools are only visible through the low-level handlers
@@ -99,7 +123,8 @@ async def _serve() -> None:
         banner = [
             "MCP server",
             f"  Endpoint : http://{settings.host}:{settings.port}/mcp",
-            f"  Config   : {settings.config_path}",
+            f"  Config   : {settings.configs_dir}",
+            f"  Capabilities: {', '.join(sorted(_enabled_capabilities)) or 'none'}",
             f"  Tools    : {len(tool_names)}",
             *(f"    - {name}" for name in tool_names),
             f"  Resources: {resource_count}",
