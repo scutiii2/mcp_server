@@ -61,6 +61,28 @@ def extensions_api():
     return jsonify({"extensions": extensions, "error": error})
 
 
+@blueprint.route("/api/commands")
+@require_permission("chat.access")
+def commands_api():
+    enabled = request.args.get("enabled_extensions", "")
+    enabled_extensions = [e for e in enabled.split(",") if e]
+    registry = commands.build_command_registry(enabled_extensions)
+    return jsonify(
+        {
+            capability: {
+                tool_id: {
+                    "description": entry.description,
+                    "params": [
+                        {"name": p.name, "required": p.required, "type": p.type} for p in entry.params
+                    ],
+                }
+                for tool_id, entry in tools.items()
+            }
+            for capability, tools in registry.items()
+        }
+    )
+
+
 def _forward_extension_error(exc: urllib.error.HTTPError):
     try:
         body = json.loads(exc.read().decode("utf-8"))
