@@ -1,46 +1,54 @@
-"""Loader for the JSON config file that holds per-deployment settings.
+"""Loaders for this server's JSON config files under src/configs/.
 
 Three different kinds of configuration live in this project, deliberately
 kept apart:
 
   - ``mcp_server/config.py`` - process settings read from environment
-    variables (bind host/port, where this file lives). Small, flat,
-    always present.
-  - this file - structured, per-deployment data read from the JSON file
-    at ``settings.config_path``: host inventories, ports, addresses,
-    recipient lists. Too nested to be comfortable as env vars.
-  - the environment - the actual secret *values*, which the JSON file
-    only refers to by name (see below).
+    variables (bind host/port, where the configs/secrets/data
+    directories live). Small, flat, always present.
+  - this file - structured, per-deployment data read from four JSON
+    files under ``src/configs/`` (``settings.hosts_config_path`` /
+    ``email_config_path`` / ``extensions_config_path`` /
+    ``capabilities_config_path``): host inventories, mail settings,
+    installed extensions, capability toggles. Too nested to be
+    comfortable as env vars, and split one file per concern rather than
+    one file with a section per concern, so each can be committed,
+    diffed, and reasoned about on its own.
+  - the environment - the actual secret *values*, which a config file
+    only refers to by name (see below). Real values live under
+    ``src/secrets/*.env``.
 
-Structure and secrets want opposite treatment. Structure benefits from
-being versioned, diffed and reviewed; secrets should never be written
-down next to it. Mixing both into one file is what makes a config file
-feel radioactive - you can't share it, commit it, or paste it into an
-issue without leaking something.
+Each config file's top-level JSON *is* its content - ``config_hosts.json``
+is ``{"zima": {...}, "desktop": {...}}`` directly, not
+``{"hosts": {...}}``. There is no wrapper key to unwrap; ``load_config``
+below just reads and parses one file, and every loader in this module
+resolves the whole document (or, for hosts/extensions, one entry of it)
+it gets handed.
 
-So a string anywhere in the config file may contain ``${VAR}``, which is
+A string anywhere in a config file may contain ``${VAR}``, which is
 replaced with that environment variable's value::
 
     "password": "${SMTP_PASSWORD}"
 
-That keeps ``config.json`` free of secrets - it names them instead of
-holding them - while the values live wherever is appropriate for the
-deployment: ``.env`` in development, or injected by the service manager,
-container runtime, or a secrets manager in production. Swapping that
-backend later means changing how the environment gets populated, not
-this file's format and not any domain code.
+That keeps every config file free of secrets - it names them instead of
+holding them - while the values live in ``src/secrets/*.env`` in
+development, or get injected by the service manager, container runtime,
+or a secrets manager in production. Swapping that backend later means
+changing how the environment gets populated, not any config file's
+format and not any domain code.
 
 Write ``$$`` for a literal ``$`` if a value genuinely needs to contain
 ``${...}`` text rather than have it substituted.
 
-Substitution is *per section*, not per file: ``load_config`` parses and
-returns the document untouched, and each loader calls ``resolve_section``
-on just the subtree it is about to read. Resolving the whole document up
-front was the obvious implementation and it was wrong - one unset SSH
-password under ``hosts`` made ``load_email_config`` raise, so a machine
-nobody was talking to could stop mail from going out. A deployment is
-allowed to have half its secrets present; only the half it actually uses
-has to be.
+Substitution is *per entry* within ``config_hosts.json``/
+``config_extensions.json`` (several hosts or extensions can share one
+file), and over the *whole file* for ``config_email.json`` (there's only
+one email config per file): each loader resolves only what it's about to
+read, never eagerly. Resolving eagerly was the obvious implementation
+and it was wrong - back when everything lived in one config.json, one
+unset SSH password made an unrelated host, or even email, fail to load.
+A deployment is allowed to have half its secrets present; only the half
+it actually uses has to be.
 
 Deliberately fails loudly, at load time, with a message naming the file
 and the exact key - rather than returning ``{}`` or an empty string and
@@ -49,11 +57,12 @@ domain logic. The rule for which exception: ``KeyError`` when something
 required is absent (a config key, an environment variable), ``ValueError``
 when it's present but unusable (malformed JSON, an empty secret).
 
-Add a loader function per config section as capabilities need them,
-following ``load_email_config`` below: read the section, resolve it with
-``resolve_section``, validate what's required, return a frozen dataclass. Domain code should take that
-dataclass, never a raw dict - that way a typo in config.json is caught
-here instead of at the call site.
+Add a loader function as capabilities need one, following
+``load_email_config`` below: read the file, resolve it (or the one entry
+you need) with ``resolve_section``, validate what's required, return a
+frozen dataclass. Domain code should take that dataclass, never a raw
+dict - that way a typo in a config file is caught here instead of at the
+call site.
 """
 
 from __future__ import annotations
@@ -175,14 +184,14 @@ def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:
     if value is None:
         raise KeyError(
             f"Config file {config_path} refers to ${{{name}}} at '{where}', but "
-            f"{name} is not set in the environment. Add it to mcp_server/.env "
+            f"{name} is not set in the environment. Add it to mcp_server/src/secrets/ "
             f"(or however this deployment supplies secrets)."
         )
     if value == "":
         # Almost always "SMTP_PASSWORD=" left blank in .env rather than a
         # genuinely empty secret - and a blank password fails later at
         # SMTP login with a far less obvious message. Write "" directly in
-        # config.json if an empty value is really what you want.
+        # the config file if an empty value is really what you want.
         raise ValueError(
             f"Config file {config_path} refers to ${{{name}}} at '{where}', but "
             f"{name} is set to an empty string. Give it a value, or put a "
@@ -228,15 +237,15 @@ def resolve_section(value: Any, *, where: str, config_path: Path) -> Any:
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
-    """Read and parse the config file. Raises on anything unusable.
+    """Read and parse one config file. Raises on anything unusable.
 
     Returns the document exactly as written, ``${VAR}`` placeholders and
     all; a loader resolves the part it needs with ``resolve_section``.
     """
     if not config_path.exists():
         raise FileNotFoundError(
-            f"Config file not found: {config_path}. Copy config.json.example "
-            f"and point CONFIG_PATH at it."
+            f"Config file not found: {config_path}. Copy {config_path.name}.example "
+            f"to {config_path.name} in the same folder and fill it in."
         )
     try:
         with config_path.open(encoding="utf-8") as handle:
@@ -249,9 +258,10 @@ def load_config(config_path: Path) -> dict[str, Any]:
     return data
 
 
-def _require(section: dict[str, Any], key: str, *, section_name: str, config_path: Path) -> Any:
+def _require(section: dict[str, Any], key: str, *, prefix: str, config_path: Path) -> Any:
     if key not in section:
-        raise KeyError(f"Config file {config_path} is missing '{section_name}.{key}'")
+        full_key = f"{prefix}.{key}" if prefix else key
+        raise KeyError(f"Config file {config_path} is missing '{full_key}'")
     return section[key]
 
 
@@ -285,7 +295,7 @@ IMPLICIT_TLS_PORT = 465
 
 
 def load_email_config(config_path: Path) -> EmailConfig:
-    """Parse the "email" section into an EmailConfig.
+    """Parse config_email.json into an EmailConfig.
 
     ``from`` is a Python keyword, so it can't be a dataclass field name -
     it's read from the JSON as ``from`` and exposed as ``from_address``.
@@ -300,16 +310,11 @@ def load_email_config(config_path: Path) -> EmailConfig:
     ``allowed_recipient_domains``) has no standing recipient list and
     shouldn't have to invent one to pass validation.
     """
-    config = load_config(config_path)
-    section = config.get("email")
-    if not isinstance(section, dict):
-        raise KeyError(f"Config file {config_path} is missing an 'email' section")
-    # Only this section: an unset ${DESKTOP_SSH_PASSWORD} under `hosts`
-    # has nothing to do with sending mail and must not stop it.
-    section = resolve_section(section, where="email", config_path=config_path)
+    section = load_config(config_path)
+    section = resolve_section(section, where="", config_path=config_path)
 
     def required(key: str) -> Any:
-        return _require(section, key, section_name="email", config_path=config_path)
+        return _require(section, key, prefix="", config_path=config_path)
 
     def as_string_list(value: Any) -> list[str]:
         # A bare string is the obvious thing to write for one recipient (or
@@ -345,7 +350,7 @@ def load_email_config(config_path: Path) -> EmailConfig:
         # plaintext or unverified connection would send the password in the
         # clear, and nothing about the run would say so.
         raise ValueError(
-            f"Config file {config_path}: 'email.security' is {security!r}, "
+            f"Config file {config_path}: 'security' is {security!r}, "
             f"expected one of {', '.join(SUPPORTED_EMAIL_SECURITY)}."
         )
 
@@ -365,12 +370,9 @@ SUPPORTED_HOST_OS = ("linux", "windows")
 
 
 def _hosts_section(config_path: Path) -> dict[str, Any]:
-    """The raw "hosts" mapping, placeholders still unresolved."""
-    config = load_config(config_path)
-    section = config.get("hosts")
-    if not isinstance(section, dict):
-        raise KeyError(f"Config file {config_path} is missing a 'hosts' section")
-    return section
+    """The raw host-inventory mapping, placeholders still unresolved -
+    config_hosts.json's whole content."""
+    return load_config(config_path)
 
 
 def _build_host(name: str, entry: Any, *, config_path: Path) -> HostConfig:
@@ -384,19 +386,19 @@ def _build_host(name: str, entry: Any, *, config_path: Path) -> HostConfig:
     the one that quietly lost a check.
     """
     if not isinstance(entry, dict):
-        raise ValueError(f"Config file {config_path}: 'hosts.{name}' must be an object")
+        raise ValueError(f"Config file {config_path}: '{name}' must be an object")
 
-    # Resolved under the entry's full path, so the message still reads
-    # 'hosts.desktop.password' and points at a findable line.
-    entry = resolve_section(entry, where=f"hosts.{name}", config_path=config_path)
+    # Resolved under the entry's own name, so the message still reads
+    # 'desktop.password' and points at a findable line.
+    entry = resolve_section(entry, where=name, config_path=config_path)
 
     def required(key: str) -> Any:
-        return _require(entry, key, section_name=f"hosts.{name}", config_path=config_path)
+        return _require(entry, key, prefix=name, config_path=config_path)
 
     host_os = str(required("os")).strip().lower()
     if host_os not in SUPPORTED_HOST_OS:
         raise ValueError(
-            f"Config file {config_path}: 'hosts.{name}.os' is {host_os!r}, "
+            f"Config file {config_path}: '{name}.os' is {host_os!r}, "
             f"expected one of {', '.join(SUPPORTED_HOST_OS)}."
         )
 
@@ -405,9 +407,7 @@ def _build_host(name: str, entry: Any, *, config_path: Path) -> HostConfig:
     if not key and not password:
         # Failing here beats failing at connect time, where it surfaces
         # as a generic auth error and looks like a wrong password.
-        raise KeyError(
-            f"Config file {config_path}: 'hosts.{name}' needs a 'key' or a 'password'."
-        )
+        raise KeyError(f"Config file {config_path}: '{name}' needs a 'key' or a 'password'.")
 
     return HostConfig(
         name=name,
@@ -421,7 +421,7 @@ def _build_host(name: str, entry: Any, *, config_path: Path) -> HostConfig:
 
 
 def load_hosts_config(config_path: Path) -> dict[str, HostConfig]:
-    """Parse the "hosts" section into HostConfigs keyed by name.
+    """Parse config_hosts.json into HostConfigs keyed by name.
 
     This one really does need every host's secrets present, because it
     claims to return every host - a caller listing the inventory would
@@ -430,10 +430,7 @@ def load_hosts_config(config_path: Path) -> dict[str, HostConfig]:
     sibling.
     """
     section = _hosts_section(config_path)
-    return {
-        name: _build_host(name, entry, config_path=config_path)
-        for name, entry in section.items()
-    }
+    return {name: _build_host(name, entry, config_path=config_path) for name, entry in section.items()}
 
 
 def load_host_config(config_path: Path, name: str) -> HostConfig:
@@ -458,31 +455,13 @@ def load_host_config(config_path: Path, name: str) -> HostConfig:
 
 # --- extensions ----------------------------------------------------------
 # Mirrors the "hosts" loaders immediately above: per-entry resolution, and
-# a broken sibling can't take down the others. One deliberate difference -
-# see _extensions_section below.
+# a broken sibling can't take down the others.
 
 
 def _extensions_section(config_path: Path) -> dict[str, Any]:
-    """The raw "extensions" mapping, placeholders still unresolved.
-
-    Unlike ``_hosts_section``, an entirely absent key returns ``{}``
-    instead of raising. ``load_hosts_config``/``load_host_config`` are
-    only ever called lazily, when some tool call actually needs a host,
-    so a deployment that never touches SSH never has to satisfy "hosts".
-    Extensions are different: ``infra/extensions.py`` calls
-    ``load_extensions_config`` unconditionally on every startup, before a
-    single tool has been requested. Raising on an absent section would
-    mean every config.json written before this feature existed - which
-    is all of them - fails to start the moment this ships. Absent has to
-    mean "none configured", not "config is broken"; a section that IS
-    present but malformed still raises, same as everywhere else in this
-    module.
-    """
-    config = load_config(config_path)
-    section = config.get("extensions", {})
-    if not isinstance(section, dict):
-        raise ValueError(f"Config file {config_path}: 'extensions' must be an object")
-    return section
+    """The raw extensions mapping, placeholders still unresolved -
+    config_extensions.json's whole content."""
+    return load_config(config_path)
 
 
 def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionConfig:
@@ -500,24 +479,24 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
     both absent is rejected outright rather than guessed at.
     """
     if not isinstance(entry, dict):
-        raise ValueError(f"Config file {config_path}: 'extensions.{id_}' must be an object")
+        raise ValueError(f"Config file {config_path}: '{id_}' must be an object")
 
-    entry = resolve_section(entry, where=f"extensions.{id_}", config_path=config_path)
+    entry = resolve_section(entry, where=id_, config_path=config_path)
 
     def required(key: str) -> Any:
-        return _require(entry, key, section_name=f"extensions.{id_}", config_path=config_path)
+        return _require(entry, key, prefix=id_, config_path=config_path)
 
     has_command = "command" in entry
     has_url = "url" in entry
     if has_command and has_url:
         raise ValueError(
-            f"Config file {config_path}: 'extensions.{id_}' has both 'command' and 'url' - "
+            f"Config file {config_path}: '{id_}' has both 'command' and 'url' - "
             f"a stdio extension (spawned as a subprocess) uses 'command' and optionally "
             f"'args'; an http extension (already running elsewhere) uses 'url'. Remove one."
         )
     if not has_command and not has_url:
         raise ValueError(
-            f"Config file {config_path}: 'extensions.{id_}' needs either 'command' (to launch "
+            f"Config file {config_path}: '{id_}' needs either 'command' (to launch "
             f"a stdio extension) or 'url' (to connect to an already-running http extension)."
         )
 
@@ -527,18 +506,12 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
     if has_url:
         url = str(required("url")).strip()
         if not url:
-            raise ValueError(f"Config file {config_path}: 'extensions.{id_}.url' must not be empty")
-        return ExtensionConfig(
-            id=id_,
-            label=label,
-            description=description,
-            transport="http",
-            url=url,
-        )
+            raise ValueError(f"Config file {config_path}: '{id_}.url' must not be empty")
+        return ExtensionConfig(id=id_, label=label, description=description, transport="http", url=url)
 
     args = entry.get("args", [])
     if not isinstance(args, list):
-        raise ValueError(f"Config file {config_path}: 'extensions.{id_}.args' must be a list")
+        raise ValueError(f"Config file {config_path}: '{id_}.args' must be a list")
 
     return ExtensionConfig(
         id=id_,
@@ -551,12 +524,10 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
 
 
 def load_extensions_config(config_path: Path) -> dict[str, ExtensionConfig]:
-    """Parse the "extensions" section into ExtensionConfigs keyed by id.
+    """Parse config_extensions.json into ExtensionConfigs keyed by id.
 
-    Called once at startup for the full set - see the note on
-    ``_extensions_section`` for why a missing section is empty rather than
-    an error, and ``_build_extension`` for why one broken entry doesn't
-    stop the rest from loading.
+    Called once at startup for the full set - see ``_build_extension``
+    for why one broken entry doesn't stop the rest from loading.
     """
     section = _extensions_section(config_path)
     return {id_: _build_extension(id_, entry, config_path=config_path) for id_, entry in section.items()}
@@ -580,26 +551,24 @@ def _write_config(config_path: Path, data: dict[str, Any]) -> None:
 
 
 def save_extension_config(config_path: Path, config: ExtensionConfig) -> None:
-    """Insert or overwrite one entry under config.json's "extensions"
-    section, leaving every other section and entry untouched.
+    """Insert or overwrite one entry in config_extensions.json, leaving
+    every other entry untouched.
 
     Reads with ``load_config`` (not a loader that resolves placeholders),
-    so an unrelated ``${VAR}`` elsewhere in the file - in ``email`` or
-    another extension's ``args`` - passes through byte-for-byte instead
-    of being baked in as its resolved value. ``config`` itself is
-    expected to already hold whatever it wants written literally (this
-    is the shape ``infra/extensions.py``'s runtime ``add_extension``
-    passes straight from an HTTP request body, which never contains
-    ``${VAR}`` placeholders to begin with).
+    so an unrelated ``${VAR}`` in another extension's ``args`` passes
+    through byte-for-byte instead of being baked in as its resolved
+    value. ``config`` itself is expected to already hold whatever it
+    wants written literally (this is the shape ``infra/extensions.py``'s
+    runtime ``add_extension`` passes straight from an HTTP request body,
+    which never contains ``${VAR}`` placeholders to begin with).
 
-    Written by transport: a stdio config's ``command``/``args`` for an
-    http config, and just ``url``, so a re-read through
+    Written by transport: a stdio config's ``command``/``args``, or for
+    an http config just ``url``, so a re-read through
     ``load_extensions_config`` gets exactly what ``_build_extension``
     expects for that transport - no leftover empty ``command``/``url``
     from the other branch's field defaults.
     """
     data = load_config(config_path)
-    section = data.setdefault("extensions", {})
 
     entry: dict[str, Any] = {"label": config.label, "description": config.description}
     if config.transport == "http":
@@ -607,19 +576,54 @@ def save_extension_config(config_path: Path, config: ExtensionConfig) -> None:
     else:
         entry["command"] = config.command
         entry["args"] = config.args
-    section[config.id] = entry
+    data[config.id] = entry
 
     _write_config(config_path, data)
 
 
 def delete_extension_config(config_path: Path, extension_id: str) -> None:
-    """Remove one entry from config.json's "extensions" section.
+    """Remove one entry from config_extensions.json.
 
-    Idempotent - removing an id that's already absent (or an entirely
-    absent "extensions" section) is not an error, since the caller's
-    goal ("this id must not be in config.json") is already true.
+    Idempotent - removing an id that's already absent is not an error,
+    since the caller's goal ("this id must not be configured") is
+    already true.
     """
     data = load_config(config_path)
-    section = data.setdefault("extensions", {})
-    section.pop(extension_id, None)
+    data.pop(extension_id, None)
     _write_config(config_path, data)
+
+
+# --- capabilities ----------------------------------------------------------
+# Which built-in capabilities (mcp_server/capabilities/<name>/) are
+# enabled. Read once at startup by run.py, which skips a disabled
+# capability's tool-registering import entirely - see that module.
+
+
+def load_capabilities_config(config_path: Path) -> dict[str, dict[str, Any]]:
+    """Read config_capabilities.json: which capabilities are enabled.
+
+    Missing file -> {} (every capability enabled) rather than raising,
+    unlike every loader above. Every capability was always enabled before
+    this file existed, so a deployment that never creates it - or hasn't
+    updated past this feature yet - must keep behaving exactly as it did,
+    not fail to start.
+    """
+    if not config_path.exists():
+        return {}
+    return load_config(config_path)
+
+
+def capability_enabled(config: dict[str, dict[str, Any]], name: str) -> bool:
+    """True unless `name` is present in `config` with `"enabled": false`.
+
+    A capability absent from the file - the common case, since most
+    deployments only ever write down the one they want to turn *off* - is
+    enabled. Widening that default (treating an unlisted capability as
+    disabled) would mean every capability vanishes the moment this file
+    is created for any reason, which is the toggle equivalent of the
+    "absent extensions section" bug this same module used to have.
+    """
+    entry = config.get(name, {})
+    if not isinstance(entry, dict):
+        return True
+    return bool(entry.get("enabled", True))
