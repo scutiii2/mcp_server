@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from src.logging_setup import configure_logging
+from src.utils.logging_setup import configure_logging
 
 
 def test_configure_logging_creates_a_rotating_file_and_writes_to_it(tmp_path):

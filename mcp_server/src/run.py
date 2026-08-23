@@ -24,7 +24,7 @@ for _env_file in sorted(_SECRETS_DIR.glob("*.env")):
 
 from src.config import settings  # noqa: E402
 from src.infra.app_config import capability_enabled, load_capabilities_config  # noqa: E402
-from src.logging_setup import configure_logging  # noqa: E402
+from src.utils.logging_setup import configure_logging  # noqa: E402
 from src.server import mcp  # noqa: E402
 
 # Before anything else runs, so uvicorn's own request/error logging (once

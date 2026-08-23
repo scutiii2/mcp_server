@@ -1,6 +1,6 @@
 """Wires Python logging to disk. Called once, from run.py's main().
 
-Mirrors chat_app/src/chat_app/logging_setup.py - see that module's
+Mirrors chat_app/src/utils/logging_setup.py - see that module's
 docstring for the reasoning (root logger so uvicorn's own request/error
 logs land here too; a StreamHandler alongside the file handler because
 attaching any handler to the root logger suppresses Python's stderr

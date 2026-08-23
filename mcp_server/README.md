@@ -41,16 +41,26 @@ Both loaded once at boot by `src/run.py`:
 - **`src/configs/*.json`** - structure, mostly committed. See
   [`src/configs/README.md`](src/configs/README.md).
 
+## Code layout
+
+See [`src/README.md`](src/README.md) for the full map - what lives
+where, and where new code goes.
+
 ## Capabilities
 
 Each tool this server offers lives under its own folder in
-`src/capabilities/`, with its own README:
+`src/capabilities/`, with its own README - see
+[`src/capabilities/README.md`](src/capabilities/README.md) for the
+shape every capability follows and how to add a new one:
 
 - [`capabilities/host_health/README.md`](src/capabilities/host_health/README.md)
 - [`capabilities/otp/README.md`](src/capabilities/otp/README.md)
 
 Every capability can be turned off without touching code - see
 `src/configs/README.md`'s section on `config_capabilities.json`.
+
+Client-readable URI resources follow the same pattern one level over -
+see [`src/resources/README.md`](src/resources/README.md).
 
 ## Runtime state
 
