@@ -1,9 +1,9 @@
 @echo off
-REM Change directory to mcp_server
-cd /d "%~dp0mcp_server"
-
 REM Activate the virtual environment
 call .\venv_mcp\Scripts\activate
+
+REM Change directory to mcp_server
+cd /d "%~dp0mcp_server"
 
 :run
 REM Run the MCP server

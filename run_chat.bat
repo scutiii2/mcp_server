@@ -1,13 +1,16 @@
 @echo off
-REM Change directory to mcp_server
-cd /d "%~dp0chat_app"
-
 REM Open the chat page in default browser (once, not on every restart)
 REM start http://127.0.0.1:5000
 
+REM Activate the virtual environment
+call .\venv_chat\Scripts\activate
+
+REM Change directory to mcp_server
+cd /d "%~dp0chat_app"
+
 :run
-REM Run the Server Stopped
-.\.venv\Scripts\python.exe -m run
+REM Run the MCP server
+py -m src.run
 
 echo.
 echo ----------------------------------------
