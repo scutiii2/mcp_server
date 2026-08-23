@@ -62,6 +62,12 @@ with capability_registry.capturing(mcp, "host_health"):
 with capability_registry.capturing(mcp, "otp"):
     from src.capabilities.otp import tool as otp_tool  # noqa: E402,F401
 
+with capability_registry.capturing(mcp, "server_manager"):
+    from src.capabilities.server_manager import tool as server_manager_tool  # noqa: E402,F401
+
+with capability_registry.capturing(mcp, "crafty"):
+    from src.capabilities.crafty import tool as crafty_tool  # noqa: E402,F401
+
 for _name in capability_registry.names():
     if not capability_enabled(_capabilities_config, _name):
         capability_registry.set_enabled(mcp, _name, False)

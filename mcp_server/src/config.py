@@ -82,6 +82,25 @@ class Settings:
     # errors.report() writes per-reference error files. Relative to CWD by
     # default, same convention as the paths above.
     log_dir: Path = Path(_env("MCP_LOG_DIR", "src/logs"))
+    # Default Crafty Controller URL, used by crafty_world_register_tool
+    # when a call doesn't supply its own base_url - the common case for a
+    # deployment where one Crafty instance hosts every registered world.
+    # Empty (the default) means every registration must name a base_url
+    # explicitly; there is no sensible URL to fall back to otherwise.
+    crafty_default_base_url: str = _env("CRAFTY_BASE_URL", "")
+    # Whether to verify the Crafty instance's TLS certificate. True by
+    # default like every other outbound connection this server makes;
+    # only turn it off for a self-signed cert on a trusted LAN.
+    crafty_verify_ssl: bool = _env("CRAFTY_VERIFY_SSL", "true").strip().lower() != "false"
+    # SQLite file backing infra/crafty_registry.py - relative to CWD by
+    # default, same convention as otp_path. Owned exclusively by
+    # capabilities/crafty/: this is where each registered world's API
+    # token lives, deliberately never in a config_*.json file (see
+    # infra/app_config.py's module docstring on why config never holds
+    # secrets directly).
+    crafty_worlds_db_path: Path = Path(
+        _env("CRAFTY_WORLDS_DB_PATH", "src/capabilities/crafty/data/crafty_worlds.db")
+    )
 
     @property
     def hosts_config_path(self) -> Path:

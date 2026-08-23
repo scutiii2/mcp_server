@@ -212,7 +212,11 @@ def test_commands_api_returns_the_registry_as_json(tmp_path, monkeypatch):
                 name="get_otp",
                 description="generate otp",
                 tool_name="request_otp_tool",
-                params=[commands.CommandParam(name="recipient", required=False, type="string")],
+                params=[
+                    commands.CommandParam(
+                        name="recipient", required=False, type="string", has_default=True, default="ops@example.com"
+                    )
+                ],
             )
         }
     }
@@ -224,7 +228,15 @@ def test_commands_api_returns_the_registry_as_json(tmp_path, monkeypatch):
         "otp": {
             "get_otp": {
                 "description": "generate otp",
-                "params": [{"name": "recipient", "required": False, "type": "string"}],
+                "params": [
+                    {
+                        "name": "recipient",
+                        "required": False,
+                        "type": "string",
+                        "has_default": True,
+                        "default": "ops@example.com",
+                    }
+                ],
             }
         }
     }

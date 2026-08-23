@@ -4,5 +4,11 @@
   },
   "otp": {
     "enabled": false
+  },
+  "server_manager": {
+    "enabled": false
+  },
+  "crafty": {
+    "enabled": true
   }
 }

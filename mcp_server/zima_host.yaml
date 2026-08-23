@@ -29,6 +29,15 @@ services:
       # EDIT THIS: wherever you copied this folder's contents to on the
       # NAS - same idea as the Twinks volume line, just a different path.
       - "/media/YOUR-HDD/mcp_server:/app"
+      # Lets the server_manager capability (start/stop/restart/list) talk
+      # to the SAME Docker daemon every other app on this box runs under,
+      # via docker.from_env() - not a remote or nested daemon. Without
+      # this mount, its tools fail with a message saying so; nothing else
+      # in the server is affected. This grants whoever can reach this
+      # server's port 8010 full control over every container on the
+      # NAS (see the no-authentication WARNING below) - keep this port
+      # off anything but your LAN.
+      - "/var/run/docker.sock:/var/run/docker.sock"
     working_dir: /app
     entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
     restart: always

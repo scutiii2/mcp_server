@@ -2,7 +2,7 @@ const history = [];
 let providersById = {};  // id -> full provider entry (incl. models), used to populate the model dropdown and look up model labels
 
 // --- Slash-command autocomplete ------------------------------------------
-let commandsRegistry = {}; // capability -> { toolId: { description, params: [{name, required, type}] } }
+let commandsRegistry = {}; // capability -> { toolId: { description, params: [{name, required, type, has_default, default}] } }
 let currentSuggestions = []; // [{ stage: 'capability'|'tool'|'param', text, display, hint }]
 let activeSuggestionIndex = -1;
 
@@ -408,7 +408,22 @@ function computeCommandSuggestions(value) {
   return tool.params
     .filter(p => !typedNames.has(p.name) && p.name.startsWith(currentToken))
     .sort((a, b) => Number(b.required) - Number(a.required) || a.name.localeCompare(b.name))
-    .map(p => ({ stage: 'param', text: `${p.name}=`, display: `${p.name}=`, hint: p.required ? 'required' : 'optional' }));
+    .map(p => ({ stage: 'param', text: `${p.name}=`, display: `${p.name}=`, hint: paramHint(p) }));
+}
+
+// 'required', or 'optional' with the schema's default value spelled out
+// so a person doesn't have to go check the tool's docstring for what
+// omitting a param actually does.
+function paramHint(param) {
+  if (param.required) return 'required';
+  if (!param.has_default) return 'optional';
+  return `optional, default: ${formatDefaultValue(param.default)}`;
+}
+
+function formatDefaultValue(value) {
+  if (value === null || value === undefined) return 'none';
+  if (typeof value === 'string') return value === '' ? '""' : value;
+  return JSON.stringify(value);
 }
 
 function renderCommandSuggestions(suggestions) {
@@ -450,9 +465,16 @@ function updateCommandSuggestions() {
 function moveSuggestionActive(delta) {
   if (!currentSuggestions.length) return;
   activeSuggestionIndex = (activeSuggestionIndex + delta + currentSuggestions.length) % currentSuggestions.length;
-  [...document.getElementById('cmd-suggestions').children].forEach((li, index) => {
+  const items = [...document.getElementById('cmd-suggestions').children];
+  items.forEach((li, index) => {
     li.classList.toggle('active', index === activeSuggestionIndex);
   });
+  // The list scrolls internally (max-height + overflow-y: auto - see
+  // styles.css) - without this, arrowing past the visible rows moves
+  // the highlight off-screen instead of following it into view.
+  // block: 'nearest' only scrolls when the row isn't already fully
+  // visible, so it does the right thing moving in either direction.
+  items[activeSuggestionIndex]?.scrollIntoView({ block: 'nearest' });
 }
 
 function acceptSuggestion(item) {

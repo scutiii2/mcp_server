@@ -83,6 +83,32 @@ def test_build_command_registry_reads_built_in_commands_and_their_param_schemas(
     assert {p.name: p.required for p in entry.params} == {"otp_id": True, "code": True}
 
 
+def test_build_command_registry_captures_an_optional_params_default_value():
+    tool = _tool(
+        "register_tool",
+        input_schema={
+            "properties": {
+                "name": {"type": "string"},
+                "base_url": {"type": "string", "default": None},
+                "verify_ssl": {"type": "boolean", "default": True},
+            },
+            "required": ["name"],
+        },
+    )
+    specs = [{"capability": "widgets", "name": "register", "description": "register", "tool_name": "register_tool"}]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ):
+        registry = commands.build_command_registry([])
+
+    by_name = {p.name: p for p in registry["widgets"]["register"].params}
+    assert by_name["name"].has_default is False
+    assert by_name["base_url"].has_default is True
+    assert by_name["base_url"].default is None
+    assert by_name["verify_ssl"].has_default is True
+    assert by_name["verify_ssl"].default is True
+
+
 def test_build_command_registry_auto_registers_enabled_extension_tools():
     ext_tools = _otp_tools() + [
         _tool(

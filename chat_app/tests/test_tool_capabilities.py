@@ -18,6 +18,19 @@ def test_known_builtin_tools_map_to_their_capability_id():
     assert capability_for_tool("verify_otp_tool") == "otp"
 
 
+def test_crafty_tools_map_to_the_crafty_capability_id():
+    assert capability_for_tool("crafty_world_register") == "crafty"
+    assert capability_for_tool("crafty_world_list") == "crafty"
+    assert capability_for_tool("crafty_world_start") == "crafty"
+    assert capability_for_tool("crafty_world_stop") == "crafty"
+    assert capability_for_tool("crafty_world_restart") == "crafty"
+    assert capability_for_tool("crafty_world_send_command") == "crafty"
+    assert capability_for_tool("crafty_world_get_status") == "crafty"
+    assert capability_for_tool("crafty_set_default_base_url") == "crafty"
+    assert capability_for_tool("crafty_world_remove") == "crafty"
+    assert capability_for_tool("crafty_ping_base_url") == "crafty"
+
+
 def test_unmapped_tool_falls_back_to_other_rather_than_raising():
     assert capability_for_tool("some_future_tool_not_in_the_map") == "other"
 
@@ -41,6 +54,7 @@ def test_tool_and_resource_namespaces_are_independent():
 def test_label_for_capability_returns_the_display_label():
     assert label_for_capability("host_health") == "Host Health"
     assert label_for_capability("otp") == "OTP"
+    assert label_for_capability("crafty") == "Crafty"
     assert label_for_capability("other") == "Other"
 
 

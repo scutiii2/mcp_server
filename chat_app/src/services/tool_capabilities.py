@@ -46,6 +46,16 @@ _TOOL_CAPABILITIES: dict[str, str] = {
     "get_host_health_tool": "host_health",
     "request_otp_tool": "otp",
     "verify_otp_tool": "otp",
+    "crafty_world_register": "crafty",
+    "crafty_world_list": "crafty",
+    "crafty_world_start": "crafty",
+    "crafty_world_stop": "crafty",
+    "crafty_world_restart": "crafty",
+    "crafty_world_send_command": "crafty",
+    "crafty_world_get_status": "crafty",
+    "crafty_set_default_base_url": "crafty",
+    "crafty_world_remove": "crafty",
+    "crafty_ping_base_url": "crafty",
 }
 
 # Id used for any built-in tool with no entry above - keeps a future
@@ -94,6 +104,7 @@ def resource_capability_ids() -> set[str]:
 _CAPABILITY_LABELS: dict[str, str] = {
     "host_health": "Host Health",
     "otp": "OTP",
+    "crafty": "Crafty",
     _FALLBACK_ID: "Other",
 }
 

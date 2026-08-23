@@ -32,6 +32,14 @@ class CommandParam:
     name: str
     required: bool
     type: str  # JSON-schema "type": "string" | "integer" | "number" | "boolean"
+    # Whether the tool's JSON schema names a default at all, and what it
+    # is - kept as two fields rather than one, since an optional param
+    # whose default genuinely is null and a schema that names no default
+    # at all both come back as `default=None` otherwise, and the
+    # suggestion dropdown needs to tell those apart (see
+    # pages/Chat/script.js's suggestion hint text).
+    has_default: bool = False
+    default: object = None
 
 
 @dataclass(frozen=True)
@@ -56,14 +64,27 @@ class CommandError(Exception):
     is safe to show verbatim in the chat log."""
 
 
+_NO_DEFAULT = object()  # sentinel: "default" key absent, distinct from a real default of None
+
+
 def _params_from_schema(schema: dict | None) -> list[CommandParam]:
     schema = schema or {}
     properties = schema.get("properties") or {}
     required = set(schema.get("required") or [])
-    return [
-        CommandParam(name=prop_name, required=prop_name in required, type=(prop_schema or {}).get("type", "string"))
-        for prop_name, prop_schema in properties.items()
-    ]
+    params = []
+    for prop_name, prop_schema in properties.items():
+        prop_schema = prop_schema or {}
+        default = prop_schema.get("default", _NO_DEFAULT)
+        params.append(
+            CommandParam(
+                name=prop_name,
+                required=prop_name in required,
+                type=prop_schema.get("type", "string"),
+                has_default=default is not _NO_DEFAULT,
+                default=None if default is _NO_DEFAULT else default,
+            )
+        )
+    return params
 
 
 def build_command_registry(enabled_extensions: list[str] | None) -> dict[str, dict[str, RegisteredCommand]]:

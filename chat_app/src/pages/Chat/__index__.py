@@ -73,7 +73,14 @@ def commands_api():
                 tool_id: {
                     "description": entry.description,
                     "params": [
-                        {"name": p.name, "required": p.required, "type": p.type} for p in entry.params
+                        {
+                            "name": p.name,
+                            "required": p.required,
+                            "type": p.type,
+                            "has_default": p.has_default,
+                            "default": p.default,
+                        }
+                        for p in entry.params
                     ],
                 }
                 for tool_id, entry in tools.items()
