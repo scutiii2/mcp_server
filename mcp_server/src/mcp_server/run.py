@@ -92,6 +92,7 @@ async def _serve() -> None:
             resource_count = f"unknown ({error})"
 
         from mcp_server.approval_routes import install_approval_routes
+        from mcp_server.command_routes import install_command_routes
         from mcp_server.extension_routes import install_extension_routes
         from mcp_server.infra import approvals
 
@@ -132,6 +133,10 @@ async def _serve() -> None:
         # also a plain HTTP route, same reasoning: nothing here is
         # something a model needs to call. See extension_routes.py.
         install_extension_routes(app)
+        # Where chat_app discovers which built-in tools are invocable as
+        # "/" commands - also a plain HTTP route, same reasoning. See
+        # command_routes.py.
+        install_command_routes(app)
 
         # uvicorn.Server(...).serve() rather than the uvicorn.run()
         # convenience function: run() calls asyncio.run() itself, which
