@@ -20,7 +20,12 @@ Add a new capability by:
   2. capabilities/<name>/contract.py
   3. capabilities/<name>/domain.py
   4. capabilities/<name>/tool.py
-  5. Add `from mcp_server.capabilities.<name> import tool` to run.py
+  5. capabilities/<name>/README.md - what it reads, what (if anything)
+     it owns under its own data/ or secrets/, how to toggle it off
+  6. Add a toggle entry to ../configs/config_capabilities.json and
+     config_capabilities.json.example
+  7. Gate `from mcp_server.capabilities.<name> import tool` behind
+     `capability_enabled(...)` in run.py, following host_health/otp
 
 ``otp/`` is the worked example: two tools, a domain module that imports
 only ``infra/``, and a contract whose shape carries the security property
