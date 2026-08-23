@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from chat_app.services import mcp_client
+from src.services import mcp_client
 
 
 def _tool(name: str):
@@ -36,7 +36,7 @@ def test_list_tools_with_no_filter_drops_all_extension_tools():
     """Omitted enabled_extensions is the deliberate safe default: NOT
     "allow everything" - that inversion is exactly the kind of allowlist
     bug this project has hit before, so it gets its own explicit test."""
-    with patch("chat_app.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
+    with patch("src.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
         names = [t.name for t in mcp_client.list_tools()]
 
     assert names == ["get_host_health_tool", "request_otp_tool"]
@@ -45,14 +45,14 @@ def test_list_tools_with_no_filter_drops_all_extension_tools():
 def test_list_tools_with_empty_list_also_drops_all_extension_tools():
     """Empty list must behave identically to omitted (None) - both mean
     "nothing enabled", not "everything enabled"."""
-    with patch("chat_app.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
+    with patch("src.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
         names = [t.name for t in mcp_client.list_tools(enabled_extensions=[])]
 
     assert names == ["get_host_health_tool", "request_otp_tool"]
 
 
 def test_list_tools_always_keeps_unnamespaced_builtin_tools():
-    with patch("chat_app.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
+    with patch("src.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
         names = [t.name for t in mcp_client.list_tools(enabled_extensions=["reference"])]
 
     assert "get_host_health_tool" in names
@@ -60,7 +60,7 @@ def test_list_tools_always_keeps_unnamespaced_builtin_tools():
 
 
 def test_list_tools_includes_only_the_enabled_extensions_tools():
-    with patch("chat_app.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
+    with patch("src.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
         names = [t.name for t in mcp_client.list_tools(enabled_extensions=["reference"])]
 
     assert "reference__echo" in names
@@ -69,7 +69,7 @@ def test_list_tools_includes_only_the_enabled_extensions_tools():
 
 
 def test_list_tools_with_multiple_enabled_extensions():
-    with patch("chat_app.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
+    with patch("src.services.mcp_client._list_tools_async", return_value=_mixed_tools()):
         names = {t.name for t in mcp_client.list_tools(enabled_extensions=["reference", "other_ext"])}
 
     assert names == {
@@ -113,11 +113,41 @@ def test_fetch_extensions_builds_url_from_mcp_server_base_and_returns_parsed_jso
         captured_url["url"] = url
         return _FakeResponse()
 
-    with patch("chat_app.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
         result = mcp_client.fetch_extensions()
 
     assert result == fake_payload
     assert captured_url["url"] == "http://127.0.0.1:8010/extensions"
+
+
+def test_fetch_commands_builds_url_from_mcp_server_base_and_returns_parsed_json():
+    """/commands is a sibling of /extensions on the same origin - same
+    reasoning as fetch_extensions() above."""
+    fake_payload = [
+        {"capability": "otp", "name": "get_otp", "description": "generate otp", "tool_name": "request_otp_tool"}
+    ]
+    captured_url = {}
+
+    def _fake_urlopen(url, timeout=None):
+        captured_url["url"] = url
+
+        class _FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(fake_payload).encode("utf-8")
+
+        return _FakeResponse()
+
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+        result = mcp_client.fetch_commands()
+
+    assert result == fake_payload
+    assert captured_url["url"] == "http://127.0.0.1:8010/commands"
 
 
 def _fake_response(payload):
@@ -152,7 +182,7 @@ def test_add_extension_posts_json_and_returns_parsed_status():
         captured["body"] = json.loads(request.data.decode("utf-8"))
         return _fake_response(created)
 
-    with patch("chat_app.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
         result = mcp_client.add_extension("Reference", "http://example.com/mcp", "desc")
 
     assert result == created
@@ -168,7 +198,7 @@ def test_add_extension_defaults_description_to_empty_string():
         assert body["description"] == ""
         return _fake_response({"id": "x", "label": "x", "description": "", "status": "error", "error": "boom", "tools": []})
 
-    with patch("chat_app.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
         mcp_client.add_extension("x", "http://example.com/mcp")
 
 
@@ -184,7 +214,7 @@ def test_add_extension_propagates_http_error_with_status_code_intact():
         fp=None,
     )
 
-    with patch("chat_app.services.mcp_client.urlopen", side_effect=error):
+    with patch("src.services.mcp_client.urlopen", side_effect=error):
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             mcp_client.add_extension("", "not-a-url")
 
@@ -199,7 +229,7 @@ def test_remove_extension_sends_delete_to_the_id_specific_url():
         captured["method"] = request.get_method()
         return _fake_response(None)
 
-    with patch("chat_app.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
         result = mcp_client.remove_extension("reference")
 
     assert result is None
@@ -217,7 +247,7 @@ def test_remove_extension_propagates_http_error_with_status_code_intact():
         fp=None,
     )
 
-    with patch("chat_app.services.mcp_client.urlopen", side_effect=error):
+    with patch("src.services.mcp_client.urlopen", side_effect=error):
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             mcp_client.remove_extension("unknown")
 
