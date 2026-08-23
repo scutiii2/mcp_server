@@ -1,0 +1,58 @@
+/* Confirmation modal, used in place of the browser's native confirm() -
+   see modal.js's confirmModal(). Chat-page-specific: __shared__/shared.css
+   has its own, unrelated modal system (a class-toggle ".open" pattern
+   used elsewhere, e.g. the account pages) that happens to reuse several
+   of the same plain names (.modal-overlay, .modal-message, .modal-actions)
+   - since that stylesheet loads on every page via base.html, its
+   ".modal-overlay { opacity: 0; pointer-events: none }" default (meant to
+   be toggled visible via ".open") silently applied here too, since this
+   component's create/destroy lifecycle never adds ".open" - making every
+   confirm dialog on this page invisible and unclickable despite being
+   correctly positioned in the DOM. Every class below is prefixed
+   "chat-modal-" specifically to never collide with that (or any other)
+   shared stylesheet again. */
+
+.chat-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 31, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.chat-modal-dialog {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 12px 32px rgba(20, 24, 31, 0.18);
+  font-family: -apple-system, sans-serif;
+  box-sizing: border-box;
+}
+
+.chat-modal-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin: 0 0 8px; }
+.chat-modal-message { font-size: 13px; color: #555; margin: 0 0 18px; line-height: 1.5; }
+
+.chat-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.chat-modal-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.chat-modal-btn:focus-visible { outline: 2px solid #185fa5; outline-offset: 2px; }
+
+.chat-modal-btn-cancel { background: #fff; border-color: #ccc; color: #333; }
+.chat-modal-btn-cancel:hover { background: #f5f5f4; }
+
+.chat-modal-btn-confirm { background: #185fa5; color: #fff; }
+.chat-modal-btn-confirm:hover { background: #124a80; }
+
+.chat-modal-btn-danger { background: #d9534f; color: #fff; }
+.chat-modal-btn-danger:hover { background: #c9302c; }
