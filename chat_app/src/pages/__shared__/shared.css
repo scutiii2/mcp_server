@@ -56,11 +56,14 @@ a {
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
+  align-self: flex-start;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  position: sticky;
+  top: 0;
   transition: width 0.18s ease;
 }
 
@@ -164,6 +167,7 @@ a {
   margin: 0;
   padding: 0.5rem;
   flex-grow: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;

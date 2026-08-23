@@ -33,9 +33,13 @@ body {
 .page-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   max-width: 1400px;
-  margin: 40px auto;
-  padding: 0 20px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .toprow {
@@ -47,6 +51,7 @@ body {
   border-bottom: 1px solid var(--panel-border);
   gap: 8px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 .selectors { display: flex; gap: 6px; }
 
@@ -62,8 +67,8 @@ select option:disabled { color: #aaa; }
 #model.hidden { display: none; }
 
 #log {
-  min-height: 480px;
-  max-height: 75vh;
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--panel-border);
   border-radius: 10px;
   padding: 4px;
@@ -152,7 +157,7 @@ select option:disabled { color: #aaa; }
 .msg-content pre code { background: none; padding: 0; }
 .msg-content a { color: var(--rail-user); }
 
-#row { display: flex; gap: 8px; }
+#row { display: flex; gap: 8px; flex-shrink: 0; }
 #q-wrap { position: relative; flex: 1; }
 #q {
   width: 100%;
@@ -209,7 +214,7 @@ button:hover:not(:disabled) { background: #000; }
 button:disabled { background: #a8a8a8; cursor: not-allowed; }
 
 @media (max-width: 520px) {
-  .page-content { margin: 16px auto; padding: 0 12px; }
+  .page-content { padding: 16px 12px; }
   .toprow { flex-direction: column; align-items: flex-start; }
   .msg { margin: 8px 4px; }
 }
@@ -433,12 +438,19 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
 .chat-layout {
   display: flex;
   gap: 20px;
-  align-items: flex-start;
+  /* Bounded to the viewport (minus <main>'s 2rem top/bottom padding from
+     shared.css), not left to grow with content, so the log column below
+     can flex to fill the remaining height and scroll internally instead
+     of the whole page growing taller than the viewport as messages pile
+     up - the height analog of the earlier .page-content width fix. */
+  height: calc(100vh - 4rem);
 }
 .chat-history-panel {
   width: 220px;
   flex-shrink: 0;
   padding-top: 40px;
+  height: 100%;
+  overflow-y: auto;
 }
 .sidebar-new-chat-btn {
   display: block;
@@ -494,6 +506,13 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   width: 100%;
 }
 @media (max-width: 700px) {
-  .chat-layout { flex-direction: column; }
-  .chat-history-panel { width: 100%; padding-top: 0; }
+  /* Stacked layout on narrow viewports reverts to natural document height
+     - a fixed viewport-height column doesn't make sense once the history
+     panel and chat column are on top of each other instead of side by
+     side, so this un-does the height-bounded/flex-column treatment above
+     and lets #log fall back to a plain scrollable box instead. */
+  .chat-layout { flex-direction: column; height: auto; }
+  .chat-history-panel { width: 100%; padding-top: 0; height: auto; max-height: 240px; }
+  .page-content { height: auto; }
+  #log { flex: none; min-height: 320px; max-height: 60vh; }
 }
