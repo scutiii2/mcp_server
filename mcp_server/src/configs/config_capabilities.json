@@ -1,8 +1,8 @@
 {
   "host_health": {
-    "enabled": true
+    "enabled": false
   },
   "otp": {
-    "enabled": true
+    "enabled": false
   }
 }
