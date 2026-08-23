@@ -17,9 +17,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mcp_server.infra.app_config import HostConfig
-from mcp_server.resources.host_health import domain
-from mcp_server.resources.host_health.contract import DiskUsage, HostHealth
+from src.infra.app_config import HostConfig
+from src.resources.host_health import domain
+from src.resources.host_health.contract import DiskUsage, HostHealth
 
 
 LINUX_HOST = HostConfig(name="zima", hostname="192.168.1.10", user="root", os="linux", key="/k")
@@ -231,7 +231,7 @@ def _fake_ssh(stdout: str):
 
 def test_collect_uses_proc_for_linux_hosts():
     fake = _fake_ssh(_linux_output())
-    with patch("mcp_server.resources.host_health.domain.SSHClient", return_value=fake):
+    with patch("src.resources.host_health.domain.SSHClient", return_value=fake):
         health = domain.collect(LINUX_HOST)
 
     ran = fake.__enter__.return_value.run.call_args.args[0]
@@ -241,7 +241,7 @@ def test_collect_uses_proc_for_linux_hosts():
 
 def test_collect_uses_powershell_for_windows_hosts():
     fake = _fake_ssh(WINDOWS_JSON)
-    with patch("mcp_server.resources.host_health.domain.SSHClient", return_value=fake):
+    with patch("src.resources.host_health.domain.SSHClient", return_value=fake):
         health = domain.collect(WINDOWS_HOST)
 
     ran = fake.__enter__.return_value.run.call_args.args[0]
@@ -253,7 +253,7 @@ def test_collect_is_one_round_trip():
     """Five separate commands would be five SSH round trips; the marker
     exists so it's one."""
     fake = _fake_ssh(_linux_output())
-    with patch("mcp_server.resources.host_health.domain.SSHClient", return_value=fake):
+    with patch("src.resources.host_health.domain.SSHClient", return_value=fake):
         domain.collect(LINUX_HOST)
 
     assert fake.__enter__.return_value.run.call_count == 1
@@ -264,7 +264,7 @@ def test_empty_output_reports_the_exit_status_and_stderr():
     client.__enter__.return_value.run.return_value = MagicMock(
         stdout="", stderr="Permission denied", exit_status=1
     )
-    with patch("mcp_server.resources.host_health.domain.SSHClient", return_value=client):
+    with patch("src.resources.host_health.domain.SSHClient", return_value=client):
         with pytest.raises(RuntimeError, match="Permission denied"):
             domain.collect(LINUX_HOST)
 

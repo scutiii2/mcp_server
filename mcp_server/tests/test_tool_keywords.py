@@ -1,7 +1,7 @@
 """Regression coverage: every built-in tool declares `meta["keywords"]`,
 consumed by chat_app's staged-pipeline tool filter (see
 docs/superpowers/specs/2026-08-17-ollama-staged-pipeline-design.md). Uses
-the real `mcp_server.server.mcp` FastMCP instance - importing each tool
+the real `src.server.mcp` FastMCP instance - importing each tool
 module is what runs its @mcp.tool() decorator and registers it there (see
 run.py's own comment on why these imports "look unused").
 """
@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from mcp_server.capabilities.host_health import tool as host_health_tool  # noqa: F401
-from mcp_server.capabilities.otp import tool as otp_tool  # noqa: F401
-from mcp_server.server import mcp
+from src.capabilities.host_health import tool as host_health_tool  # noqa: F401
+from src.capabilities.otp import tool as otp_tool  # noqa: F401
+from src.server import mcp
 
 
 @pytest.mark.anyio

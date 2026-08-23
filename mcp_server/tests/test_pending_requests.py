@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mcp_server.infra import pending_requests
+from src.infra import pending_requests
 
 
 def test_create_returns_an_unguessable_token(tmp_path: Path):

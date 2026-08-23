@@ -19,9 +19,9 @@ from starlette.applications import Starlette
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 from starlette.testclient import TestClient  # noqa: E402
 
-from mcp_server import config  # noqa: E402
-from mcp_server.approval_routes import install_approval_routes  # noqa: E402
-from mcp_server.infra import approvals, pending_requests  # noqa: E402
+from src import config  # noqa: E402
+from src.approval_routes import install_approval_routes  # noqa: E402
+from src.infra import approvals, pending_requests  # noqa: E402
 
 
 @pytest.fixture
@@ -42,8 +42,8 @@ def db(tmp_path: Path, monkeypatch):
     """
     path = tmp_path / "pending.db"
     patched = replace(config.settings, pending_requests_path=path)
-    monkeypatch.setattr("mcp_server.approval_routes.settings", patched)
-    monkeypatch.setattr("mcp_server.infra.approvals.settings", patched)
+    monkeypatch.setattr("src.approval_routes.settings", patched)
+    monkeypatch.setattr("src.infra.approvals.settings", patched)
     return path
 
 

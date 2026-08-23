@@ -4,8 +4,8 @@ import dataclasses
 
 import pytest
 
-from mcp_server import errors
-from mcp_server.config import settings as base_settings
+from src import errors
+from src.config import settings as base_settings
 
 
 @pytest.fixture(autouse=True)

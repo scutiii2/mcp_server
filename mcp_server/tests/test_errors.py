@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 
-from mcp_server import errors
-from mcp_server.config import settings as base_settings
+from src import errors
+from src.config import settings as base_settings
 
 
 def test_report_returns_reference_and_logs_full_detail(monkeypatch, tmp_path, caplog):

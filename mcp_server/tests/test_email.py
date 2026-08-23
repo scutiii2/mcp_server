@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mcp_server.infra.app_config import EmailConfig
-from mcp_server.infra.email import send_email
+from src.infra.app_config import EmailConfig
+from src.infra.email import send_email
 
 
 CONFIG = EmailConfig(

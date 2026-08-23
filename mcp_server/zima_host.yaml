@@ -30,7 +30,7 @@ services:
       # NAS - same idea as the Twinks volume line, just a different path.
       - "/media/YOUR-HDD/mcp_server:/app"
     working_dir: /app
-    entrypoint: ["sh", "-c", "pip install . && python -m mcp_server.run"]
+    entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
     restart: always
     ports:
       - "8010:8010"
@@ -50,7 +50,7 @@ services:
       - MCP_PORT=8010
       # Every other path setting (config files under src/configs/,
       # pending_requests.db and otp.db under src/data/ and
-      # src/mcp_server/capabilities/otp/data/, logs under src/logs/)
+      # src/capabilities/otp/data/, logs under src/logs/)
       # already defaults to a path relative to the working directory,
       # which is /app here - so none of them need overriding as long as
       # this folder's whole contents (including src/) were copied in, as

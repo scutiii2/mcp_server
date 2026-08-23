@@ -8,8 +8,8 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from mcp_server import commands
-from mcp_server.command_routes import install_command_routes
+from src import commands
+from src.command_routes import install_command_routes
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def test_list_commands_returns_every_registered_command(client):
     def fn():
         ...
 
-    fn.__module__ = "mcp_server.capabilities.otp.tool"
+    fn.__module__ = "src.capabilities.otp.tool"
     commands.command(name="get_otp", description="generate otp")(fn)
 
     response = client.get("/commands")

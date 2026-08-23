@@ -16,8 +16,8 @@ from starlette.applications import Starlette
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 from starlette.testclient import TestClient  # noqa: E402
 
-from mcp_server.extension_routes import install_extension_routes  # noqa: E402
-from mcp_server.infra import extensions  # noqa: E402
+from src.extension_routes import install_extension_routes  # noqa: E402
+from src.infra import extensions  # noqa: E402
 
 
 @pytest.fixture

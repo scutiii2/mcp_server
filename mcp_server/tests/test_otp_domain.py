@@ -16,9 +16,9 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_server.capabilities.otp import domain
-from mcp_server.infra import otp
-from mcp_server.infra.app_config import EmailConfig
+from src.capabilities.otp import domain
+from src.infra import otp
+from src.infra.app_config import EmailConfig
 
 
 EMAIL = EmailConfig(
@@ -32,7 +32,7 @@ EMAIL = EmailConfig(
 
 
 def _request(tmp_path: Path, recipient: str | None = None, config: EmailConfig = EMAIL, **kwargs):
-    with patch("mcp_server.capabilities.otp.domain.send_email") as mock_send:
+    with patch("src.capabilities.otp.domain.send_email") as mock_send:
         result = domain.request_otp(
             config, db_path=tmp_path / "otp.db", recipient=recipient, **kwargs
         )
@@ -108,7 +108,7 @@ def test_the_refusal_lists_the_permitted_addresses(tmp_path: Path):
 def test_a_refused_recipient_sends_nothing_and_stores_nothing(tmp_path: Path):
     """The check has to come before the side effects, or the refusal is
     only cosmetic."""
-    with patch("mcp_server.capabilities.otp.domain.send_email") as mock_send:
+    with patch("src.capabilities.otp.domain.send_email") as mock_send:
         with pytest.raises(ValueError):
             domain.request_otp(
                 EMAIL, db_path=tmp_path / "otp.db", recipient="attacker@evil.example"
@@ -256,7 +256,7 @@ def test_an_address_containing_a_newline_is_refused(tmp_path: Path):
 def test_a_refused_domain_sends_nothing_and_stores_nothing(tmp_path: Path):
     """Same property as the address allowlist: the check is worthless if it
     happens after the mail goes out."""
-    with patch("mcp_server.capabilities.otp.domain.send_email") as mock_send:
+    with patch("src.capabilities.otp.domain.send_email") as mock_send:
         with pytest.raises(ValueError):
             domain.request_otp(
                 DOMAIN_EMAIL, db_path=tmp_path / "otp.db", recipient="alice@evil.example"
@@ -319,15 +319,15 @@ def test_a_rate_limited_request_says_how_long_to_wait(tmp_path: Path):
     in an inbox when none was sent, so it has to raise - and the wait has
     to be stated in the message, or the caller (a model, with no clock)
     retries straight into the same refusal."""
-    with patch("mcp_server.infra.otp.create", side_effect=_rate_limited()):
+    with patch("src.infra.otp.create", side_effect=_rate_limited()):
         with pytest.raises(RuntimeError, match="42 seconds"):
             _request(tmp_path)
 
 
 def test_a_rate_limited_request_sends_no_email(tmp_path: Path):
     """A limit that still sends mail limits nothing that matters."""
-    with patch("mcp_server.infra.otp.create", side_effect=_rate_limited()):
-        with patch("mcp_server.capabilities.otp.domain.send_email") as mock_send:
+    with patch("src.infra.otp.create", side_effect=_rate_limited()):
+        with patch("src.capabilities.otp.domain.send_email") as mock_send:
             with pytest.raises(RuntimeError):
                 domain.request_otp(EMAIL, db_path=tmp_path / "otp.db")
 

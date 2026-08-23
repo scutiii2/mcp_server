@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_server.infra import otp
+from src.infra import otp
 
 
 def _column(db: Path, sql: str, params: tuple) -> list:

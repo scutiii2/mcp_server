@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_server.infra import approvals, pending_requests
-from mcp_server.infra.app_config import EmailConfig
+from src.infra import approvals, pending_requests
+from src.infra.app_config import EmailConfig
 
 
 EMAIL = EmailConfig(
@@ -53,8 +53,8 @@ def capability(registry, ran):
 
 
 def _request(tmp_path: Path, payload=None):
-    with patch("mcp_server.infra.approvals.load_email_config", return_value=EMAIL), \
-         patch("mcp_server.infra.approvals.send_email") as mock_send:
+    with patch("src.infra.approvals.load_email_config", return_value=EMAIL), \
+         patch("src.infra.approvals.send_email") as mock_send:
         message = approvals.request_approval(
             "restart_service",
             payload or {"service": "nginx", "host": "web-1"},

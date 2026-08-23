@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_server.infra.app_config import (
+from src.infra.app_config import (
     EmailConfig,
     ExtensionConfig,
     capability_enabled,
@@ -60,7 +60,7 @@ VALID_EXTENSIONS = {
         "label": "Reference Extension",
         "description": "Dev fixture",
         "command": "python",
-        "args": ["-m", "mcp_server._fixtures.reference_extension_server"],
+        "args": ["-m", "src._fixtures.reference_extension_server"],
     },
     "other": {
         "label": "Other Extension",
@@ -562,7 +562,7 @@ def test_extensions_are_keyed_by_id(tmp_path: Path):
     assert set(extensions) == {"reference", "other"}
     assert extensions["reference"].id == "reference"
     assert extensions["reference"].command == "python"
-    assert extensions["reference"].args == ["-m", "mcp_server._fixtures.reference_extension_server"]
+    assert extensions["reference"].args == ["-m", "src._fixtures.reference_extension_server"]
 
 
 def test_args_default_to_empty_list(tmp_path: Path):
@@ -684,7 +684,7 @@ def test_load_extensions_config_returns_extension_config_instances(tmp_path: Pat
         description="Dev fixture",
         transport="stdio",
         command="python",
-        args=["-m", "mcp_server._fixtures.reference_extension_server"],
+        args=["-m", "src._fixtures.reference_extension_server"],
     )
 
 

@@ -14,9 +14,9 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_server.capabilities.host_health import domain
-from mcp_server.capabilities.host_health.contract import HostHealth
-from mcp_server.resources.host_health.contract import DiskUsage
+from src.capabilities.host_health import domain
+from src.capabilities.host_health.contract import HostHealth
+from src.resources.host_health.contract import DiskUsage
 
 
 HOSTS = {
@@ -44,7 +44,7 @@ def _health() -> HostHealth:
 def test_check_returns_report_and_structure(tmp_path: Path):
     """A resource read is its own text, but a model may need to compare
     figures - so the tool carries both rather than making it parse prose."""
-    with patch("mcp_server.capabilities.host_health.domain.collect", return_value=_health()):
+    with patch("src.capabilities.host_health.domain.collect", return_value=_health()):
         result = domain.check(_config(tmp_path), "zima")
 
     assert result.name == "zima"
@@ -91,8 +91,8 @@ def test_empty_hosts_file_says_so_rather_than_listing_nothing(tmp_path: Path):
 def test_contract_reuses_the_resource_models(tmp_path: Path):
     """Not a copy: two definitions of the same facts would drift silently,
     since nothing compares them."""
-    from mcp_server.capabilities.host_health import contract as capability_contract
-    from mcp_server.resources.host_health import contract as resource_contract
+    from src.capabilities.host_health import contract as capability_contract
+    from src.resources.host_health import contract as resource_contract
 
     assert capability_contract.HostHealth is resource_contract.HostHealth
     assert capability_contract.DiskUsage is resource_contract.DiskUsage

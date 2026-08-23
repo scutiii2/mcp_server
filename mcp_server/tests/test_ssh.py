@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import paramiko
 import pytest
 
-from mcp_server.infra.ssh import SSHClient, _new_client
+from src.infra.ssh import SSHClient, _new_client
 
 
 # --- shell quoting -----------------------------------------------------

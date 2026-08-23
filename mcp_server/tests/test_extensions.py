@@ -6,7 +6,7 @@ process per test. The one thing a mock can't prove is that this module
 actually speaks the real MCP client protocol correctly against a real
 process - which is the highest-risk part of this mechanism - so
 test_real_fixture_server_end_to_end below spawns the real reference
-fixture (src/mcp_server/_fixtures/reference_extension_server.py) and
+fixture (src/_fixtures/reference_extension_server.py) and
 drives the genuine connect/list/call path against it.
 """
 
@@ -24,8 +24,8 @@ import pytest
 from mcp import types
 from mcp.server.fastmcp import FastMCP
 
-from mcp_server.infra import extensions
-from mcp_server.infra.app_config import ExtensionConfig
+from src.infra import extensions
+from src.infra.app_config import ExtensionConfig
 
 
 # --- fakes for the mocked tests ------------------------------------------
@@ -509,7 +509,7 @@ def _real_extension_config() -> ExtensionConfig:
         label="Reference Extension (dev fixture)",
         description="Dev fixture",
         command=sys.executable,
-        args=["-m", "mcp_server._fixtures.reference_extension_server"],
+        args=["-m", "src._fixtures.reference_extension_server"],
     )
 
 
@@ -523,7 +523,7 @@ async def test_real_fixture_server_end_to_end(tmp_path: Path):
                     "label": "Reference Extension (dev fixture)",
                     "description": "Dev fixture",
                     "command": sys.executable,
-                    "args": ["-m", "mcp_server._fixtures.reference_extension_server"],
+                    "args": ["-m", "src._fixtures.reference_extension_server"],
                 }
             }
         ),

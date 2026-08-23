@@ -7,7 +7,7 @@ call .\venv_mcp\Scripts\activate
 
 :run
 REM Run the MCP server
-py -m mcp_server.run
+py -m src.run
 
 echo.
 echo ----------------------------------------

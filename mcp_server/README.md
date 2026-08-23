@@ -29,11 +29,11 @@ client speaking streamable HTTP.
    run_mcp_server.bat
    ```
 
-   (from the repo root; activates `venv_mcp` and runs `py -m mcp_server.run`.)
+   (from the repo root; activates `venv_mcp` and runs `py -m src.run`.)
 
 ## Configuration
 
-Both loaded once at boot by `src/mcp_server/run.py`:
+Both loaded once at boot by `src/run.py`:
 
 - **`src/secrets/*.env`** - credentials, gitignored. Copy each
   `*.env.example` to the matching `*.env`. See
@@ -44,10 +44,10 @@ Both loaded once at boot by `src/mcp_server/run.py`:
 ## Capabilities
 
 Each tool this server offers lives under its own folder in
-`src/mcp_server/capabilities/`, with its own README:
+`src/capabilities/`, with its own README:
 
-- [`capabilities/host_health/README.md`](src/mcp_server/capabilities/host_health/README.md)
-- [`capabilities/otp/README.md`](src/mcp_server/capabilities/otp/README.md)
+- [`capabilities/host_health/README.md`](src/capabilities/host_health/README.md)
+- [`capabilities/otp/README.md`](src/capabilities/otp/README.md)
 
 Every capability can be turned off without touching code - see
 `src/configs/README.md`'s section on `config_capabilities.json`.

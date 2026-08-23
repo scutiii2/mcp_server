@@ -1,5 +1,5 @@
 """Regression coverage: the otp capability's tools are registered as
-chat-invocable commands - see mcp_server/commands.py. Uses the real,
+chat-invocable commands - see src/commands.py. Uses the real,
 process-wide registry (no isolation fixture) - importing the tool
 module is what runs the @command decorator, same reasoning as
 test_tool_keywords.py's own comment on why these imports "look
@@ -7,8 +7,8 @@ unused"."""
 
 from __future__ import annotations
 
-from mcp_server import commands
-from mcp_server.capabilities.otp import tool as otp_tool  # noqa: F401
+from src import commands
+from src.capabilities.otp import tool as otp_tool  # noqa: F401
 
 
 def test_otp_commands_are_registered_under_the_otp_capability():
