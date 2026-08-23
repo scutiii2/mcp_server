@@ -1,6 +1,11 @@
 const history = [];
 let providersById = {};  // id -> full provider entry (incl. models), used to populate the model dropdown and look up model labels
 
+// --- Slash-command autocomplete ------------------------------------------
+let commandsRegistry = {}; // capability -> { toolId: { description, params: [{name, required, type}] } }
+let currentSuggestions = []; // [{ stage: 'capability'|'tool'|'param', text, display, hint }]
+let activeSuggestionIndex = -1;
+
 // --- Extensions sidebar -----------------------------------------------
 // Toggle state is convenience/UX state, not a security boundary - the
 // real enforcement is server-side (chat_app filters enabled_extensions
@@ -304,6 +309,7 @@ function buildExtensionItem(ext) {
     }
     saveEnabledExtensionsToStorage();
     updateExtToggleButtonLabel();
+    loadCommands(); // which extension tools count as commands just changed
   });
   const slider = document.createElement('span');
   slider.className = 'ext-switch-slider';
@@ -348,6 +354,138 @@ function currentEnabledExtensions() {
   // Same "still exists" filter as above - only forward ids send() can
   // actually vouch for as real, currently-known extensions.
   return [...enabledExtensions].filter(id => extensionsById[id]);
+}
+
+async function loadCommands() {
+  try {
+    const params = new URLSearchParams({ enabled_extensions: currentEnabledExtensions().join(',') });
+    const res = await fetch(`/chat/api/commands?${params}`);
+    commandsRegistry = await res.json();
+  } catch (err) {
+    // Suggestions are a convenience, not required to send a command by
+    // hand - a failed fetch just means no autocomplete this cycle.
+    commandsRegistry = {};
+  }
+}
+
+function computeCommandSuggestions(value) {
+  if (!value.startsWith('/')) return [];
+  const body = value.slice(1);
+  const spaceIndex1 = body.indexOf(' ');
+
+  if (spaceIndex1 === -1) {
+    const partial = body;
+    return Object.keys(commandsRegistry)
+      .filter(cap => cap.startsWith(partial))
+      .sort()
+      .map(cap => ({ stage: 'capability', text: cap, display: `/${cap}`, hint: '' }));
+  }
+
+  const capability = body.slice(0, spaceIndex1);
+  const tools = commandsRegistry[capability];
+  if (!tools) return [];
+  const afterCapability = body.slice(spaceIndex1 + 1);
+  const spaceIndex2 = afterCapability.indexOf(' ');
+
+  if (spaceIndex2 === -1) {
+    const partial = afterCapability;
+    return Object.keys(tools)
+      .filter(t => t.startsWith(partial))
+      .sort()
+      .map(t => ({ stage: 'tool', text: t, display: t, hint: tools[t].description }));
+  }
+
+  const toolId = afterCapability.slice(0, spaceIndex2);
+  const tool = tools[toolId];
+  if (!tool) return [];
+  const paramsText = afterCapability.slice(spaceIndex2 + 1);
+  const endsWithSpace = paramsText.endsWith(' ') || paramsText.length === 0;
+  const tokens = paramsText.trim().length ? paramsText.trim().split(/\s+/) : [];
+  const typedNames = new Set(tokens.map(t => t.split('=')[0]).filter(Boolean));
+  const currentToken = !endsWithSpace && tokens.length ? tokens[tokens.length - 1] : '';
+  if (currentToken.includes('=')) return []; // already typing a value, nothing to suggest
+
+  return tool.params
+    .filter(p => !typedNames.has(p.name) && p.name.startsWith(currentToken))
+    .sort((a, b) => Number(b.required) - Number(a.required) || a.name.localeCompare(b.name))
+    .map(p => ({ stage: 'param', text: `${p.name}=`, display: `${p.name}=`, hint: p.required ? 'required' : 'optional' }));
+}
+
+function renderCommandSuggestions(suggestions) {
+  currentSuggestions = suggestions;
+  activeSuggestionIndex = suggestions.length ? 0 : -1;
+  const list = document.getElementById('cmd-suggestions');
+  list.innerHTML = '';
+  suggestions.forEach((item, index) => {
+    const li = document.createElement('li');
+    li.className = `cmd-suggestion${index === 0 ? ' active' : ''}`;
+    const label = document.createElement('span');
+    label.textContent = item.display;
+    li.appendChild(label);
+    if (item.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'cmd-suggestion-desc';
+      hint.textContent = item.hint;
+      li.appendChild(hint);
+    }
+    li.addEventListener('mousedown', e => {
+      e.preventDefault(); // keep focus on #q instead of blurring to the <li>
+      acceptSuggestion(item);
+    });
+    list.appendChild(li);
+  });
+  list.classList.toggle('hidden', suggestions.length === 0);
+}
+
+function hideCommandSuggestions() {
+  currentSuggestions = [];
+  activeSuggestionIndex = -1;
+  document.getElementById('cmd-suggestions').classList.add('hidden');
+}
+
+function updateCommandSuggestions() {
+  renderCommandSuggestions(computeCommandSuggestions(document.getElementById('q').value));
+}
+
+function moveSuggestionActive(delta) {
+  if (!currentSuggestions.length) return;
+  activeSuggestionIndex = (activeSuggestionIndex + delta + currentSuggestions.length) % currentSuggestions.length;
+  [...document.getElementById('cmd-suggestions').children].forEach((li, index) => {
+    li.classList.toggle('active', index === activeSuggestionIndex);
+  });
+}
+
+function acceptSuggestion(item) {
+  const input = document.getElementById('q');
+  const value = input.value;
+  const body = value.slice(1);
+  const spaceIndex1 = body.indexOf(' ');
+
+  let newValue;
+  if (item.stage === 'capability') {
+    newValue = `/${item.text} `;
+  } else if (item.stage === 'tool') {
+    const capability = body.slice(0, spaceIndex1);
+    newValue = `/${capability} ${item.text} `;
+  } else {
+    const capability = body.slice(0, spaceIndex1);
+    const afterCapability = body.slice(spaceIndex1 + 1);
+    const spaceIndex2 = afterCapability.indexOf(' ');
+    const toolId = afterCapability.slice(0, spaceIndex2);
+    const paramsText = afterCapability.slice(spaceIndex2 + 1);
+    const endsWithSpace = paramsText.endsWith(' ') || paramsText.length === 0;
+    const tokens = paramsText.trim().length ? paramsText.trim().split(/\s+/) : [];
+    if (!endsWithSpace && tokens.length) {
+      tokens[tokens.length - 1] = item.text;
+    } else {
+      tokens.push(item.text);
+    }
+    newValue = `/${capability} ${toolId} ${tokens.join(' ')}`;
+  }
+
+  input.value = newValue;
+  updateCommandSuggestions();
+  input.focus();
 }
 
 function openExtPanel() {
@@ -624,6 +762,7 @@ async function send() {
 
   const sendBtn = document.getElementById('send-btn');
   input.value = '';
+  hideCommandSuggestions();
 
   if (greetingEl) {
     greetingEl.remove();
@@ -1081,7 +1220,14 @@ function applyLastUsedModel() {
   document.getElementById('model').value = lastUsedModelId;
 }
 
+document.getElementById('q').addEventListener('input', updateCommandSuggestions);
 document.getElementById('q').addEventListener('keydown', e => {
+  if (currentSuggestions.length) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveSuggestionActive(1); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); moveSuggestionActive(-1); return; }
+    if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); acceptSuggestion(currentSuggestions[activeSuggestionIndex]); return; }
+    if (e.key === 'Escape') { e.preventDefault(); hideCommandSuggestions(); return; }
+  }
   if (e.key === 'Enter') send();
 });
 document.getElementById('send-btn').addEventListener('click', send);
@@ -1108,6 +1254,9 @@ setInterval(loadProviders, 15000);
 
 loadExtensions();
 setInterval(loadExtensions, 15000); // same cadence as the provider poll above
+
+loadCommands();
+setInterval(loadCommands, 15000); // same cadence as the extension poll above
 
 loadChatHistory();
 

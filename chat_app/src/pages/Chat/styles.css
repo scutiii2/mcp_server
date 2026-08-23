@@ -165,6 +165,35 @@ select option:disabled { color: #aaa; }
   outline-offset: 1px;
 }
 
+.cmd-suggestions {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin: 0 0 4px;
+  padding: 4px;
+  list-style: none;
+  background: white;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 10;
+}
+.cmd-suggestions.hidden { display: none; }
+.cmd-suggestion {
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cmd-suggestion.active { background: var(--code-bg); }
+.cmd-suggestion-desc { color: var(--ink-muted); font-size: 12px; white-space: nowrap; }
+
 button {
   padding: 8px 18px;
   border: none;
