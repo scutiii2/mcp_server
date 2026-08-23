@@ -31,7 +31,9 @@ body {
 }
 
 .page-content {
-  max-width: 960px;
+  flex: 1;
+  min-width: 0;
+  max-width: 1400px;
   margin: 40px auto;
   padding: 0 20px;
 }
