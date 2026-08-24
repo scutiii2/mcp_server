@@ -1,20 +1,23 @@
 """Chat slash-command registry, parsing, and execution.
 
-"/<capability> <tool> key=value ..." bypasses the LLM entirely (see
+"/<id> <tool> key=value ..." bypasses the LLM entirely (see
 pages/Chat/__index__.py::chat_api) and calls an MCP tool directly. Two
 sources feed the registry:
 
   - built-in: mcp_server's @command-decorated tools, discovered via
     mcp_client.fetch_commands() and cross-referenced against
     mcp_client.list_tools() for each tool's real parameter schema.
+    Grouped by each capability's COMMAND_ID (mcp_client.fetch_capabilities()),
+    not its real capability id - see build_command_registry()'s
+    docstring for why.
   - extensions: every currently-enabled extension tool is
     auto-registered as a command under its extension id - there's no
     @command decorator possible for code chat_app doesn't own, so its
     own MCP name/description/inputSchema are used as-is.
 
-A capability id collision between a built-in and an extension keeps
-the built-in entry - extensions are runtime, third-party config in a
-way built-ins aren't.
+An id collision between a built-in's COMMAND_ID and an extension's id
+keeps the built-in entry - extensions are runtime, third-party config in
+a way built-ins aren't.
 """
 
 from __future__ import annotations
@@ -40,6 +43,12 @@ class CommandParam:
     # pages/Chat/script.js's suggestion hint text).
     has_default: bool = False
     default: object = None
+    # Known-good values for this param, when mcp_server's
+    # infra/tool_suggestions.py put an `enum` in the schema - None (not
+    # an empty list) when the schema names none, so the autocomplete can
+    # tell "no suggestions available" from "suggestions happen to be
+    # empty right now".
+    enum: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +84,7 @@ def _params_from_schema(schema: dict | None) -> list[CommandParam]:
     for prop_name, prop_schema in properties.items():
         prop_schema = prop_schema or {}
         default = prop_schema.get("default", _NO_DEFAULT)
+        enum = prop_schema.get("enum")
         params.append(
             CommandParam(
                 name=prop_name,
@@ -82,21 +92,35 @@ def _params_from_schema(schema: dict | None) -> list[CommandParam]:
                 type=prop_schema.get("type", "string"),
                 has_default=default is not _NO_DEFAULT,
                 default=None if default is _NO_DEFAULT else default,
+                enum=list(enum) if enum else None,
             )
         )
     return params
 
 
 def build_command_registry(enabled_extensions: list[str] | None) -> dict[str, dict[str, RegisteredCommand]]:
-    """{capability_id: {tool_id: RegisteredCommand}}"""
+    """{command_id: {tool_id: RegisteredCommand}}
+
+    Grouped by COMMAND_ID (mcp_server's short "/<id> <tool> ..." alias
+    for a capability - see infra/capability_metadata.py on that side),
+    not the real capability id spec["capability"] names: the real id is
+    what config_capabilities.json/PATCH /capabilities/{name} need, but
+    nothing here ever sends this grouping key back to mcp_server - it
+    only exists so a person has something short to type. Falls back to
+    the real id itself for any capability GET /capabilities didn't
+    report a command_id for (unreachable mcp_server, or a real
+    capability id this deployment's mcp_server predates).
+    """
     live_tools = {tool.name: tool for tool in mcp_client.list_tools(enabled_extensions)}
+    command_id_by_capability = {c["name"]: c.get("command_id") or c["name"] for c in mcp_client.fetch_capabilities()}
     registry: dict[str, dict[str, RegisteredCommand]] = {}
 
     for spec in mcp_client.fetch_commands():
         tool = live_tools.get(spec["tool_name"])
         params = _params_from_schema(getattr(tool, "inputSchema", None) if tool else None)
-        registry.setdefault(spec["capability"], {})[spec["name"]] = RegisteredCommand(
-            capability=spec["capability"],
+        command_id = command_id_by_capability.get(spec["capability"], spec["capability"])
+        registry.setdefault(command_id, {})[spec["name"]] = RegisteredCommand(
+            capability=command_id,
             name=spec["name"],
             description=spec["description"],
             tool_name=spec["tool_name"],

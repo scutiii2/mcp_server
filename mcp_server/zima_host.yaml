@@ -2,10 +2,18 @@
 #
 # Setup (mirrors the Twinks Discord-bot recipe):
 #   1) Copy this folder's contents (everything EXCEPT venv_mcp/,
-#      src/secrets/*.env, and __pycache__) into a folder on your ZimaOS
-#      storage. Real host/email details still live in
+#      src/secrets/*.env, __pycache__, and *.egg-info) into a folder on
+#      your ZimaOS storage. Real host/email details still live in
 #      src/configs/config_hosts.json and config_email.json - those DO
-#      get copied, the same way the old config.json did.
+#      get copied, the same way the old config.json did. *.egg-info is
+#      a `pip install -e .` byproduct from local dev, gitignored so a
+#      plain file copy brings it along unless you exclude it by hand -
+#      if it does, `pip install .` inside the container fails trying to
+#      re-stamp that already-existing directory's mtime ("Cannot update
+#      time stamp of directory ...") and loops forever under
+#      `restart: always`. Already hit this? Delete the copied
+#      *.egg-info directory and restart the container; pip regenerates
+#      it fresh.
 #   2) Edit the volume path below to point at that folder.
 #   3) Fill in every [PLACE ... HERE] placeholder below.
 #   4) App Store -> Install a customized app -> paste this -> Install.

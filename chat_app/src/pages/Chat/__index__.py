@@ -79,6 +79,7 @@ def commands_api():
                             "type": p.type,
                             "has_default": p.has_default,
                             "default": p.default,
+                            "enum": p.enum,
                         }
                         for p in entry.params
                     ],

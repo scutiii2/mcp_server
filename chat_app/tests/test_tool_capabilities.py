@@ -1,6 +1,9 @@
 """Tests for tool_capabilities.py: capability_for_tool()/
-capability_for_resource() (id lookup) and label_for_capability()/
-is_real_capability() (display + toggle-eligibility)."""
+capability_for_resource() (id lookup) and is_real_capability()
+(toggle-eligibility). Display labels are no longer this file's concern -
+they come live from mcp_server's GET /capabilities (title/command_id,
+see pages/Capabilities/__index__.py's _fetch_capabilities_meta_or_empty
+and _capability_group_meta)."""
 
 from __future__ import annotations
 
@@ -8,7 +11,6 @@ from src.services.tool_capabilities import (
     capability_for_resource,
     capability_for_tool,
     is_real_capability,
-    label_for_capability,
 )
 
 
@@ -49,20 +51,6 @@ def test_tool_and_resource_namespaces_are_independent():
     completely separate namespaces."""
     assert capability_for_resource("request_otp_tool") == "other"
     assert capability_for_tool("host_health") == "other"
-
-
-def test_label_for_capability_returns_the_display_label():
-    assert label_for_capability("host_health") == "Host Health"
-    assert label_for_capability("otp") == "OTP"
-    assert label_for_capability("crafty") == "Crafty"
-    assert label_for_capability("other") == "Other"
-
-
-def test_label_for_capability_falls_back_to_the_id_itself():
-    """A real capability id this map hasn't caught up with yet still
-    shows *something* meaningful, rather than "Other" (which would
-    misleadingly suggest it has no real id at all)."""
-    assert label_for_capability("some_future_capability") == "some_future_capability"
 
 
 def test_is_real_capability_is_true_for_known_ids():

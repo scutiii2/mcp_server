@@ -403,7 +403,18 @@ function computeCommandSuggestions(value) {
   const tokens = paramsText.trim().length ? paramsText.trim().split(/\s+/) : [];
   const typedNames = new Set(tokens.map(t => t.split('=')[0]).filter(Boolean));
   const currentToken = !endsWithSpace && tokens.length ? tokens[tokens.length - 1] : '';
-  if (currentToken.includes('=')) return []; // already typing a value, nothing to suggest
+  if (currentToken.includes('=')) {
+    // Typing a value for whichever param comes before the "=" - offer
+    // its known-good values (mcp_server's tool_suggestions.py), if any.
+    // Nothing to suggest for a param with no `enum` in its schema, same
+    // as before this stage existed.
+    const [paramName, partialValue] = currentToken.split(/=(.*)/s, 2);
+    const param = tool.params.find(p => p.name === paramName);
+    if (!param || !param.enum) return [];
+    return param.enum
+      .filter(v => v.startsWith(partialValue))
+      .map(v => ({ stage: 'value', text: `${paramName}=${v}`, display: v, hint: '' }));
+  }
 
   return tool.params
     .filter(p => !typedNames.has(p.name) && p.name.startsWith(currentToken))
@@ -503,6 +514,7 @@ function acceptSuggestion(item) {
       tokens.push(item.text);
     }
     newValue = `/${capability} ${toolId} ${tokens.join(' ')}`;
+    if (item.stage === 'value') newValue += ' '; // value is complete - move on to the next param
   }
 
   input.value = newValue;

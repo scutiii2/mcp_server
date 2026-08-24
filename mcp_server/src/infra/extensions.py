@@ -93,6 +93,7 @@ from src.infra.app_config import (
     load_extensions_config,
     save_extension_config,
 )
+from src.infra.tool_suggestions import apply_suggestions
 
 # "__" rather than "_": a tool name registered elsewhere in this codebase
 # (e.g. get_host_health_tool) already uses single underscores as ordinary
@@ -446,9 +447,14 @@ class ExtensionRegistry:
         handler by install(); it's also directly callable, which is what
         makes it testable without going through the low-level protocol
         plumbing.
+
+        apply_suggestions() runs only on our own tools, not the proxied
+        ones - infra/tool_suggestions.py's registry is keyed by our own
+        tools' names, which a proxied (namespaced) tool can never match.
         """
         assert self._mcp is not None, "install() must run before merged_list_tools()"
         own_tools = await self._mcp.list_tools()
+        apply_suggestions(own_tools)
         return [*own_tools, *self.proxied_tool_definitions()]
 
     async def merged_call_tool(self, name: str, arguments: dict[str, Any]) -> Any:

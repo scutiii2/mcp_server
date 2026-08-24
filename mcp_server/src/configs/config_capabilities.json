@@ -6,7 +6,7 @@
     "enabled": false
   },
   "server_manager": {
-    "enabled": false
+    "enabled": true
   },
   "crafty": {
     "enabled": true

@@ -11,7 +11,7 @@ other half, the same kind of justified reach ``infra/extensions.py``
 already documents for ``mcp._mcp_server`` - there is no other way to do
 this with the SDK as installed.
 
-``run.py`` wraps each capability's import block in ``capturing(mcp,
+``imports.py`` wraps each capability's import block in ``capturing(mcp,
 name)``, which diffs what got newly registered onto ``mcp`` before and
 after the block and stores those exact ``Tool``/``ResourceTemplate``
 objects - not just the bare functions. That matters: re-enabling a

@@ -7,7 +7,23 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from src.services import commands
+
+
+@pytest.fixture(autouse=True)
+def _fetch_capabilities_stub():
+    """build_command_registry() now also calls mcp_client.fetch_capabilities()
+    to map each command's real capability id to its (possibly shorter)
+    COMMAND_ID. Every test below still writes specs using the real id as
+    "capability" and expects the registry keyed by that same string - []
+    means no capability reported a COMMAND_ID, so the fallback
+    (command_id_by_capability.get(id, id)) leaves that behavior
+    unchanged. test_build_command_registry_groups_by_command_id_when_one_is_set
+    overrides this to actually exercise the substitution."""
+    with patch.object(commands.mcp_client, "fetch_capabilities", return_value=[]):
+        yield
 
 
 def _tool(name, description="", input_schema=None):
@@ -109,6 +125,37 @@ def test_build_command_registry_captures_an_optional_params_default_value():
     assert by_name["verify_ssl"].default is True
 
 
+def test_build_command_registry_captures_a_params_enum():
+    tool = _tool(
+        "get_host_health_tool",
+        input_schema={
+            "properties": {"name": {"type": "string", "enum": ["zima", "desktop"]}},
+            "required": ["name"],
+        },
+    )
+    specs = [
+        {"capability": "host_health", "name": "get_host_health", "description": "check", "tool_name": "get_host_health_tool"}
+    ]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ):
+        registry = commands.build_command_registry([])
+
+    param = registry["host_health"]["get_host_health"].params[0]
+    assert param.enum == ["zima", "desktop"]
+
+
+def test_build_command_registry_leaves_enum_none_when_the_schema_names_none():
+    tool = _tool("register_tool", input_schema={"properties": {"name": {"type": "string"}}, "required": ["name"]})
+    specs = [{"capability": "widgets", "name": "register", "description": "register", "tool_name": "register_tool"}]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ):
+        registry = commands.build_command_registry([])
+
+    assert registry["widgets"]["register"].params[0].enum is None
+
+
 def test_build_command_registry_auto_registers_enabled_extension_tools():
     ext_tools = _otp_tools() + [
         _tool(
@@ -126,6 +173,33 @@ def test_build_command_registry_auto_registers_enabled_extension_tools():
     assert entry.tool_name == "reference__echo"
     assert entry.description == "Echoes input."
     assert entry.params == [commands.CommandParam(name="text", required=True, type="string")]
+
+
+def test_build_command_registry_groups_by_command_id_when_one_is_set():
+    """mcp_server's GET /capabilities can report a shorter COMMAND_ID for
+    a capability (infra/capability_metadata.py on that side) - the
+    registry must group under that, not the real capability id, since
+    that's the whole point: a person typing "/host ..." instead of
+    "/host_health ..."."""
+    specs = [
+        {
+            "capability": "host_health",
+            "name": "get_host_health",
+            "description": "check",
+            "tool_name": "get_host_health_tool",
+        }
+    ]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[_tool("get_host_health_tool")]
+    ), patch.object(
+        commands.mcp_client,
+        "fetch_capabilities",
+        return_value=[{"name": "host_health", "enabled": True, "title": "Host Health", "command_id": "host"}],
+    ):
+        registry = commands.build_command_registry([])
+
+    assert "host_health" not in registry
+    assert "get_host_health" in registry["host"]
 
 
 def test_build_command_registry_a_built_in_capability_id_wins_over_a_same_named_extension():

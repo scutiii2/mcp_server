@@ -36,7 +36,23 @@ exposing an MCP server that already exists elsewhere.
 
 ## Add a new capability
 
-1. `mkdir capabilities/<name>/` with an `__init__.py`.
+1. `mkdir capabilities/<name>/` with an `__init__.py`. Optionally give
+   it a `TITLE` (what chat_app's Capabilities page displays) and a
+   `COMMAND_ID` (a shorter alias for chat_app's "/<id> <tool> ..."
+   slash commands, when `<name>` itself is long enough to be annoying
+   to type) - both fall back to `<name>` itself if omitted:
+
+   ```python
+   TITLE = "Host Health"
+   COMMAND_ID = "host"
+   ```
+
+   See `infra/capability_metadata.py`'s docstring for the full
+   contract - in particular, `<name>` (the folder name) stays the *real*
+   capability id everywhere else (`config_capabilities.json`'s key,
+   `commands.py`'s `@command` inference, the `capability_registry.capturing(mcp, "<name>")`
+   call in `imports.py` from step 7 below); `COMMAND_ID` is a display
+   alias for chat_app only, never a substitute for it.
 2. `capabilities/<name>/contract.py`.
 3. `capabilities/<name>/domain.py`.
 4. `capabilities/<name>/tool.py`.
@@ -52,7 +68,7 @@ exposing an MCP server that already exists elsewhere.
    { "<name>": { "enabled": true } }
    ```
 
-7. In `run.py`, wrap the import in
+7. In `imports.py`, wrap the import in
    `capability_registry.capturing(mcp, "<name>")`, following
    `host_health`/`otp`:
 

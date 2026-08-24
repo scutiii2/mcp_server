@@ -32,7 +32,7 @@ def host_health(name: str) -> str:
 2. `resources/<name>/contract.py`.
 3. `resources/<name>/domain.py`.
 4. `resources/<name>/resource.py`, decorated with `@mcp.resource("<scheme>://...")`.
-5. In `run.py`, add the import. If a capability toggle already governs
+5. In `imports.py`, add the import. If a capability toggle already governs
    this resource (see below), add it inside that capability's existing
    `capability_registry.capturing(mcp, "<name>")` block; otherwise wrap
    it in its own `capturing(mcp, "<name>")` block so it gets its own
@@ -54,7 +54,7 @@ split makes sense for a new resource too:
   dependency points this direction (deleting the capability wrapper
   should leave the resource fully working).
 - One toggle entry in `../configs/config_capabilities.json` governs
-  both - `run.py` imports the resource and the capability's tool inside
+  both - `imports.py` imports the resource and the capability's tool inside
   the *same* `capability_registry.capturing(mcp, "<name>")` block, so
   toggling `<name>` off/on live (via `PATCH /capabilities/<name>`,
   chat_app's Capabilities page) removes/restores both together.

@@ -1,4 +1,4 @@
-"""Capability-group ids and labels for MCP built-in tools and resources.
+"""Capability-group ids for MCP built-in tools and resources.
 
 This solves the same problem ``tool_titles.py`` solves for display titles,
 for a different axis: which "capability" (source-of-truth folder under
@@ -18,13 +18,19 @@ can't verify. Hand-maintaining a small map here works regardless of what
 the installed ``mcp`` version supports, and needs no changes to
 ``mcp_server`` or the wire protocol at all.
 
-The maps below hold capability **ids** (``"host_health"``, ``"otp"`` -
-the same strings mcp_server's ``GET /capabilities`` and
-``config_capabilities.json`` use), not display labels. ``label_for_capability()``
-turns an id into what the page shows; ids and labels used to be the same
-map before the toggle existed, but a toggle has to name the *real*
-capability, and "Host Health" is not a string mcp_server's API
-recognizes.
+The map below holds real capability **ids** (``"host_health"``, ``"otp"``
+- the same strings mcp_server's ``GET /capabilities``,
+``config_capabilities.json``, and ``PATCH /capabilities/{name}`` all use)
+- never a display label or a shortened alias. Those are a *different*
+concern that mcp_server now owns per-capability (``TITLE``/``COMMAND_ID``
+in each ``capabilities/<name>/__init__.py`` - see
+``infra/capability_metadata.py``'s docstring on that side) and fetches
+live from ``GET /capabilities`` (see ``pages/Capabilities/__index__.py``'s
+``_fetch_capabilities_meta_or_empty()``), precisely so this file never has
+to hand-maintain a second map that can drift from the first. Putting
+anything other than a real capability id in this map breaks the toggle
+switch for that capability - it would PATCH a name mcp_server has never
+heard of.
 
 Maintenance: every time a new capability folder is added to
 ``mcp_server/src/capabilities/`` (see that package's "Add a new
@@ -44,8 +50,10 @@ from __future__ import annotations
 # extension already and never consult this map (see __index__.py).
 _TOOL_CAPABILITIES: dict[str, str] = {
     "get_host_health_tool": "host_health",
+
     "request_otp_tool": "otp",
     "verify_otp_tool": "otp",
+
     "crafty_world_register": "crafty",
     "crafty_world_list": "crafty",
     "crafty_world_start": "crafty",
@@ -56,13 +64,18 @@ _TOOL_CAPABILITIES: dict[str, str] = {
     "crafty_set_default_base_url": "crafty",
     "crafty_world_remove": "crafty",
     "crafty_ping_base_url": "crafty",
+
+    "start_app_tool": "server_manager",
+    "stop_app_tool": "server_manager",
+    "restart_app_tool": "server_manager",
+    "list_apps_tool": "server_manager",
 }
 
 # Id used for any built-in tool with no entry above - keeps a future
 # capability visible (grouped generically) instead of disappearing if
 # this map isn't updated the same day mcp_server grows one. Not a real
 # mcp_server capability id, so it never gets a toggle switch - see
-# label_for_capability()/is_real_capability() below.
+# is_real_capability() below.
 _FALLBACK_ID = "other"
 
 
@@ -96,24 +109,6 @@ def resource_capability_ids() -> set[str]:
     an empty, pointless resource group for a tool-only capability like
     "otp"."""
     return set(_RESOURCE_CAPABILITIES.values())
-
-
-# Display label for a capability id - separate from the id itself since
-# mcp_server's API and config file only ever speak the id
-# ("host_health"), never a human label ("Host Health").
-_CAPABILITY_LABELS: dict[str, str] = {
-    "host_health": "Host Health",
-    "otp": "OTP",
-    "crafty": "Crafty",
-    _FALLBACK_ID: "Other",
-}
-
-
-def label_for_capability(capability_id: str) -> str:
-    # Falls back to the id itself (not _FALLBACK_ID's label) for a real
-    # capability id this map hasn't caught up with yet - same "don't
-    # silently disappear" reasoning as capability_for_tool()'s fallback.
-    return _CAPABILITY_LABELS.get(capability_id, capability_id)
 
 
 def is_real_capability(capability_id: str) -> bool:

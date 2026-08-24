@@ -21,8 +21,13 @@ reads `from src.foo import bar`, matching chat_app's layout.
 - **[`_fixtures/`](_fixtures/README.md)** - test-only scaffolding, not
   production code.
 - `run.py` - the entry point (`python -m src.run`, or the `mcp-server`
-  console script). Loads secrets, reads the capability toggle, wires up
-  every enabled capability/resource, and serves.
+  console script). Loads secrets, imports `imports.py` (below), and
+  serves.
+- `imports.py` - imports every built-in capability/resource onto `mcp`
+  and applies its configured enabled/disabled state. Split out of
+  `run.py` so the list (which grows by one block per capability, see
+  `capabilities/README.md`'s "Add a new capability") doesn't crowd out
+  `run.py`'s own job.
 - `server.py` - the shared `FastMCP` instance every capability/resource
   registers onto.
 - `config.py` - `Settings`, the process-level env-var-driven

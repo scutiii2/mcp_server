@@ -15,14 +15,21 @@ where that logic lives instead.
   convention and per-entry resolution behavior are documented there
   once rather than repeated per loader.
 - **`capability_registry.py`** - the live half of the capability
-  toggle: `capturing()` wraps a capability's import block in `run.py`
-  and records exactly what it registered; `set_enabled()` adds/removes
+  toggle: `capturing()` wraps a capability's import block in
+  `../imports.py` and records exactly what it registered; `set_enabled()` adds/removes
   those tools/resource templates from the running `mcp` instance.
   `capability_routes.py`'s `PATCH /capabilities/{name}` is the only
   caller outside startup. Read its module docstring for why this reaches
   into a couple of FastMCP's private dicts (no public way to remove a
   resource template) and why it captures actual `Tool`/`ResourceTemplate`
   objects rather than bare functions.
+- **`capability_metadata.py`** - the static half: `title_for()`/
+  `command_id_for()` read a capability's optional `TITLE`/`COMMAND_ID`
+  (set in that capability's own `__init__.py`), falling back to the real
+  id when unset. `title_for()`/`command_id_for()` feed `GET
+  /capabilities`; `validate_command_ids()` runs once at startup (see
+  `../imports.py`) to fail loudly if two capabilities would collide on
+  the same `COMMAND_ID`.
 - **`ssh.py`** - `SSHClient`, the one paramiko-connecting code path in
   this server. Host-key verification, auth fallback (key then
   password), and command execution all go through here.

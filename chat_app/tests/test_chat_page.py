@@ -235,12 +235,46 @@ def test_commands_api_returns_the_registry_as_json(tmp_path, monkeypatch):
                         "type": "string",
                         "has_default": True,
                         "default": "ops@example.com",
+                        "enum": None,
                     }
                 ],
             }
         }
     }
     fake_build.assert_called_once_with(["reference", "other"])
+
+
+def test_commands_api_includes_a_params_enum_when_the_registry_has_one(tmp_path, monkeypatch):
+    """mcp_server's tool_suggestions.py puts an `enum` in a param's schema,
+    and commands.py's _params_from_schema carries it into CommandParam -
+    this route must forward it too, or the Chat page's slash-command
+    autocomplete has nothing to offer for a value suggestion."""
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    account_id = _create_account(app, "commandsapienum", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    fake_registry = {
+        "host_health": {
+            "get_host_health": commands.RegisteredCommand(
+                capability="host_health",
+                name="get_host_health",
+                description="Check host health",
+                tool_name="get_host_health_tool",
+                params=[
+                    commands.CommandParam(name="name", required=True, type="string", enum=["zima", "desktop"]),
+                ],
+            )
+        }
+    }
+    with patch.object(chat_index.commands, "build_command_registry", return_value=fake_registry):
+        response = client.get("/chat/api/commands")
+
+    params = response.get_json()["host_health"]["get_host_health"]["params"]
+    assert params == [
+        {"name": "name", "required": True, "type": "string", "has_default": False, "default": None,
+         "enum": ["zima", "desktop"]}
+    ]
 
 
 def test_commands_api_requires_chat_access_permission(tmp_path, monkeypatch):

@@ -121,4 +121,15 @@ def create_app(config: dict | None = None) -> Flask:
 
 if __name__ == "__main__":
     flask_app = create_app()
-    flask_app.run(debug=True)
+    # 127.0.0.1/debug=True by default - fine for `run.bat` on your own
+    # machine, but 127.0.0.1 is loopback INSIDE whatever process runs
+    # this, so a container's `ports:` mapping can never reach it from
+    # outside - override CHAT_HOST=0.0.0.0 there. debug=True also runs
+    # the Werkzeug debugger (arbitrary code execution via its console,
+    # PIN permitting) and auto-reloader (a second process, which is why
+    # the log shows "Restarting with stat") - override CHAT_DEBUG=false
+    # for anything reachable beyond your own machine.
+    host = os.environ.get("CHAT_HOST", "127.0.0.1")
+    port = int(os.environ.get("CHAT_PORT", "5000"))
+    debug = os.environ.get("CHAT_DEBUG", "true").strip().lower() == "true"
+    flask_app.run(host=host, port=port, debug=debug)

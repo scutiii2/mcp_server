@@ -8,7 +8,11 @@ able to do to itself.
 
 GET /capabilities returns a JSON array shaped exactly like::
 
-    { "name": "host_health", "enabled": true }
+    { "name": "host_health", "enabled": true, "title": "Host Health", "command_id": "host" }
+
+``title``/``command_id`` come from infra/capability_metadata.py - see
+its docstring. ``name`` stays the real capability id (what PATCH still
+needs); ``title``/``command_id`` are chat_app's own display concern.
 
 PATCH /capabilities/{name} takes ``{"enabled": bool}`` and returns that
 same shape for the capability just changed - 404 for an unknown name,
@@ -30,13 +34,18 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src.config import settings
-from src.infra import capability_registry
+from src.infra import capability_metadata, capability_registry
 from src.infra.app_config import save_capabilities_config
 from src.server import mcp
 
 
 def _status_json(name: str) -> dict[str, object]:
-    return {"name": name, "enabled": capability_registry.is_enabled(name)}
+    return {
+        "name": name,
+        "enabled": capability_registry.is_enabled(name),
+        "title": capability_metadata.title_for(name),
+        "command_id": capability_metadata.command_id_for(name),
+    }
 
 
 async def list_capabilities(request: Request) -> JSONResponse:
