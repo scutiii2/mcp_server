@@ -45,3 +45,10 @@ zip_versions/
 .worktrees/
 
 MCPServer.yaml
+
+# Real deployment compose file - had real SMTP/admin secrets pasted
+# directly into `environment:` (unlike zima_host_combined.yaml / the
+# per-service zima_host.yaml templates, which stay tracked because they
+# only carry [PLACE ... HERE] placeholders). Keep using it locally, just
+# never commit it again.
+/zima_host.yaml
