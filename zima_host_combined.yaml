@@ -39,7 +39,7 @@ services:
       # EDIT THIS: wherever you copied mcp_server's contents to on the NAS.
       - "/media/YOUR-HDD/mcp_server:/app"
     working_dir: /app
-    entrypoint: ["sh", "-c", "pip install . && python -m run"]
+    entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
     restart: always
     ports:
       - "8010:8010"
@@ -94,7 +94,7 @@ services:
       # EDIT THIS: wherever you copied chat_app's contents to on the NAS.
       - "/media/YOUR-HDD/chat_app:/app"
     working_dir: /app
-    entrypoint: ["sh", "-c", "pip install . && python -m run"]
+    entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
     restart: always
     ports:
       - "5009:5009"

@@ -6,7 +6,7 @@ services:
     volumes:
       - "/media/HDD320-1/MCPArchitecture/mcp_server:/app"
     working_dir: /app
-    entrypoint: ["sh", "-c", "pip install . && python -m run"]
+    entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
     restart: always
     ports:
       - "8010:8010"
@@ -25,7 +25,7 @@ services:
     volumes:
       - "/media/HDD320-1/MCPArchitecture/chat_app:/app"
     working_dir: /app
-    entrypoint: ["sh", "-c", "pip install . && python -m run"]
+    entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
     restart: always
     ports:
       - "5009:5009"
