@@ -19,6 +19,7 @@ from src.commands import command
 from src.config import settings
 from src.infra.app_config import load_email_config
 from src.server import mcp
+from src.tool_response import respond
 
 
 @command(name="get_otp", description="generate otp")
@@ -38,7 +39,7 @@ def request_otp_tool(recipient: str | None = None) -> RequestOtpResult:
     accepted. Omit it to use the first configured approver.
     """
     email_config = load_email_config(settings.email_config_path)
-    return domain.request_otp(email_config, db_path=settings.otp_path, recipient=recipient)
+    return respond(domain.request_otp(email_config, db_path=settings.otp_path, recipient=recipient))
 
 
 @command(name="verify_otp", description="verify otp")
@@ -52,4 +53,4 @@ def verify_otp_tool(otp_id: str, code: str) -> VerifyOtpResult:
     of those happened so you can tell someone whether to retry or ask for
     a new code.
     """
-    return domain.verify_otp(settings.otp_path, otp_id, code)
+    return respond(domain.verify_otp(settings.otp_path, otp_id, code))

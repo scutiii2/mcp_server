@@ -17,6 +17,7 @@ from src.capabilities.host_health import domain
 from src.capabilities.host_health.contract import HostHealthResult
 from src.config import settings
 from src.server import mcp
+from src.tool_response import respond
 
 
 @mcp.tool(meta={"keywords": ["host", "health", "cpu", "memory", "disk", "uptime", "status"]})
@@ -31,4 +32,4 @@ def get_host_health_tool(name: str) -> HostHealthResult:
     one of them (load average on Linux, CPU percentage on Windows), and
     the other is left empty rather than guessed.
     """
-    return domain.check(settings.hosts_config_path, name)
+    return respond(domain.check(settings.hosts_config_path, name))

@@ -30,6 +30,11 @@ reads `from src.foo import bar`, matching chat_app's layout.
   `run.py`'s own job.
 - `server.py` - the shared `FastMCP` instance every capability/resource
   registers onto.
+- `tool_response.py` - `respond()`, wraps a capability's result model
+  into a `CallToolResult` whose visible text is that model's own
+  `report`/`message` field instead of a JSON dump. Every `tool.py`
+  return statement goes through this - see
+  `capabilities/README.md`'s "Chat-readable results, not JSON".
 - `config.py` - `Settings`, the process-level env-var-driven
   configuration (bind host/port, where `configs/`/`data/`/`logs/` live).
 - `commands.py` - the `@command` registry backing chat_app's `/`

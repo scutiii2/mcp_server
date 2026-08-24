@@ -368,6 +368,25 @@ async function loadCommands() {
   }
 }
 
+// Splits "key1=value1 key2="value with spaces"" into ['key1=value1',
+// 'key2="value with spaces"'] - a space inside a double-quoted span
+// doesn't split, matching how services/commands.py's parse_command()
+// (shlex.split, server-side) will read the same text back once the
+// command is sent. A naive `.split(/\s+/)` would break a quoted value
+// with a space in it into two bogus tokens.
+function splitParamTokens(text) {
+  return text.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+}
+
+// Wraps a suggested value in double quotes, escaping any embedded
+// backslash or double quote first, so the inserted token still parses
+// as one value even when it contains a space - see splitParamTokens()
+// above and parse_command()'s shlex.split() on the server side.
+function quoteCommandValue(value) {
+  const escaped = String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
 function computeCommandSuggestions(value) {
   if (!value.startsWith('/')) return [];
   const body = value.slice(1);
@@ -400,7 +419,7 @@ function computeCommandSuggestions(value) {
   if (!tool) return [];
   const paramsText = afterCapability.slice(spaceIndex2 + 1);
   const endsWithSpace = paramsText.endsWith(' ') || paramsText.length === 0;
-  const tokens = paramsText.trim().length ? paramsText.trim().split(/\s+/) : [];
+  const tokens = paramsText.trim().length ? splitParamTokens(paramsText.trim()) : [];
   const typedNames = new Set(tokens.map(t => t.split('=')[0]).filter(Boolean));
   const currentToken = !endsWithSpace && tokens.length ? tokens[tokens.length - 1] : '';
   if (currentToken.includes('=')) {
@@ -413,7 +432,7 @@ function computeCommandSuggestions(value) {
     if (!param || !param.enum) return [];
     return param.enum
       .filter(v => v.startsWith(partialValue))
-      .map(v => ({ stage: 'value', text: `${paramName}=${v}`, display: v, hint: '' }));
+      .map(v => ({ stage: 'value', text: `${paramName}=${quoteCommandValue(v)}`, display: v, hint: '' }));
   }
 
   return tool.params
@@ -507,7 +526,7 @@ function acceptSuggestion(item) {
     const toolId = afterCapability.slice(0, spaceIndex2);
     const paramsText = afterCapability.slice(spaceIndex2 + 1);
     const endsWithSpace = paramsText.endsWith(' ') || paramsText.length === 0;
-    const tokens = paramsText.trim().length ? paramsText.trim().split(/\s+/) : [];
+    const tokens = paramsText.trim().length ? splitParamTokens(paramsText.trim()) : [];
     if (!endsWithSpace && tokens.length) {
       tokens[tokens.length - 1] = item.text;
     } else {

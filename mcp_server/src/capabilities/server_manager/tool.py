@@ -16,6 +16,7 @@ from src.capabilities.server_manager import domain
 from src.capabilities.server_manager.contract import AppActionResult, AppListResult
 from src.commands import command
 from src.server import mcp
+from src.tool_response import respond
 
 
 @command(name="start", description="Start an app")
@@ -28,7 +29,7 @@ def start_app_tool(name: str) -> AppActionResult:
     any container, the error lists the names that do exist; `list_apps_tool`
     shows them all up front.
     """
-    return domain.start_app(name)
+    return respond(domain.start_app(name))
 
 
 @command(name="stop", description="Stop an app")
@@ -40,7 +41,7 @@ def stop_app_tool(name: str) -> AppActionResult:
     The app stays stopped until something starts it again - this does
     not remove the container or its data.
     """
-    return domain.stop_app(name)
+    return respond(domain.stop_app(name))
 
 
 @command(name="restart", description="Restart an app")
@@ -51,7 +52,7 @@ def restart_app_tool(name: str) -> AppActionResult:
     `name` is the container's name, exactly as Docker/ZimaOS shows it.
     Works whether the app is currently running or already stopped.
     """
-    return domain.restart_app(name)
+    return respond(domain.restart_app(name))
 
 
 @command(name="list", description="List apps")
@@ -63,4 +64,4 @@ def list_apps_tool() -> AppListResult:
     `stop_app_tool` or `restart_app_tool`, its current status, and the
     image it runs.
     """
-    return domain.list_apps()
+    return respond(domain.list_apps())

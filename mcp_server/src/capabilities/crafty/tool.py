@@ -32,6 +32,7 @@ from src.capabilities.crafty.contract import (
 from src.commands import command
 from src.config import settings
 from src.server import mcp
+from src.tool_response import respond
 
 
 @command(name="base_url", description="Set the default Crafty base_url")
@@ -46,7 +47,7 @@ def crafty_set_default_base_url(base_url: str, verify_ssl: bool = True) -> Defau
     CRAFTY_BASE_URL environment variable, which needs a restart. Calling
     this again replaces the previous default.
     """
-    return domain.set_default_base_url(settings.crafty_worlds_db_path, base_url=base_url, verify_ssl=verify_ssl)
+    return respond(domain.set_default_base_url(settings.crafty_worlds_db_path, base_url=base_url, verify_ssl=verify_ssl))
 
 
 @command(name="ping", description="Ping a Crafty base_url")
@@ -64,12 +65,14 @@ async def crafty_ping_base_url(base_url: str | None = None, verify_ssl: bool | N
     connection itself failed (DNS, refused, timed out, TLS) - that's a
     normal answer to "is this up", not an error from this tool.
     """
-    return await domain.ping_base_url(
-        settings.crafty_worlds_db_path,
-        base_url=base_url,
-        verify_ssl=verify_ssl,
-        default_base_url=settings.crafty_default_base_url,
-        default_verify_ssl=settings.crafty_verify_ssl,
+    return respond(
+        await domain.ping_base_url(
+            settings.crafty_worlds_db_path,
+            base_url=base_url,
+            verify_ssl=verify_ssl,
+            default_base_url=settings.crafty_default_base_url,
+            default_verify_ssl=settings.crafty_verify_ssl,
+        )
     )
 
 
@@ -92,15 +95,17 @@ def crafty_world_register(
     configured; otherwise it's required. Registering a name that's
     already registered overwrites its previous registration.
     """
-    return domain.register_world(
-        settings.crafty_worlds_db_path,
-        name,
-        api_token=api_token,
-        server_id=server_id,
-        base_url=base_url,
-        verify_ssl=verify_ssl,
-        default_base_url=settings.crafty_default_base_url,
-        default_verify_ssl=settings.crafty_verify_ssl,
+    return respond(
+        domain.register_world(
+            settings.crafty_worlds_db_path,
+            name,
+            api_token=api_token,
+            server_id=server_id,
+            base_url=base_url,
+            verify_ssl=verify_ssl,
+            default_base_url=settings.crafty_default_base_url,
+            default_verify_ssl=settings.crafty_verify_ssl,
+        )
     )
 
 
@@ -114,7 +119,7 @@ def crafty_world_remove(name: str) -> WorldRemoveResult:
     it does not touch the world itself on Crafty. The world can be
     controlled again by calling crafty_world_register_tool for it.
     """
-    return domain.remove_world(settings.crafty_worlds_db_path, name)
+    return respond(domain.remove_world(settings.crafty_worlds_db_path, name))
 
 
 @command(name="list", description="List registered Crafty worlds")
@@ -125,7 +130,7 @@ def crafty_world_list() -> WorldListResult:
     Each entry gives the exact `name` to pass to the other
     crafty_world_* tools.
     """
-    return domain.list_worlds(settings.crafty_worlds_db_path)
+    return respond(domain.list_worlds(settings.crafty_worlds_db_path))
 
 
 @command(name="start", description="Start a Crafty world")
@@ -136,14 +141,14 @@ async def crafty_world_start(name: str) -> WorldActionResult:
     `name` is the label it was registered under - `crafty_world_list_tool`
     shows the names that are available.
     """
-    return await domain.start_world(settings.crafty_worlds_db_path, name)
+    return respond(await domain.start_world(settings.crafty_worlds_db_path, name))
 
 
 @command(name="stop", description="Stop a Crafty world")
 @mcp.tool(meta={"keywords": ["crafty", "minecraft", "world", "stop"]})
 async def crafty_world_stop(name: str) -> WorldActionResult:
     """Stop a running, registered Minecraft world."""
-    return await domain.stop_world(settings.crafty_worlds_db_path, name)
+    return respond(await domain.stop_world(settings.crafty_worlds_db_path, name))
 
 
 @command(name="restart", description="Restart a Crafty world")
@@ -153,7 +158,7 @@ async def crafty_world_restart(name: str) -> WorldActionResult:
 
     Works whether the world is currently running or already stopped.
     """
-    return await domain.restart_world(settings.crafty_worlds_db_path, name)
+    return respond(await domain.restart_world(settings.crafty_worlds_db_path, name))
 
 
 @command(name="command", description="Send a console command to a Crafty world")
@@ -164,7 +169,7 @@ async def crafty_world_send_command(name: str, command: str) -> WorldCommandResu
     `command` is typed exactly as it would be into Crafty's own console -
     no leading slash (e.g. "say hello", "whitelist add Steve", "op Steve").
     """
-    return await domain.send_command(settings.crafty_worlds_db_path, name, command)
+    return respond(await domain.send_command(settings.crafty_worlds_db_path, name, command))
 
 
 @command(name="status", description="Get a Crafty world's status")
@@ -173,4 +178,4 @@ async def crafty_world_get_status(name: str) -> WorldStatusResult:
     """Check whether a registered Minecraft world is running, who's on
     it, and basic server stats (version, CPU, memory).
     """
-    return await domain.get_status(settings.crafty_worlds_db_path, name)
+    return respond(await domain.get_status(settings.crafty_worlds_db_path, name))
