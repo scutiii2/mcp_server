@@ -12,7 +12,40 @@ mechanics); paths come from `Settings.hosts_config_path` /
   Read by the `host_health` capability.
 - **`config_email.json`** - SMTP settings and the standing
   recipient/approver lists. Read by the `otp` capability and by
-  `infra/approvals.py` (approval-request emails).
+  `infra/approvals.py` (approval-request emails). `smtp_server`/
+  `smtp_port`/`security` depend on which provider `from` lives on -
+  since JSON has no comments, the `.example` file only shows Gmail;
+  the other two mainstream cases:
+
+  ```jsonc
+  // Outlook / Hotmail / Live / Microsoft 365
+  {
+    "smtp_server": "smtp.office365.com",
+    "smtp_port": 587,
+    "security": "starttls",
+    "from": "you@outlook.com",
+    "password": "${SMTP_PASSWORD}",
+    "approver_emails": ["you@outlook.com"]
+  }
+
+  // Proton Mail - needs Proton Mail Bridge running locally first;
+  // Proton doesn't expose SMTP directly even with an app password.
+  // smtp_server/smtp_port come from the Bridge's own settings pane,
+  // and the password is the Bridge-generated one, not the mailbox
+  // password.
+  {
+    "smtp_server": "127.0.0.1",
+    "smtp_port": 1025,
+    "security": "starttls",
+    "from": "you@proton.me",
+    "password": "${SMTP_PASSWORD}",
+    "approver_emails": ["you@proton.me"]
+  }
+  ```
+
+  All three still need an app-specific password per this file's
+  `email.py` docstring - Gmail and Outlook because of 2FA, Proton
+  because Bridge issues its own.
 - **`config_extensions.json`** - other MCP servers this server proxies
   tools from (see `infra/extensions.py`). Also written to at runtime by
   `POST`/`DELETE /extensions` (see `extension_routes.py`) - hand-edit it
