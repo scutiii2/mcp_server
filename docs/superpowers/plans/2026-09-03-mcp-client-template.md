@@ -953,6 +953,14 @@ async def test_a_broken_http_server_does_not_prevent_a_working_stdio_sibling(mon
 
 @pytest.mark.anyio
 async def test_real_fixture_server_end_to_end(tmp_path: Path):
+    # Invoked by absolute file path, not "-m src._fixtures.reference_server":
+    # a spawned subprocess resolves "-m" against its own cwd, which is
+    # wherever pytest itself was launched from (the repo/worktree root per
+    # this template's own convention) - not mcp_client_template/, so the
+    # module wouldn't be found. An absolute path has no such dependency.
+    # (Discovered by actually running this test during Task 3 - the first
+    # version of this plan used "-m" and failed exactly this way.)
+    fixture_path = Path(__file__).resolve().parent.parent / "src" / "_fixtures" / "reference_server.py"
     config_path = tmp_path / "config_servers.json"
     config_path.write_text(
         json.dumps(
@@ -962,7 +970,7 @@ async def test_real_fixture_server_end_to_end(tmp_path: Path):
                     "description": "Dev fixture",
                     "transport": "stdio",
                     "command": sys.executable,
-                    "args": ["-m", "src._fixtures.reference_server"],
+                    "args": [str(fixture_path)],
                 }
             }
         ),
@@ -1216,6 +1224,10 @@ from src.sync_wrapper import SyncMcpClient
 
 
 def _write_config(tmp_path: Path) -> Path:
+    # Absolute file path, not "-m src._fixtures.reference_server" - see
+    # test_registry.py's test_real_fixture_server_end_to_end for why "-m"
+    # doesn't work when pytest is launched from outside mcp_client_template/.
+    fixture_path = Path(__file__).resolve().parent.parent / "src" / "_fixtures" / "reference_server.py"
     config_path = tmp_path / "config_servers.json"
     config_path.write_text(
         json.dumps(
@@ -1225,7 +1237,7 @@ def _write_config(tmp_path: Path) -> Path:
                     "description": "Dev fixture",
                     "transport": "stdio",
                     "command": sys.executable,
-                    "args": ["-m", "src._fixtures.reference_server"],
+                    "args": [str(fixture_path)],
                 }
             }
         ),
