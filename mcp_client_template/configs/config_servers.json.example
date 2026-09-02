@@ -1,0 +1,24 @@
+{
+  "main": {
+    "label": "Main MCP Server",
+    "description": "This repo's own mcp_server hub - its built-in tools plus anything it proxies from its own extensions.",
+    "transport": "http",
+    "url": "http://127.0.0.1:8000/mcp"
+  },
+  "crafty": {
+    "label": "Crafty (direct)",
+    "description": "crafty_mcp_server reached directly over HTTP, bypassing mcp_server's own extension proxy.",
+    "transport": "http",
+    "url": "http://127.0.0.1:9100/mcp"
+  },
+  "gmail": {
+    "label": "Gmail",
+    "description": "Placeholder for a real Gmail MCP server - replace url with the real endpoint and set GMAIL_MCP_TOKEN before connecting.",
+    "transport": "http",
+    "url": "https://example.invalid/mcp",
+    "auth": {
+      "type": "bearer_env",
+      "env_var": "GMAIL_MCP_TOKEN"
+    }
+  }
+}

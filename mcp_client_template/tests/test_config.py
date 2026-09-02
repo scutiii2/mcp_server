@@ -178,3 +178,18 @@ def test_unknown_auth_type_raises(tmp_path: Path):
 
     with pytest.raises(ConfigError, match="auth.type must be one of"):
         load_servers_config(path)
+
+
+def test_the_example_config_file_loads_without_error():
+    """Guards against the example drifting out of sync with what
+    load_servers_config() actually accepts - see README.md's usage
+    section, which walks through this exact file."""
+    example_path = Path(__file__).resolve().parent.parent / "configs" / "config_servers.json.example"
+
+    servers = load_servers_config(example_path)
+
+    assert set(servers) == {"main", "crafty", "gmail"}
+    assert servers["main"].transport == "http"
+    assert servers["crafty"].transport == "http"
+    assert servers["gmail"].auth is not None
+    assert servers["gmail"].auth.type == "bearer_env"
