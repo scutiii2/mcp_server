@@ -720,23 +720,19 @@ function formatElapsedTime(ms) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-// total_tokens/modelLabel/recursiveRounds are all defensive by design:
-// some providers/paths never report usage (undefined/null/non-positive
-// all just mean "don't show a token count"), an error turn (no real run
+// total_tokens/modelLabel are both defensive by design: some
+// providers/paths never report usage (undefined/null/non-positive all
+// just mean "don't show a token count"), an error turn (no real run
 // happened) has no model to show either - see chat_api's assistant_entry
 // construction, which omits provider_id/model/total_tokens entirely in
-// that case rather than sending empty-string/null noise - and only
-// ollama's recursive_chain models ever produce a nonzero round count.
-function formatTimerText(ms, totalTokens, modelLabel, recursiveRounds) {
+// that case rather than sending empty-string/null noise.
+function formatTimerText(ms, totalTokens, modelLabel) {
   const parts = [formatElapsedTime(ms)];
   if (typeof totalTokens === 'number' && totalTokens > 0) {
     parts.push(`${totalTokens} tokens`);
   }
   if (modelLabel) {
     parts.push(modelLabel);
-  }
-  if (typeof recursiveRounds === 'number' && recursiveRounds > 0) {
-    parts.push(`${recursiveRounds} recursive round${recursiveRounds === 1 ? '' : 's'}`);
   }
   return parts.join(' · ');
 }
@@ -905,7 +901,7 @@ async function send() {
     // client's own Date.now() delta, so this matches exactly what a
     // reload of this same chat will show later (see loadChat() below).
     const elapsedMs = typeof data.elapsed_seconds === 'number' ? data.elapsed_seconds * 1000 : Date.now() - requestStartTime;
-    const finalTimerText = formatTimerText(elapsedMs, data.total_tokens, modelLabel(data.provider_id, data.model), data.recursive_rounds);
+    const finalTimerText = formatTimerText(elapsedMs, data.total_tokens, modelLabel(data.provider_id, data.model));
     timerEl.textContent = finalTimerText;
     // A command result never came from the LLM - render it with the
     // amber "system" style instead of the green "assistant" one, even
@@ -914,18 +910,17 @@ async function send() {
     const displayRole = data.kind === 'command' ? 'system' : 'assistant';
     const assistantWrap = appendMsg(displayRole, data.response);
     assistantWrap.appendChild(timerEl);
-    // provider_id/model/total_tokens/recursive_rounds are only included
-    // when truthy/not-null (an error turn has none of them) - mirrors
-    // chat_api's own assistant_entry construction, and matters because
-    // this same object gets sent back as `history` on the NEXT send() in
-    // this chat, then persisted again: an empty string, null, or 0 here
-    // would overwrite otherwise-real metadata with noise.
+    // provider_id/model/total_tokens are only included when truthy/not-null
+    // (an error turn has none of them) - mirrors chat_api's own
+    // assistant_entry construction, and matters because this same object
+    // gets sent back as `history` on the NEXT send() in this chat, then
+    // persisted again: an empty string, null, or 0 here would overwrite
+    // otherwise-real metadata with noise.
     const assistantTurn = { role: 'assistant', content: data.response, elapsed_seconds: data.elapsed_seconds };
     if (data.kind === 'command') assistantTurn.kind = 'command';
     if (data.provider_id) assistantTurn.provider_id = data.provider_id;
     if (data.model) assistantTurn.model = data.model;
     if (typeof data.total_tokens === 'number') assistantTurn.total_tokens = data.total_tokens;
-    if (data.recursive_rounds) assistantTurn.recursive_rounds = data.recursive_rounds;
     history.push(assistantTurn);
     playNotificationSound();
 
@@ -1036,13 +1031,11 @@ async function loadChat(chatId) {
         if (message.provider_id) turn.provider_id = message.provider_id;
         if (message.model) turn.model = message.model;
         if (typeof message.total_tokens === 'number') turn.total_tokens = message.total_tokens;
-        if (message.recursive_rounds) turn.recursive_rounds = message.recursive_rounds;
         if (typeof message.elapsed_seconds === 'number') {
           const text = formatTimerText(
             message.elapsed_seconds * 1000,
             message.total_tokens,
-            modelLabel(message.provider_id, message.model),
-            message.recursive_rounds
+            modelLabel(message.provider_id, message.model)
           );
           wrap.appendChild(createTimerElement(text));
         }

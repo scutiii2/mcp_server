@@ -53,8 +53,14 @@ tabs — both tabs' data are rendered together server-side in one
 response, and only the active tab's panel is shown by default via the
 `hidden` attribute (so the page works even without JS). Client-side
 tab switching is wired via `shared.js`'s `initTabs()`, which is global
-(loaded by `base.html` on every page via `DOMContentLoaded`) — no
-page-specific JS is needed here. It's named `logs.html` rather than
-the page-default `view.html` because `Admin/__index__.py` already
-claims `view.html` in the shared flat template namespace all pages
-render from (see `pages/README.md`'s naming-collision note).
+(loaded by `base.html` on every page via `DOMContentLoaded`). It's
+named `logs.html` rather than the page-default `view.html` because
+`Admin/__index__.py` already claims `view.html` in the shared flat
+template namespace all pages render from (see `pages/README.md`'s
+naming-collision note).
+
+Each tab's actor `<select>` auto-submits its filter form on change via
+`script.js` (`select[data-autosubmit]` + `addEventListener("change", ...)`)
+rather than an inline `onchange="..."` attribute — the app's CSP
+(`config_security_headers.json`'s `script-src`) has no `'unsafe-inline'`,
+so inline event-handler attributes are silently dropped by the browser.

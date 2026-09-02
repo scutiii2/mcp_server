@@ -130,7 +130,6 @@ def run_chat(
     provider_id: str | None,
     model_id: str | None = None,
     enabled_extensions: list[str] | None = None,
-    chat_id: str | None = None,
 ) -> ChatResult:
     provider_id = provider_id or DEFAULT_PROVIDER_ID
 
@@ -139,13 +138,12 @@ def run_chat(
         # resolves to uses its own default. Mixing "pick any provider" with
         # "but insist on this specific model" gets confusing fast, and the
         # model dropdown is hidden client-side whenever Automatic is
-        # selected for exactly this reason. enabled_extensions/chat_id
-        # have nothing to do with that - they still need to reach whichever
-        # provider gets picked, so both are forwarded by keyword here
-        # rather than positionally (which would require also passing a
-        # model).
+        # selected for exactly this reason. enabled_extensions has nothing
+        # to do with that - it still needs to reach whichever provider gets
+        # picked, so it's forwarded by keyword here rather than positionally
+        # (which would require also passing a model).
         provider = _pick_automatic()
-        return provider.run_chat(question, history, enabled_extensions=enabled_extensions, chat_id=chat_id)
+        return provider.run_chat(question, history, enabled_extensions=enabled_extensions)
 
     provider = _PROVIDERS.get(provider_id)
     if provider is None:
@@ -155,4 +153,4 @@ def run_chat(
     if cooldown.is_in_cooldown(provider_id):
         remaining = int(cooldown.seconds_remaining(provider_id))
         raise ValueError(f"{provider.label} is rate-limited right now - try again in {remaining}s, or pick another provider")
-    return provider.run_chat(question, history, model_id, enabled_extensions, chat_id=chat_id)
+    return provider.run_chat(question, history, model_id, enabled_extensions)

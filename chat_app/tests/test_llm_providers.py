@@ -19,7 +19,7 @@ from urllib.error import URLError
 import pytest
 
 from src.services.llm import claude_provider, cooldown, ollama_provider, openai_provider
-from src.services.llm.base import ChatResult, RecursiveRoundRecord, SYSTEM_PROMPT, ModelOption, ToolCallRecord
+from src.services.llm.base import SYSTEM_PROMPT, ModelOption, ToolCallRecord
 
 
 def _fake_tool():
@@ -151,14 +151,8 @@ def test_ollama_run_chat_adds_local_model_tool_guidance_to_the_system_prompt():
     (cloud providers don't need this and don't get it).
 
     Pins model="llama3.2:1b" rather than relying on the default model
-    (whichever config.json lists first): this guidance is only ever added
-    on the plain _tool_loop path, and staged_pipeline-enabled models (see
-    ModelOption.staged_pipeline) use a completely different, multi-call
-    prompt sequence with no single "the system message" to assert
-    against. Which model is first/default in config.json is a runtime
-    deployment choice this test shouldn't depend on - llama3.2:1b is
-    guaranteed plain-loop (recursive_chain, not staged_pipeline) by
-    infra/app_config.py's own mutual-exclusion validation.
+    (whichever config.json lists first) - which model is first/default
+    there is a runtime deployment choice this test shouldn't depend on.
     """
     message = SimpleNamespace(content="ok", tool_calls=None)
     response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
@@ -498,114 +492,6 @@ def test_ollama_usage_tokens_treats_all_zero_usage_as_uncountable():
     assert ollama_provider._usage_tokens(usage) is None
 
 
-def test_ollama_run_chat_recursive_chain_disabled_makes_a_single_round(monkeypatch):
-    """Default behavior (recursive_chain unset/False) must be unchanged:
-    exactly one API call, no refinement round appended.
-
-    MODELS/_DEFAULT_MODEL_ID are monkeypatched here (unlike this test's
-    original version) rather than left at whatever config.json's real
-    content resolves to at import time - the whole point of this test is
-    a model with recursive_chain=False, and nothing here controlled that
-    otherwise."""
-    monkeypatch.setattr(
-        ollama_provider, "MODELS", [ModelOption(id="llama3.2:1b", label="Llama", recursive_chain=False)]
-    )
-    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "llama3.2:1b")
-
-    message = SimpleNamespace(content="ok", tool_calls=None)
-    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
-    fake_create = Mock(return_value=response)
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
-
-    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
-        result = ollama_provider.run_chat("hi", [])
-
-    assert result.response == "ok"
-    assert fake_create.call_count == 1
-    assert result.recursive_rounds == []
-
-
-def test_ollama_run_chat_recursive_chain_runs_a_refinement_round_then_converges(monkeypatch):
-    """recursive_chain=True asks the model to double-check its own answer.
-    When the refinement round repeats the same answer, that's convergence
-    - stop there instead of burning the rest of the round budget."""
-    monkeypatch.setattr(
-        ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", recursive_chain=True)]
-    )
-    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "phi4-mini:latest")
-
-    first = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Draft answer.", tool_calls=None))])
-    second = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Draft answer.", tool_calls=None))])
-    fake_create = Mock(side_effect=[first, second])
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
-
-    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
-        result = ollama_provider.run_chat("hi", [])
-
-    assert result.response == "Draft answer."
-    assert fake_create.call_count == 2
-    assert result.recursive_rounds == [RecursiveRoundRecord(round=1, response="Draft answer.", converged=True)]
-
-
-def test_ollama_run_chat_recursive_chain_caps_at_max_refinement_rounds(monkeypatch):
-    """An answer that keeps changing every round must not loop forever -
-    it stops after ollama_provider._MAX_RECURSIVE_CHAIN_ROUNDS refinement
-    rounds and returns whatever the last round produced."""
-    monkeypatch.setattr(
-        ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", recursive_chain=True)]
-    )
-    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "phi4-mini:latest")
-
-    def _round(text):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text, tool_calls=None))])
-
-    # 1 initial round + _MAX_RECURSIVE_CHAIN_ROUNDS refinement rounds, each
-    # producing a different answer so convergence never kicks in early.
-    total_rounds = 1 + ollama_provider._MAX_RECURSIVE_CHAIN_ROUNDS
-    responses = [_round(f"answer v{i}") for i in range(total_rounds)]
-    fake_create = Mock(side_effect=responses)
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
-
-    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
-        result = ollama_provider.run_chat("hi", [])
-
-    assert result.response == f"answer v{total_rounds - 1}"
-    assert fake_create.call_count == total_rounds
-    # One recursive_rounds entry per refinement round (not the initial
-    # round), none converged - each produced a different answer.
-    assert [r.round for r in result.recursive_rounds] == list(range(1, ollama_provider._MAX_RECURSIVE_CHAIN_ROUNDS + 1))
-    assert all(not r.converged for r in result.recursive_rounds)
-    assert result.recursive_rounds[-1].response == f"answer v{total_rounds - 1}"
-
-
-def test_ollama_run_chat_recursive_chain_is_resolved_per_selected_model(monkeypatch):
-    """Two configured models, only one with recursive_chain=True - picking
-    the plain model must not trigger any refinement round."""
-    monkeypatch.setattr(
-        ollama_provider,
-        "MODELS",
-        [
-            ModelOption(id="llama3.2:1b", label="Llama", recursive_chain=False),
-            ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", recursive_chain=True),
-        ],
-    )
-    message = SimpleNamespace(content="plain answer", tool_calls=None)
-    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
-    fake_create = Mock(return_value=response)
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
-
-    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("src.services.llm.ollama_provider.list_tools", return_value=[]):
-        result = ollama_provider.run_chat("hi", [], model="llama3.2:1b")
-
-    assert result.response == "plain answer"
-    assert fake_create.call_count == 1
-    assert result.recursive_rounds == []
-
-
 def test_extract_fallback_tool_call_recovers_the_real_captured_malformed_shape():
     """The exact malformed shape observed live from phi4-mini: a JSON
     array of two objects using flattened dotted keys instead of the
@@ -676,7 +562,7 @@ def test_ollama_run_chat_recovers_a_leaked_tool_call_and_continues_the_conversat
     summary on round 2 - the user should see that summary, not the
     leaked JSON."""
     monkeypatch.setattr(
-        ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", recursive_chain=False)]
+        ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini")]
     )
     monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "phi4-mini:latest")
 
@@ -729,41 +615,3 @@ def test_ollama_not_in_automatic_order():
 
     assert "ollama" not in router.AUTOMATIC_ORDER
     assert "ollama" in router._PROVIDERS  # still registered - manually selectable
-
-
-def test_ollama_run_chat_dispatches_to_staged_pipeline_when_enabled(monkeypatch):
-    monkeypatch.setattr(
-        ollama_provider, "MODELS", [ModelOption(id="phi4-mini:latest", label="Phi 4 Mini", staged_pipeline=True)]
-    )
-    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "phi4-mini:latest")
-    fake_result = ChatResult(response="from staged pipeline", provider_id="ollama", model="phi4-mini:latest")
-
-    with patch("src.services.llm.ollama_provider._get_client", return_value=SimpleNamespace()), \
-         patch("src.services.llm.ollama_provider.staged_pipeline.run", return_value=fake_result) as mock_run:
-        result = ollama_provider.run_chat("hi", [], chat_id="chat-1")
-
-    assert result.response == "from staged pipeline"
-    args = mock_run.call_args[0]
-    assert args[1] == "hi"        # question
-    assert args[3] == "phi4-mini:latest"  # model_name
-    assert args[4] == "chat-1"    # chat_id
-
-
-def test_ollama_run_chat_uses_the_plain_tool_loop_when_staged_pipeline_disabled(monkeypatch):
-    """Default behavior (staged_pipeline unset/False) must be unchanged -
-    the plain _tool_loop path runs, staged_pipeline.run is never called."""
-    monkeypatch.setattr(
-        ollama_provider, "MODELS", [ModelOption(id="llama3.2:1b", label="Llama", staged_pipeline=False)]
-    )
-    monkeypatch.setattr(ollama_provider, "_DEFAULT_MODEL_ID", "llama3.2:1b")
-    message = SimpleNamespace(content="ok", tool_calls=None)
-    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=response))))
-
-    with patch("src.services.llm.ollama_provider._get_client", return_value=fake_client), \
-         patch("src.services.llm.ollama_provider.list_tools", return_value=[]), \
-         patch("src.services.llm.ollama_provider.staged_pipeline.run") as mock_staged_run:
-        result = ollama_provider.run_chat("hi", [])
-
-    assert result.response == "ok"
-    mock_staged_run.assert_not_called()

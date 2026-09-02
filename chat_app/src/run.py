@@ -56,11 +56,10 @@ def create_app(config: dict | None = None) -> Flask:
             os.environ.setdefault(key, value)
     # BASE_DIR-resolved, not CWD-relative - same reasoning as
     # _resolve_sqlite_uri below for app.db. A real CHATS_DB_PATH/
-    # STAGED_PLANS_DB_PATH/CHAT_CONFIG_PATH env var (including one already
-    # set via secret_llm.env above) still wins - setdefault is a no-op once
-    # the key is already present.
+    # CHAT_CONFIG_PATH env var (including one already set via
+    # secret_llm.env above) still wins - setdefault is a no-op once the
+    # key is already present.
     os.environ.setdefault("CHATS_DB_PATH", str(BASE_DIR / "data" / "chats.db"))
-    os.environ.setdefault("STAGED_PLANS_DB_PATH", str(BASE_DIR / "data" / "staged_plans.db"))
     os.environ.setdefault("CHAT_CONFIG_PATH", str(BASE_DIR / "configs" / "config_chat.json"))
 
     app.config["SECRET_KEY"] = app_secrets.get("SECRET_KEY") or "dev-insecure-key-change-me"

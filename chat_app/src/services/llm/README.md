@@ -1,8 +1,7 @@
 # src/services/llm/
 
 The LLM provider/router layer behind the Chat page - provider
-selection, MCP tool-calling, and the staged (plan-then-confirm)
-pipeline for higher-risk tool calls.
+selection and MCP tool-calling.
 
 - **`base.py`** - `ProviderSpec` (the shape every provider implements),
   `SYSTEM_PROMPT`, `ChatResult`, `ToolCallRecord`. Read this first - it
@@ -23,10 +22,6 @@ pipeline for higher-risk tool calls.
   `OLLAMA_BASE_URL`).
 - **`app_config.py`** - loader for `../../configs/config_chat.json`
   (the provider/model list shown in the UI).
-- **`staged_pipeline.py`, `staged_plans_store.py`** - the plan-then-
-  confirm flow for tool calls the model proposes but a human should
-  approve before they run, and its SQLite-backed store
-  (`../../data/staged_plans.db`).
 
 ## Adding a new provider
 

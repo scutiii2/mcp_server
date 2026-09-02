@@ -61,7 +61,6 @@ from urllib.request import urlopen
 
 from src.services.llm.settings import settings
 from src.services.llm.app_config import load_ollama_models
-from src.services.llm import staged_pipeline
 from src.services.llm.base import (
     SYSTEM_PROMPT,
     ChatResult,
@@ -69,7 +68,6 @@ from src.services.llm.base import (
     ModelAvailabilityCheck,
     ModelOption,
     ProviderSpec,
-    RecursiveRoundRecord,
     ToolCallRecord,
 )
 from src.services.mcp_client import call_tool, list_tools
@@ -213,34 +211,6 @@ _LOCAL_MODEL_TOOL_GUIDANCE = (
 
 _MAX_TOOL_CALL_ROUNDS = 6
 
-# Extra self-review rounds for models with recursive_chain=True (see
-# config.json / ModelOption). Capped, not unbounded, for the same reason
-# _MAX_TOOL_CALL_ROUNDS is: a small local model that never settles on a
-# stable answer must not turn one chat request into an unbounded number
-# of API calls.
-_MAX_RECURSIVE_CHAIN_ROUNDS = 3
-
-_RECURSIVE_CHAIN_PROMPT = (
-    "Review your previous answer for correctness and completeness. If it "
-    "is already correct and complete, repeat it verbatim. Otherwise, "
-    "provide a corrected, final answer."
-)
-
-
-def _recursive_chain_enabled(model_name: str) -> bool:
-    for model in MODELS:
-        if model.id == model_name:
-            return model.recursive_chain
-    return False
-
-
-def _staged_pipeline_enabled(model_name: str) -> bool:
-    for model in MODELS:
-        if model.id == model_name:
-            return model.staged_pipeline
-    return False
-
-
 # Balances one level of brace nesting - enough for the malformed shapes
 # small models have actually been observed to leak (a flat object, or one
 # with a single nested "arguments"/"function" object inside). A tool's
@@ -313,12 +283,9 @@ def _tool_loop(
     """One full pass through the tool-calling loop: keep letting the model
     call tools until it produces a plain-text answer, capped at
     _MAX_TOOL_CALL_ROUNDS rounds. Mutates ``messages``/``tools_used``/
-    ``tool_calls_log`` in place (append-only) so a caller making multiple
-    _tool_loop() calls in sequence - recursive_chain's extra review rounds -
-    keeps full conversation history across calls. Appends the final
+    ``tool_calls_log`` in place (append-only). Appends the final
     plain-text answer to ``messages`` as an assistant turn before
-    returning, for the same reason: a follow-up review round needs that
-    answer in context.
+    returning.
 
     Every round is a real, separately-billed API call, so the returned
     token count is the sum across all rounds of this one pass - stays
@@ -398,15 +365,9 @@ def run_chat(
     history: list[dict[str, Any]],
     model: str | None = None,
     enabled_extensions: list[str] | None = None,
-    chat_id: str | None = None,
 ) -> ChatResult:
     client = _get_client()
     model_name = model or _DEFAULT_MODEL_ID
-
-    if _staged_pipeline_enabled(model_name):
-        return staged_pipeline.run(
-            client, question, history, model_name, chat_id, enabled_extensions, settings.staged_plans_db_path
-        )
 
     system_content = f"{SYSTEM_PROMPT}\n\n{_LOCAL_MODEL_TOOL_GUIDANCE}"
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_content}, *history]
@@ -414,35 +375,13 @@ def run_chat(
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
     tool_schemas = _tool_schemas(enabled_extensions)
-    total_tokens: int | None = None
 
-    answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used, tool_calls)
-    if round_tokens is not None:
-        total_tokens = (total_tokens or 0) + round_tokens
-
-    recursive_rounds: list[RecursiveRoundRecord] = []
-    if _recursive_chain_enabled(model_name):
-        # Ask the model to double-check its own answer for a bounded
-        # number of extra rounds, stopping early the moment an answer
-        # repeats verbatim (convergence) rather than always spending the
-        # full budget. An answer that keeps changing every round still
-        # stops at _MAX_RECURSIVE_CHAIN_ROUNDS and returns the last one.
-        for round_number in range(1, _MAX_RECURSIVE_CHAIN_ROUNDS + 1):
-            messages.append({"role": "user", "content": _RECURSIVE_CHAIN_PROMPT})
-            refined_answer, round_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used, tool_calls)
-            if round_tokens is not None:
-                total_tokens = (total_tokens or 0) + round_tokens
-            converged = refined_answer.strip() == answer.strip()
-            answer = refined_answer
-            recursive_rounds.append(RecursiveRoundRecord(round=round_number, response=refined_answer, converged=converged))
-            if converged:
-                break
+    answer, total_tokens = _tool_loop(client, messages, model_name, tool_schemas, tools_used, tool_calls)
 
     return ChatResult(
         response=answer,
         tools_used=tools_used,
         tool_calls=tool_calls,
-        recursive_rounds=recursive_rounds,
         provider_id=PROVIDER_ID,
         model=model_name,
         total_tokens=total_tokens,

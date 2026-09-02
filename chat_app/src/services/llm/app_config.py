@@ -94,27 +94,6 @@ def load_ollama_models(config_path: Path) -> list[ModelOption]:
         if not isinstance(label, str) or not label.strip():
             raise ValueError(f"Config file {config_path}: '{where}.label' must be a non-empty string")
 
-        # Optional - absent (every entry that predates this field) means
-        # False, same as ModelOption's own default. Present-but-malformed
-        # still fails loudly, same convention as id/label above.
-        recursive_chain = entry.get("recursive_chain", False)
-        if not isinstance(recursive_chain, bool):
-            raise ValueError(f"Config file {config_path}: '{where}.recursive_chain' must be a boolean")
-
-        staged_pipeline = entry.get("staged_pipeline", False)
-        if not isinstance(staged_pipeline, bool):
-            raise ValueError(f"Config file {config_path}: '{where}.staged_pipeline' must be a boolean")
-
-        if recursive_chain and staged_pipeline:
-            raise ValueError(
-                f"Config file {config_path}: '{where}' sets both 'recursive_chain' and "
-                f"'staged_pipeline' - they're mutually exclusive review/pipeline modes, pick one"
-            )
-
-        models.append(
-            ModelOption(
-                id=model_id, label=label, recursive_chain=recursive_chain, staged_pipeline=staged_pipeline
-            )
-        )
+        models.append(ModelOption(id=model_id, label=label))
 
     return models

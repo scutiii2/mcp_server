@@ -18,7 +18,7 @@ from src.models import db
 from src.services import chats_store, commands, log_service
 from src.services.authz import register_permission, require_permission
 from src.services.llm import router
-from src.services.llm.base import RecursiveRoundRecord, ToolCallRecord
+from src.services.llm.base import ToolCallRecord
 from src.services.llm.settings import settings
 from src.services.mcp_client import add_extension, fetch_extensions, remove_extension
 
@@ -180,7 +180,6 @@ def chat_api():
     is_command = question.startswith("/")
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
-    recursive_rounds: list[RecursiveRoundRecord] = []
     provider_id = ""
     model_used = ""
     total_tokens = None
@@ -213,12 +212,10 @@ def chat_api():
                 data.get("provider"),
                 data.get("model"),
                 data.get("enabled_extensions", []),
-                chat_id=chat_id,
             )
             response_text = result.response
             tools_used = result.tools_used
             tool_calls = result.tool_calls
-            recursive_rounds = result.recursive_rounds
             provider_id = result.provider_id
             model_used = result.model
             total_tokens = result.total_tokens
@@ -249,8 +246,6 @@ def chat_api():
         assistant_entry["model"] = model_used
     if total_tokens is not None:
         assistant_entry["total_tokens"] = total_tokens
-    if recursive_rounds:
-        assistant_entry["recursive_rounds"] = len(recursive_rounds)
     transcript = history_in + current_turn + [assistant_entry]
     try:
         chat_id = chats_store.save_chat(settings.chats_db_path, current_user.username, chat_id, transcript)
@@ -278,10 +273,6 @@ def chat_api():
                     "tool_calls": [
                         {"name": c.name, "arguments": c.arguments, "result": c.result} for c in tool_calls
                     ],
-                    "recursive_rounds": [
-                        {"round": r.round, "response": r.response, "converged": r.converged}
-                        for r in recursive_rounds
-                    ],
                     "response": response_text,
                     "total_tokens": total_tokens,
                 }
@@ -304,7 +295,6 @@ def chat_api():
             "model": model_used,
             "total_tokens": total_tokens,
             "elapsed_seconds": elapsed_seconds,
-            "recursive_rounds": len(recursive_rounds),
             "chat_id": chat_id,
             "kind": "command" if is_command else "assistant",
         }

@@ -29,7 +29,6 @@ class Settings:
     claude_model: str = field(default_factory=lambda: _env("CLAUDE_MODEL", "claude-sonnet-5"))
     chat_config_path: Path = field(default_factory=lambda: Path(_env("CHAT_CONFIG_PATH", "src/configs/config_chat.json")))
     chats_db_path: Path = field(default_factory=lambda: Path(_env("CHATS_DB_PATH", "data/chats.db")))
-    staged_plans_db_path: Path = field(default_factory=lambda: Path(_env("STAGED_PLANS_DB_PATH", "data/staged_plans.db")))
 
 
 settings = Settings()

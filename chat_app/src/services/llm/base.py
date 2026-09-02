@@ -44,28 +44,10 @@ class ToolCallRecord:
 
 
 @dataclass
-class RecursiveRoundRecord:
-    """One self-review round's own answer, for a recursive_chain model
-    (see ModelOption.recursive_chain and ollama_provider.py's run_chat) -
-    ``round`` is 1-indexed, ``converged`` is whether this round's answer
-    matched the previous one verbatim (the early-stop condition). Kept
-    per-round rather than just a final count so session_log.py's trace
-    (and the Logs page) can show how the answer actually evolved, not
-    just that it happened N times."""
-
-    round: int
-    response: str
-    converged: bool
-
-
-@dataclass
 class ChatResult:
     response: str
     tools_used: list[str] = field(default_factory=list)
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
-    # Empty for every provider except ollama - the only one with a
-    # recursive_chain concept at all (see ModelOption.recursive_chain).
-    recursive_rounds: list[RecursiveRoundRecord] = field(default_factory=list)
     provider_id: str = ""
     # The actual model string used - not necessarily what the caller
     # requested: "model" may have been None (provider picks its own
@@ -86,32 +68,12 @@ class ChatResult:
 class ModelOption:
     id: str
     label: str
-    # Whether this model should re-review its own answer for a few extra
-    # rounds before returning (see ollama_provider.py's recursive-chain
-    # loop) instead of returning on the first plain-text response. Only
-    # meaningful for ollama_provider today - openai/claude's MODELS lists
-    # don't set it, so it stays at its default there.
-    recursive_chain: bool = False
-    # Whether this model uses the staged enumerate-execute-conclude
-    # pipeline (see services/llm/staged_pipeline.py) instead of
-    # ollama_provider.py's default single tool-calling loop. Only
-    # meaningful for ollama_provider today, same as recursive_chain above.
-    # Mutually exclusive with recursive_chain in practice - see
-    # infra/app_config.py's validation - since staged_pipeline's own
-    # Conclude phase already plays the "final answer" role recursive_chain
-    # reviews.
-    staged_pipeline: bool = False
 
 
 # model is optional - None means "use this provider's own default".
 # enabled_extensions is optional - None/empty means "no extension tools",
 # the same safe default list_tools() itself applies (see mcp_client.py).
-# chat_id is optional - None means no persisted conversation exists yet
-# for this turn. Only staged_pipeline.py (see ollama_provider.py) actually
-# reads it, to pause/resume a plan across turns - every other provider
-# accepts and ignores it, keeping one shared call signature across every
-# ProviderSpec.
-RunChatFn = Callable[[str, list[dict[str, Any]], "str | None", "list[str] | None", "str | None"], ChatResult]
+RunChatFn = Callable[[str, list[dict[str, Any]], "str | None", "list[str] | None"], ChatResult]
 IsAvailableFn = Callable[[], bool]
 
 
