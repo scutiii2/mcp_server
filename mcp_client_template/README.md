@@ -30,6 +30,30 @@ configured server - including `mcp_server` itself - is symmetric.
 - `src/_fixtures/reference_server.py` - a trivial stdio server (`echo`,
   `add`) used only by this template's own tests.
 
+To build a real client: copy this whole folder into your project, rename
+it and the `name =` in `pyproject.toml`, drop `src/_fixtures/` (it exists
+only for this template's own tests), and write your config_servers.json
+- see [Configuring servers](#configuring-servers) below. Keep everything
+else (own venv, the async-first `McpClientRegistry`, the optional
+`sync_wrapper.py`) as-is unless you have a reason to change it.
+
+## Setting it up standalone
+
+From your copy of this folder (own venv, separate from this repo's
+shared `venv_mcp` - a copy living in a different project won't have that
+available):
+
+```
+python -m venv .venv
+.venv\Scripts\activate      # Windows; `source .venv/bin/activate` on Linux/macOS
+pip install -e ".[dev]"
+```
+
+Then follow [Configuring servers](#configuring-servers) and
+[Using it](#using-it-async) below - there's no `mcp.run(...)` entry
+point to launch here, since this is a client library, not a server; your
+own app's code is what calls into it.
+
 ## Configuring servers
 
 Copy `configs/config_servers.json.example` to `configs/config_servers.json`
@@ -103,13 +127,18 @@ process every time.
 
 ## Tests
 
+Inside this repo, from the repo root, using the shared `venv_mcp`:
+
 ```
 venv_mcp/Scripts/python.exe -m pytest mcp_client_template/tests -v
 ```
 
-(from the repo root, using the repo's shared `venv_mcp` - see this
-template's `pyproject.toml` for the exact dependency versions if you're
-setting up a standalone venv for a copy of this folder elsewhere.)
+In a standalone copy (see [Setting it up standalone](#setting-it-up-standalone)
+above), from your own venv instead:
+
+```
+pytest tests -v
+```
 
 ## Not in this template (yet)
 
