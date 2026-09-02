@@ -272,7 +272,8 @@ def _resource(name):
 
 def test_group_tools_by_capability_carries_id_label_and_enabled_state():
     groups = _group_tools_by_capability(
-        [_tool("get_host_health_tool")], {"host_health": {"enabled": False, "title": "Host Health"}}
+        [_tool("get_host_health_tool")],
+        {"host_health": {"enabled": False, "title": "Host Health", "tools": ["get_host_health_tool"]}},
     )
 
     assert groups == [
@@ -311,7 +312,8 @@ def test_group_tools_by_capability_fallback_group_is_never_toggleable():
 
 def test_group_resources_by_capability_carries_id_label_and_enabled_state():
     groups = _group_resources_by_capability(
-        [_resource("host_health")], {"host_health": {"enabled": True, "title": "Host Health"}}
+        [_resource("host_health")],
+        {"host_health": {"enabled": True, "title": "Host Health", "resources": ["host_health"]}},
     )
 
     assert groups == [
@@ -339,7 +341,9 @@ def test_group_tools_by_capability_keeps_a_disabled_capabilitys_group_with_no_to
 
 
 def test_group_resources_by_capability_keeps_a_disabled_capabilitys_group_with_no_resources():
-    groups = _group_resources_by_capability([], {"host_health": {"enabled": False, "title": "Host Health"}})
+    groups = _group_resources_by_capability(
+        [], {"host_health": {"enabled": False, "title": "Host Health", "resources": ["host_health"]}}
+    )
 
     assert groups == [
         {"id": "host_health", "label": "Host Health", "enabled": False, "toggleable": True, "resources": []}
@@ -351,7 +355,11 @@ def test_group_resources_by_capability_does_not_seed_a_group_for_a_tool_only_cap
     resource-section group just because it's a known, enabled
     capability - only "host_health" (which owns one) should seed here."""
     groups = _group_resources_by_capability(
-        [], {"host_health": {"enabled": True, "title": "Host Health"}, "otp": {"enabled": True, "title": "OTP"}}
+        [],
+        {
+            "host_health": {"enabled": True, "title": "Host Health", "resources": ["host_health"]},
+            "otp": {"enabled": True, "title": "OTP", "resources": []},
+        },
     )
 
     assert [group["id"] for group in groups] == ["host_health"]

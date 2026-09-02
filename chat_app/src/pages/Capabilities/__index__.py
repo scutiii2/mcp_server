@@ -64,15 +64,17 @@ def _fetch_extensions_or_empty() -> list[dict]:
 
 def _fetch_capabilities_meta_or_empty() -> dict[str, dict]:
     """{"host_health": {"enabled": True, "title": "Host Health",
-    "command_id": "host"}, ...} - live from mcp_server, not the config
-    file, so a change made from another tab/user (or a TITLE/COMMAND_ID
-    edited in that capability's own __init__.py) shows up on the next
-    page load. Same degrade-gracefully reasoning as
-    _fetch_extensions_or_empty(): an unreachable mcp_server shouldn't
-    blank the whole page, it should just mean no toggle state (and no
-    switches, see capabilities.html) is shown - and _capability_group_meta
-    below falls back to the id itself when a capability has no entry
-    here at all."""
+    "command_id": "host", "tools": ["get_host_health_tool"],
+    "resources": ["host_health"]}, ...} - live from mcp_server, not the
+    config file, so a change made from another tab/user (or a
+    TITLE/COMMAND_ID edited in that capability's own __init__.py, or a
+    tool/resource a capability newly registers) shows up on the next page
+    load. Same degrade-gracefully reasoning as _fetch_extensions_or_empty():
+    an unreachable mcp_server shouldn't blank the whole page, it should
+    just mean no toggle state (and no switches, see capabilities.html) is
+    shown, and every tool/resource falls into the "other" fallback group
+    (see tool_capabilities.py) - and _capability_group_meta below falls
+    back to the id itself when a capability has no entry here at all."""
     try:
         return {status["name"]: status for status in fetch_capabilities()}
     except Exception:  # noqa: BLE001
@@ -153,7 +155,7 @@ def _group_tools_by_capability(tools: list[dict], capabilities_meta: dict[str, d
     for tool in tools:
         if tool["extension_id"] is not None:
             continue
-        capability_id = capability_for_tool(tool["name"])
+        capability_id = capability_for_tool(tool["name"], capabilities_meta)
         grouped.setdefault(capability_id, []).append(tool)
 
     return [
@@ -167,10 +169,9 @@ def _group_resources_by_capability(resources: list[dict], capabilities_meta: dic
     # above, scoped to capabilities that actually own a resource - seeding
     # from every known capability would also produce an empty, pointless
     # resource group for a tool-only capability like "otp".
-    seed_ids = capabilities_meta.keys() & resource_capability_ids()
-    grouped: dict[str, list[dict]] = {name: [] for name in seed_ids}
+    grouped: dict[str, list[dict]] = {name: [] for name in resource_capability_ids(capabilities_meta)}
     for resource in resources:
-        capability_id = capability_for_resource(resource["name"])
+        capability_id = capability_for_resource(resource["name"], capabilities_meta)
         grouped.setdefault(capability_id, []).append(resource)
 
     return [

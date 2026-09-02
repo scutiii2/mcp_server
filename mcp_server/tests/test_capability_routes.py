@@ -48,6 +48,10 @@ def test_mcp():
         def make_gadget() -> str:
             return "gadget"
 
+        @server.resource("gadget://catalog/{id}")
+        def get_gadget(id: str) -> str:
+            return f"gadget {id}"
+
     return server
 
 
@@ -73,8 +77,14 @@ def test_get_lists_every_registered_capability(client):
 
     assert response.status_code == 200
     assert response.json() == [
-        {"name": "gadgets", "enabled": True, "title": "gadgets", "command_id": "gadgets"},
-        {"name": "widgets", "enabled": True, "title": "widgets", "command_id": "widgets"},
+        {
+            "name": "gadgets", "enabled": True, "title": "gadgets", "command_id": "gadgets",
+            "tools": ["make_gadget"], "resources": ["get_gadget"],
+        },
+        {
+            "name": "widgets", "enabled": True, "title": "widgets", "command_id": "widgets",
+            "tools": ["make_widget"], "resources": [],
+        },
     ]
 
 
@@ -82,7 +92,10 @@ def test_patch_disables_a_capability(client, test_mcp):
     response = client.patch("/capabilities/widgets", json={"enabled": False})
 
     assert response.status_code == 200
-    assert response.json() == {"name": "widgets", "enabled": False, "title": "widgets", "command_id": "widgets"}
+    assert response.json() == {
+        "name": "widgets", "enabled": False, "title": "widgets", "command_id": "widgets",
+        "tools": ["make_widget"], "resources": [],
+    }
     assert "make_widget" not in {t.name for t in test_mcp._tool_manager.list_tools()}
     # The sibling capability is untouched.
     assert "make_gadget" in {t.name for t in test_mcp._tool_manager.list_tools()}
@@ -94,7 +107,10 @@ def test_patch_re_enables_a_capability(client, test_mcp):
     response = client.patch("/capabilities/widgets", json={"enabled": True})
 
     assert response.status_code == 200
-    assert response.json() == {"name": "widgets", "enabled": True, "title": "widgets", "command_id": "widgets"}
+    assert response.json() == {
+        "name": "widgets", "enabled": True, "title": "widgets", "command_id": "widgets",
+        "tools": ["make_widget"], "resources": [],
+    }
     assert "make_widget" in {t.name for t in test_mcp._tool_manager.list_tools()}
 
 

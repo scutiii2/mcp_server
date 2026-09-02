@@ -156,6 +156,49 @@ def test_a_capability_with_no_tools_or_resources_is_still_registered(mcp):
     assert registry.is_enabled("empty") is False
 
 
+def test_tool_names_lists_a_capabilitys_tools(mcp):
+    with registry.capturing(mcp, "widgets"):
+        @mcp.tool()
+        def make_widget() -> str:
+            return "widget"
+
+        @mcp.tool()
+        def paint_widget() -> str:
+            return "painted"
+
+    assert registry.tool_names("widgets") == ["make_widget", "paint_widget"]
+
+
+def test_tool_names_survives_disabling(mcp):
+    """Disabling only removes tools from the live `mcp` instance - the
+    registry's own record (what a caller derives capability ownership
+    from) must still report them."""
+    with registry.capturing(mcp, "widgets"):
+        @mcp.tool()
+        def make_widget() -> str:
+            return "widget"
+
+    registry.set_enabled(mcp, "widgets", False)
+
+    assert registry.tool_names("widgets") == ["make_widget"]
+
+
+def test_tool_names_empty_for_a_capability_with_no_tools(mcp):
+    with registry.capturing(mcp, "empty"):
+        pass
+
+    assert registry.tool_names("empty") == []
+
+
+def test_resource_template_names_lists_a_capabilitys_resources(mcp):
+    with registry.capturing(mcp, "widgets"):
+        @mcp.resource("widget://catalog/{id}")
+        def get_widget(id: str) -> str:
+            return f"widget {id}"
+
+    assert registry.resource_template_names("widgets") == ["get_widget"]
+
+
 def test_names_lists_every_captured_capability_sorted(mcp):
     with registry.capturing(mcp, "otp"):
         pass

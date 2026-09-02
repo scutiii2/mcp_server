@@ -88,6 +88,20 @@ def is_enabled(name: str) -> bool:
     return _handle(name).enabled
 
 
+def tool_names(name: str) -> list[str]:
+    """Names of every tool `name` registered - present whether or not the
+    capability is currently enabled, since disabling only removes them
+    from the live `mcp` instance, not from this registry's own record.
+    Lets a caller (chat_app's GET /capabilities consumer) derive which
+    capability owns a tool without a second, hand-maintained map."""
+    return [tool.name for tool in _handle(name).tools]
+
+
+def resource_template_names(name: str) -> list[str]:
+    """Same as tool_names() above, for `name`'s resource templates."""
+    return [template.name for template in _handle(name).resource_templates]
+
+
 def set_enabled(mcp: FastMCP, name: str, enabled: bool) -> None:
     """Add or remove `name`'s tools/resource templates on the live
     `mcp` instance. A no-op if `enabled` already matches the current
