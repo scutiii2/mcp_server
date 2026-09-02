@@ -157,13 +157,31 @@ class ExtensionStatus:
     tools: list[str] = field(default_factory=list)
 
 
-@dataclass
-class _ProxiedTool:
-    """One upstream tool, registered here under its namespaced name."""
-
-    extension_id: str
-    upstream_name: str
-    definition: types.Tool  # already carries the *namespaced* name
+def _namespace(extension_id: str, tools: list[types.Tool]) -> list[types.Tool]:
+    """Wrap `tools` (as returned by an upstream `list_tools()`) under
+    their namespaced name for this extension. Shared by the initial
+    connect-time fetch and every later live refresh, so both build the
+    exact same shape.
+    """
+    return [
+        types.Tool(
+            name=f"{extension_id}{NAMESPACE_SEPARATOR}{tool.name}",
+            description=tool.description,
+            inputSchema=tool.inputSchema,
+            outputSchema=tool.outputSchema,
+            # mcp.types.Tool aliases its "meta" field to "_meta" on
+            # the wire without populate_by_name, and the model's
+            # extra="allow" config means a keyword of meta= here
+            # would silently create a stray extra attribute instead
+            # of setting the real field - verified live against the
+            # installed mcp==1.28.0. Don't "normalize" this back to
+            # meta= - it would silently reintroduce that bug.
+            _meta=tool.meta,
+            annotations=tool.annotations,
+            icons=tool.icons,
+        )
+        for tool in tools
+    ]
 
 
 class ExtensionRegistry:
@@ -189,7 +207,14 @@ class ExtensionRegistry:
         # stack, closed independently.
         self._extension_stacks: dict[str, AsyncExitStack] = {}
         self._sessions: dict[str, ClientSession] = {}  # extension id -> session
-        self._proxied: dict[str, _ProxiedTool] = {}  # namespaced name -> tool
+        # Namespaced tool defs, last known good, per extension id. Not the
+        # live source of truth for a list_tools() response (see
+        # merged_list_tools(), which re-fetches live) - this is a fallback
+        # for when that live fetch fails, and the source for
+        # proxied_tool_definitions()/ExtensionStatus.tools, both of which a
+        # caller may reasonably want synchronously, without an upstream
+        # round trip.
+        self._last_known_tools: dict[str, list[types.Tool]] = {}
         self._statuses: list[ExtensionStatus] = []
         self._mcp: FastMCP | None = None
         # Guards add()/remove() (and the module-level add_extension()/
@@ -207,10 +232,13 @@ class ExtensionRegistry:
         return list(self._statuses)
 
     def proxied_tool_definitions(self) -> list[types.Tool]:
-        return [proxied.definition for proxied in self._proxied.values()]
+        """The last known tool defs for every connected extension - see
+        `_last_known_tools`'s docstring for why this isn't a live fetch."""
+        return [tool for tools in self._last_known_tools.values() for tool in tools]
 
     def is_proxied(self, name: str) -> bool:
-        return name in self._proxied
+        extension_id, separator, _upstream_name = name.partition(NAMESPACE_SEPARATOR)
+        return bool(separator) and extension_id in self._sessions
 
     async def connect_all(self, config_path: Path) -> None:
         """Connect to every extension in config.json's "extensions"
@@ -274,30 +302,9 @@ class ExtensionRegistry:
         opened = local_stack.pop_all()
         self._extension_stacks[extension_id] = opened
 
-        tool_names: list[str] = []
-        for tool in listed.tools:
-            namespaced = f"{extension_id}{NAMESPACE_SEPARATOR}{tool.name}"
-            self._proxied[namespaced] = _ProxiedTool(
-                extension_id=extension_id,
-                upstream_name=tool.name,
-                definition=types.Tool(
-                    name=namespaced,
-                    description=tool.description,
-                    inputSchema=tool.inputSchema,
-                    outputSchema=tool.outputSchema,
-                    # mcp.types.Tool aliases its "meta" field to "_meta" on
-                    # the wire without populate_by_name, and the model's
-                    # extra="allow" config means a keyword of meta= here
-                    # would silently create a stray extra attribute instead
-                    # of setting the real field - verified live against the
-                    # installed mcp==1.28.0. Don't "normalize" this back to
-                    # meta= - it would silently reintroduce that bug.
-                    _meta=tool.meta,
-                    annotations=tool.annotations,
-                    icons=tool.icons,
-                ),
-            )
-            tool_names.append(namespaced)
+        namespaced_tools = _namespace(extension_id, listed.tools)
+        self._last_known_tools[extension_id] = namespaced_tools
+        tool_names = [tool.name for tool in namespaced_tools]
 
         self._sessions[extension_id] = session
         status = ExtensionStatus(
@@ -334,8 +341,7 @@ class ExtensionRegistry:
                 pass
 
         self._sessions.pop(extension_id, None)
-        for name in [n for n, proxied in self._proxied.items() if proxied.extension_id == extension_id]:
-            del self._proxied[name]
+        self._last_known_tools.pop(extension_id, None)
         self._statuses = [status for status in self._statuses if status.id != extension_id]
         return True
 
@@ -434,12 +440,37 @@ class ExtensionRegistry:
         anyway is a programming error in the caller, not a normal
         "unknown tool" outcome a model should be told to retry, so this
         raises rather than returning a synthetic error result.
+
+        Routes by splitting `name` on the namespace separator rather than
+        looking it up in a cached tool-definition table - the table would
+        need to be kept in lockstep with whatever merged_list_tools() last
+        returned, which since that's now a live, per-call fetch (see its
+        docstring) would just be a second, redundant cache to go stale.
+        The extension id and the upstream tool's own name are all `call()`
+        ever needed from that table anyway.
         """
-        proxied = self._proxied.get(name)
-        if proxied is None:
+        extension_id, separator, upstream_name = name.partition(NAMESPACE_SEPARATOR)
+        session = self._sessions.get(extension_id) if separator else None
+        if session is None:
             raise KeyError(f"No proxied tool named {name!r}")
-        session = self._sessions[proxied.extension_id]
-        return await session.call_tool(proxied.upstream_name, arguments)
+        return await session.call_tool(upstream_name, arguments)
+
+    async def _live_tools_for(self, extension_id: str, session: ClientSession) -> list[types.Tool]:
+        """This extension's current namespaced tool defs, fetched live.
+
+        Falls back to the last known good defs (from connect time, or an
+        earlier successful call here) on any failure - a transient hiccup
+        on one extension must not break the whole merged listing, same
+        failure-isolation principle _connect_one already applies to
+        connecting in the first place. Never raises.
+        """
+        try:
+            listed = await session.list_tools()
+        except Exception:  # noqa: BLE001 - one flaky extension must not break the others
+            return self._last_known_tools.get(extension_id, [])
+        namespaced_tools = _namespace(extension_id, listed.tools)
+        self._last_known_tools[extension_id] = namespaced_tools
+        return namespaced_tools
 
     async def merged_list_tools(self) -> list[types.Tool]:
         """FastMCP's own tools plus every connected extension's, in that
@@ -448,14 +479,36 @@ class ExtensionRegistry:
         makes it testable without going through the low-level protocol
         plumbing.
 
+        Each connected extension's tools are fetched live, fresh on every
+        call, rather than served from the snapshot taken when it first
+        connected - a plain, repeated ``list_tools()`` call, which any
+        MCP server (ours or a genuinely external one - Gmail's, anyone
+        else's) already has to support, since the spec allows a server's
+        tool list to change between calls. That's what lets an extension
+        put live, current values into its own tools' schemas (an `enum`
+        of currently-registered names, say - see crafty_mcp_server's
+        suggestions.py for the worked example) and have this server's
+        proxy actually reflect that, instead of freezing whatever the
+        extension's schema happened to be at connect time. No bespoke
+        protocol on top of MCP was needed for this - only a server that
+        never implements that trick, still answers the same static list
+        every time, which is exactly what proxying it already did before.
+        Fetched concurrently across extensions so one slow upstream can't
+        serialize behind another.
+
         apply_suggestions() runs only on our own tools, not the proxied
         ones - infra/tool_suggestions.py's registry is keyed by our own
-        tools' names, which a proxied (namespaced) tool can never match.
+        tools' names, which a proxied (namespaced) tool can never match;
+        an extension wanting the same live-suggestion behavior applies it
+        to its own tools itself, as above.
         """
         assert self._mcp is not None, "install() must run before merged_list_tools()"
         own_tools = await self._mcp.list_tools()
         apply_suggestions(own_tools)
-        return [*own_tools, *self.proxied_tool_definitions()]
+        proxied_lists = await asyncio.gather(
+            *(self._live_tools_for(extension_id, session) for extension_id, session in self._sessions.items())
+        )
+        return [*own_tools, *(tool for tools in proxied_lists for tool in tools)]
 
     async def merged_call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         """Route by namespace prefix: a proxied name goes upstream,

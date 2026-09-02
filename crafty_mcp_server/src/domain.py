@@ -1,18 +1,14 @@
 """Controlling registered Crafty worlds - the part worth testing.
 
-A "world" here is a name registered against ``infra/crafty_registry.py``:
-which Crafty Controller it lives on, which server id Crafty knows it as,
-and the API token to use. Every function below resolves that record
-first, so an unregistered name fails with the names that *are*
-registered - same convention as ``host_health/domain.py``'s
-``known_host_names`` and ``server_manager/domain.py``'s
-``_known_app_names``.
+A "world" here is a name registered against ``registry.py``: which
+Crafty Controller it lives on, which server id Crafty knows it as, and
+the API token to use. Every function below resolves that record first,
+so an unregistered name fails with the names that *are* registered.
 
 ``register_world`` takes the default base URL/verify_ssl as parameters
-rather than reading ``src.config.settings`` directly, so this module
-keeps importing only ``infra/`` (per ``capabilities/README.md``) and
-stays testable without monkeypatching global settings - ``tool.py``
-resolves those defaults and passes them in.
+rather than reading a settings object directly, so this module stays
+testable without monkeypatching global settings - ``server.py``
+resolves those defaults (from the environment) and passes them in.
 """
 
 from __future__ import annotations
@@ -21,7 +17,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.capabilities.crafty.contract import (
+from src import crafty_client, registry
+from src.contract import (
     DefaultBaseUrlResult,
     PingBaseUrlResult,
     WorldActionResult,
@@ -32,13 +29,9 @@ from src.capabilities.crafty.contract import (
     WorldRemoveResult,
     WorldStatusResult,
 )
-from src.infra import crafty, crafty_registry
 
 
 def _bytes_to_human_readable(num_bytes: Any) -> str | None:
-    """Same thresholds as the Discord bot's ``core/numbers/bytes.py`` -
-    kept as a private helper here rather than a shared util, since this
-    is the only capability that needs it."""
     if num_bytes is None:
         return None
     try:
@@ -68,14 +61,14 @@ def _resolve_base_url(
     """The base_url/verify_ssl any crafty tool that accepts an optional
     ``base_url`` actually uses, in precedence order: the explicit
     argument, then the default set live via ``set_default_base_url``
-    (``crafty_registry``'s ``default_config`` table), then
+    (``registry``'s ``default_config`` table), then
     ``default_base_url``/``default_verify_ssl`` (this deployment's
     ``CRAFTY_BASE_URL`` env var, resolved by the caller). Returns
     ``("", ...)`` when nothing resolves - the caller decides whether an
     empty result is an error (``register_world``) or something to report
     (there's nothing to ping either, so ``ping_base_url`` also raises).
     """
-    stored_default = crafty_registry.get_default(db_path)
+    stored_default = registry.get_default(db_path)
 
     resolved_base_url = (base_url or "").strip()
     if not resolved_base_url and stored_default is not None:
@@ -96,7 +89,7 @@ def _resolve_base_url(
 _NO_BASE_URL_MESSAGE = (
     "No base_url was given, no default has been set (see set_default_base_url), "
     "and no default Crafty URL is configured for this deployment (CRAFTY_BASE_URL). "
-    "Pass base_url explicitly, call crafty_set_default_base_url_tool, or set that "
+    "Pass base_url explicitly, call crafty_set_default_base_url, or set that "
     "environment variable."
 )
 
@@ -123,7 +116,7 @@ def register_world(
     if not resolved_base_url:
         raise KeyError(_NO_BASE_URL_MESSAGE)
 
-    record = crafty_registry.register(
+    record = registry.register(
         db_path,
         name,
         server_id=server_id,
@@ -147,7 +140,7 @@ def set_default_base_url(db_path: Path, *, base_url: str, verify_ssl: bool = Tru
     when a call doesn't supply its own ``base_url``. Takes effect
     immediately for the next registration - no restart required, unlike
     changing ``CRAFTY_BASE_URL``."""
-    stored = crafty_registry.set_default(db_path, base_url=base_url, verify_ssl=verify_ssl)
+    stored = registry.set_default(db_path, base_url=base_url, verify_ssl=verify_ssl)
     return DefaultBaseUrlResult(
         base_url=stored.base_url,
         verify_ssl=stored.verify_ssl,
@@ -180,7 +173,7 @@ async def ping_base_url(
     if not resolved_base_url:
         raise KeyError(_NO_BASE_URL_MESSAGE)
 
-    result = await crafty.ping(resolved_base_url, verify_ssl=resolved_verify_ssl)
+    result = await crafty_client.ping(resolved_base_url, verify_ssl=resolved_verify_ssl)
 
     if result.reachable:
         message = f"{resolved_base_url} is reachable (HTTP {result.status_code}, {result.latency_ms:.0f} ms)."
@@ -198,7 +191,7 @@ async def ping_base_url(
 
 
 def list_worlds(db_path: Path) -> WorldListResult:
-    records = crafty_registry.list_all(db_path)
+    records = registry.list_all(db_path)
     worlds = [
         WorldInfo(name=r.name, base_url=r.base_url, server_id=r.server_id, verify_ssl=r.verify_ssl)
         for r in records
@@ -219,7 +212,7 @@ def remove_world(db_path: Path, name: str) -> WorldRemoveResult:
     """Delete a world's registration. It stops being controllable by any
     crafty_world_* tool until it's registered again - the world itself,
     on Crafty, is untouched."""
-    crafty_registry.remove(db_path, name)
+    registry.remove(db_path, name)
     return WorldRemoveResult(
         name=name,
         message=f"World {name!r} removed. Register it again before controlling it.",
@@ -227,8 +220,8 @@ def remove_world(db_path: Path, name: str) -> WorldRemoveResult:
 
 
 async def _act(db_path: Path, name: str, crafty_action: str, label: str, verb: str) -> WorldActionResult:
-    world = crafty_registry.get(db_path, name)
-    await crafty.action(
+    world = registry.get(db_path, name)
+    await crafty_client.action(
         world.base_url, world.api_token, world.server_id, crafty_action, verify_ssl=world.verify_ssl
     )
     return WorldActionResult(name=name, action=label, message=f"{name} {verb}.")
@@ -247,8 +240,8 @@ async def restart_world(db_path: Path, name: str) -> WorldActionResult:
 
 
 async def send_command(db_path: Path, name: str, command: str) -> WorldCommandResult:
-    world = crafty_registry.get(db_path, name)
-    await crafty.send_command(
+    world = registry.get(db_path, name)
+    await crafty_client.send_command(
         world.base_url, world.api_token, world.server_id, command, verify_ssl=world.verify_ssl
     )
     return WorldCommandResult(name=name, command=command, message=f"Sent to {name}: {command!r}")
@@ -266,8 +259,8 @@ def _parse_players(raw: Any) -> list[str]:
 
 
 async def get_status(db_path: Path, name: str) -> WorldStatusResult:
-    world = crafty_registry.get(db_path, name)
-    payload = await crafty.stats(world.base_url, world.api_token, world.server_id, verify_ssl=world.verify_ssl)
+    world = registry.get(db_path, name)
+    payload = await crafty_client.stats(world.base_url, world.api_token, world.server_id, verify_ssl=world.verify_ssl)
     data = payload.get("data") or {}
 
     online = int(data.get("online") or 0)

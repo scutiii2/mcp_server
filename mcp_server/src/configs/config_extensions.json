@@ -1,1 +1,7 @@
-{}
+{
+  "crafty": {
+    "label": "Crafty",
+    "description": "Control Minecraft worlds hosted on Crafty Controller.",
+    "url": "http://127.0.0.1:9100/mcp"
+  }
+}

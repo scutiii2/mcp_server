@@ -1,9 +1,8 @@
-"""Tests for the crafty capability's domain logic.
+"""Tests for domain.py.
 
-The world registry is real SQLite (``tmp_path``), same convention as
-``test_otp_domain.py`` treating its SQLite store as real while patching
-the network call - here that's ``infra/crafty.py``'s ``stats``/``action``/
-``send_command``, which would otherwise reach a real Crafty instance.
+The world registry is real SQLite (``tmp_path``) - only the network call
+(``crafty_client.py``'s ``stats``/``action``/``send_command``) is mocked,
+since that would otherwise reach a real Crafty instance.
 """
 
 from __future__ import annotations
@@ -13,8 +12,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.capabilities.crafty import domain
-from src.infra import crafty, crafty_registry
+from src import domain, registry
+from src.crafty_client import PingResult
 
 
 def _register(db_path: Path, name: str = "survival", **overrides):
@@ -25,7 +24,7 @@ def _register(db_path: Path, name: str = "survival", **overrides):
         verify_ssl=True,
     )
     defaults.update(overrides)
-    return crafty_registry.register(db_path, name, **defaults)
+    return registry.register(db_path, name, **defaults)
 
 
 # --- register_world --------------------------------------------------------
@@ -41,7 +40,7 @@ def test_register_world_uses_the_given_base_url(tmp_path: Path):
     )
 
     assert result.base_url == "https://crafty.example.com"
-    stored = crafty_registry.get(db, "survival")
+    stored = registry.get(db, "survival")
     assert stored.api_token == "tok3n"
 
 
@@ -70,7 +69,7 @@ def test_register_world_without_a_base_url_or_a_default_raises(tmp_path: Path):
 
 def test_register_world_prefers_an_explicit_base_url_over_a_stored_default(tmp_path: Path):
     db = tmp_path / "worlds.db"
-    crafty_registry.set_default(db, base_url="https://stored.example.com", verify_ssl=True)
+    registry.set_default(db, base_url="https://stored.example.com", verify_ssl=True)
 
     result = domain.register_world(
         db, "survival", api_token="tok3n", server_id="srv1",
@@ -83,7 +82,7 @@ def test_register_world_prefers_an_explicit_base_url_over_a_stored_default(tmp_p
 
 def test_register_world_uses_a_stored_default_over_the_env_fallback(tmp_path: Path):
     db = tmp_path / "worlds.db"
-    crafty_registry.set_default(db, base_url="https://stored.example.com", verify_ssl=False)
+    registry.set_default(db, base_url="https://stored.example.com", verify_ssl=False)
 
     result = domain.register_world(
         db, "survival", api_token="tok3n", server_id="srv1",
@@ -92,7 +91,7 @@ def test_register_world_uses_a_stored_default_over_the_env_fallback(tmp_path: Pa
     )
 
     assert result.base_url == "https://stored.example.com"
-    stored = crafty_registry.get(db, "survival")
+    stored = registry.get(db, "survival")
     assert stored.verify_ssl is False
 
 
@@ -106,7 +105,7 @@ def test_set_default_base_url_persists_it_for_a_later_registration(tmp_path: Pat
 
     assert result.base_url == "https://stored.example.com"
     assert result.verify_ssl is False
-    stored = crafty_registry.get_default(db)
+    stored = registry.get_default(db)
     assert stored.base_url == "https://stored.example.com"
     assert stored.verify_ssl is False
 
@@ -125,9 +124,9 @@ def test_set_default_base_url_defaults_verify_ssl_to_true(tmp_path: Path):
 @pytest.mark.anyio
 async def test_ping_base_url_pings_the_explicitly_given_url(tmp_path: Path):
     db = tmp_path / "worlds.db"
-    fake_ping = AsyncMock(return_value=crafty.PingResult(reachable=True, status_code=200, error=None, latency_ms=12.5))
+    fake_ping = AsyncMock(return_value=PingResult(reachable=True, status_code=200, error=None, latency_ms=12.5))
 
-    with patch("src.capabilities.crafty.domain.crafty.ping", new=fake_ping):
+    with patch("src.domain.crafty_client.ping", new=fake_ping):
         result = await domain.ping_base_url(
             db, base_url="https://explicit.example.com", verify_ssl=None,
             default_base_url="", default_verify_ssl=True,
@@ -143,10 +142,10 @@ async def test_ping_base_url_pings_the_explicitly_given_url(tmp_path: Path):
 @pytest.mark.anyio
 async def test_ping_base_url_falls_back_to_the_stored_default(tmp_path: Path):
     db = tmp_path / "worlds.db"
-    crafty_registry.set_default(db, base_url="https://stored.example.com", verify_ssl=False)
-    fake_ping = AsyncMock(return_value=crafty.PingResult(reachable=True, status_code=200, error=None, latency_ms=5.0))
+    registry.set_default(db, base_url="https://stored.example.com", verify_ssl=False)
+    fake_ping = AsyncMock(return_value=PingResult(reachable=True, status_code=200, error=None, latency_ms=5.0))
 
-    with patch("src.capabilities.crafty.domain.crafty.ping", new=fake_ping):
+    with patch("src.domain.crafty_client.ping", new=fake_ping):
         result = await domain.ping_base_url(
             db, base_url=None, verify_ssl=None,
             default_base_url="https://env.example.com", default_verify_ssl=True,
@@ -160,10 +159,10 @@ async def test_ping_base_url_falls_back_to_the_stored_default(tmp_path: Path):
 async def test_ping_base_url_reports_an_unreachable_result_without_raising(tmp_path: Path):
     db = tmp_path / "worlds.db"
     fake_ping = AsyncMock(
-        return_value=crafty.PingResult(reachable=False, status_code=None, error="Connection refused", latency_ms=None)
+        return_value=PingResult(reachable=False, status_code=None, error="Connection refused", latency_ms=None)
     )
 
-    with patch("src.capabilities.crafty.domain.crafty.ping", new=fake_ping):
+    with patch("src.domain.crafty_client.ping", new=fake_ping):
         result = await domain.ping_base_url(
             db, base_url="https://down.example.com", verify_ssl=None,
             default_base_url="", default_verify_ssl=True,
@@ -235,7 +234,7 @@ async def test_start_world_calls_the_start_action_on_the_right_world(tmp_path: P
     db = tmp_path / "worlds.db"
     _register(db, "survival", server_id="srv1", api_token="tok3n")
 
-    with patch("src.capabilities.crafty.domain.crafty.action", new=AsyncMock()) as mock_action:
+    with patch("src.domain.crafty_client.action", new=AsyncMock()) as mock_action:
         result = await domain.start_world(db, "survival")
 
     mock_action.assert_called_once_with(
@@ -250,7 +249,7 @@ async def test_stop_world_calls_the_stop_action(tmp_path: Path):
     db = tmp_path / "worlds.db"
     _register(db, "survival")
 
-    with patch("src.capabilities.crafty.domain.crafty.action", new=AsyncMock()) as mock_action:
+    with patch("src.domain.crafty_client.action", new=AsyncMock()) as mock_action:
         result = await domain.stop_world(db, "survival")
 
     assert mock_action.call_args.args[3] == "stop_server"
@@ -262,7 +261,7 @@ async def test_restart_world_calls_the_restart_action(tmp_path: Path):
     db = tmp_path / "worlds.db"
     _register(db, "survival")
 
-    with patch("src.capabilities.crafty.domain.crafty.action", new=AsyncMock()) as mock_action:
+    with patch("src.domain.crafty_client.action", new=AsyncMock()) as mock_action:
         result = await domain.restart_world(db, "survival")
 
     assert mock_action.call_args.args[3] == "restart_server"
@@ -286,7 +285,7 @@ async def test_send_command_relays_to_the_right_worlds_console(tmp_path: Path):
     db = tmp_path / "worlds.db"
     _register(db, "survival", server_id="srv1", api_token="tok3n")
 
-    with patch("src.capabilities.crafty.domain.crafty.send_command", new=AsyncMock()) as mock_send:
+    with patch("src.domain.crafty_client.send_command", new=AsyncMock()) as mock_send:
         result = await domain.send_command(db, "survival", "say hello")
 
     mock_send.assert_called_once_with(
@@ -316,7 +315,7 @@ async def test_get_status_parses_the_stats_payload(tmp_path: Path):
         },
     }
 
-    with patch("src.capabilities.crafty.domain.crafty.stats", new=AsyncMock(return_value=payload)):
+    with patch("src.domain.crafty_client.stats", new=AsyncMock(return_value=payload)):
         result = await domain.get_status(db, "survival")
 
     assert result.running is True
@@ -336,7 +335,7 @@ async def test_get_status_parses_players_given_as_a_json_string(tmp_path: Path):
     _register(db, "survival")
     payload = {"status": "ok", "data": {"players": '["alice", "bob"]'}}
 
-    with patch("src.capabilities.crafty.domain.crafty.stats", new=AsyncMock(return_value=payload)):
+    with patch("src.domain.crafty_client.stats", new=AsyncMock(return_value=payload)):
         result = await domain.get_status(db, "survival")
 
     assert result.players == ["alice", "bob"]
@@ -348,7 +347,7 @@ async def test_get_status_defaults_missing_fields_rather_than_raising(tmp_path: 
     _register(db, "survival")
     payload = {"status": "ok", "data": {}}
 
-    with patch("src.capabilities.crafty.domain.crafty.stats", new=AsyncMock(return_value=payload)):
+    with patch("src.domain.crafty_client.stats", new=AsyncMock(return_value=payload)):
         result = await domain.get_status(db, "survival")
 
     assert result.online == 0

@@ -20,7 +20,7 @@ from src.server import mcp
 from src.tool_response import respond
 
 
-@mcp.tool(meta={"keywords": ["host", "health", "cpu", "memory", "disk", "uptime", "status"]})
+@mcp.tool()
 def get_host_health_tool(name: str) -> HostHealthResult:
     """Check CPU, memory, disk and uptime on one of this server's configured machines.
 

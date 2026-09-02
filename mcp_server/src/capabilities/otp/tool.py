@@ -23,7 +23,7 @@ from src.tool_response import respond
 
 
 @command(name="get_otp", description="generate otp")
-@mcp.tool(meta={"keywords": ["otp", "passcode", "code", "verify", "identity", "email"]})
+@mcp.tool()
 def request_otp_tool(recipient: str | None = None) -> RequestOtpResult:
     """Email a one-time passcode to a configured address, to confirm someone's identity.
 
@@ -43,7 +43,7 @@ def request_otp_tool(recipient: str | None = None) -> RequestOtpResult:
 
 
 @command(name="verify_otp", description="verify otp")
-@mcp.tool(meta={"keywords": ["otp", "passcode", "code", "verify"]})
+@mcp.tool()
 def verify_otp_tool(otp_id: str, code: str) -> VerifyOtpResult:
     """Check a one-time passcode someone read back to you.
 

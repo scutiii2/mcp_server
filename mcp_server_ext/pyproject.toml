@@ -1,0 +1,21 @@
+[project]
+# The distribution name for this template. Rename it (and the
+# instructions= / name= in src/server.py) once you copy this into a
+# real extension.
+name = "mcp-server-ext-template"
+version = "0.1.0"
+description = "Template standalone MCP extension server"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp==1.28.0",
+]
+
+[project.scripts]
+mcp-server-ext = "src.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

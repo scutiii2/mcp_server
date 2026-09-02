@@ -20,7 +20,7 @@ from src.tool_response import respond
 
 
 @command(name="start", description="Start an app")
-@mcp.tool(meta={"keywords": ["server", "manager", "docker", "app", "start"]})
+@mcp.tool()
 def start_app_tool(name: str) -> AppActionResult:
     """Start a stopped Docker app hosted on this box.
 
@@ -33,7 +33,7 @@ def start_app_tool(name: str) -> AppActionResult:
 
 
 @command(name="stop", description="Stop an app")
-@mcp.tool(meta={"keywords": ["server", "manager", "docker", "app", "stop"]})
+@mcp.tool()
 def stop_app_tool(name: str) -> AppActionResult:
     """Stop a running Docker app hosted on this box.
 
@@ -45,7 +45,7 @@ def stop_app_tool(name: str) -> AppActionResult:
 
 
 @command(name="restart", description="Restart an app")
-@mcp.tool(meta={"keywords": ["server", "manager", "docker", "app", "restart"]})
+@mcp.tool()
 def restart_app_tool(name: str) -> AppActionResult:
     """Restart a Docker app hosted on this box - stop, then start again.
 
@@ -56,7 +56,7 @@ def restart_app_tool(name: str) -> AppActionResult:
 
 
 @command(name="list", description="List apps")
-@mcp.tool(meta={"keywords": ["server", "manager", "docker", "app", "list"]})
+@mcp.tool()
 def list_apps_tool() -> AppListResult:
     """List every Docker app on this box, running or not.
 

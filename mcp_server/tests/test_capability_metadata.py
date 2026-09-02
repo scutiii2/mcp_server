@@ -38,7 +38,7 @@ def test_command_id_for_falls_back_to_the_id_for_an_unimportable_capability():
 
 
 def test_validate_command_ids_passes_when_every_id_is_distinct():
-    capability_metadata.validate_command_ids(["host_health", "otp", "crafty", "server_manager"])  # must not raise
+    capability_metadata.validate_command_ids(["host_health", "otp", "server_manager"])  # must not raise
 
 
 def test_validate_command_ids_raises_on_a_collision(monkeypatch: pytest.MonkeyPatch):

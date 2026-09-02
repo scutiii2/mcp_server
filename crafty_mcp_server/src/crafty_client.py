@@ -1,20 +1,12 @@
 """Thin async client for the Crafty Controller v2 REST API.
 
-One capability uses this today (``capabilities/crafty/``), but it's kept
-here rather than folded into that capability's ``domain.py`` for the same
-reason ``ssh.py``/``email.py`` live in ``infra/``: it's a new kind of
-external connection, and the low-level "how do I talk to this API"
-concern should stay separate from "what does a registered world's tool
-call mean" (``capabilities/crafty/domain.py``).
-
-Every function here is stateless per call - no session held across calls,
-no client cached at import time. Two reasons, mirroring
-``server_manager/domain.py``'s ``docker.from_env()`` reasoning: these
-calls are infrequent and human-paced (start a world, check its status),
-so there's no real round-trip cost being saved by keeping a connection
-open between them; and a session held across calls would mean one
-world's unreachable Crafty instance could leave a dangling connection
-that outlives the call that opened it.
+Every function here is stateless per call - no session held across
+calls, no client cached at import time. These calls are infrequent and
+human-paced (start a world, check its status), so there's no real
+round-trip cost being saved by keeping a connection open between them;
+and a session held across calls would mean one world's unreachable
+Crafty instance could leave a dangling connection that outlives the
+call that opened it.
 """
 
 from __future__ import annotations
@@ -39,9 +31,8 @@ class PingResult:
 
 
 # Deliberately a strict subset of Crafty's own action set (which also
-# has "kill_server"): nothing in this capability calls kill, and an
-# action nothing can reach is not worth a guard elsewhere staying honest
-# about.
+# has "kill_server"): nothing in this project calls kill, and an action
+# nothing can reach is not worth a guard elsewhere staying honest about.
 VALID_ACTIONS = {"start_server", "stop_server", "restart_server"}
 
 

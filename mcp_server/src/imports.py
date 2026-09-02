@@ -54,9 +54,6 @@ with capability_registry.capturing(mcp, "otp"):
 with capability_registry.capturing(mcp, "server_manager"):
     from src.capabilities.server_manager import tool as server_manager_tool  # noqa: E402,F401
 
-with capability_registry.capturing(mcp, "crafty"):
-    from src.capabilities.crafty import tool as crafty_tool  # noqa: E402,F401
-
 # Every name capturing() used above must match its capabilities/<name>/
 # folder exactly: commands.py's @command decorator independently infers
 # the same id from the decorated function's module path

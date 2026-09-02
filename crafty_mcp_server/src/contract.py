@@ -1,15 +1,12 @@
 """Shapes for the crafty-world tools.
 
 ``WorldInfo`` (and every other result here) deliberately has no
-``api_token`` field, on the same footing as ``otp/contract.py``'s
-``RequestOtpResult`` deliberately having no ``code`` field: the token is
-a credential, ``infra/crafty_registry.py`` is the only thing that reads
-it back, and a result type that carried it would hand it to whatever
-model called ``crafty_world_list_tool``.
+``api_token`` field: the token is a credential, ``registry.py`` is the
+only thing that reads it back, and a result type that carried it would
+hand it to whatever model called ``crafty_world_list``.
 
 One result type per action, each carrying a ``message`` (or ``report``)
-field meant to be relayed to a person verbatim - same convention as
-``server_manager/contract.py``.
+field meant to be relayed to a person verbatim - see ``tool_response.py``.
 """
 
 from __future__ import annotations

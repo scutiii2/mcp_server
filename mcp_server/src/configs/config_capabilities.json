@@ -7,8 +7,5 @@
   },
   "server_manager": {
     "enabled": true
-  },
-  "crafty": {
-    "enabled": true
   }
 }

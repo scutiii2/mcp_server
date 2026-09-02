@@ -1,12 +1,11 @@
 """Tests for infra/tool_suggestions.py.
 
 Patches at the provider boundary (load_hosts_config, load_email_config,
-crafty_domain.list_worlds, server_manager_domain.list_apps) rather than
-re-exercising config parsing or Docker/Crafty calls - those are already
-covered by test_app_config.py, test_crafty_domain.py and
-test_server_manager_domain.py. What's under test here is only
-apply_suggestions()'s own behavior: which (tool, param) pairs it touches,
-and that a broken provider never breaks the listing.
+server_manager_domain.list_apps) rather than re-exercising config
+parsing or Docker calls - those are already covered by
+test_app_config.py and test_server_manager_domain.py. What's under test
+here is only apply_suggestions()'s own behavior: which (tool, param)
+pairs it touches, and that a broken provider never breaks the listing.
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ from unittest.mock import patch
 
 from mcp import types
 
-from src.capabilities.crafty.contract import WorldInfo, WorldListResult
 from src.capabilities.server_manager.contract import AppInfo, AppListResult
 from src.infra import tool_suggestions
 from src.infra.app_config import EmailConfig
@@ -37,7 +35,7 @@ def test_injects_enum_for_a_registered_tool_and_param():
 
 
 def test_leaves_a_param_with_no_registered_provider_untouched():
-    tool = _tool("crafty_world_register", name={"type": "string"})
+    tool = _tool("some_other_tool", name={"type": "string"})
     tool_suggestions.apply_suggestions([tool])
 
     assert "enum" not in tool.inputSchema["properties"]["name"]
@@ -80,38 +78,6 @@ def test_server_manager_apps_populate_start_stop_and_restart():
 
     for tool in tools:
         assert tool.inputSchema["properties"]["name"]["enum"] == ["jellyfin"]
-
-
-def test_crafty_world_names_populate_every_name_taking_tool():
-    worlds = WorldListResult(
-        worlds=[WorldInfo(name="survival", base_url="https://crafty.example.com", server_id="abc", verify_ssl=True)],
-        report="survival",
-    )
-    tools = [_tool(name, name={}) for name in (
-        "crafty_world_start", "crafty_world_stop", "crafty_world_restart",
-        "crafty_world_remove", "crafty_world_send_command", "crafty_world_get_status",
-    )]
-    with patch("src.infra.tool_suggestions.crafty_domain.list_worlds", return_value=worlds):
-        tool_suggestions.apply_suggestions(tools)
-
-    for tool in tools:
-        assert tool.inputSchema["properties"]["name"]["enum"] == ["survival"]
-
-
-def test_crafty_base_urls_are_deduplicated_in_first_seen_order():
-    worlds = WorldListResult(
-        worlds=[
-            WorldInfo(name="survival", base_url="https://a.example.com", server_id="1", verify_ssl=True),
-            WorldInfo(name="creative", base_url="https://b.example.com", server_id="2", verify_ssl=True),
-            WorldInfo(name="skyblock", base_url="https://a.example.com", server_id="3", verify_ssl=True),
-        ],
-        report="",
-    )
-    tool = _tool("crafty_world_register", base_url={"type": "string"})
-    with patch("src.infra.tool_suggestions.crafty_domain.list_worlds", return_value=worlds):
-        tool_suggestions.apply_suggestions([tool])
-
-    assert tool.inputSchema["properties"]["base_url"]["enum"] == ["https://a.example.com", "https://b.example.com"]
 
 
 def test_otp_recipients_come_from_the_approver_list():

@@ -3,11 +3,17 @@
 Not a schema constraint - just an `enum` hint added to a tool's already-
 declared JSON schema so a client (chat_app's Capabilities form, or an
 LLM doing its own tool-calling) sees the actual current options instead
-of typing blind. Deliberately advisory: crafty_world_register's `name`
-is a real example of a parameter this module has no entry for, because
-a brand-new value there is exactly the point. Every parameter that IS
-in PROVIDERS below means "the valid values are already known and
-enumerable server-side", per that tool's own docstring.
+of typing blind. Every parameter in PROVIDERS below means "the valid
+values are already known and enumerable server-side", per that tool's
+own docstring - a parameter with no entry here (a brand-new name being
+registered, say) is deliberately left alone.
+
+Covers only this server's own built-in capabilities' tools - an
+extension's tools (proxied via infra/extensions.py) get the same live-
+suggestion treatment by applying this same technique to their own
+`list_tools()` on their own side; see crafty_mcp_server's suggestions.py
+for the worked example, and extensions.py's merged_list_tools() for why
+that reaches this server's clients unchanged.
 
 Each provider is a plain sync callable, called fresh on every
 apply_suggestions() rather than cached - the whole point is reflecting
@@ -23,7 +29,6 @@ from collections.abc import Callable
 
 from mcp import types
 
-from src.capabilities.crafty import domain as crafty_domain
 from src.capabilities.server_manager import domain as server_manager_domain
 from src.config import settings
 from src.infra.app_config import load_email_config, load_hosts_config
@@ -39,18 +44,6 @@ def _app_names() -> list[str]:
     return [app.name for app in server_manager_domain.list_apps().apps]
 
 
-def _crafty_world_names() -> list[str]:
-    worlds = crafty_domain.list_worlds(settings.crafty_worlds_db_path).worlds
-    return [world.name for world in worlds]
-
-
-def _crafty_base_urls() -> list[str]:
-    worlds = crafty_domain.list_worlds(settings.crafty_worlds_db_path).worlds
-    # dict.fromkeys(), not set(): keeps first-seen order instead of an
-    # arbitrary one, so the suggestion list looks the same across calls.
-    return list(dict.fromkeys(world.base_url for world in worlds))
-
-
 def _otp_recipients() -> list[str]:
     return list(load_email_config(settings.email_config_path).approver_emails)
 
@@ -64,15 +57,6 @@ PROVIDERS: dict[tuple[str, str], _SuggestionProvider] = {
     ("start_app_tool", "name"): _app_names,
     ("stop_app_tool", "name"): _app_names,
     ("restart_app_tool", "name"): _app_names,
-    ("crafty_world_start", "name"): _crafty_world_names,
-    ("crafty_world_stop", "name"): _crafty_world_names,
-    ("crafty_world_restart", "name"): _crafty_world_names,
-    ("crafty_world_remove", "name"): _crafty_world_names,
-    ("crafty_world_send_command", "name"): _crafty_world_names,
-    ("crafty_world_get_status", "name"): _crafty_world_names,
-    ("crafty_world_register", "base_url"): _crafty_base_urls,
-    ("crafty_ping_base_url", "base_url"): _crafty_base_urls,
-    ("crafty_set_default_base_url", "base_url"): _crafty_base_urls,
     ("request_otp_tool", "recipient"): _otp_recipients,
 }
 

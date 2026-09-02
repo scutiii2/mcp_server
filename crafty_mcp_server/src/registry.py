@@ -1,20 +1,11 @@
 """SQLite-backed registry of Crafty Controller worlds.
 
-Owned exclusively by ``capabilities/crafty/`` - nothing else calls this
-module, on the same footing as ``infra/otp.py``'s exclusive ownership by
-``capabilities/otp/`` (see ``infra/README.md``).
-
-This is where a registered world's API token lives. It is deliberately
-**not** written into a ``config_*.json`` file: every other loader in
-``infra/app_config.py`` keeps config free of secrets by having it only
-*name* an environment variable (``${VAR}``), but a token handed to
-``crafty_world_register_tool`` at runtime has no environment variable to
-name - it's supplied live, by whichever caller is registering the world.
-A local SQLite file (regenerated per deployment, covered by this repo's
-blanket ``*.db`` gitignore rule) is the closest equivalent: it keeps the
-token out of a file that gets committed, diffed, or casually opened,
-without inventing a second secrets-injection mechanism just for this one
-capability.
+This is where a registered world's API token lives. A local SQLite file
+(gitignored - see this project's README) rather than a committed config
+file: a token handed to ``crafty_world_register`` at runtime has no
+environment variable to name, it's supplied live by whichever caller is
+registering the world, so it keeps the token out of anything that gets
+committed, diffed, or casually opened.
 
 ``register`` is an upsert (``INSERT OR REPLACE``) rather than refusing a
 duplicate name: re-registering an existing world - to rotate its token,
@@ -59,9 +50,9 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         """
     )
     # Single-row table (id is always 1) holding the operator-set default
-    # base_url/verify_ssl that crafty_world_register_tool falls back to
-    # when a call doesn't supply its own - see set_default/get_default
-    # and domain.register_world's precedence order.
+    # base_url/verify_ssl that crafty_world_register falls back to when a
+    # call doesn't supply its own - see set_default/get_default and
+    # domain.register_world's precedence order.
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS default_config (
@@ -112,8 +103,7 @@ def register(
 
 def get(db_path: Path, name: str) -> WorldRecord:
     """One world by name, with the available names listed if it's not
-    there - the caller is usually a model that guessed, same convention
-    as ``app_config.load_host_config``."""
+    there - the caller is usually a model that guessed."""
     conn = _connect(db_path)
     try:
         row = conn.execute(
@@ -167,8 +157,8 @@ def list_all(db_path: Path) -> list[WorldRecord]:
 
 def set_default(db_path: Path, *, base_url: str, verify_ssl: bool) -> DefaultConfig:
     """Set (or overwrite) the default base_url/verify_ssl that
-    ``crafty_world_register_tool`` falls back to. Idempotent - calling
-    this again simply replaces the previous default."""
+    ``crafty_world_register`` falls back to. Idempotent - calling this
+    again simply replaces the previous default."""
     conn = _connect(db_path)
     try:
         conn.execute(
