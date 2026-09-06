@@ -17,3 +17,5 @@ REM gracefully if mcp_server isn't up yet), just a smoother first load.
 timeout /t 2 /nobreak >nul
 
 start "Chat App" cmd /k call "%~dp0run_chat.bat"
+
+start "AI Agent" cmd /k call "%~dp0run_ai_agent.bat"
