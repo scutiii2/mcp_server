@@ -13,6 +13,11 @@ venv_*/
 !/mcp_server/src/secrets/*.example
 !/mcp_server/src/secrets/README.md
 
+# ai_agent's real API keys / pinned-provider selection, mirroring
+# mcp_server's secret_*.env treatment - only the .example is committed.
+/ai_agent/secrets/*
+!/ai_agent/secrets/*.example
+
 # mcp_server's real host inventory and approver/SMTP-account addresses.
 # The equivalent data lived in the old root-level config.json, which was
 # gitignored outright - these two carry the same real deployment details
