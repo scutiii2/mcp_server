@@ -1,14 +1,12 @@
 """ai_agent's connection to mcp_server - a thin, sync-friendly wrapper
-around mcp_client_template's SyncMcpClient (src/sync_wrapper.py), giving
-the copied provider files (src/llm/claude_provider.py,
-src/llm/openai_provider.py) the same call_tool(name, args) -> str /
-list_tools(enabled_extensions) -> list shape chat_app's own
-services/mcp_client.py gives them today.
+around src/sync_wrapper.py's SyncMcpClient, giving the provider files
+(src/llm/claude_provider.py, src/llm/openai_provider.py) the same
+call_tool(name, args) -> str / list_tools(enabled_extensions) -> list
+shape chat_app's own services/mcp_client.py gives them today.
 
 Connected once at process startup (see server.py's main()) and reused
 for every request via SyncMcpClient's own persistent background
-connection - not reconnected per call, unlike chat_app's current
-mcp_client.py.
+connection - not reconnected per call, unlike chat_app's mcp_client.py.
 """
 
 from __future__ import annotations

@@ -243,6 +243,28 @@ def delete_chat_api(chat_id):
     return "", 204
 
 
+@blueprint.route("/api/chat/cancel", methods=["POST"])
+@require_permission("chat.access")
+def cancel_chat_api():
+    """Marks an in-flight turn (see chat_api below) for cooperative
+    cancellation - cancellation state now lives inside whichever
+    ai_agent instance is serving the turn (see ai_agent/src/llm/
+    cancellation.py), so this needs to know which agent that was, not
+    just the request_id. A missing/unknown agent or request_id (already
+    finished, or never existed) is a no-op, not an error - the UI fires
+    this best-effort right after aborting its own fetch, with no way to
+    know whether the server had already finished."""
+    data = request.get_json(silent=True) or {}
+    request_id = data.get("request_id")
+    agent = agent_registry.get_agent(data.get("provider"))
+    if agent is not None and request_id:
+        try:
+            ai_agent_client.cancel(agent["url"], request_id)
+        except Exception:  # noqa: BLE001 - best-effort; the fetch abort already happened client-side
+            pass
+    return "", 204
+
+
 @blueprint.route("/api/chat", methods=["POST"])
 @require_permission("chat.access")
 def chat_api():
@@ -250,6 +272,11 @@ def chat_api():
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"response": "Please enter a question."})
+
+    # Only a non-command turn ever reaches ai_agent_client.ask (see below) -
+    # a command executes synchronously against mcp_server directly and
+    # finishes before a Stop click's cancel request could plausibly arrive.
+    request_id = data.get("request_id")
 
     is_command = question.startswith("/")
     tools_used: list[str] = []
@@ -304,7 +331,7 @@ def chat_api():
         else:
             try:
                 result = ai_agent_client.ask(
-                    agent["url"], llm_question, llm_history, data.get("enabled_extensions", [])
+                    agent["url"], llm_question, llm_history, data.get("enabled_extensions", []), request_id
                 )
                 response_text = result.get("response", "")
                 tools_used = result.get("tools_used", [])

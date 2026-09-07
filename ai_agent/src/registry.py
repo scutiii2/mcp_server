@@ -7,8 +7,7 @@ module treats "this server's own FastMCP tools" and "proxied tools" as
 two different things, because it is itself an MCP server with tools of
 its own. This registry has no tools of its own - every configured
 server, including the main mcp_server, is symmetric: connect, namespace,
-merge. See docs/superpowers/specs/2026-09-03-mcp-client-template-design.md
-for the full design.
+merge.
 """
 
 from __future__ import annotations

@@ -1,6 +1,23 @@
 const history = [];
 let providersById = {};  // id -> full provider entry (incl. models), used to populate the model dropdown and look up model labels
 
+// --- In-flight request cancellation --------------------------------------
+// Non-null exactly while a send() is awaiting /api/chat - both act as the
+// single source of truth for "is a turn in flight" (send-btn's click
+// handler below branches on activeAbortController alone). activeRequestId
+// travels in the request body so the backend's own cooperative
+// cancellation (see ai_agent/src/llm/cancellation.py) can find the right
+// in-flight turn to mark - aborting the fetch here only stops the CLIENT
+// from waiting, it doesn't reach into the server, hence the separate
+// /api/chat/cancel call.
+let activeAbortController = null;
+let activeRequestId = null;
+// Which agent is serving the in-flight turn - captured at send time (see
+// send() below), not read live from the dropdown in cancelSend(), since
+// the user could change the dropdown while a turn is still in flight and
+// cancelSend() must target the agent that's actually running it.
+let activeProviderId = null;
+
 // --- Slash-command autocomplete ------------------------------------------
 let commandsRegistry = {}; // capability -> { toolId: { description, params: [{name, required, type, has_default, default}] } }
 let currentSuggestions = []; // [{ stage: 'capability'|'tool'|'param', text, display, hint }]
@@ -889,6 +906,7 @@ function playNotificationSound() {
 }
 
 async function send() {
+  if (activeAbortController) return; // a turn is already in flight - send-btn is showing "Stop", not "Send", so this is only reachable via a race
   const input = document.getElementById('q');
   const question = input.value.trim();
   if (!question) return;
@@ -920,11 +938,18 @@ async function send() {
   // indicator, no disabled input, and no try/catch around fetch() below,
   // so a genuine crash (chat_app down, MCP server unreachable) looked
   // identical to "still thinking" - silently hung forever with zero
-  // feedback either way. Disabling input+button also stops a second
-  // send firing mid-request.
+  // feedback either way. Disabling the input also stops a second send
+  // firing mid-request; send-btn stays enabled but switches to "Stop" -
+  // see cancelSend() and the click handler at the bottom of this file -
+  // so the button now DOES something while a turn is in flight instead of
+  // just sitting disabled.
   input.disabled = true;
-  sendBtn.disabled = true;
-  sendBtn.textContent = 'Sending...';
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Stop';
+  sendBtn.classList.add('send-btn-stop');
+  activeRequestId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  activeProviderId = selectedProvider;
+  activeAbortController = new AbortController();
   const requestStartTime = Date.now();
 
   let currentThinkingText = pickThinkingMessage();
@@ -961,7 +986,9 @@ async function send() {
         enabled_extensions: currentEnabledExtensions(),
         chat_id: currentChatId,
         attachments: stagedAttachments.map(a => a.filename),
+        request_id: activeRequestId,
       }),
+      signal: activeAbortController.signal,
     });
 
     if (!res.ok) {
@@ -1029,8 +1056,17 @@ async function send() {
     thinkingEl.remove();
     timerEl.remove(); // no reply bubble to attach it to - the error message speaks for itself
     removeOptimisticChatEntry(); // the request never completed - nothing was created
-    appendMsg('system', `⚠️ Request failed: ${err.message}. Check that chat_app and the MCP server are both still running.`);
-    playNotificationSound();
+    if (err.name === 'AbortError') {
+      // cancelSend() below did this deliberately (Stop button) - not a
+      // failure, so no "Request failed"/no error sound. The user's own
+      // question bubble (appended earlier) is left in place; only the
+      // pending reply is treated as never having happened.
+      history.pop(); // drop the optimistic user turn pushed above - it never got an answer, so it shouldn't feed the next turn's history either
+      appendMsg('system', '⏹️ Cancelled.');
+    } else {
+      appendMsg('system', `⚠️ Request failed: ${err.message}. Check that chat_app and the MCP server are both still running.`);
+      playNotificationSound();
+    }
   } finally {
     clearInterval(rotateTimer);
     clearTimeout(slowNoticeTimer);
@@ -1038,10 +1074,31 @@ async function send() {
     input.disabled = false;
     sendBtn.disabled = false;
     sendBtn.textContent = 'Send';
+    sendBtn.classList.remove('send-btn-stop');
+    activeAbortController = null;
+    activeRequestId = null;
     input.focus();
     stagedAttachments = [];
     renderStagedAttachments();
   }
+}
+
+// Aborts the in-flight fetch client-side (send()'s catch block above
+// handles the resulting AbortError) and best-effort tells the server to
+// stop too (see ai_agent/src/llm/cancellation.py) - fire-and-forget, since
+// the UI has already moved on by the time any response to THIS call would
+// arrive, and a failure here just means the server keeps running that one
+// turn to completion instead of stopping early, not a broken cancel.
+function cancelSend() {
+  if (!activeAbortController) return;
+  const requestId = activeRequestId;
+  const providerId = activeProviderId;
+  activeAbortController.abort();
+  fetch('/chat/api/chat/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request_id: requestId, provider: providerId }),
+  }).catch(() => {}); // best-effort - see comment above
 }
 
 const ROLE_LABELS = { user: 'You', assistant: 'Assistant' };
@@ -1390,7 +1447,13 @@ document.getElementById('q').addEventListener('keydown', e => {
   }
   if (e.key === 'Enter') send();
 });
-document.getElementById('send-btn').addEventListener('click', send);
+document.getElementById('send-btn').addEventListener('click', () => {
+  // Same button doubles as Stop while a turn is in flight (see send()'s
+  // "Stop" state above) - activeAbortController is the single source of
+  // truth for which action this click means.
+  if (activeAbortController) cancelSend();
+  else send();
+});
 document.getElementById('provider').addEventListener('change', updateModelDropdown);
 document.getElementById('ext-toggle-btn').addEventListener('click', toggleExtPanel);
 document.getElementById('ext-close-btn').addEventListener('click', closeExtPanel);

@@ -1,7 +1,6 @@
 """Blocking wrapper around McpClientRegistry, for a synchronous host app
-(e.g. a Flask process) that wants persistent connections rather than
-opening a fresh connection per request. Optional - an async host can use
-McpClientRegistry directly and skip this module entirely.
+that wants persistent connections rather than opening a fresh connection
+per request.
 
 One background thread owns one long-lived event loop; the registry and
 every connection it holds live entirely on that thread. Each public

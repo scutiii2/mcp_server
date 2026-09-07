@@ -1,7 +1,11 @@
-"""Configured ai_agent instances chat_app can send chat questions to -
-read once at import time from src/configs/config_agents.json, the same
-way services/llm/app_config.py read config_chat.json before this
-project's Chat page migrated onto ai_agent.
+"""Sibling ai_agent instances this instance can delegate a sub-question to
+(see delegation.py) - read once at import time from
+configs/config_agents.json. Identical in shape to chat_app/src/services/
+agent_registry.py; copied rather than shared cross-project, same
+convention as everything else in this project.
+
+Deliberately includes this instance's own entry (self-delegation is
+allowed - see delegation.py's module docstring for why).
 """
 
 from __future__ import annotations

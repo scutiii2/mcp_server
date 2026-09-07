@@ -2,9 +2,10 @@
 
 Trimmed from chat_app/src/services/llm/base.py: this project pins one
 provider+model per instance (see agent_config.py) rather than routing
-between several, so ProviderSpec/ModelOption/ModelAvailability - built
-for chat_app's per-request provider dropdown - have no equivalent need
-here. ChatResult/ToolCallRecord/SYSTEM_PROMPT carry over unchanged.
+between several, so ProviderSpec/ModelOption/ModelAvailability* and the
+Ollama-only RecursiveRoundRecord - all built for chat_app's per-request
+provider dropdown - have no equivalent need here. SYSTEM_PROMPT,
+ChatCancelled, ToolCallRecord and ChatResult carry over unchanged.
 """
 
 from __future__ import annotations
@@ -19,6 +20,14 @@ SYSTEM_PROMPT = (
     "answer the question. Confirm with the user before any destructive or "
     "hard-to-reverse action."
 )
+
+
+class ChatCancelled(Exception):
+    """Raised by a provider the moment it notices (via cancellation.py,
+    checked between rounds of its tool-calling loop) that the user
+    cancelled this turn. Caught in server.py's ask() tool, which turns it
+    into a clean {"cancelled": True} result rather than an MCP tool
+    error - this is an expected user action, not a failure."""
 
 
 @dataclass

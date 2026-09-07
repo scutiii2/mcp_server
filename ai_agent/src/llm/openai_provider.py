@@ -13,8 +13,9 @@ from typing import Any
 
 from openai import OpenAI, RateLimitError
 
-from src.llm import cooldown
-from src.llm.base import SYSTEM_PROMPT, ChatResult, ToolCallRecord
+from src import delegation
+from src.llm import cancellation, cooldown
+from src.llm.base import ChatCancelled, SYSTEM_PROMPT, ChatResult, ToolCallRecord
 from src.mcp_upstream import call_tool, list_tools
 
 
@@ -44,7 +45,7 @@ def is_available() -> bool:
 
 
 def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str, Any]]:
-    return [
+    schemas = [
         {
             "type": "function",
             "name": tool.name,
@@ -53,6 +54,22 @@ def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str,
         }
         for tool in list_tools(enabled_extensions)
     ]
+    if delegation.is_available():
+        schemas.append(
+            {
+                "type": "function",
+                "name": delegation.TOOL_NAME,
+                "description": delegation.tool_description(),
+                "parameters": delegation.TOOL_PARAMETERS,
+            }
+        )
+    return schemas
+
+
+def _dispatch(name: str, arguments: dict[str, Any], depth: int) -> str:
+    if name == delegation.TOOL_NAME:
+        return delegation.call(arguments["agent_id"], arguments["question"], depth)
+    return call_tool(name, arguments)
 
 
 def run_chat(
@@ -60,6 +77,8 @@ def run_chat(
     history: list[dict[str, Any]],
     model: str | None = None,
     enabled_extensions: list[str] | None = None,
+    request_id: str | None = None,
+    depth: int = 0,
 ) -> ChatResult:
     client = _get_client()
     model_name = model or DEFAULT_MODEL
@@ -68,10 +87,16 @@ def run_chat(
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
     tool_schemas = _tool_schemas(enabled_extensions)
+    # Stays None (rather than 0) until a round actually reports usage -
+    # some SDK versions leave response.usage unset, and a provider that
+    # never reported usage should say "unknown" (see ChatResult.total_tokens),
+    # not "zero tokens".
     total_tokens: int | None = None
 
     try:
         for _ in range(6):
+            if cancellation.is_cancelled(request_id):
+                raise ChatCancelled()
             response = client.responses.create(
                 model=model_name,
                 input=messages,
@@ -101,7 +126,7 @@ def run_chat(
                     arguments = {}
                 tools_used.append(call.name)
                 try:
-                    result_text = call_tool(call.name, arguments)
+                    result_text = _dispatch(call.name, arguments, depth)
                 except Exception as error:
                     result_text = f"Tool '{call.name}' failed: {error}"
                 tool_calls.append(ToolCallRecord(name=call.name, arguments=arguments, result=result_text))

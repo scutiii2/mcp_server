@@ -12,7 +12,7 @@ from typing import Any
 
 from dotenv import dotenv_values
 
-from src.llm import claude_provider, cooldown, openai_provider
+from src.llm import cancellation, claude_provider, cooldown, openai_provider
 from src.llm.base import ChatResult
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent / "secrets" / "secret_llm.env"
@@ -57,8 +57,22 @@ PROVIDER_ID, _PROVIDER_MODULE = _resolve()
 MODEL = os.getenv("AI_AGENT_MODEL") or None
 
 
-def run_chat(question: str, history: list[dict[str, Any]], enabled_extensions: list[str]) -> ChatResult:
-    return _PROVIDER_MODULE.run_chat(question, history, MODEL, enabled_extensions)
+def run_chat(
+    question: str,
+    history: list[dict[str, Any]],
+    enabled_extensions: list[str],
+    request_id: str | None = None,
+    depth: int = 0,
+) -> ChatResult:
+    cancellation.register(request_id)
+    try:
+        return _PROVIDER_MODULE.run_chat(question, history, MODEL, enabled_extensions, request_id, depth)
+    finally:
+        cancellation.clear(request_id)
+
+
+def cancel(request_id: str) -> bool:
+    return cancellation.cancel(request_id)
 
 
 def status() -> dict[str, Any]:

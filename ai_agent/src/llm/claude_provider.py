@@ -1,11 +1,12 @@
 """Anthropic Messages API provider - pinned by agent_config.py when
 AI_AGENT_PROVIDER=claude.
 
-Adapted from chat_app/src/services/llm/claude_provider.py - see this
-file's own module docstring vs. that one for exactly what changed
-(tool calls go through src.mcp_upstream; no MODELS list or
-ProviderSpec registration; DEFAULT_MODEL replaces chat_app's shared
-Settings object). The tool-calling loop itself is unchanged.
+Adapted from chat_app/src/services/llm/claude_provider.py: tool calls go
+through src.mcp_upstream instead of src.services.mcp_client; no MODELS
+list or ProviderSpec registration (this project pins one provider per
+instance - see agent_config.py); DEFAULT_MODEL replaces chat_app's
+shared Settings object. The tool-calling loop itself, including the
+cancellation checkpoint between rounds, is unchanged.
 """
 
 from __future__ import annotations
@@ -15,8 +16,9 @@ from typing import Any
 
 from anthropic import Anthropic, RateLimitError
 
-from src.llm import cooldown
-from src.llm.base import SYSTEM_PROMPT, ChatResult, ToolCallRecord
+from src import delegation
+from src.llm import cancellation, cooldown
+from src.llm.base import ChatCancelled, SYSTEM_PROMPT, ChatResult, ToolCallRecord
 from src.mcp_upstream import call_tool, list_tools
 
 
@@ -46,7 +48,7 @@ def is_available() -> bool:
 
 
 def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str, Any]]:
-    return [
+    schemas = [
         {
             "name": tool.name,
             "description": tool.description or "",
@@ -54,6 +56,21 @@ def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str,
         }
         for tool in list_tools(enabled_extensions)
     ]
+    if delegation.is_available():
+        schemas.append(
+            {
+                "name": delegation.TOOL_NAME,
+                "description": delegation.tool_description(),
+                "input_schema": delegation.TOOL_PARAMETERS,
+            }
+        )
+    return schemas
+
+
+def _dispatch(name: str, arguments: dict[str, Any], depth: int) -> str:
+    if name == delegation.TOOL_NAME:
+        return delegation.call(arguments["agent_id"], arguments["question"], depth)
+    return call_tool(name, arguments)
 
 
 def run_chat(
@@ -61,6 +78,8 @@ def run_chat(
     history: list[dict[str, Any]],
     model: str | None = None,
     enabled_extensions: list[str] | None = None,
+    request_id: str | None = None,
+    depth: int = 0,
 ) -> ChatResult:
     client = _get_client()
     model_name = model or DEFAULT_MODEL
@@ -68,10 +87,18 @@ def run_chat(
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
     tool_schemas = _tool_schemas(enabled_extensions)
+    # Every round of this loop is a real, separately-billed API call, so a
+    # multi-tool-call answer's total is the sum across all rounds, not just
+    # the final one. Anthropic's usage object has input_tokens/output_tokens
+    # but no total_tokens field of its own - always present on this API, so
+    # this stays a plain int rather than the optional/"unknown" handling the
+    # other providers need.
     total_tokens = 0
 
     try:
         for _ in range(6):
+            if cancellation.is_cancelled(request_id):
+                raise ChatCancelled()
             response = client.messages.create(
                 model=model_name,
                 max_tokens=2048,
@@ -100,7 +127,7 @@ def run_chat(
                     continue
                 tools_used.append(block.name)
                 try:
-                    result_text = call_tool(block.name, block.input)
+                    result_text = _dispatch(block.name, block.input, depth)
                 except Exception as error:
                     result_text = f"Tool '{block.name}' failed: {error}"
                 tool_calls.append(ToolCallRecord(name=block.name, arguments=block.input, result=result_text))
