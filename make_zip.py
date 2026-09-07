@@ -29,6 +29,12 @@ OUTPUT_DIR = ROOT / "zip_versions"
 DEFAULT_DIRS = ("mcp_server", "chat_app", "ai_agent", "docs")
 TEMPLATE_DIRS = ("mcp_client_template", "mcp_server_ext")
 
+# Root-level .bat launchers to leave out even though they're top-level
+# .bat files - run_crafty.bat launches crafty_mcp_server/, which isn't
+# bundled in either zip variant, so including it would be a launcher
+# with no matching project.
+EXCLUDED_BAT_FILES = ("run_crafty.bat",)
+
 
 def get_included_files() -> list[str]:
     result = subprocess.run(
@@ -47,9 +53,9 @@ def _is_included(rel_path: str, top_level_dirs: tuple[str, ...]) -> bool:
     posix = rel_path.replace("\\", "/")
     if "/" not in posix:
         # A root-level file - only the run_*.bat launchers belong in
-        # either zip; every other repo-root file (make_zip.py itself,
-        # README-less top-level config, etc.) is left out.
-        return posix.endswith(".bat")
+        # either zip (every other repo-root file, like make_zip.py
+        # itself, is left out), except EXCLUDED_BAT_FILES.
+        return posix.endswith(".bat") and posix not in EXCLUDED_BAT_FILES
     top = posix.split("/", 1)[0]
     return top in top_level_dirs
 
