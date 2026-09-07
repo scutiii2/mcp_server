@@ -65,26 +65,18 @@ def filter_files(files: list[str], with_templates: bool) -> list[str]:
     return [f for f in files if _is_included(f, dirs)]
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--with-templates",
-        action="store_true",
-        help="Also include mcp_client_template/ and mcp_server_ext/.",
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    files = filter_files(get_included_files(), with_templates=args.with_templates)
+def build_zip(with_templates: bool) -> Path:
+    """Create the zip and return its path. Shared by this script's own
+    CLI and by make_zip_with_templates.py, so the two never drift apart
+    on anything but the `with_templates` flag itself."""
+    files = filter_files(get_included_files(), with_templates=with_templates)
     if not files:
         print("No files found to zip.", file=sys.stderr)
         sys.exit(1)
 
     OUTPUT_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    suffix = "_with_templates" if args.with_templates else ""
+    suffix = "_with_templates" if with_templates else ""
     zip_path = OUTPUT_DIR / f"{ROOT.name}{suffix}_{timestamp}.zip"
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -94,6 +86,22 @@ def main() -> None:
                 zf.write(full_path, rel_path)
 
     print(f"Created {zip_path} ({len(files)} files)")
+    return zip_path
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--with-templates",
+        action="store_true",
+        help="Also include mcp_client_template/ and mcp_server_ext/ (or just run make_zip_with_templates.py).",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    build_zip(with_templates=args.with_templates)
 
 
 if __name__ == "__main__":
