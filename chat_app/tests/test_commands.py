@@ -213,6 +213,31 @@ def test_build_command_registry_a_built_in_capability_id_wins_over_a_same_named_
     assert "get_otp" in registry["otp"]
 
 
+def test_params_from_schema_captures_a_format_hint():
+    tool = _tool(
+        "summarize_tool",
+        input_schema={"properties": {"content": {"type": "string", "format": "file"}}, "required": ["content"]},
+    )
+    specs = [{"capability": "docs", "name": "summarize", "description": "summarize", "tool_name": "summarize_tool"}]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ):
+        registry = commands.build_command_registry([])
+
+    assert registry["docs"]["summarize"].params[0].format == "file"
+
+
+def test_params_from_schema_leaves_format_none_when_the_schema_names_none():
+    tool = _tool("register_tool", input_schema={"properties": {"name": {"type": "string"}}, "required": ["name"]})
+    specs = [{"capability": "widgets", "name": "register", "description": "register", "tool_name": "register_tool"}]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ):
+        registry = commands.build_command_registry([])
+
+    assert registry["widgets"]["register"].params[0].format is None
+
+
 # --- execute_command ---------------------------------------------------------
 
 
@@ -256,3 +281,45 @@ def test_execute_command_coerces_integer_params():
 
     assert result == "5"
     call_tool.assert_called_once_with("count_tool", {"n": 5})
+
+
+def test_execute_command_resolves_a_file_format_param_from_attachments():
+    tool = _tool(
+        "summarize_tool",
+        input_schema={"properties": {"content": {"type": "string", "format": "file"}}, "required": ["content"]},
+    )
+    specs = [{"capability": "docs", "name": "summarize", "description": "summarize", "tool_name": "summarize_tool"}]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ), patch.object(commands.mcp_client, "call_tool", return_value="done") as call_tool, patch.object(
+        commands.attachments_store, "read_attachment_text", return_value="file contents here"
+    ) as read_text:
+        result = commands.execute_command("/docs summarize content=notes.txt", [], "chat123")
+
+    assert result == "done"
+    call_tool.assert_called_once_with("summarize_tool", {"content": "file contents here"})
+    read_text.assert_called_once_with(commands.settings.attachments_dir, "chat123", "notes.txt")
+
+
+def test_execute_command_reports_a_missing_attachment_for_a_file_format_param():
+    tool = _tool(
+        "summarize_tool",
+        input_schema={"properties": {"content": {"type": "string", "format": "file"}}, "required": ["content"]},
+    )
+    specs = [{"capability": "docs", "name": "summarize", "description": "summarize", "tool_name": "summarize_tool"}]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ), patch.object(commands.attachments_store, "read_attachment_text", return_value=None):
+        result = commands.execute_command("/docs summarize content=notes.txt", [], "chat123")
+
+    assert result.startswith("❌")
+    assert "notes.txt" in result
+
+
+def test_execute_command_still_works_with_no_chat_id_for_non_file_params():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ), patch.object(commands.mcp_client, "call_tool", return_value="OTP sent."):
+        result = commands.execute_command("/otp get_otp recipient=a@example.com", [])
+
+    assert result == "OTP sent."

@@ -66,6 +66,95 @@ let lastUsedModelId = null;
 // persisted conversation.
 let greetingEl = null;
 
+// Files uploaded (durably, server-side) but not yet included in a sent
+// message - cleared once send() actually includes them in a turn. The
+// server has no separate "staged" concept: this is purely "what's
+// pending for the next message" bookkeeping on the client.
+let stagedAttachments = []; // [{filename, size}]
+
+async function uploadFiles(fileList) {
+  for (const file of fileList) {
+    const form = new FormData();
+    form.append('file', file);
+    if (currentChatId) form.append('chat_id', currentChatId);
+    try {
+      const res = await fetch('/chat/api/attachments', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        appendMsg('system', `⚠️ Could not attach ${file.name}: ${data.error || 'unknown error'}`);
+        continue;
+      }
+      if (data.chat_id && data.chat_id !== currentChatId) {
+        currentChatId = data.chat_id;
+        window.history.pushState(null, '', `/chat?id=${encodeURIComponent(currentChatId)}`);
+        loadChatHistory();
+      }
+      stagedAttachments.push({ filename: data.filename, size: data.size });
+      renderStagedAttachments();
+      loadAttachmentFilenames();
+    } catch (err) {
+      appendMsg('system', `⚠️ Could not attach ${file.name}: ${err.message}`);
+    }
+  }
+}
+
+function renderStagedAttachments() {
+  const container = document.getElementById('staged-attachments');
+  container.innerHTML = '';
+  container.classList.toggle('hidden', stagedAttachments.length === 0);
+  for (const { filename } of stagedAttachments) {
+    const chip = document.createElement('span');
+    chip.className = 'staged-chip';
+    const label = document.createElement('span');
+    label.textContent = `📎 ${filename}`;
+    chip.appendChild(label);
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'staged-chip-remove';
+    removeBtn.setAttribute('aria-label', `Remove ${filename}`);
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => removeStagedAttachment(filename));
+    chip.appendChild(removeBtn);
+    container.appendChild(chip);
+  }
+}
+
+async function removeStagedAttachment(filename) {
+  stagedAttachments = stagedAttachments.filter(a => a.filename !== filename);
+  renderStagedAttachments();
+  if (!currentChatId) return; // nothing persisted server-side yet to clean up
+  try {
+    await fetch(`/chat/api/chats/${encodeURIComponent(currentChatId)}/attachments/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    });
+  } catch (err) {
+    // Best-effort cleanup - the chip is already gone from the composer,
+    // which is the part the user actually sees.
+  } finally {
+    loadAttachmentFilenames();
+  }
+}
+
+// Every filename ever attached to this chat (not just currently
+// staged ones) - a format:"file" command param can reference any of
+// them, including one attached several messages ago. Refreshed
+// whenever the attachment set could have changed.
+let attachmentFilenames = [];
+
+async function loadAttachmentFilenames() {
+  if (!currentChatId) {
+    attachmentFilenames = [];
+    return;
+  }
+  try {
+    const res = await fetch(`/chat/api/chats/${encodeURIComponent(currentChatId)}/attachments`);
+    const data = await res.json();
+    attachmentFilenames = Array.isArray(data) ? data.map(a => a.filename) : [];
+  } catch (err) {
+    attachmentFilenames = [];
+  }
+}
+
 // The sidebar's client-only placeholder for a brand-new chat that hasn't
 // been confirmed by the server yet (see addOptimisticChatEntry). Never
 // more than one at a time - a chat only lacks a real id for its own
@@ -424,12 +513,18 @@ function computeCommandSuggestions(value) {
   const currentToken = !endsWithSpace && tokens.length ? tokens[tokens.length - 1] : '';
   if (currentToken.includes('=')) {
     // Typing a value for whichever param comes before the "=" - offer
-    // its known-good values (mcp_server's tool_suggestions.py), if any.
-    // Nothing to suggest for a param with no `enum` in its schema, same
-    // as before this stage existed.
+    // its known-good values, if any. A format:"file" param's "known-good
+    // values" are this chat's attached filenames; otherwise fall back to
+    // the schema's `enum` (mcp_server's tool_suggestions.py), if any.
     const [paramName, partialValue] = currentToken.split(/=(.*)/s, 2);
     const param = tool.params.find(p => p.name === paramName);
-    if (!param || !param.enum) return [];
+    if (!param) return [];
+    if (param.format === 'file') {
+      return attachmentFilenames
+        .filter(f => f.startsWith(partialValue))
+        .map(f => ({ stage: 'value', text: `${paramName}=${quoteCommandValue(f)}`, display: f, hint: '' }));
+    }
+    if (!param.enum) return [];
     return param.enum
       .filter(v => v.startsWith(partialValue))
       .map(v => ({ stage: 'value', text: `${paramName}=${quoteCommandValue(v)}`, display: v, hint: '' }));
@@ -575,44 +670,29 @@ async function loadProviders() {
     for (const p of providers) {
       const opt = document.createElement('option');
       opt.value = p.id;
-      // A provider can report available:true with an empty models list -
-      // Ollama with no "providers.ollama.models" entries in config_chat.json
-      // is the real-world case (its own has_api_key()/is_available() have
-      // no concept of "configured", by design - see ollama_provider.py).
-      // "Automatic" legitimately has no models list of its own either, so
-      // it's excluded from this check. Selectable-but-guaranteed-to-fail
-      // (posting model: null once the now-hidden model dropdown has
-      // nothing to offer) is worse than disabling it with a clear reason,
-      // same as every other unavailable case below.
-      const noModelsConfigured = p.available && p.id !== 'auto' && Array.isArray(p.models) && p.models.length === 0;
-      if (noModelsConfigured) {
-        opt.textContent = `${p.label} (no models configured)`;
-      } else if (p.available) {
-        opt.textContent = p.label;
+      // The dropdown now lists ai_agent instances, not LLM providers -
+      // each is pinned to exactly one model (reported in p.model), so
+      // there's no "no models configured" case to special-case here
+      // the way a per-request-selectable provider used to have.
+      if (p.available) {
+        opt.textContent = p.model ? `${p.label} - ${p.model}` : p.label;
       } else if (p.reason === 'rate_limited') {
         opt.textContent = `${p.label} (rate-limited, ~${p.cooldown_seconds_remaining}s)`;
-      } else if (p.reason === 'none_available') {
-        opt.textContent = `${p.label} (nothing available)`;
       } else if (p.reason === 'unreachable') {
         opt.textContent = `${p.label} (unreachable)`;
       } else if (p.reason === 'missing_key') {
         opt.textContent = `${p.label} (no API key)`;
       } else {
-        // Unrecognized reason - surface it raw rather than guessing (and
-        // previously, silently mislabeling anything unrecognized as a
-        // missing API key - including Ollama, which has no API key
-        // concept at all and reports "unreachable" instead) - same idea
-        // as describeModelReason()'s fallback below.
+        // Unrecognized reason - surface it raw rather than guessing.
         opt.textContent = `${p.label} (${p.reason || 'unavailable'})`;
       }
-      opt.disabled = !p.available || noModelsConfigured;
+      opt.disabled = !p.available;
       providerSelect.appendChild(opt);
     }
     // keep whatever the user had selected, if it's still a valid option;
     // only fall back to "first available" on first load or if their
-    // pick disappeared entirely - since "auto" is always listed first
-    // and is available whenever any real provider is, this naturally
-    // defaults to Automatic on first load without special-casing it
+    // pick disappeared entirely (e.g. that agent was removed from
+    // config_agents.json).
     const stillExists = providers.some(p => p.id === previousProvider);
     if (stillExists) {
       providerSelect.value = previousProvider;
@@ -631,10 +711,10 @@ function updateModelDropdown() {
   const modelSelect = document.getElementById('model');
   const provider = providersById[providerSelect.value];
 
-  // Automatic doesn't take a model override (see router.py's run_chat
-  // docstring for why) - hide the model picker entirely rather than
-  // show one that silently does nothing.
-  if (!provider || provider.id === 'auto' || !provider.models || provider.models.length === 0) {
+  // Every agent is pinned to exactly one model (reported in
+  // provider.model, shown directly in the dropdown option label) - hide
+  // the model picker entirely rather than show one with nothing to offer.
+  if (!provider || !provider.models || provider.models.length === 0) {
     modelSelect.classList.add('hidden');
     modelSelect.innerHTML = '';
     return;
@@ -720,19 +800,23 @@ function formatElapsedTime(ms) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-// total_tokens/modelLabel are both defensive by design: some
-// providers/paths never report usage (undefined/null/non-positive all
-// just mean "don't show a token count"), an error turn (no real run
+// total_tokens/modelLabel/recursiveRounds are all defensive by design:
+// some providers/paths never report usage (undefined/null/non-positive
+// all just mean "don't show a token count"), an error turn (no real run
 // happened) has no model to show either - see chat_api's assistant_entry
 // construction, which omits provider_id/model/total_tokens entirely in
-// that case rather than sending empty-string/null noise.
-function formatTimerText(ms, totalTokens, modelLabel) {
+// that case rather than sending empty-string/null noise - and only
+// ollama's recursive_chain models ever produce a nonzero round count.
+function formatTimerText(ms, totalTokens, modelLabel, recursiveRounds) {
   const parts = [formatElapsedTime(ms)];
   if (typeof totalTokens === 'number' && totalTokens > 0) {
     parts.push(`${totalTokens} tokens`);
   }
   if (modelLabel) {
     parts.push(modelLabel);
+  }
+  if (typeof recursiveRounds === 'number' && recursiveRounds > 0) {
+    parts.push(`${recursiveRounds} recursive round${recursiveRounds === 1 ? '' : 's'}`);
   }
   return parts.join(' · ');
 }
@@ -876,6 +960,7 @@ async function send() {
         model: selectedModel,
         enabled_extensions: currentEnabledExtensions(),
         chat_id: currentChatId,
+        attachments: stagedAttachments.map(a => a.filename),
       }),
     });
 
@@ -901,7 +986,7 @@ async function send() {
     // client's own Date.now() delta, so this matches exactly what a
     // reload of this same chat will show later (see loadChat() below).
     const elapsedMs = typeof data.elapsed_seconds === 'number' ? data.elapsed_seconds * 1000 : Date.now() - requestStartTime;
-    const finalTimerText = formatTimerText(elapsedMs, data.total_tokens, modelLabel(data.provider_id, data.model));
+    const finalTimerText = formatTimerText(elapsedMs, data.total_tokens, modelLabel(data.provider_id, data.model), data.recursive_rounds);
     timerEl.textContent = finalTimerText;
     // A command result never came from the LLM - render it with the
     // amber "system" style instead of the green "assistant" one, even
@@ -910,17 +995,18 @@ async function send() {
     const displayRole = data.kind === 'command' ? 'system' : 'assistant';
     const assistantWrap = appendMsg(displayRole, data.response);
     assistantWrap.appendChild(timerEl);
-    // provider_id/model/total_tokens are only included when truthy/not-null
-    // (an error turn has none of them) - mirrors chat_api's own
-    // assistant_entry construction, and matters because this same object
-    // gets sent back as `history` on the NEXT send() in this chat, then
-    // persisted again: an empty string, null, or 0 here would overwrite
-    // otherwise-real metadata with noise.
+    // provider_id/model/total_tokens/recursive_rounds are only included
+    // when truthy/not-null (an error turn has none of them) - mirrors
+    // chat_api's own assistant_entry construction, and matters because
+    // this same object gets sent back as `history` on the NEXT send() in
+    // this chat, then persisted again: an empty string, null, or 0 here
+    // would overwrite otherwise-real metadata with noise.
     const assistantTurn = { role: 'assistant', content: data.response, elapsed_seconds: data.elapsed_seconds };
     if (data.kind === 'command') assistantTurn.kind = 'command';
     if (data.provider_id) assistantTurn.provider_id = data.provider_id;
     if (data.model) assistantTurn.model = data.model;
     if (typeof data.total_tokens === 'number') assistantTurn.total_tokens = data.total_tokens;
+    if (data.recursive_rounds) assistantTurn.recursive_rounds = data.recursive_rounds;
     history.push(assistantTurn);
     playNotificationSound();
 
@@ -953,6 +1039,8 @@ async function send() {
     sendBtn.disabled = false;
     sendBtn.textContent = 'Send';
     input.focus();
+    stagedAttachments = [];
+    renderStagedAttachments();
   }
 }
 
@@ -1031,11 +1119,13 @@ async function loadChat(chatId) {
         if (message.provider_id) turn.provider_id = message.provider_id;
         if (message.model) turn.model = message.model;
         if (typeof message.total_tokens === 'number') turn.total_tokens = message.total_tokens;
+        if (message.recursive_rounds) turn.recursive_rounds = message.recursive_rounds;
         if (typeof message.elapsed_seconds === 'number') {
           const text = formatTimerText(
             message.elapsed_seconds * 1000,
             message.total_tokens,
-            modelLabel(message.provider_id, message.model)
+            modelLabel(message.provider_id, message.model),
+            message.recursive_rounds
           );
           wrap.appendChild(createTimerElement(text));
         }
@@ -1173,19 +1263,6 @@ function buildChatHistoryItem(chat) {
   controls.appendChild(deleteBtn);
 
   item.appendChild(controls);
-
-  // The whole row navigates to this chat, not just the title text -
-  // except clicks on the rename/delete controls (handled above) or the
-  // rename `<input>` that replaces the title while renaming (see
-  // startRenameChat), and except the link itself, which already
-  // navigates on its own via the browser's native anchor behavior.
-  item.addEventListener('click', e => {
-    if (e.target.closest('.chat-history-controls')) return;
-    if (e.target.closest('.chat-history-rename-input')) return;
-    if (e.target.closest('a.chat-history-link')) return;
-    window.location.href = link.href;
-  });
-
   return item;
 }
 
@@ -1263,11 +1340,10 @@ async function deleteChatEntry(chat) {
 // Restores the provider/model dropdowns to whatever this chat last used,
 // set by loadChat() above - only once /api/providers has actually loaded
 // (providersById), since that's what says whether the restored choice is
-// still available at all. Silently does nothing (leaving the normal
-// Automatic default) if the provider's gone, the specific model's gone,
-// or either is just currently unavailable (missing key, rate-limited,
-// not pulled) - restoring something unusable would be worse than the
-// default.
+// still available at all. Silently does nothing (leaving loadProviders()'s
+// own "first available" default) if the agent's gone or currently
+// unavailable (missing key, rate-limited, unreachable) - restoring
+// something unusable would be worse than the default.
 function applyLastUsedModel() {
   if (!lastUsedProviderId || !lastUsedModelId) return;
   const provider = providersById[lastUsedProviderId];
@@ -1278,6 +1354,31 @@ function applyLastUsedModel() {
   updateModelDropdown();
   document.getElementById('model').value = lastUsedModelId;
 }
+
+document.getElementById('attach-btn').addEventListener('click', () => {
+  document.getElementById('attach-input').click();
+});
+document.getElementById('attach-input').addEventListener('change', e => {
+  uploadFiles(e.target.files);
+  e.target.value = ''; // allow re-selecting the same file later
+});
+
+const pageContent = document.querySelector('.page-content');
+['dragenter', 'dragover'].forEach(eventName => {
+  pageContent.addEventListener(eventName, e => {
+    e.preventDefault();
+    pageContent.classList.add('drag-over');
+  });
+});
+['dragleave', 'drop'].forEach(eventName => {
+  pageContent.addEventListener(eventName, e => {
+    e.preventDefault();
+    pageContent.classList.remove('drag-over');
+  });
+});
+pageContent.addEventListener('drop', e => {
+  if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+});
 
 document.getElementById('q').addEventListener('input', updateCommandSuggestions);
 document.getElementById('q').addEventListener('keydown', e => {
@@ -1326,6 +1427,7 @@ loadChatHistory();
 (async () => {
   await providersReady;
   const restored = currentChatId ? await loadChat(currentChatId) : false;
+  await loadAttachmentFilenames();
   if (restored) {
     applyLastUsedModel();
   } else {

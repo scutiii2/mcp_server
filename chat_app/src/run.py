@@ -56,11 +56,14 @@ def create_app(config: dict | None = None) -> Flask:
             os.environ.setdefault(key, value)
     # BASE_DIR-resolved, not CWD-relative - same reasoning as
     # _resolve_sqlite_uri below for app.db. A real CHATS_DB_PATH/
-    # CHAT_CONFIG_PATH env var (including one already set via
-    # secret_llm.env above) still wins - setdefault is a no-op once the
-    # key is already present.
+    # STAGED_PLANS_DB_PATH/CHAT_CONFIG_PATH env var (including one already
+    # set via secret_llm.env above) still wins - setdefault is a no-op once
+    # the key is already present.
     os.environ.setdefault("CHATS_DB_PATH", str(BASE_DIR / "data" / "chats.db"))
+    os.environ.setdefault("STAGED_PLANS_DB_PATH", str(BASE_DIR / "data" / "staged_plans.db"))
     os.environ.setdefault("CHAT_CONFIG_PATH", str(BASE_DIR / "configs" / "config_chat.json"))
+    os.environ.setdefault("ATTACHMENTS_DIR", str(BASE_DIR / "data" / "attachments"))
+    os.environ.setdefault("ATTACHMENTS_CONFIG_PATH", str(BASE_DIR / "configs" / "config_attachments.json"))
 
     app.config["SECRET_KEY"] = app_secrets.get("SECRET_KEY") or "dev-insecure-key-change-me"
     raw_db_uri = db_secrets.get("DATABASE_URL") or f"sqlite:///{BASE_DIR / 'data' / 'app.db'}"
@@ -120,15 +123,4 @@ def create_app(config: dict | None = None) -> Flask:
 
 if __name__ == "__main__":
     flask_app = create_app()
-    # 127.0.0.1/debug=True by default - fine for `run.bat` on your own
-    # machine, but 127.0.0.1 is loopback INSIDE whatever process runs
-    # this, so a container's `ports:` mapping can never reach it from
-    # outside - override CHAT_HOST=0.0.0.0 there. debug=True also runs
-    # the Werkzeug debugger (arbitrary code execution via its console,
-    # PIN permitting) and auto-reloader (a second process, which is why
-    # the log shows "Restarting with stat") - override CHAT_DEBUG=false
-    # for anything reachable beyond your own machine.
-    host = os.environ.get("CHAT_HOST", "127.0.0.1")
-    port = int(os.environ.get("CHAT_PORT", "5000"))
-    debug = os.environ.get("CHAT_DEBUG", "true").strip().lower() == "true"
-    flask_app.run(host=host, port=port, debug=debug)
+    flask_app.run(debug=True)

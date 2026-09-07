@@ -25,7 +25,8 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass, field
 
-from src.services import mcp_client
+from src.services import attachments_store, mcp_client
+from src.services.llm.settings import settings
 
 EXTENSION_SEPARATOR = "__"
 
@@ -49,6 +50,12 @@ class CommandParam:
     # tell "no suggestions available" from "suggestions happen to be
     # empty right now".
     enum: list[str] | None = None
+    # A JSON-Schema `format` hint on this param, when the schema names
+    # one - `"file"` is the one value execute_command() gives special
+    # meaning to (resolve the typed value against this chat's attached
+    # files instead of taking it literally). None when the schema names
+    # no format, same "absent vs empty" distinction enum already makes.
+    format: str | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,7 @@ def _params_from_schema(schema: dict | None) -> list[CommandParam]:
                 has_default=default is not _NO_DEFAULT,
                 default=None if default is _NO_DEFAULT else default,
                 enum=list(enum) if enum else None,
+                format=prop_schema.get("format"),
             )
         )
     return params
@@ -193,10 +201,15 @@ def _coerce(value: str, param_type: str, param_name: str) -> object:
     return value  # "string" and anything unrecognized passes through as-is
 
 
-def execute_command(question: str, enabled_extensions: list[str] | None) -> str:
+def execute_command(question: str, enabled_extensions: list[str] | None, chat_id: str | None = None) -> str:
     """Resolves and runs a "/" command, returning the text to show in
     the result bubble. Never raises for a user-facing input problem -
-    those come back as a short "❌ ..." usage message instead."""
+    those come back as a short "❌ ..." usage message instead.
+
+    chat_id is only consulted for a param whose schema names
+    format: "file" - its typed value is looked up as an attachment
+    filename in that chat rather than taken literally. Defaults to
+    None so every existing two-argument call site keeps working."""
     try:
         parsed = parse_command(question)
         registry = build_command_registry(enabled_extensions)
@@ -221,9 +234,18 @@ def execute_command(question: str, enabled_extensions: list[str] | None) -> str:
                 f"Unknown param(s) for /{parsed.capability} {parsed.tool}: {', '.join(unknown)}"
             )
 
-        arguments = {
-            name: _coerce(value, params_by_name[name].type, name) for name, value in parsed.params.items()
-        }
+        arguments: dict[str, object] = {}
+        for name, value in parsed.params.items():
+            param = params_by_name[name]
+            if param.format == "file":
+                text = attachments_store.read_attachment_text(settings.attachments_dir, chat_id, value)
+                if text is None:
+                    raise CommandError(
+                        f"No attachment named {value!r} in this chat. Attach it first, then try again."
+                    )
+                arguments[name] = text
+            else:
+                arguments[name] = _coerce(value, param.type, name)
         return mcp_client.call_tool(entry.tool_name, arguments)
     except CommandError as exc:
         return f"❌ {exc}"

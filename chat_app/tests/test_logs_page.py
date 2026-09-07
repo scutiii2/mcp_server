@@ -124,9 +124,9 @@ def test_logs_page_shows_both_tabs_with_both_permissions(tmp_path):
     assert b'data-tab="errors"' in response.data
 
 
-def test_logs_tab_defaults_to_own_account_entries(tmp_path):
+def test_logs_tab_defaults_to_server_entries(tmp_path):
     app = _build_logs_test_app(tmp_path)
-    account_id = _create_account(app, "defaultself", ["logs.view"])
+    account_id = _create_account(app, "defaultserver", ["logs.view"])
 
     with app.app_context():
         db.session.add(LogEntry(kind="action", account_id=None, source="x", message="server did a thing"))
@@ -139,8 +139,8 @@ def test_logs_tab_defaults_to_own_account_entries(tmp_path):
     response = client.get("/logs/")
 
     assert response.status_code == 200
-    assert b"user did a thing" in response.data
-    assert b"server did a thing" not in response.data
+    assert b"server did a thing" in response.data
+    assert b"user did a thing" not in response.data
 
 
 def test_logs_tab_filters_by_selected_account(tmp_path):
@@ -160,25 +160,6 @@ def test_logs_tab_filters_by_selected_account(tmp_path):
     assert response.status_code == 200
     assert b"user did a thing" in response.data
     assert b"server did a thing" not in response.data
-
-
-def test_logs_tab_explicit_server_actor_shows_server_entries(tmp_path):
-    app = _build_logs_test_app(tmp_path)
-    account_id = _create_account(app, "explicitserver", ["logs.view"])
-
-    with app.app_context():
-        db.session.add(LogEntry(kind="action", account_id=None, source="x", message="server did a thing"))
-        db.session.add(LogEntry(kind="action", account_id=account_id, source="x", message="user did a thing"))
-        db.session.commit()
-
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    response = client.get("/logs/?tab=logs&logs_actor=server")
-
-    assert response.status_code == 200
-    assert b"server did a thing" in response.data
-    assert b"user did a thing" not in response.data
 
 
 def test_logs_only_account_requesting_unpermitted_tab_gets_logs_tab_active(tmp_path):
@@ -215,7 +196,7 @@ def test_errors_tab_shows_details_for_error_entries(tmp_path):
         db.session.add(
             LogEntry(
                 kind="error",
-                account_id=account_id,
+                account_id=None,
                 source="unhandled_exception",
                 message="boom",
                 details="Traceback...",

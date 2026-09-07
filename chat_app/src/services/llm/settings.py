@@ -25,10 +25,11 @@ def _env(name: str, default: str) -> str:
 @dataclass(frozen=True)
 class Settings:
     mcp_server_url: str = field(default_factory=lambda: _env("MCP_SERVER_URL", "http://127.0.0.1:8010/mcp"))
-    openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5.6-sol"))
-    claude_model: str = field(default_factory=lambda: _env("CLAUDE_MODEL", "claude-sonnet-5"))
-    chat_config_path: Path = field(default_factory=lambda: Path(_env("CHAT_CONFIG_PATH", "src/configs/config_chat.json")))
     chats_db_path: Path = field(default_factory=lambda: Path(_env("CHATS_DB_PATH", "data/chats.db")))
+    attachments_config_path: Path = field(
+        default_factory=lambda: Path(_env("ATTACHMENTS_CONFIG_PATH", "src/configs/config_attachments.json"))
+    )
+    attachments_dir: Path = field(default_factory=lambda: Path(_env("ATTACHMENTS_DIR", "data/attachments")))
 
 
 settings = Settings()

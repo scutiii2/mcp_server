@@ -2,7 +2,6 @@ import pytest
 from flask import Flask
 
 from src.models import db
-from src.services.llm import cooldown
 
 
 @pytest.fixture
@@ -23,13 +22,3 @@ def app(tmp_path):
     with application.app_context():
         db.session.remove()
         db.drop_all()
-
-
-@pytest.fixture(autouse=True)
-def reset_cooldowns():
-    """Cooldown state is a module-level dict shared across the whole
-    process - which means it's equally shared across test cases unless
-    we clear it between each one."""
-    cooldown.reset()
-    yield
-    cooldown.reset()

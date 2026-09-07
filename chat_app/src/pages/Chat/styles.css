@@ -201,6 +201,51 @@ select option:disabled { color: #aaa; }
 .cmd-suggestion.active { background: var(--code-bg); }
 .cmd-suggestion-desc { color: var(--ink-muted); font-size: 12px; white-space: nowrap; }
 
+.attach-btn {
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid var(--panel-border);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+}
+.attach-btn:hover { background: #f5f5f4; }
+#attach-input { display: none; }
+
+.staged-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.staged-attachments.hidden { display: none; }
+.staged-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: white;
+  font-size: 12px;
+  color: var(--ink);
+}
+.staged-chip-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-muted);
+}
+.staged-chip-remove:hover { color: #c0392b; }
+
+.page-content.drag-over {
+  outline: 2px dashed var(--rail-user);
+  outline-offset: -8px;
+}
+
 button {
   padding: 8px 18px;
   border: none;
@@ -474,7 +519,6 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   gap: 6px;
   padding: 6px 8px;
   border-radius: 6px;
-  cursor: pointer;
 }
 .chat-history-item:hover { background: #f5f5f4; }
 .chat-history-item.active { background: var(--code-bg); }

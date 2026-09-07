@@ -48,17 +48,14 @@ def index():
     active_tab = request.args.get("tab", allowed_tabs[0])
     if active_tab not in allowed_tabs:
         active_tab = allowed_tabs[0]
-    # Default each tab's actor to the viewing account, not "Server"
-    # (account_id=None): log_action/log_chat_trace always attach a real
-    # account, and log_error almost always does too for a logged-in
-    # request, so "Server" reliably yields zero rows on first load (see
-    # docs/superpowers/specs/2026-08-22-chat-capabilities-port-design.md's
-    # "Defaults Flagged for Review"). The dropdown still offers "Server"
-    # for anyone who wants server-scoped entries.
-    default_actor = str(current_user.id)
-    logs_actor = request.args.get("logs_actor", default_actor)
-    errors_actor = request.args.get("errors_actor", default_actor)
-    chat_traces_actor = request.args.get("chat_traces_actor", default_actor)
+    logs_actor = request.args.get("logs_actor", "server")
+    errors_actor = request.args.get("errors_actor", "server")
+    # "Server" (account_id=None) always yields zero rows for this tab - a
+    # chat turn always belongs to a specific account - but the dropdown
+    # keeps the same Server-first shape as the other two tabs for UI
+    # consistency (see docs/superpowers/specs/2026-08-22-chat-
+    # capabilities-port-design.md's "Defaults Flagged for Review").
+    chat_traces_actor = request.args.get("chat_traces_actor", "server")
 
     log_entries = None
     error_entries = None

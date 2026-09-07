@@ -227,41 +227,6 @@ def test_capabilities_page_has_no_inline_event_handlers(tmp_path):
     assert b'style="display:none"' not in response.data
 
 
-def test_capabilities_page_renders_an_enum_field_as_a_datalist_and_shows_the_default(tmp_path):
-    """mcp_server's tool_suggestions.py injects `enum` into a parameter's
-    schema, and FastMCP already puts `default` there for any optional
-    parameter - this page must turn both into something a human sees,
-    not silently drop them the way the old plain-text-input rendering did."""
-    app = _build_capabilities_test_app(tmp_path)
-    account_id = _create_account(app, "capviewer2", ["capabilities.view"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    tool = SimpleNamespace(
-        name="get_host_health_tool",
-        description="Check host health",
-        inputSchema={
-            "properties": {
-                "name": {"type": "string", "enum": ["zima", "desktop"]},
-                "verify_ssl": {"type": "boolean", "default": True},
-            }
-        },
-    )
-
-    with patch("src.pages.Capabilities.__index__.list_tools", return_value=[tool]), \
-         patch("src.pages.Capabilities.__index__.list_resource_templates", return_value=[]), \
-         patch("src.pages.Capabilities.__index__.fetch_extensions", return_value=[]), \
-         patch("src.pages.Capabilities.__index__.fetch_capabilities", return_value=[]):
-        response = client.get("/capabilities/")
-
-    assert response.status_code == 200
-    body = response.data.decode("utf-8")
-    assert '<datalist id="get_host_health_tool-name-options">' in body
-    assert '<option value="zima">' in body
-    assert '<option value="desktop">' in body
-    assert "(default: True)" in body
-
-
 def _tool(name, extension_id=None):
     return {"name": name, "title": name, "description": "", "input_schema": {}, "extension_id": extension_id}
 
@@ -271,10 +236,7 @@ def _resource(name):
 
 
 def test_group_tools_by_capability_carries_id_label_and_enabled_state():
-    groups = _group_tools_by_capability(
-        [_tool("get_host_health_tool")],
-        {"host_health": {"enabled": False, "title": "Host Health", "tools": ["get_host_health_tool"]}},
-    )
+    groups = _group_tools_by_capability([_tool("get_host_health_tool")], {"host_health": False})
 
     assert groups == [
         {
@@ -294,7 +256,7 @@ def test_group_tools_by_capability_excludes_extension_tools():
 
 
 def test_group_tools_by_capability_defaults_to_enabled_when_mcp_server_state_is_unknown():
-    """mcp_server unreachable (empty capabilities_meta) must not read as
+    """mcp_server unreachable (empty capability_states) must not read as
     every capability being off - same "absent means enabled" default
     app_config.capability_enabled() uses on the mcp_server side."""
     groups = _group_tools_by_capability([_tool("get_host_health_tool")], {})
@@ -304,17 +266,14 @@ def test_group_tools_by_capability_defaults_to_enabled_when_mcp_server_state_is_
 
 
 def test_group_tools_by_capability_fallback_group_is_never_toggleable():
-    groups = _group_tools_by_capability([_tool("some_future_tool")], {"other": {"enabled": True, "title": "Other"}})
+    groups = _group_tools_by_capability([_tool("some_future_tool")], {"other": True})
 
     assert groups[0]["id"] == "other"
     assert groups[0]["toggleable"] is False
 
 
 def test_group_resources_by_capability_carries_id_label_and_enabled_state():
-    groups = _group_resources_by_capability(
-        [_resource("host_health")],
-        {"host_health": {"enabled": True, "title": "Host Health", "resources": ["host_health"]}},
-    )
+    groups = _group_resources_by_capability([_resource("host_health")], {"host_health": True})
 
     assert groups == [
         {
@@ -333,7 +292,7 @@ def test_group_tools_by_capability_keeps_a_disabled_capabilitys_group_with_no_to
     purely from the live tool list would make a disabled capability's
     group vanish - taking the only switch that could turn it back on
     with it."""
-    groups = _group_tools_by_capability([], {"host_health": {"enabled": False, "title": "Host Health"}})
+    groups = _group_tools_by_capability([], {"host_health": False})
 
     assert groups == [
         {"id": "host_health", "label": "Host Health", "enabled": False, "toggleable": True, "tools": []}
@@ -341,9 +300,7 @@ def test_group_tools_by_capability_keeps_a_disabled_capabilitys_group_with_no_to
 
 
 def test_group_resources_by_capability_keeps_a_disabled_capabilitys_group_with_no_resources():
-    groups = _group_resources_by_capability(
-        [], {"host_health": {"enabled": False, "title": "Host Health", "resources": ["host_health"]}}
-    )
+    groups = _group_resources_by_capability([], {"host_health": False})
 
     assert groups == [
         {"id": "host_health", "label": "Host Health", "enabled": False, "toggleable": True, "resources": []}
@@ -354,12 +311,6 @@ def test_group_resources_by_capability_does_not_seed_a_group_for_a_tool_only_cap
     """"otp" owns no resource, so it must not get an empty, pointless
     resource-section group just because it's a known, enabled
     capability - only "host_health" (which owns one) should seed here."""
-    groups = _group_resources_by_capability(
-        [],
-        {
-            "host_health": {"enabled": True, "title": "Host Health", "resources": ["host_health"]},
-            "otp": {"enabled": True, "title": "OTP", "resources": []},
-        },
-    )
+    groups = _group_resources_by_capability([], {"host_health": True, "otp": True})
 
     assert [group["id"] for group in groups] == ["host_health"]

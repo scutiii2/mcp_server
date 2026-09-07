@@ -33,21 +33,9 @@
       {% set props = (tool.input_schema or {}).get('properties', {}) %}
       {% if props %}
         {% for field_name, field_schema in props.items() %}
-        {% set has_default = 'default' in field_schema and field_schema.default is not none %}
-        <label for="{{ tool.name }}-{{ field_name }}">
-          {{ field_name }}{% if field_schema.description %} &mdash; {{ field_schema.description }}{% endif %}
-          {% if has_default %}<span class="field-default">(default: {{ field_schema.default }})</span>{% endif %}
-        </label>
-        {% if field_schema.enum %}
-        <input type="text" list="{{ tool.name }}-{{ field_name }}-options" id="{{ tool.name }}-{{ field_name }}" name="{{ field_name }}"
-               placeholder="{{ field_schema.type or 'string' }}">
-        <datalist id="{{ tool.name }}-{{ field_name }}-options">
-          {% for option in field_schema.enum %}<option value="{{ option }}"></option>{% endfor %}
-        </datalist>
-        {% else %}
+        <label for="{{ tool.name }}-{{ field_name }}">{{ field_name }}{% if field_schema.description %} &mdash; {{ field_schema.description }}{% endif %}</label>
         <input type="text" id="{{ tool.name }}-{{ field_name }}" name="{{ field_name }}"
                placeholder="{{ field_schema.type or 'string' }}">
-        {% endif %}
         {% endfor %}
       {% else %}
         <p class="tool-desc">No input parameters.</p>

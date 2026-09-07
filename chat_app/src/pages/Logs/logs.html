@@ -25,7 +25,7 @@
       {% if can_view_errors %}<input type="hidden" name="errors_actor" value="{{ errors_actor }}">{% endif %}
       {% if can_view_chat_traces %}<input type="hidden" name="chat_traces_actor" value="{{ chat_traces_actor }}">{% endif %}
       <label for="logs_actor">Show entries for</label>
-      <select id="logs_actor" name="logs_actor" data-autosubmit>
+      <select id="logs_actor" name="logs_actor" onchange="this.form.submit()">
         <option value="server"{% if logs_actor == "server" %} selected{% endif %}>Server</option>
         {% for account in accounts %}
         <option value="{{ account.id }}"{% if logs_actor == account.id|string %} selected{% endif %}>{{ account.username }}</option>
@@ -54,7 +54,7 @@
       {% if can_view_logs %}<input type="hidden" name="logs_actor" value="{{ logs_actor }}">{% endif %}
       {% if can_view_chat_traces %}<input type="hidden" name="chat_traces_actor" value="{{ chat_traces_actor }}">{% endif %}
       <label for="errors_actor">Show entries for</label>
-      <select id="errors_actor" name="errors_actor" data-autosubmit>
+      <select id="errors_actor" name="errors_actor" onchange="this.form.submit()">
         <option value="server"{% if errors_actor == "server" %} selected{% endif %}>Server</option>
         {% for account in accounts %}
         <option value="{{ account.id }}"{% if errors_actor == account.id|string %} selected{% endif %}>{{ account.username }}</option>
@@ -89,7 +89,7 @@
       {% if can_view_logs %}<input type="hidden" name="logs_actor" value="{{ logs_actor }}">{% endif %}
       {% if can_view_errors %}<input type="hidden" name="errors_actor" value="{{ errors_actor }}">{% endif %}
       <label for="chat_traces_actor">Show entries for</label>
-      <select id="chat_traces_actor" name="chat_traces_actor" data-autosubmit>
+      <select id="chat_traces_actor" name="chat_traces_actor" onchange="this.form.submit()">
         <option value="server"{% if chat_traces_actor == "server" %} selected{% endif %}>Server</option>
         {% for account in accounts %}
         <option value="{{ account.id }}"{% if chat_traces_actor == account.id|string %} selected{% endif %}>{{ account.username }}</option>
@@ -117,5 +117,4 @@
   </section>
   {% endif %}
 </div>
-<script src="{{ url_for('logs.static', filename='script.js') }}"></script>
 {% endblock %}

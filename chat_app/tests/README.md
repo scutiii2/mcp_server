@@ -21,8 +21,9 @@ every test can use:
   `test_headers.py`, `test_fingerprint.py`, `test_cross_site.py`) call
   the pure functions directly with plain dicts - no Flask app needed,
   per `services/security/README.md`'s "pure-function-first" design.
-- LLM provider tests (`test_llm_providers.py`, `test_router.py`) mock
-  the provider SDK/HTTP call, never make a real network request.
+- LLM provider tests (`test_llm_providers.py`, `test_router.py`,
+  `test_staged_pipeline.py`) mock the provider SDK/HTTP call, never make
+  a real network request.
 
 ## Adding a test file
 

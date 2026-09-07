@@ -31,6 +31,7 @@ from src.services.tool_capabilities import (
     capability_for_resource,
     capability_for_tool,
     is_real_capability,
+    label_for_capability,
     resource_capability_ids,
 )
 from src.services.tool_titles import title_for
@@ -62,21 +63,15 @@ def _fetch_extensions_or_empty() -> list[dict]:
         return []
 
 
-def _fetch_capabilities_meta_or_empty() -> dict[str, dict]:
-    """{"host_health": {"enabled": True, "title": "Host Health",
-    "command_id": "host", "tools": ["get_host_health_tool"],
-    "resources": ["host_health"]}, ...} - live from mcp_server, not the
-    config file, so a change made from another tab/user (or a
-    TITLE/COMMAND_ID edited in that capability's own __init__.py, or a
-    tool/resource a capability newly registers) shows up on the next page
-    load. Same degrade-gracefully reasoning as _fetch_extensions_or_empty():
-    an unreachable mcp_server shouldn't blank the whole page, it should
-    just mean no toggle state (and no switches, see capabilities.html) is
-    shown, and every tool/resource falls into the "other" fallback group
-    (see tool_capabilities.py) - and _capability_group_meta below falls
-    back to the id itself when a capability has no entry here at all."""
+def _fetch_capability_states_or_empty() -> dict[str, bool]:
+    """{"host_health": True, "otp": False, ...} - live from mcp_server,
+    not the config file, so a change made from another tab/user shows up
+    on the next page load. Same degrade-gracefully reasoning as
+    _fetch_extensions_or_empty(): an unreachable mcp_server shouldn't
+    blank the whole page, it should just mean no toggle state (and no
+    switches, see capabilities.html) is shown."""
     try:
-        return {status["name"]: status for status in fetch_capabilities()}
+        return {status["name"]: status["enabled"] for status in fetch_capabilities()}
     except Exception:  # noqa: BLE001
         return {}
 
@@ -121,61 +116,58 @@ def _group_tools_by_extension(tools: list[dict], extensions: list[dict]) -> list
     ]
 
 
-def _capability_group_meta(capability_id: str, capabilities_meta: dict[str, dict]) -> dict:
+def _capability_group_meta(capability_id: str, capability_states: dict[str, bool]) -> dict:
     """The id/label/enabled/toggleable fields common to a tool group and
     a resource group - factored out so the two group functions below
     can't drift on what a "capability group" carries.
 
-    ``label`` comes from mcp_server's own ``title`` for this id
-    (TITLE in that capability's own __init__.py - see
-    infra/capability_metadata.py on that side), falling back to the raw
-    id when mcp_server didn't report it at all (unreachable mcp_server,
-    or a real capability id this deployment's mcp_server predates) -
-    same reasoning ``enabled``'s True default and tool_capabilities.py's
-    ``capability_for_tool()`` fallback both use: a capability this page
-    doesn't fully know about yet must still show up, not vanish.
+    ``enabled`` defaults to True when mcp_server didn't report this id
+    at all (unreachable mcp_server, or a real capability id this
+    deployment's mcp_server predates) - same "absent means enabled"
+    default mcp_server's own capability_enabled() uses, so a
+    can't-currently-know state doesn't read as "disabled".
     """
-    meta = capabilities_meta.get(capability_id, {})
     return {
         "id": capability_id,
-        "label": meta.get("title") or capability_id,
-        "enabled": meta.get("enabled", True),
-        "toggleable": is_real_capability(capability_id) and capability_id in capabilities_meta,
+        "label": label_for_capability(capability_id),
+        "enabled": capability_states.get(capability_id, True),
+        "toggleable": is_real_capability(capability_id) and capability_id in capability_states,
     }
 
 
-def _group_tools_by_capability(tools: list[dict], capabilities_meta: dict[str, dict]) -> list[dict]:
-    # Seeded from capabilities_meta, not just from `tools`: a disabled
+def _group_tools_by_capability(tools: list[dict], capability_states: dict[str, bool]) -> list[dict]:
+    # Seeded from capability_states, not just from `tools`: a disabled
     # capability has no tools in the live list at all (mcp_server never
     # registered them), so building groups purely from `tools` would
     # make a disabled capability's group vanish - with no switch left
     # anywhere on the page to turn it back on. Seeding first means every
     # capability mcp_server knows about always gets a group, empty or not.
-    grouped: dict[str, list[dict]] = {name: [] for name in capabilities_meta}
+    grouped: dict[str, list[dict]] = {name: [] for name in capability_states}
     for tool in tools:
         if tool["extension_id"] is not None:
             continue
-        capability_id = capability_for_tool(tool["name"], capabilities_meta)
+        capability_id = capability_for_tool(tool["name"])
         grouped.setdefault(capability_id, []).append(tool)
 
     return [
-        {**_capability_group_meta(capability_id, capabilities_meta), "tools": tools_for_id}
+        {**_capability_group_meta(capability_id, capability_states), "tools": tools_for_id}
         for capability_id, tools_for_id in grouped.items()
     ]
 
 
-def _group_resources_by_capability(resources: list[dict], capabilities_meta: dict[str, dict]) -> list[dict]:
+def _group_resources_by_capability(resources: list[dict], capability_states: dict[str, bool]) -> list[dict]:
     # Same "seed before populating" reasoning as _group_tools_by_capability
     # above, scoped to capabilities that actually own a resource - seeding
     # from every known capability would also produce an empty, pointless
     # resource group for a tool-only capability like "otp".
-    grouped: dict[str, list[dict]] = {name: [] for name in resource_capability_ids(capabilities_meta)}
+    seed_ids = capability_states.keys() & resource_capability_ids()
+    grouped: dict[str, list[dict]] = {name: [] for name in seed_ids}
     for resource in resources:
-        capability_id = capability_for_resource(resource["name"], capabilities_meta)
+        capability_id = capability_for_resource(resource["name"])
         grouped.setdefault(capability_id, []).append(resource)
 
     return [
-        {**_capability_group_meta(capability_id, capabilities_meta), "resources": resources_for_id}
+        {**_capability_group_meta(capability_id, capability_states), "resources": resources_for_id}
         for capability_id, resources_for_id in grouped.items()
     ]
 
@@ -231,10 +223,10 @@ def browse():
         resources_error = str(exc)
 
     error = tools_error or resources_error
-    capabilities_meta = _fetch_capabilities_meta_or_empty()
+    capability_states = _fetch_capability_states_or_empty()
     extensions = _group_tools_by_extension(tools, extensions_catalog)
-    tool_capability_groups = _group_tools_by_capability(tools, capabilities_meta)
-    resource_capability_groups = _group_resources_by_capability(resources, capabilities_meta)
+    tool_capability_groups = _group_tools_by_capability(tools, capability_states)
+    resource_capability_groups = _group_resources_by_capability(resources, capability_states)
     return render_template(
         "capabilities.html",
         tools=tools,

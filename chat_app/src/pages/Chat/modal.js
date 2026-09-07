@@ -11,37 +11,37 @@
 function confirmModal({ title = "Are you sure?", message = "", confirmLabel = "Confirm", cancelLabel = "Cancel", danger = false } = {}) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
-    overlay.className = "chat-modal-overlay";
+    overlay.className = "modal-overlay";
 
     const dialog = document.createElement("div");
-    dialog.className = "chat-modal-dialog";
+    dialog.className = "modal-dialog";
     dialog.setAttribute("role", "alertdialog");
     dialog.setAttribute("aria-modal", "true");
-    dialog.setAttribute("aria-labelledby", "chat-modal-title");
-    dialog.setAttribute("aria-describedby", "chat-modal-message");
+    dialog.setAttribute("aria-labelledby", "modal-title");
+    dialog.setAttribute("aria-describedby", "modal-message");
 
     const titleEl = document.createElement("h2");
-    titleEl.id = "chat-modal-title";
-    titleEl.className = "chat-modal-title";
+    titleEl.id = "modal-title";
+    titleEl.className = "modal-title";
     titleEl.textContent = title;
 
     const messageEl = document.createElement("p");
-    messageEl.id = "chat-modal-message";
-    messageEl.className = "chat-modal-message";
+    messageEl.id = "modal-message";
+    messageEl.className = "modal-message";
     messageEl.textContent = message;
 
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
-    cancelBtn.className = "chat-modal-btn chat-modal-btn-cancel";
+    cancelBtn.className = "modal-btn modal-btn-cancel";
     cancelBtn.textContent = cancelLabel;
 
     const confirmBtn = document.createElement("button");
     confirmBtn.type = "button";
-    confirmBtn.className = `chat-modal-btn ${danger ? "chat-modal-btn-danger" : "chat-modal-btn-confirm"}`;
+    confirmBtn.className = `modal-btn ${danger ? "modal-btn-danger" : "modal-btn-confirm"}`;
     confirmBtn.textContent = confirmLabel;
 
     const actions = document.createElement("div");
-    actions.className = "chat-modal-actions";
+    actions.className = "modal-actions";
     actions.append(cancelBtn, confirmBtn);
 
     dialog.append(titleEl, messageEl, actions);

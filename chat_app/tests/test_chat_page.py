@@ -1,5 +1,7 @@
 import dataclasses
-from unittest.mock import patch
+import io
+import json
+from unittest.mock import ANY, patch
 
 from flask import Flask
 from werkzeug.security import generate_password_hash
@@ -26,7 +28,13 @@ def _build_chat_test_app(tmp_path, monkeypatch):
     # pattern MCPArchitecture's own conftest.py used for this exact
     # problem (its chats_db fixture).
     monkeypatch.setattr(
-        chat_index, "settings", dataclasses.replace(chat_index.settings, chats_db_path=tmp_path / "chats.db")
+        chat_index,
+        "settings",
+        dataclasses.replace(
+            chat_index.settings,
+            chats_db_path=tmp_path / "chats.db",
+            attachments_dir=tmp_path / "attachments",
+        ),
     )
 
     app = Flask(
@@ -82,6 +90,14 @@ def _login_as(client, account_id):
         flask_session["_fresh"] = True
 
 
+def _set_attachments_config(tmp_path, monkeypatch, max_file_size_mb=5):
+    config_path = tmp_path / "config_attachments.json"
+    config_path.write_text(json.dumps({"max_file_size_mb": max_file_size_mb}), encoding="utf-8")
+    monkeypatch.setattr(
+        chat_index, "settings", dataclasses.replace(chat_index.settings, attachments_config_path=config_path)
+    )
+
+
 def test_chat_page_requires_authentication(tmp_path, monkeypatch):
     app = _build_chat_test_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -125,80 +141,6 @@ def test_chat_api_requires_chat_access_permission(tmp_path, monkeypatch):
     assert response.status_code == 403
 
 
-def test_chat_api_persists_chat_trace_log_entry_on_success(tmp_path, monkeypatch):
-    app = _build_chat_test_app(tmp_path, monkeypatch)
-    account_id = _create_account(app, "traceuser", ["chat.access"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    from src.services.llm.base import ChatResult
-
-    fake_result = ChatResult(response="hello back", provider_id="openai", model="gpt-5.6-sol", total_tokens=42)
-    with patch.object(chat_index.router, "run_chat", return_value=fake_result):
-        response = client.post("/chat/api/chat", json={"question": "hi", "history": []})
-
-    assert response.status_code == 200
-    with app.app_context():
-        traces = db.session.query(LogEntry).filter_by(kind="chat_trace", account_id=account_id).all()
-        assert len(traces) == 1
-        assert "hi" in traces[0].message
-
-
-def test_chat_api_unexpected_error_produces_log_entry_and_safe_response(tmp_path, monkeypatch):
-    app = _build_chat_test_app(tmp_path, monkeypatch)
-    account_id = _create_account(app, "erroruser2", ["chat.access"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    with patch.object(chat_index.router, "run_chat", side_effect=RuntimeError("boom")):
-        response = client.post("/chat/api/chat", json={"question": "hi", "history": []})
-
-    assert response.status_code == 200
-    assert "boom" not in response.get_json()["response"]
-    with app.app_context():
-        errors = db.session.query(LogEntry).filter_by(kind="error", account_id=account_id).all()
-        assert len(errors) == 1
-        assert "boom" in errors[0].details
-
-
-def test_chat_api_command_input_never_calls_the_llm_router(tmp_path, monkeypatch):
-    app = _build_chat_test_app(tmp_path, monkeypatch)
-    account_id = _create_account(app, "commanduser", ["chat.access"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    with patch.object(chat_index, "commands") as fake_commands, patch.object(
-        chat_index.router, "run_chat"
-    ) as fake_run_chat:
-        fake_commands.execute_command.return_value = "OTP sent."
-        response = client.post("/chat/api/chat", json={"question": "/otp get_otp", "history": []})
-
-    assert response.status_code == 200
-    body = response.get_json()
-    assert body["response"] == "OTP sent."
-    assert body["kind"] == "command"
-    fake_run_chat.assert_not_called()
-    fake_commands.execute_command.assert_called_once_with("/otp get_otp", [])
-
-
-def test_chat_api_non_command_input_still_uses_the_llm_router(tmp_path, monkeypatch):
-    app = _build_chat_test_app(tmp_path, monkeypatch)
-    account_id = _create_account(app, "noncommanduser", ["chat.access"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    from src.services.llm.base import ChatResult
-
-    fake_result = ChatResult(response="hi back", provider_id="openai", model="gpt-5.6-sol")
-    with patch.object(chat_index.router, "run_chat", return_value=fake_result) as fake_run_chat:
-        response = client.post("/chat/api/chat", json={"question": "hi", "history": []})
-
-    assert response.status_code == 200
-    body = response.get_json()
-    assert body["kind"] == "assistant"
-    fake_run_chat.assert_called_once()
-
-
 def test_commands_api_returns_the_registry_as_json(tmp_path, monkeypatch):
     app = _build_chat_test_app(tmp_path, monkeypatch)
     account_id = _create_account(app, "commandsapiuser", ["chat.access"])
@@ -236,6 +178,7 @@ def test_commands_api_returns_the_registry_as_json(tmp_path, monkeypatch):
                         "has_default": True,
                         "default": "ops@example.com",
                         "enum": None,
+                        "format": None,
                     }
                 ],
             }
@@ -273,7 +216,7 @@ def test_commands_api_includes_a_params_enum_when_the_registry_has_one(tmp_path,
     params = response.get_json()["host_health"]["get_host_health"]["params"]
     assert params == [
         {"name": "name", "required": True, "type": "string", "has_default": False, "default": None,
-         "enum": ["zima", "desktop"]}
+         "enum": ["zima", "desktop"], "format": None}
     ]
 
 
@@ -286,6 +229,213 @@ def test_commands_api_requires_chat_access_permission(tmp_path, monkeypatch):
     response = client.get("/chat/api/commands")
 
     assert response.status_code == 403
+
+
+def test_upload_attachment_creates_a_new_chat_when_none_given(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    account_id = _create_account(app, "uploaduser", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    response = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"hello world"), "notes.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["filename"] == "notes.txt"
+    assert body["size"] == 11
+    assert body["chat_id"]
+
+    from src.services import chats_store
+    assert chats_store.get_chat(chat_index.settings.chats_db_path, "uploaduser", body["chat_id"]) is not None
+
+
+def test_upload_attachment_into_an_existing_chat(tmp_path, monkeypatch):
+    from src.services import chats_store
+
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    account_id = _create_account(app, "uploaduser2", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+    existing_id = chats_store.save_chat(chat_index.settings.chats_db_path, "uploaduser2", None, [])
+
+    response = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"data"), "a.txt"), "chat_id": existing_id},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["chat_id"] == existing_id
+
+
+def test_upload_attachment_rejects_a_file_over_the_configured_size_limit(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch, max_file_size_mb=0.00001)
+    account_id = _create_account(app, "uploaduser3", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    response = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"this is definitely more than ten bytes"), "big.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert "error" in response.get_json()
+
+
+def test_upload_attachment_rejects_a_non_utf8_file(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    account_id = _create_account(app, "uploaduser4", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    response = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"\xff\xfe\x00\x01"), "binary.dat")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+
+
+def test_list_and_delete_attachments_round_trip(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    account_id = _create_account(app, "listuser", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    upload = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"hello"), "a.txt")},
+        content_type="multipart/form-data",
+    )
+    chat_id = upload.get_json()["chat_id"]
+
+    listing = client.get(f"/chat/api/chats/{chat_id}/attachments")
+    assert listing.get_json() == [{"filename": "a.txt", "size": 5}]
+
+    deletion = client.delete(f"/chat/api/chats/{chat_id}/attachments/a.txt")
+    assert deletion.status_code == 204
+
+    listing_after = client.get(f"/chat/api/chats/{chat_id}/attachments")
+    assert listing_after.get_json() == []
+
+
+def test_delete_attachment_for_an_unknown_filename_is_not_found(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    account_id = _create_account(app, "deleteuser", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+    upload = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"hello"), "a.txt")},
+        content_type="multipart/form-data",
+    )
+    chat_id = upload.get_json()["chat_id"]
+
+    response = client.delete(f"/chat/api/chats/{chat_id}/attachments/nope.txt")
+
+    assert response.status_code == 404
+
+
+def test_list_attachments_for_another_users_chat_is_not_found(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    owner_id = _create_account(app, "owner", ["chat.access"])
+    intruder_id = _create_account(app, "intruder", ["chat.access"])
+    owner_client = app.test_client()
+    _login_as(owner_client, owner_id)
+    upload = owner_client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"secret"), "s.txt")},
+        content_type="multipart/form-data",
+    )
+    chat_id = upload.get_json()["chat_id"]
+
+    intruder_client = app.test_client()
+    _login_as(intruder_client, intruder_id)
+    response = intruder_client.get(f"/chat/api/chats/{chat_id}/attachments")
+
+    assert response.status_code == 404
+
+
+def test_attachments_endpoints_require_chat_access_permission(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    account_id = _create_account(app, "noaccessuser", [])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    response = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"hi"), "a.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 403
+
+
+def test_deleting_a_chat_also_deletes_its_attachments(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    _set_attachments_config(tmp_path, monkeypatch)
+    account_id = _create_account(app, "deletechatuser", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+    upload = client.post(
+        "/chat/api/attachments",
+        data={"file": (io.BytesIO(b"hello"), "a.txt")},
+        content_type="multipart/form-data",
+    )
+    chat_id = upload.get_json()["chat_id"]
+
+    response = client.delete(f"/chat/api/chats/{chat_id}")
+
+    assert response.status_code == 204
+    assert not (chat_index.settings.attachments_dir / chat_id).exists()
+
+
+def test_chat_api_command_turns_ignore_the_attachments_field(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    account_id = _create_account(app, "commandattachuser", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with patch.object(chat_index, "commands") as fake_commands, patch.object(
+        chat_index.attachments_store, "read_attachment_text"
+    ) as fake_read_text:
+        fake_commands.execute_command.return_value = "OTP sent."
+        response = client.post(
+            "/chat/api/chat",
+            json={"question": "/otp get_otp", "history": [], "attachments": ["notes.txt"]},
+        )
+
+    assert response.status_code == 200
+    fake_read_text.assert_not_called()
+
+
+def test_chat_page_includes_attachment_ui_elements(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    account_id = _create_account(app, "attachuiuser", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    response = client.get("/chat/")
+
+    assert response.status_code == 200
+    assert b'id="attach-btn"' in response.data
+    assert b'id="attach-input"' in response.data
+    assert b'id="staged-attachments"' in response.data
 
 
 def test_chat_page_has_no_inline_event_handlers(tmp_path, monkeypatch):
