@@ -70,6 +70,21 @@ def _sync_administrator_role_permissions(db_session, role: Role) -> None:
     db_session.commit()
 
 
+def _sync_bootstrap_admin(db_session, admin: Account, username, email, password) -> None:
+    taken = {
+        row.username: row.email
+        for row in db_session.query(Account).filter(Account.id != admin.id)
+    }
+    if username not in taken:
+        admin.username = username
+    if email not in taken.values():
+        admin.email = email
+    # No configured password: leave the existing hash alone rather than rotating it.
+    if password and not check_password_hash(admin.password_hash, password):
+        admin.password_hash = generate_password_hash(password)
+    db_session.commit()
+
+
 def ensure_bootstrap_admin(db_session, secrets_dir) -> None:
     role = db_session.query(Role).filter_by(name="Administrator").first()
     if role is None:
@@ -79,13 +94,18 @@ def ensure_bootstrap_admin(db_session, secrets_dir) -> None:
 
     _sync_administrator_role_permissions(db_session, role)
 
-    if db_session.query(Account).count() > 0:
-        return
-
     bootstrap_secrets = load_env_secrets(secrets_dir / "secret_bootstrap_admin.env")
     username = bootstrap_secrets.get("BOOTSTRAP_ADMIN_USERNAME") or "admin"
     email = bootstrap_secrets.get("BOOTSTRAP_ADMIN_EMAIL") or "admin@example.com"
     password = bootstrap_secrets.get("BOOTSTRAP_ADMIN_PASSWORD")
+
+    existing = db_session.query(Account).filter_by(is_protected=True).first()
+    if existing is not None:
+        _sync_bootstrap_admin(db_session, existing, username, email, password)
+        return
+
+    if db_session.query(Account).count() > 0:
+        return
 
     generated = False
     if not password:

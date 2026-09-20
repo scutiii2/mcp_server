@@ -1,3 +1,5 @@
+from werkzeug.security import check_password_hash
+
 from src.models import Account, Role, db
 from src.services.auth_service import ensure_bootstrap_admin
 from src.services.authz import require_permission
@@ -48,6 +50,28 @@ def test_ensure_bootstrap_admin_skips_creation_when_accounts_exist(app, tmp_path
         count = db.session.query(Account).count()
 
         assert count == 1
+
+
+def test_ensure_bootstrap_admin_updates_existing_admin_from_secrets_each_call(app, tmp_path):
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir()
+    env_file = secrets_dir / "secret_bootstrap_admin.env"
+
+    with app.app_context():
+        ensure_bootstrap_admin(db.session, secrets_dir)
+
+        env_file.write_text(
+            "BOOTSTRAP_ADMIN_USERNAME=root\n"
+            "BOOTSTRAP_ADMIN_EMAIL=root@example.com\n"
+            "BOOTSTRAP_ADMIN_PASSWORD=new-secret\n"
+        )
+        ensure_bootstrap_admin(db.session, secrets_dir)
+
+        admin = db.session.query(Account).filter_by(is_protected=True).one()
+
+        assert admin.username == "root"
+        assert admin.email == "root@example.com"
+        assert check_password_hash(admin.password_hash, "new-secret")
 
 
 def test_ensure_bootstrap_admin_syncs_registered_permissions_onto_role(app, tmp_path):

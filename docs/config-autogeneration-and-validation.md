@@ -73,6 +73,25 @@ after `secret_llm.env` was seeded with a blank `CLAUDE_API_KEY`.
 - `aiagent-scaffold`, `root-project-scaffold`, `mcp-capability-scaffold`: notes
   that real files are auto-created from `.example` twins.
 
+## 5. chat_app: bootstrap admin synced on every start
+
+`ensure_bootstrap_admin` (`chat_app/src/services/auth_service.py`) used to create
+the admin only when the `accounts` table was empty. An admin created before
+`secret_bootstrap_admin.env` was filled in kept its old username, email and
+password, so the configured credentials never worked.
+
+Now, on every start, the protected account (`is_protected=True`) is updated from
+`secret_bootstrap_admin.env`:
+
+- username and email follow the env file. A field is skipped if another account
+  already uses that value (uniqueness).
+- the password hash is rewritten when the env password differs from the stored
+  one. An empty `BOOTSTRAP_ADMIN_PASSWORD` leaves the existing hash alone.
+- first-run creation is unchanged: it only happens when no accounts exist, and a
+  random password is printed once if none is configured.
+- Tests: `tests/test_bootstrap_admin.py`
+  (`test_ensure_bootstrap_admin_updates_existing_admin_from_secrets_each_call`).
+
 ## Known limitations
 
 - The tests `test_capabilities_page::test_try_tool_allowed_with_try_permission`,
