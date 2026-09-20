@@ -22,6 +22,7 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 
+from src.catalog import catalog
 from src.config import ServerConfig
 
 
@@ -30,6 +31,7 @@ class AuthResolutionError(RuntimeError):
     available at connect time - e.g. an unset environment variable."""
 
 
+@catalog
 def resolve_headers(config: ServerConfig) -> dict[str, str]:
     """The extra HTTP headers `config`'s auth block requires, or {} for
     no auth. Only meaningful for transport 'http' - open_session never

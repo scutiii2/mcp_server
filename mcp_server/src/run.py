@@ -12,18 +12,20 @@ from pathlib import Path
 # os.getenv() at class-definition time (i.e. at import time), so every
 # secrets/*.env file needs to be loaded into the environment first or
 # those defaults never see it. Loaded from every *.env file in
-# src/secrets/ rather than one fixed name, mirroring src/configs/'s
+# secrets/ rather than one fixed name, mirroring configs/'s
 # one-file-per-concern split (secret_app.env, secret_smtp.env,
 # secret_ssh.env today; a future capability that owns a real secret adds
 # its own file here with zero changes to this loop).
 from dotenv import load_dotenv
 
-_SECRETS_DIR = Path("src/secrets")
+_SECRETS_DIR = Path(".secrets")
 for _env_file in sorted(_SECRETS_DIR.glob("*.env")):
     load_dotenv(_env_file)
 
 from src.config import settings  # noqa: E402
-from src.infra import capability_registry  # noqa: E402
+from src.services import capability_registry  # noqa: E402
+from src.services.app_config import capability_enabled, load_capabilities_config  # noqa: E402
+from src.services.identity_context import IdentityContextMiddleware  # noqa: E402
 from src.utils.logging_setup import configure_logging  # noqa: E402
 from src.server import mcp  # noqa: E402
 
@@ -32,13 +34,38 @@ from src.server import mcp  # noqa: E402
 # not just log lines written after some later point in startup.
 configure_logging(settings.log_dir)
 
-# Imports every built-in capability onto `mcp` and applies its configured
-# enabled/disabled state - see imports.py's own docstring for why this
-# needs to be a bare side-effecting import rather than a function call,
-# and capabilities/README.md's "Add a new capability" step 7 for how to
-# add one. `capability_registry` (imported above) is what _serve() below
-# reads back from afterward, for the startup banner's capability list.
-from src import imports as _capability_imports  # noqa: E402,F401
+_capabilities_config = load_capabilities_config(settings.capabilities_config_path)
+
+# Import order = the order tools/resources appear in their respective
+# list calls. Add each new capability's tool/resource module here as it's
+# built, following the pattern in capabilities/<name>/ (contract.py /
+# domain.py / tool.py) described in the README's "Adding a new tool"
+# section - and add a toggle entry to config_capabilities.json /
+# config_capabilities.json.example.
+#
+# Every capability imports unconditionally now, even a disabled one -
+# capability_registry.capturing() needs the import to actually happen so
+# it can capture what got registered, which is what makes toggling a
+# capability back on later possible without re-importing (Python caches
+# modules, so a second import wouldn't re-run the @mcp.tool() decorators
+# anyway). Disabled state is applied immediately below, via the same
+# registry a live PATCH /capabilities/{name} request uses later - see
+# capability_routes.py and services/capability_registry.py.
+
+# Each `import src.capabilities.<name>` below runs only that package's
+# __init__.py (its META = capability_meta.register(...) declaration) -
+# not its tool.py, so this is safe to do before opening the capturing()
+# block that actually registers tools. See capability_meta.py's
+# docstring for why the id/label live there instead of being typed again
+# here.
+from src.capabilities import server_manager  # noqa: E402
+
+with capability_registry.capturing(mcp, server_manager.META.id, label=server_manager.META.label):
+    from src.capabilities.server_manager import tool as server_manager_tool  # noqa: E402,F401
+
+for _name in capability_registry.names():
+    if not capability_enabled(_capabilities_config, _name):
+        capability_registry.set_enabled(mcp, _name, False)
 
 
 async def _serve() -> None:
@@ -46,7 +73,7 @@ async def _serve() -> None:
     runs inside this one coroutine, under a single asyncio.run() (see
     main()) - not, as a first pass at this had it, several independent
     asyncio.run() calls followed by a separate uvicorn.run(). That
-    mattered in practice, not just in theory: infra/extensions.py's
+    mattered in practice, not just in theory: services/extensions.py's
     upstream connections (stdio subprocess pipes, anyio task groups,
     cancel scopes) are bound to the event loop they were opened in.
     asyncio.run() tears its loop down when it returns, so connecting
@@ -62,12 +89,12 @@ async def _serve() -> None:
     """
     import uvicorn
 
-    from src.infra import extensions
+    from src.services import extensions
 
     try:
         # Before the tool_names line below, on purpose: extensions
         # register their proxied tools onto `mcp` itself (see
-        # infra/extensions.py), so connecting first is what makes the
+        # services/extensions.py), so connecting first is what makes the
         # merged list below - and therefore the "Tools" count and bullet
         # list - include them.
         extension_statuses = await extensions.install_extensions(mcp, settings.extensions_config_path)
@@ -93,11 +120,11 @@ async def _serve() -> None:
         except Exception as error:  # noqa: BLE001 - a banner line must never block startup
             resource_count = f"unknown ({error})"
 
-        from src.approval_routes import install_approval_routes
         from src.capability_routes import install_capability_routes
         from src.command_routes import install_command_routes
         from src.extension_routes import install_extension_routes
-        from src.infra import approvals
+        from src.help_routes import install_help_routes
+        from src.upload_routes import install_upload_routes
 
         enabled_capabilities = [
             name for name in capability_registry.names() if capability_registry.is_enabled(name)
@@ -110,7 +137,6 @@ async def _serve() -> None:
             f"  Tools    : {len(tool_names)}",
             *(f"    - {name}" for name in tool_names),
             f"  Resources: {resource_count}",
-            f"  Gated    : {', '.join(approvals.registered_names()) or 'none'}",
             f"  Extensions: {', '.join(f'{s.id} ({s.status})' for s in extension_statuses) or 'none'}",
         ]
         if settings.host not in {"127.0.0.1", "localhost", "::1"}:
@@ -132,10 +158,13 @@ async def _serve() -> None:
         print("\n".join(banner), flush=True)
 
         app = mcp.streamable_http_app()
-        # Where a human approves anything gated - deliberately a plain
-        # HTTP route rather than a tool, so the model can't approve its
-        # own requests. See approval_routes.py.
-        install_approval_routes(app)
+        # Reads chat_app's X-Requester-Username/X-Requester-Email headers
+        # (see services/commands.py's _IDENTITY_INJECTED_TOOLS) into
+        # per-request contextvars, so an identity-gated capability's
+        # domain function can read current_username()/current_email()
+        # instead of taking the caller's identity as a tool argument -
+        # see services/identity_context.py's module docstring for why.
+        app.add_middleware(IdentityContextMiddleware)
         # Where a human (or chat_app's sidebar) checks what's connected -
         # also a plain HTTP route, same reasoning: nothing here is
         # something a model needs to call. See extension_routes.py.
@@ -144,12 +173,24 @@ async def _serve() -> None:
         # "/" commands - also a plain HTTP route, same reasoning. See
         # command_routes.py.
         install_command_routes(app)
+        # Where chat_app answers "/<capability> help ..." - also a plain
+        # HTTP route, same reasoning as install_command_routes above: not
+        # a real tool call, just structured data about one capability's
+        # tools/commands/workflow for chat_app to render. See
+        # help_routes.py.
+        install_help_routes(app)
         # Where a human (chat_app's Capabilities page) turns a built-in
         # capability on/off live - also a plain HTTP route, same
-        # reasoning as install_approval_routes above: this changes what
+        # reasoning as install_command_routes: this changes what
         # every caller of this server can do, not something a model
         # should be able to do to itself. See capability_routes.py.
         install_capability_routes(app)
+        # Where chat_app proxies a file a user dropped into a command-form
+        # modal, so a tool param that expects a real server-side path can
+        # be filled with one - also a plain HTTP route, checked against
+        # the same internal shared secret chat_app itself checks in the
+        # other direction. See upload_routes.py.
+        install_upload_routes(app)
 
         # uvicorn.Server(...).serve() rather than the uvicorn.run()
         # convenience function: run() calls asyncio.run() itself, which

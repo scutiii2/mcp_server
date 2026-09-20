@@ -1,0 +1,2 @@
+(Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& "D:\User\Documents\Programming\Python\MCPServer\mcp_server\.venv_mcp\Scripts\Activate.ps1")
+(Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& "D:\User\Documents\Programming\Python\MCPServer\chat_app\.venv_chat\Scripts\Activate.ps1")

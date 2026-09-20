@@ -32,3 +32,16 @@ def send_invite_email(invitee_email: str, code: str, expires_at) -> None:
         ),
     )
     mail.send(message)
+
+
+def send_email_verification(email: str, code: str, expires_at) -> None:
+    message = Message(
+        subject="Verify your email",
+        recipients=[email],
+        body=(
+            "Enter this code to verify your email address:\n\n"
+            f"Verification code: {code}\n"
+            f"This code expires at {expires_at.isoformat()} and can only be used once.\n"
+        ),
+    )
+    mail.send(message)

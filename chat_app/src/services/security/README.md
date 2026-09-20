@@ -19,7 +19,7 @@ works with or without a running Flask app.
   Flask-WTF's CSRFProtect (Chat, Capabilities) - see its own docstring.
 - **`pipeline.py`** - `load_security_configs()` /
   `register_security_pipeline()`: reads every `config_security_*.json`
-  in `../../configs/` and wires `ip_filter`, `rate_limit`, and `headers`
+  in `../../../configs/` and wires `ip_filter`, `rate_limit`, and `headers`
   into `before_request`/`after_request` on the Flask app.
   `fingerprint.py` and `cross_site.py` are intentionally **not** wired
   here - `fingerprint.py` runs inside the login route handler, the only
@@ -31,7 +31,7 @@ works with or without a running Flask app.
 1. The module itself, following `ip_filter.py`'s shape: pure functions
    that take plain data in and return a decision, no Flask imports in
    the core logic.
-2. A `config_security_<name>.json` (+ `.example`) in `../../configs/` -
+2. A `config_security_<name>.json` (+ `.example`) in `../../../configs/` -
    see that folder's README for the loading convention.
 3. If it belongs in the standing pipeline (evaluated on every request),
    wire it into `register_security_pipeline()`. If it only applies at

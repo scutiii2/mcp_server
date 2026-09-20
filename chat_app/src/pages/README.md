@@ -64,11 +64,11 @@ registered by `__index__.py` at app-boot time (see `register_pages()`).
   picker.
 - [`Account/`](Account/README.md) — self-service profile view/edit.
   Reached via the account menu, not `nav_pages`.
-- [`Sample/`](Sample/README.md) — minimal example page, kept so
-  `nav_pages` / the Overview grid always has at least one real card and
-  so new pages have something to copy.
 - [`Chat/`](Chat/README.md) — LLM conversation UI, provider/extension
   selection, and per-user chat history. Gated by `chat.access`.
 - [`Capabilities/`](Capabilities/README.md) — live MCP tool/resource
   browser and try-it console. Gated by `capabilities.view` /
   `capabilities.try`.
+- [`Watchers/`](Watchers/README.md) — read-only status of background
+  watchers of any mcp_server capability (discovered live), with
+  filters and editable recipients. Gated by `watchers.view`.

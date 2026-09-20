@@ -18,7 +18,9 @@
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 /* .page-content gets a max-width and margin: 0 auto so it centers within
    the space this project's shared flex layout (__shared__/shared.css)
@@ -53,9 +55,159 @@ body {
   flex-wrap: wrap;
   flex-shrink: 0;
 }
-.selectors { display: flex; gap: 6px; }
+.selectors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Live "context used / limit" bar - same three-color badge language as
+   the extensions status dot (green connected/amber warning/red error),
+   read off context_tokens/context_window (see ai_agent's model_limits.py
+   and chat_api's assistant_entry). Purely a display of what the last
+   response actually sent - phase 1 changes nothing about what's sent. */
+.context-usage {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.context-usage.hidden {
+  display: none;
+}
+
+/* Right-hand cluster of the toprow: the context-usage ring, pinned right
+   by the outer .toprow's space-between. */
+.toprow-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-export-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.chat-export-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.chat-export-btn:hover {
+  color: var(--ink);
+}
+
+.context-usage-ring {
+  --pct: 0%;
+  --ring-color: var(--rail-assistant);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(
+    var(--ring-color) var(--pct),
+    var(--code-bg) var(--pct) 100%
+  );
+  transition: background 0.2s ease;
+}
+.context-usage-ring::before {
+  content: "";
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--paper);
+}
+.context-usage-pct {
+  position: relative;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.context-usage-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: 230px;
+  background: white;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(20, 24, 31, 0.12);
+  padding: 12px;
+}
+.context-usage-popover.hidden {
+  display: none;
+}
+.context-usage-popover-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.context-usage-popover-label {
+  color: var(--ink-muted);
+}
+.context-usage-popover-value {
+  font-weight: 600;
+}
+.context-usage-popover-bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+.context-usage-popover-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--rail-assistant);
+  transition:
+    width 0.2s ease,
+    background 0.2s ease;
+}
+.context-usage-popover.is-warning .context-usage-popover-bar-fill {
+  background: var(--rail-system);
+}
+.context-usage-popover.is-critical .context-usage-popover-bar-fill {
+  background: #c0392b;
+}
+.context-usage-popover-note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.context-usage-popover-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--code-bg);
+}
+.context-usage-popover-section .context-usage-popover-bar-track {
+  margin-top: 4px;
+}
+.context-usage-popover-section .context-usage-popover-note {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+.context-usage-popover-bar-fill.is-full {
+  background: #c0392b;
+}
 
 select {
+  box-sizing: border-box;
+  height: 36px;
   padding: 6px 10px;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
@@ -63,21 +215,43 @@ select {
   background: white;
   color: var(--ink);
 }
-select option:disabled { color: #aaa; }
-#model.hidden { display: none; }
+select option:disabled {
+  color: #aaa;
+}
+#model.hidden {
+  display: none;
+}
 
 #log {
   flex: 1;
   min-height: 0;
+  min-width: 0; /* flex items default to min-width:auto, which lets an unbreakable
+    long token (a hash, path, id...) in a message stretch #log - and everything
+    up to <body> - wider than the viewport instead of staying put and wrapping;
+    this plus .msg-content's overflow-wrap keeps that overflow inside #log. */
   border: 1px solid var(--panel-border);
   border-radius: 10px;
   padding: 4px;
   margin-bottom: 12px;
   background: white;
   overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.msg { margin: 10px; padding: 8px 14px; border-left: 3px solid transparent; }
+/* Bubble layout: each .msg is a flex child of #log, sized to its content
+   (max-width caps it) and pushed to either edge via align-self - user
+   bubbles right (the sender's own side in every chat UI convention),
+   assistant/system/etc bubbles left. The label above and the timer/AI-
+   used/token footer below sit outside the bubble itself - only
+   .msg-content (the actual reply text) gets the bordered box, so the
+   role name and metadata read as captions, not part of the message. */
+.msg {
+  margin: 6px 10px;
+  max-width: 75%;
+  align-self: flex-start;
+}
 
 .msg-label {
   font-size: 11px;
@@ -87,19 +261,370 @@ select option:disabled { color: #aaa; }
   margin-bottom: 4px;
 }
 
-.msg-content { font-size: 15px; line-height: 1.55; white-space: pre-wrap; }
-.msg-content > *:first-child { margin-top: 0; }
-.msg-content > *:last-child { margin-bottom: 0; }
+/* overflow-x: auto here (not on individual wide elements like table below)
+   makes each message its own horizontal scroll boundary: a wide table or
+   unbreakable token scrolls within that one message, #log's own
+   overflow-x: hidden stays as the outer safety net, and the rest of the
+   page never gains a horizontal scrollbar. The border here is the same
+   color as the role's bubble outline (set per-role below) since it's the
+   one deliberate separator between the label/footer captions and the
+   actual message content. */
+.msg-content {
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow-x: auto;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: var(--code-bg);
+  border: 1px solid var(--panel-border);
+}
+.msg-content > *:first-child {
+  margin-top: 0;
+}
+.msg-content > *:last-child {
+  margin-bottom: 0;
+}
 
-.msg.user { border-left-color: var(--rail-user); }
-.msg.user .msg-label { color: var(--rail-user); }
+.msg.user {
+  align-self: flex-end;
+}
+.msg.user .msg-content {
+  background: #e8f1fa;
+  border-color: var(--rail-user);
+}
+.msg.user .msg-label {
+  color: var(--rail-user);
+  text-align: right;
+}
+.msg-sent-time {
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  text-align: right;
+}
 
-.msg.assistant { border-left-color: var(--rail-assistant); }
-.msg.assistant .msg-label { color: var(--rail-assistant); }
-.msg.assistant .msg-content { white-space: normal; } /* real rendered HTML now, not raw pre-wrapped text */
+.msg.assistant {
+  align-self: flex-start;
+}
+/* Assistant/command footer: sent time + timer share one left-aligned row,
+   copy button sits on its own row below (order keeps it last even though
+   the timer is appended after it). */
+.msg.assistant,
+.msg.command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+}
+.msg.assistant > *,
+.msg.command > * {
+  flex: 0 0 100%;
+}
+.msg.assistant > .msg-sent-time,
+.msg.assistant > .msg-timer,
+.msg.command > .msg-sent-time,
+.msg.command > .msg-timer {
+  flex: 0 0 auto;
+  order: 1;
+  text-align: left;
+}
+.msg-copy-btn {
+  order: 2;
+  flex: 0 0 auto !important;
+  margin-left: auto;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: white;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.msg-copy-btn:hover {
+  color: var(--ink);
+}
+.msg.assistant .msg-content {
+  background: #eef5e6;
+  border-color: var(--rail-assistant);
+  white-space: normal;
+} /* real rendered HTML now, not raw pre-wrapped text */
+.msg.assistant .msg-label {
+  color: var(--rail-assistant);
+}
+
+/* A "/" command result: same rendered-Markdown treatment as .msg.assistant
+   (see command_formatting.py), but the amber rail keeps it visually
+   distinct as "didn't come from the LLM" - same accent .msg.system uses
+   for meta commentary, since both mean "not a model reply". */
+.msg.command {
+  align-self: flex-start;
+}
+.msg.command .msg-content {
+  background: #faf3e3;
+  border-color: var(--rail-system);
+  white-space: normal;
+}
+.msg.command .msg-label {
+  color: var(--rail-system);
+}
+
+/* "❌ ..." error turn (see renderErrorMessage in script.js) - red border
+   plus a faint red wash so a rate-limit/tool failure reads as distinct
+   from a normal reply at a glance, without the raw provider payload
+   dominating the bubble. */
+.msg.error {
+  align-self: flex-start;
+}
+.msg.error .msg-content {
+  border-color: #c0392b;
+  background: rgba(192, 57, 43, 0.06);
+}
+.msg.error .msg-label {
+  color: #c0392b;
+}
+.msg-error-headline {
+  font-weight: 600;
+  color: #c0392b;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.msg-error-hint {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--ink-muted);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.msg-error-details {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.msg-error-details summary {
+  cursor: pointer;
+  color: var(--ink-muted);
+}
+.msg-error-details summary:hover {
+  color: var(--ink);
+}
+.msg-error-details pre {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--code-bg);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow-x: auto;
+  color: var(--ink);
+}
+
+/* Live tool-call trace - the whole group is itself a collapsible <details>
+   (open while streaming, collapsed to one "Ran N tools" line once the turn
+   ends - see finalizeTrace()), containing collapsible steps showing tool
+   name, arguments, and result (same <details>-based pattern as
+   .msg-attachment and .msg-error-details). Each step tracks its own state:
+   pending (spinner animation), ok (green checkmark), or failed (red ✗). */
+/* Embed-style card: bordered, rounded, with a left accent bar (green when
+   every step succeeded, red if any failed, amber while still running). */
+.msg-trace {
+  --trace-accent: var(--rail-assistant);
+  margin: 6px 10px 8px;
+  max-width: none;
+  align-self: stretch;
+  font-size: 12px;
+  background: white;
+  border: 1px solid var(--panel-border);
+  border-left: 4px solid var(--trace-accent);
+  border-radius: 8px;
+  padding: 6px 10px 8px;
+}
+.msg-trace[open]:not(:has(.trace-step-ok, .trace-step-failed)),
+.msg-trace:has(.trace-step-pending) {
+  --trace-accent: var(--rail-system);
+}
+.msg-trace:has(.trace-step-failed) {
+  --trace-accent: #c0392b;
+}
+.msg-trace-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 2px 0;
+}
+.msg-trace-summary::before {
+  content: "\25B8";
+  color: var(--ink-muted);
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+.msg-trace[open] > .msg-trace-summary::before {
+  transform: rotate(90deg);
+}
+.msg-trace-summary::-webkit-details-marker {
+  display: none;
+}
+.msg-trace-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.trace-step {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.trace-step summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-muted);
+  padding: 4px 0;
+}
+.trace-step summary::-webkit-details-marker {
+  display: none;
+}
+.trace-step-icon {
+  width: 14px;
+  text-align: center;
+}
+.trace-step-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Latest live message from a running tool; removed when the step ends. */
+.trace-step-progress {
+  flex: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+.trace-step-pending .trace-step-icon {
+  animation: trace-spin 1s linear infinite;
+}
+.trace-step-ok .trace-step-icon {
+  color: #2e7d32;
+}
+.trace-step-failed .trace-step-icon {
+  color: #c0392b;
+}
+.trace-step-failed summary {
+  color: #c0392b;
+}
+.trace-step-detail {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  background: var(--code-bg);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  color: var(--ink);
+}
+
+@keyframes trace-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* "/summarize"'s fresh summary (see services/summarization.py) - rendered
+   markdown same as .msg.assistant, but kept visually distinct (the
+   system-amber rail) since it replaces raw history rather than being a
+   normal reply. */
+.msg.summary {
+  align-self: center;
+  max-width: 90%;
+}
+.msg.summary .msg-content {
+  background: #faf3e3;
+  border-color: var(--rail-system);
+  white-space: normal;
+}
+.msg.summary .msg-label {
+  color: var(--rail-system);
+  text-align: center;
+}
+
+/* The cumulative raw-history text a summarize cycle set aside - never
+   dumped inline, offered as a download chip instead (see script.js's
+   downloadLogAttachment()), same visual family as .msg-attachment's
+   file chips below. No .msg-content here (a chip button instead), so the
+   box styling lives directly on .msg since there's nothing else to carry it. */
+.msg.log_attachment {
+  align-self: center;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: var(--code-bg);
+  border: 1px solid var(--ink-muted);
+}
+.msg.log_attachment .msg-label {
+  color: var(--ink-muted);
+  text-align: center;
+}
+.msg-log-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+.msg-log-chip:hover {
+  background: #ececeb;
+}
+
+.msg-download-attachment {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--ink-muted);
+  border-radius: 14px;
+  background: var(--code-bg);
+}
+.msg-download-attachment .msg-label {
+  color: var(--ink-muted);
+  text-align: center;
+}
+.msg-download-attachment .msg-log-chip {
+  text-decoration: none;
+}
 
 .msg.system {
-  border-left-color: var(--rail-system);
+  align-self: center;
+  max-width: 90%;
+  background: transparent;
+  border-color: transparent;
   color: var(--ink-muted);
   font-size: 12px;
   font-style: italic;
@@ -117,11 +642,23 @@ select option:disabled { color: #aaa; }
   margin-top: 6px;
 }
 
-.msg.thinking { opacity: 0.75; }
-@media (prefers-reduced-motion: no-preference) {
-  .msg.thinking { animation: pulse 1.4s ease-in-out infinite; }
+.msg.thinking {
+  opacity: 0.75;
 }
-@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .msg.thinking {
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 
 /* Markdown rendered inside assistant messages */
 .msg-content :is(h1, h2, h3) {
@@ -134,11 +671,24 @@ select option:disabled { color: #aaa; }
   padding-bottom: 4px;
   margin: 14px 0 8px;
 }
-.msg-content p { margin: 0 0 10px; }
-.msg-content ul, .msg-content ol { margin: 0 0 10px; padding-left: 22px; }
-.msg-content li { margin-bottom: 4px; }
-.msg-content li::marker { color: var(--rail-assistant); }
-.msg-content strong { color: var(--ink); font-weight: 700; }
+.msg-content p {
+  margin: 0 0 10px;
+}
+.msg-content ul,
+.msg-content ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.msg-content li {
+  margin-bottom: 4px;
+}
+.msg-content li::marker {
+  color: var(--rail-assistant);
+}
+.msg-content strong {
+  color: var(--ink);
+  font-weight: 700;
+}
 .msg-content code {
   font-family: var(--mono);
   background: var(--code-bg);
@@ -154,22 +704,253 @@ select option:disabled { color: #aaa; }
   overflow-x: auto;
   margin: 0 0 10px;
 }
-.msg-content pre code { background: none; padding: 0; }
-.msg-content a { color: var(--rail-user); }
+.msg-content pre code {
+  background: none;
+  padding: 0;
+}
+.msg-content a {
+  color: var(--rail-user);
+}
 
-#row { display: flex; gap: 8px; flex-shrink: 0; }
-#q-wrap { position: relative; flex: 1; }
+/* A file attached to a user message - the extracted text collapses
+   behind <summary> by default (it's context for the model, not
+   something worth showing open by default) same styling family as
+   .msg-content pre above so it reads as "this page's code-block look",
+   not a new visual language. */
+.msg-attachment {
+  margin-top: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--code-bg);
+}
+.msg-attachment summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--ink-muted);
+  list-style: none;
+}
+.msg-attachment summary::-webkit-details-marker {
+  display: none;
+}
+.msg-attachment summary::before {
+  content: "📎 ";
+}
+.msg-attachment[open] summary {
+  border-bottom: 1px solid var(--panel-border);
+}
+.msg-attachment pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 300px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.msg-attachment-truncated-note {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+/* Tables show up mainly in command replies (command_formatting.py
+   renders each list[dict] result field - conflicts, violations, etc -
+   as one), but this is unscoped .msg-content so an LLM reply that
+   happens to answer with a Markdown table gets the same treatment. */
+/* overflow-wrap/word-break: normal overrides .msg-content's break-word for
+   just the table: break-word also lowers a table's min-content width (the
+   browser will break words mid-letter to shrink a column instead of ever
+   growing the table), which is what was crushing columns to near-zero
+   instead of the table ever overflowing into .msg-content's scrollbar. */
+.msg-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 10px;
+  font-size: 13px;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.msg-content th,
+.msg-content td {
+  border: 1px solid var(--panel-border);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.msg-content th {
+  background: var(--code-bg);
+  font-weight: 700;
+}
+/* No display:block/overflow-x here: that used to strip the table's own
+   table-layout algorithm (its <tr>/<td> children stay table-row/table-cell,
+   so the table itself must stay display:table to lay them out), which was
+   forcing columns down to near-zero width and breaking words letter by
+   letter instead of scrolling. .msg-content above is the scroll boundary
+   now; a table wider than that just scrolls within its own message. */
+
+/* align-items: stretch (not flex-end) so the attach/send buttons always
+   match #q's height exactly, including as it grows while typing
+   (autoResizeInput() in script.js sets #q's height directly - #row has
+   no height of its own, so it just follows #q-wrap's, and stretch pins
+   every other child to that same height). */
+#row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: stretch;
+}
+
+/* Wraps #log/#attach-chip-list/#row so a dropped file is caught anywhere
+   over the log or the composer, not just the composer row - script.js
+   toggles drag-active on THIS element (dragenter/dragleave/drop), one
+   nesting-depth counter shared across all its children, matching #log's
+   own rounding so the highlight reads as one drop target rather than two
+   separately-outlined pieces. */
+.chat-dropzone {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border-radius: 10px;
+  transition: background-color 0.1s;
+}
+.chat-dropzone.drag-active {
+  background: #eef4fb;
+  outline: 2px dashed var(--rail-user);
+  outline-offset: 4px;
+}
+#q-wrap {
+  position: relative;
+  flex: 1;
+}
+
+#attach-input {
+  display: none;
+}
+.attach-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  /* No explicit height - #row's align-items: stretch above sizes this to
+     match #q exactly, so it grows/shrinks with the textarea instead of
+     staying pinned to a one-line height. align-self: stretch is needed
+     too - Chromium gives <button> a used align-self of flex-start by
+     default, ignoring the parent's align-items: stretch. */
+  align-self: stretch;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+.attach-btn:hover:not(:disabled) {
+  background: var(--code-bg);
+  color: var(--ink);
+}
+.attach-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Files staged for the next send - lives above #row, below the
+   transcript. Empty/hidden the moment there's nothing pending, same
+   show/hide convention as .ext-error-banner etc elsewhere on this page. */
+.attach-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.attach-chip-list.hidden {
+  display: none;
+}
+.attach-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  background: var(--code-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12.5px;
+}
+.attach-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-chip.is-error {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+.attach-chip.is-uploading {
+  color: var(--ink-muted);
+}
+.attach-chip-remove {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+.attach-chip-remove:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+}
 #q {
+  display: block;
   width: 100%;
   padding: 14px 16px;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   font-size: 15px;
+  font-family: inherit;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  max-height: 160px; /* ~7 lines before it scrolls instead of growing further - #row's align-items: flex-end keeps the send button pinned to the bottom as this grows */
 }
-#q:disabled { opacity: 0.6; }
-#q:focus-visible, select:focus-visible, button:focus-visible {
+#q:disabled {
+  opacity: 0.6;
+}
+#q:focus-visible,
+select:focus-visible,
+button:focus-visible {
   outline: 2px solid var(--rail-user);
   outline-offset: 1px;
+}
+
+/* Shown while ArrowUp/ArrowDown is cycling through previously sent
+   messages (see historyRecall state in script.js) - "History N/M" so
+   it's clear this isn't a live draft, and how far back the cursor is. */
+.history-recall-badge {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  background: var(--code-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+.history-recall-badge.hidden {
+  display: none;
 }
 
 .cmd-suggestions {
@@ -188,7 +969,9 @@ select option:disabled { color: #aaa; }
   overflow-y: auto;
   z-index: 10;
 }
-.cmd-suggestions.hidden { display: none; }
+.cmd-suggestions.hidden {
+  display: none;
+}
 .cmd-suggestion {
   padding: 6px 10px;
   border-radius: 6px;
@@ -198,52 +981,13 @@ select option:disabled { color: #aaa; }
   justify-content: space-between;
   gap: 8px;
 }
-.cmd-suggestion.active { background: var(--code-bg); }
-.cmd-suggestion-desc { color: var(--ink-muted); font-size: 12px; white-space: nowrap; }
-
-.attach-btn {
-  padding: 8px 12px;
-  background: white;
-  border: 1px solid var(--panel-border);
-  color: var(--ink);
-  font-size: 16px;
-  line-height: 1;
+.cmd-suggestion.active {
+  background: var(--code-bg);
 }
-.attach-btn:hover { background: #f5f5f4; }
-#attach-input { display: none; }
-
-.staged-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.staged-attachments.hidden { display: none; }
-.staged-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  background: white;
-  font-size: 12px;
-  color: var(--ink);
-}
-.staged-chip-remove {
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
+.cmd-suggestion-desc {
   color: var(--ink-muted);
-}
-.staged-chip-remove:hover { color: #c0392b; }
-
-.page-content.drag-over {
-  outline: 2px dashed var(--rail-user);
-  outline-offset: -8px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 button {
@@ -255,13 +999,47 @@ button {
   cursor: pointer;
   font-size: 14px;
 }
-button:hover:not(:disabled) { background: #000; }
-button:disabled { background: #a8a8a8; cursor: not-allowed; }
+button:hover:not(:disabled) {
+  background: #000;
+}
+button:disabled {
+  background: #a8a8a8;
+  cursor: not-allowed;
+}
+
+/* send-btn while a turn is in flight - see script.js's send()/cancelSend().
+   Distinct color (not just the label swap to "Stop") so it reads as a
+   different action at a glance, not just the same button mid-request. */
+/* Stretched to #q's height by #row's align-items: stretch above (no
+   explicit height here, same reasoning as .attach-btn) - flex-centered
+   so "Send"/"Stop" stays vertically centered instead of sitting at the
+   top of a now-taller button. align-self: stretch is needed explicitly -
+   see .attach-btn's comment on Chromium's default button align-self. */
+#send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+#send-btn.send-btn-stop {
+  background: #b91c1c;
+}
+#send-btn.send-btn-stop:hover:not(:disabled) {
+  background: #8f1717;
+}
 
 @media (max-width: 520px) {
-  .page-content { padding: 16px 12px; }
-  .toprow { flex-direction: column; align-items: flex-start; }
-  .msg { margin: 8px 4px; }
+  .page-content {
+    padding: 16px 12px;
+  }
+  .toprow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .msg {
+    margin: 8px 4px;
+  }
 }
 
 /* Extensions sidebar - a slide-in drawer rather than a permanent side
@@ -275,7 +1053,11 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
    red for "error" since neither existing accent color reads as a
    problem. */
 .ext-toggle-btn {
-  padding: 6px 10px;
+  box-sizing: border-box;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   font-size: 13px;
@@ -283,8 +1065,46 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   color: var(--ink);
   cursor: pointer;
 }
-.ext-toggle-btn:hover { background: #f5f5f4; }
-.ext-toggle-btn.has-enabled { border-color: var(--rail-assistant); color: var(--rail-assistant); }
+.ext-toggle-btn:hover {
+  background: #f5f5f4;
+}
+.ext-toggle-btn.has-enabled {
+  border-color: var(--rail-assistant);
+  color: var(--rail-assistant);
+}
+
+/* Beside #provider - forces a config_agents.json re-read (see script.js's
+   loadProviders(true)) rather than waiting on the next 15s poll, which
+   only refreshes each agent's live status, not the set of agents itself. */
+.provider-refresh-btn {
+  box-sizing: border-box;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  background: white;
+  color: var(--ink-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.provider-refresh-btn:hover:not(:disabled) {
+  background: #f5f5f4;
+  color: var(--ink);
+}
+.provider-refresh-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.provider-refresh-btn.is-refreshing svg {
+  animation: provider-refresh-spin 0.7s linear infinite;
+}
+@keyframes provider-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 .ext-overlay {
   position: fixed;
@@ -292,7 +1112,9 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   background: rgba(0, 0, 0, 0.25);
   z-index: 20;
 }
-.ext-overlay.hidden { display: none; }
+.ext-overlay.hidden {
+  display: none;
+}
 
 .ext-panel {
   position: fixed;
@@ -311,10 +1133,21 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   z-index: 21;
   box-sizing: border-box;
 }
-.ext-panel.open { transform: translateX(0); }
+.ext-panel.open {
+  transform: translateX(0);
+}
 
-.ext-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.ext-panel-header h2 { font-size: 15px; font-weight: 500; margin: 0; }
+.ext-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.ext-panel-header h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+}
 .ext-close-btn {
   background: none;
   border: none;
@@ -324,10 +1157,20 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   color: var(--ink-muted);
   padding: 2px 6px;
 }
-.ext-close-btn:hover { color: var(--ink); }
+.ext-close-btn:hover {
+  color: var(--ink);
+}
 
-.ext-sub { font-size: 12px; color: var(--ink-muted); margin: 4px 0 16px; }
-.ext-empty { font-size: 13px; color: var(--ink-muted); font-style: italic; }
+.ext-sub {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 4px 0 16px;
+}
+.ext-empty {
+  font-size: 13px;
+  color: var(--ink-muted);
+  font-style: italic;
+}
 .ext-error-banner {
   background: #fde8e8;
   border: 1px solid #f3b4b4;
@@ -337,7 +1180,9 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   font-size: 12px;
   margin-bottom: 12px;
 }
-.ext-error-banner.hidden { display: none; }
+.ext-error-banner.hidden {
+  display: none;
+}
 
 /* Add-extension form - sits between the error banner and the list, same
    spacing rhythm as the rest of the panel (16px below the subtitle,
@@ -372,7 +1217,9 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   flex: 1 1 100%;
   margin: 0;
 }
-.ext-add-error.hidden { display: none; }
+.ext-add-error.hidden {
+  display: none;
+}
 .ext-add-error-text {
   font-size: 11px;
   color: #c0392b;
@@ -390,7 +1237,9 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   color: var(--ink-muted);
   margin: 4px 0 0;
 }
-.ext-add-error-details.hidden { display: none; }
+.ext-add-error-details.hidden {
+  display: none;
+}
 .ext-add-error-help-toggle {
   display: block;
   background: none;
@@ -402,17 +1251,29 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   text-decoration: underline;
   cursor: pointer;
 }
-.ext-add-error-help-toggle:hover { background: none !important; color: var(--ink); }
-.ext-add-error-help-toggle:focus-visible { outline: 2px solid var(--rail-user); outline-offset: 1px; }
-.ext-add-error-help-toggle.hidden { display: none; }
+.ext-add-error-help-toggle:hover {
+  background: none !important;
+  color: var(--ink);
+}
+.ext-add-error-help-toggle:focus-visible {
+  outline: 2px solid var(--rail-user);
+  outline-offset: 1px;
+}
+.ext-add-error-help-toggle.hidden {
+  display: none;
+}
 .ext-add-error-help-list {
   font-size: 11px;
   color: var(--ink-muted);
   margin: 4px 0 0;
   padding-left: 16px;
 }
-.ext-add-error-help-list li { margin-bottom: 2px; }
-.ext-add-error-help-list.hidden { display: none; }
+.ext-add-error-help-list li {
+  margin-bottom: 2px;
+}
+.ext-add-error-help-list.hidden {
+  display: none;
+}
 
 .ext-item {
   border: 1px solid var(--panel-border);
@@ -421,9 +1282,25 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   margin-bottom: 10px;
   background: white;
 }
-.ext-item-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.ext-item-label { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-.ext-item-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.ext-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.ext-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ext-item-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
 .ext-remove-btn {
   background: none;
   border: none;
@@ -433,7 +1310,9 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   color: var(--ink-muted);
   padding: 2px 4px;
 }
-.ext-remove-btn:hover { color: #c0392b; }
+.ext-remove-btn:hover {
+  color: #c0392b;
+}
 .ext-status-dot {
   display: inline-block;
   width: 8px;
@@ -441,16 +1320,38 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   border-radius: 50%;
   flex-shrink: 0;
 }
-.ext-status-dot.connected { background: var(--rail-assistant); }
-.ext-status-dot.error { background: #c0392b; }
-.ext-item-desc { font-size: 12px; color: var(--ink-muted); margin: 4px 0 0; }
-.ext-item-error { font-size: 11px; color: #c0392b; margin: 4px 0 0; }
+.ext-status-dot.connected {
+  background: var(--rail-assistant);
+}
+.ext-status-dot.error {
+  background: #c0392b;
+}
+.ext-item-desc {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 4px 0 0;
+}
+.ext-item-error {
+  font-size: 11px;
+  color: #c0392b;
+  margin: 4px 0 0;
+}
 
 /* Toggle switch - a plain checkbox styled as a slider, so it stays a
    real, keyboard-operable, screen-reader-friendly <input type=checkbox>
    underneath rather than a div with a click handler. */
-.ext-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
-.ext-switch input { opacity: 0; width: 0; height: 0; }
+.ext-switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.ext-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
 .ext-switch-slider {
   position: absolute;
   inset: 0;
@@ -470,16 +1371,19 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   border-radius: 50%;
   transition: transform 0.15s ease;
 }
-.ext-switch input:checked + .ext-switch-slider { background: var(--rail-assistant); }
-.ext-switch input:checked + .ext-switch-slider::before { transform: translateX(14px); }
-.ext-switch input:focus-visible + .ext-switch-slider { outline: 2px solid var(--rail-user); outline-offset: 2px; }
+.ext-switch input:checked + .ext-switch-slider {
+  background: var(--rail-assistant);
+}
+.ext-switch input:checked + .ext-switch-slider::before {
+  transform: translateX(14px);
+}
+.ext-switch input:focus-visible + .ext-switch-slider {
+  outline: 2px solid var(--rail-user);
+  outline-offset: 2px;
+}
 
-/* Chat-history panel - new for this port. MCPArchitecture rendered
-   #chat-history-list inside its own _shared sidebar (sidebar.css,
-   not ported here - this project's own __shared__/sidebar.html
-   replaces it and has no chat-history concept). script.js still
-   targets these exact class/id names unchanged, so this panel
-   supplies them as a column inside Chat's own page content instead. */
+/* Chat navigation keeps script.js's existing chat-history hooks while
+   giving them a dedicated, independently scrollable sidebar shell. */
 .chat-layout {
   display: flex;
   gap: 20px;
@@ -490,28 +1394,172 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
      up - the height analog of the earlier .page-content width fix. */
   height: calc(100vh - 4rem);
 }
-.chat-history-panel {
+#chat-sidebar {
   width: 220px;
   flex-shrink: 0;
-  padding-top: 40px;
   height: 100%;
-  overflow-y: auto;
+  transition: width 0.15s ease;
+}
+.chat-history-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding-top: 40px;
+}
+/* Collapsed state shrinks the panel to a narrow rail showing just the "+"
+   new-chat button and the toggle, stacked - the list itself (not just its
+   contents) is hidden so it can't be tabbed/scrolled into while collapsed,
+   but starting a new chat stays one click away instead of requiring an
+   expand first. */
+.chat-history-panel.collapsed {
+  overflow: visible;
+}
+#chat-sidebar:has(.chat-history-panel.collapsed) {
+  width: 48px;
+}
+.chat-history-panel.collapsed .chat-history-header {
+  padding: 0 6px;
+}
+.chat-history-panel.collapsed .sidebar-new-chat-btn {
+  width: 36px;
+  flex: none;
+}
+.chat-history-panel.collapsed .sidebar-new-chat-label {
+  display: none;
+}
+.chat-history-panel.collapsed #chat-sidebar-list,
+.chat-history-panel.collapsed #chat-history-bulk-actions {
+  display: none;
+}
+.chat-history-panel.collapsed .chat-sidebar-collapse-label {
+  display: none;
+}
+.chat-history-panel:not(.collapsed) .chat-sidebar-expand-label {
+  display: none;
+}
+.chat-history-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.sidebar-new-chat-btn,
+.chat-history-select-btn,
+.chat-history-toggle-btn {
+  box-sizing: border-box;
+  height: 36px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
+}
+.sidebar-new-chat-btn:hover,
+.chat-history-select-btn:hover,
+.chat-history-toggle-btn:hover {
+  background: #f5f5f4;
+  border-color: var(--ink-muted);
 }
 .sidebar-new-chat-btn {
-  display: block;
-  text-align: center;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
   color: var(--ink);
   text-decoration: none;
   font-size: 13px;
+  font-weight: 500;
 }
-.sidebar-new-chat-btn:hover { background: #f5f5f4; }
-.chat-history-list { display: flex; flex-direction: column; gap: 4px; }
-.chat-history-empty { font-size: 12px; color: var(--ink-muted); font-style: italic; padding: 4px 8px; }
+.sidebar-new-chat-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-new-chat-icon {
+  display: flex;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.sidebar-new-chat-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.chat-history-toggle-btn {
+  flex-shrink: 0;
+  min-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+}
+.chat-history-toggle-btn:hover {
+  color: var(--ink);
+}
+.chat-history-select-btn {
+  flex-shrink: 0;
+  padding: 0 8px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.chat-history-select-btn[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--code-bg);
+}
+.chat-history-bulk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: -4px 0 8px;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.chat-history-bulk-actions button {
+  border: 1px solid #c44;
+  border-radius: 5px;
+  background: white;
+  color: #a22;
+  padding: 3px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat-history-bulk-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chat-history-select-checkbox {
+  flex-shrink: 0;
+  margin: 0 2px;
+  cursor: pointer;
+}
+.chat-sidebar-collapse-label,
+.chat-sidebar-expand-label {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+#chat-sidebar-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.chat-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-history-empty {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-style: italic;
+  padding: 4px 8px;
+}
 .chat-history-item {
   display: flex;
   align-items: center;
@@ -519,10 +1567,77 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   gap: 6px;
   padding: 6px 8px;
   border-radius: 6px;
+  cursor: pointer;
 }
-.chat-history-item:hover { background: #f5f5f4; }
-.chat-history-item.active { background: var(--code-bg); }
-.chat-history-text { display: flex; flex-direction: column; min-width: 0; }
+.chat-history-item:hover {
+  background: #f5f5f4;
+}
+.chat-history-item.active {
+  background: var(--code-bg);
+}
+.chat-history-row-action-slot {
+  flex: 0 0 18px;
+  width: 18px;
+  min-height: 18px;
+  position: relative;
+}
+.chat-history-action-btn {
+  width: 18px;
+  min-height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+.chat-history-action-btn:hover {
+  background: #e9e8e5;
+  color: var(--ink);
+}
+.chat-history-action-menu.hidden {
+  display: none;
+}
+.chat-history-action-menu {
+  position: absolute;
+  z-index: 3;
+  top: 20px;
+  left: 0;
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.chat-history-action-menu button {
+  border: 0;
+  border-radius: 3px;
+  background: white;
+  padding: 3px 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink);
+}
+.chat-history-action-menu button:hover {
+  background: #f5f5f4;
+}
+.chat-history-row-action-slot[role="status"] {
+  animation: chat-job-spin 1s linear infinite;
+  text-align: center;
+}
+@keyframes chat-job-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.chat-history-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
 .chat-history-link {
   font-size: 13px;
   color: var(--ink);
@@ -531,17 +1646,31 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.chat-history-time { font-size: 11px; color: var(--ink-muted); }
-.chat-history-controls { display: flex; gap: 2px; flex-shrink: 0; }
-.chat-history-rename-btn, .chat-history-delete-btn {
+.chat-history-time {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.chat-history-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.chat-history-rename-btn,
+.chat-history-delete-btn {
   background: none;
   border: none;
   padding: 2px 4px;
   font-size: 13px;
   color: var(--ink-muted);
   cursor: pointer;
+  text-decoration: none;
+  line-height: 1;
 }
-.chat-history-rename-btn:hover, .chat-history-delete-btn:hover { color: var(--ink); }
+.chat-history-rename-btn:hover,
+.chat-history-delete-btn:hover {
+  color: var(--ink);
+}
 .chat-history-rename-input {
   font-size: 13px;
   padding: 2px 6px;
@@ -549,14 +1678,113 @@ button:disabled { background: #a8a8a8; cursor: not-allowed; }
   border-radius: 4px;
   width: 100%;
 }
+#manage-chats-view {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border);
+}
+#manage-chats-view .chat-history-select-btn {
+  flex: 1;
+}
+.chat-manage-panel {
+  padding: 20px;
+}
+.chat-manage-controls,
+.chat-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+.chat-manage-row span {
+  flex: 1;
+  min-width: 0;
+}
+/* a global input rule stretches checkboxes, squeezing the title to nothing */
+.chat-manage-row input[type="checkbox"] {
+  flex: none;
+  width: auto;
+  margin: 0;
+}
+/* no generic .hidden rule exists, so manage mode never hid the chat view */
+#chat-main-view > .toprow.hidden,
+#chat-dropzone.hidden,
+.chat-manage-panel.hidden {
+  display: none;
+}
+.chat-history-panel.collapsed #manage-chats-view {
+  justify-content: center;
+  padding: 10px 6px 0;
+  /* List is display:none when collapsed, so push the toggle back to the
+     bottom instead of letting it ride up under the "+" button. */
+  margin-top: auto;
+}
+.chat-history-panel.collapsed #manage-chats-view .chat-history-select-btn {
+  display: none;
+}
+.chat-history-panel.collapsed #manage-chats-view .chat-history-toggle-btn {
+  width: 36px;
+}
 @media (max-width: 700px) {
   /* Stacked layout on narrow viewports reverts to natural document height
      - a fixed viewport-height column doesn't make sense once the history
      panel and chat column are on top of each other instead of side by
      side, so this un-does the height-bounded/flex-column treatment above
      and lets #log fall back to a plain scrollable box instead. */
-  .chat-layout { flex-direction: column; height: auto; }
-  .chat-history-panel { width: 100%; padding-top: 0; height: auto; max-height: 240px; }
-  .page-content { height: auto; }
-  #log { flex: none; min-height: 320px; max-height: 60vh; }
+  .chat-layout {
+    flex-direction: column;
+    height: auto;
+  }
+  #chat-sidebar {
+    width: 100%;
+    height: auto;
+  }
+  .chat-history-panel {
+    padding-top: 0;
+    height: auto;
+    max-height: 240px;
+  }
+  /* Stacked side by side above/below the log rather than left/right, so
+     collapsing shrinks height instead of width here. */
+  #chat-sidebar:has(.chat-history-panel.collapsed) {
+    width: 100%;
+  }
+  .chat-history-panel.collapsed {
+    height: auto;
+    max-height: none;
+  }
+  .chat-history-panel.collapsed .chat-history-header {
+    justify-content: flex-start;
+  }
+  .chat-history-panel.collapsed .sidebar-new-chat-btn {
+    flex: none;
+    width: 36px;
+    padding: 0;
+  }
+  .page-content {
+    height: auto;
+  }
+  #log {
+    flex: none;
+    min-height: 320px;
+    max-height: 60vh;
+  }
 }
+
+/* New-chat welcome: centered in the log, not a chat bubble. */
+.chat-welcome {
+  margin: auto;
+  padding: 24px;
+  max-width: 560px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.chat-welcome-logo { width: 56px; height: 56px; object-fit: contain; margin-bottom: 8px; }
+.chat-welcome-title { margin: 0; font-size: 26px; font-weight: 700; color: var(--ink); }
+.chat-welcome-tip, .chat-welcome-caps { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-muted); }

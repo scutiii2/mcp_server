@@ -11,15 +11,19 @@ because it is itself a server with tools of its own.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from src.catalog import catalog
 
+
+@catalog
 class ConfigError(ValueError):
     """Raised for a malformed config_servers.json entry."""
 
 
+@catalog
 @dataclass(frozen=True)
 class AuthConfig:
     type: str  # "none" | "header" | "bearer_env"
@@ -28,6 +32,7 @@ class AuthConfig:
     header_value: str | None = None
 
 
+@catalog
 @dataclass(frozen=True)
 class ServerConfig:
     id: str
@@ -100,7 +105,8 @@ def _build_server(server_id: str, raw: dict[str, Any]) -> ServerConfig:
     )
 
 
-def load_servers_config(path: Path) -> dict[str, ServerConfig]:
+@catalog
+def load_servers_config(path: Path, url_overrides: dict[str, str] | None = None) -> dict[str, ServerConfig]:
     """Load and validate every entry in `path` (config_servers.json).
 
     Raises ConfigError for any entry missing a required field, using an
@@ -108,6 +114,16 @@ def load_servers_config(path: Path) -> dict[str, ServerConfig]:
     transport (e.g. an http entry with 'command' set). The whole file is
     validated eagerly on load - a bad entry anywhere fails loudly at
     startup rather than surfacing later as a confusing connect failure.
+
+    `url_overrides` (server_id -> url) replaces an http entry's configured
+    url after loading - used by mcp_upstream.py to let --mcp-url/
+    MCP_SERVER_URL repoint the "main" upstream server without editing
+    config_servers.json. Ignored for a stdio entry or an unknown server_id.
     """
     raw_data = json.loads(path.read_text(encoding="utf-8"))
-    return {server_id: _build_server(server_id, raw) for server_id, raw in raw_data.items()}
+    servers = {server_id: _build_server(server_id, raw) for server_id, raw in raw_data.items()}
+    for server_id, url in (url_overrides or {}).items():
+        config = servers.get(server_id)
+        if config is not None and config.transport == "http":
+            servers[server_id] = replace(config, url=url)
+    return servers

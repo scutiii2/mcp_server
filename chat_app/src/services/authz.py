@@ -3,6 +3,8 @@ from functools import wraps
 from flask import abort
 from flask_login import current_user
 
+from src.utils.catalog import catalog
+
 _REGISTERED_PERMISSIONS: set[str] = set()
 
 
@@ -14,6 +16,7 @@ def registered_permissions() -> set[str]:
     return set(_REGISTERED_PERMISSIONS)
 
 
+@catalog
 def account_permissions(account) -> set[str]:
     permissions: set[str] = set()
     for role in account.roles:
@@ -22,10 +25,12 @@ def account_permissions(account) -> set[str]:
     return permissions
 
 
+@catalog
 def has_permission(account, permission_name: str) -> bool:
     return permission_name in account_permissions(account)
 
 
+@catalog
 def require_login():
     def decorator(view_func):
         @wraps(view_func)
@@ -39,6 +44,7 @@ def require_login():
     return decorator
 
 
+@catalog
 def require_permission(permission_name: str):
     register_permission(permission_name)
 

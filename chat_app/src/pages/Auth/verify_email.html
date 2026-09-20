@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Verify Email{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('auth.static', filename='style.css') }}">
+<div class="auth-card">
+  <h1>Verify your email</h1>
+  <p>We emailed a verification code to <strong>{{ email }}</strong>.</p>
+  {% if resent %}<p class="notice">A new code was sent.</p>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ url_for('auth.verify_email') }}" data-auth-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    <label for="code">Verification code</label>
+    <input type="text" id="code" name="code" required autofocus autocomplete="one-time-code">
+    <button type="submit">Verify</button>
+  </form>
+  <form method="post" action="{{ url_for('auth.resend_verification_email') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    <button type="submit" class="link-button">Resend code</button>
+  </form>
+</div>
+<script src="{{ url_for('auth.static', filename='script.js') }}"></script>
+{% endblock %}

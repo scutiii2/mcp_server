@@ -4,26 +4,12 @@ same convention as test_mcp_client.py."""
 
 from __future__ import annotations
 
+import io
 from types import SimpleNamespace
 from unittest.mock import patch
-
-import pytest
+from urllib.error import HTTPError
 
 from src.services import commands
-
-
-@pytest.fixture(autouse=True)
-def _fetch_capabilities_stub():
-    """build_command_registry() now also calls mcp_client.fetch_capabilities()
-    to map each command's real capability id to its (possibly shorter)
-    COMMAND_ID. Every test below still writes specs using the real id as
-    "capability" and expects the registry keyed by that same string - []
-    means no capability reported a COMMAND_ID, so the fallback
-    (command_id_by_capability.get(id, id)) leaves that behavior
-    unchanged. test_build_command_registry_groups_by_command_id_when_one_is_set
-    overrides this to actually exercise the substitution."""
-    with patch.object(commands.mcp_client, "fetch_capabilities", return_value=[]):
-        yield
 
 
 def _tool(name, description="", input_schema=None):
@@ -125,35 +111,26 @@ def test_build_command_registry_captures_an_optional_params_default_value():
     assert by_name["verify_ssl"].default is True
 
 
-def test_build_command_registry_captures_a_params_enum():
+def test_build_command_registry_reads_a_params_format_metadata():
     tool = _tool(
-        "get_host_health_tool",
+        "parse_tool",
         input_schema={
-            "properties": {"name": {"type": "string", "enum": ["zima", "desktop"]}},
-            "required": ["name"],
+            "properties": {
+                "file_path": {"type": "string", "format": "file"},
+                "system_label": {"type": "string"},
+            },
+            "required": ["file_path"],
         },
     )
-    specs = [
-        {"capability": "host_health", "name": "get_host_health", "description": "check", "tool_name": "get_host_health_tool"}
-    ]
+    specs = [{"capability": "server", "name": "parse", "description": "parse", "tool_name": "parse_tool"}]
     with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
         commands.mcp_client, "list_tools", return_value=[tool]
     ):
         registry = commands.build_command_registry([])
 
-    param = registry["host_health"]["get_host_health"].params[0]
-    assert param.enum == ["zima", "desktop"]
-
-
-def test_build_command_registry_leaves_enum_none_when_the_schema_names_none():
-    tool = _tool("register_tool", input_schema={"properties": {"name": {"type": "string"}}, "required": ["name"]})
-    specs = [{"capability": "widgets", "name": "register", "description": "register", "tool_name": "register_tool"}]
-    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
-        commands.mcp_client, "list_tools", return_value=[tool]
-    ):
-        registry = commands.build_command_registry([])
-
-    assert registry["widgets"]["register"].params[0].enum is None
+    by_name = {p.name: p for p in registry["server"]["parse"].params}
+    assert by_name["file_path"].format == "file"
+    assert by_name["system_label"].format is None
 
 
 def test_build_command_registry_auto_registers_enabled_extension_tools():
@@ -175,33 +152,6 @@ def test_build_command_registry_auto_registers_enabled_extension_tools():
     assert entry.params == [commands.CommandParam(name="text", required=True, type="string")]
 
 
-def test_build_command_registry_groups_by_command_id_when_one_is_set():
-    """mcp_server's GET /capabilities can report a shorter COMMAND_ID for
-    a capability (infra/capability_metadata.py on that side) - the
-    registry must group under that, not the real capability id, since
-    that's the whole point: a person typing "/host ..." instead of
-    "/host_health ..."."""
-    specs = [
-        {
-            "capability": "host_health",
-            "name": "get_host_health",
-            "description": "check",
-            "tool_name": "get_host_health_tool",
-        }
-    ]
-    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
-        commands.mcp_client, "list_tools", return_value=[_tool("get_host_health_tool")]
-    ), patch.object(
-        commands.mcp_client,
-        "fetch_capabilities",
-        return_value=[{"name": "host_health", "enabled": True, "title": "Host Health", "command_id": "host"}],
-    ):
-        registry = commands.build_command_registry([])
-
-    assert "host_health" not in registry
-    assert "get_host_health" in registry["host"]
-
-
 def test_build_command_registry_a_built_in_capability_id_wins_over_a_same_named_extension():
     ext_tools = _otp_tools() + [_tool("otp__sneaky", description="not the real otp", input_schema={})]
     with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
@@ -213,29 +163,114 @@ def test_build_command_registry_a_built_in_capability_id_wins_over_a_same_named_
     assert "get_otp" in registry["otp"]
 
 
-def test_params_from_schema_captures_a_format_hint():
-    tool = _tool(
-        "summarize_tool",
-        input_schema={"properties": {"content": {"type": "string", "format": "file"}}, "required": ["content"]},
-    )
-    specs = [{"capability": "docs", "name": "summarize", "description": "summarize", "tool_name": "summarize_tool"}]
-    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
-        commands.mcp_client, "list_tools", return_value=[tool]
+def test_build_command_registry_adds_a_synthetic_help_entry_for_a_built_in_capability():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
     ):
         registry = commands.build_command_registry([])
 
-    assert registry["docs"]["summarize"].params[0].format == "file"
+    help_entry = registry["otp"]["help"]
+    assert help_entry.tool_name == "help"
+    param_names = {p.name for p in help_entry.params}
+    assert param_names == {"target", "command"}
 
 
-def test_params_from_schema_leaves_format_none_when_the_schema_names_none():
-    tool = _tool("register_tool", input_schema={"properties": {"name": {"type": "string"}}, "required": ["name"]})
-    specs = [{"capability": "widgets", "name": "register", "description": "register", "tool_name": "register_tool"}]
-    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
-        commands.mcp_client, "list_tools", return_value=[tool]
+def test_build_command_registry_help_entrys_command_examples_list_the_real_commands():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
     ):
         registry = commands.build_command_registry([])
 
-    assert registry["widgets"]["register"].params[0].format is None
+    command_param = next(p for p in registry["otp"]["help"].params if p.name == "command")
+    assert command_param.examples == ["get_otp", "verify_otp"]
+
+
+def test_build_command_registry_help_entrys_target_examples_are_the_four_targets():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ):
+        registry = commands.build_command_registry([])
+
+    target_param = next(p for p in registry["otp"]["help"].params if p.name == "target")
+    assert target_param.examples == ["all", "tools", "commands", "workflow"]
+    assert target_param.has_default is True
+    assert target_param.default == "all"
+
+
+def test_build_command_registry_does_not_add_help_for_an_extension_only_capability():
+    ext_tools = [_tool("reference__echo", input_schema={"properties": {}, "required": []})]
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=[]), patch.object(
+        commands.mcp_client, "list_tools", return_value=ext_tools
+    ):
+        registry = commands.build_command_registry(["reference"])
+
+    assert "help" not in registry["reference"]
+
+
+def test_execute_command_help_still_takes_the_special_path_even_though_it_is_now_registered():
+    # The synthetic registry entry must never actually be dispatched
+    # through mcp_client.call_tool() - execute_command()'s "tool == help"
+    # check has to win before the registry lookup gets a chance to.
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ), patch.object(commands.mcp_client, "call_tool") as call_tool, patch.object(
+        commands.mcp_client, "fetch_help", return_value={"message": "ok"}
+    ) as fetch_help:
+        result = commands.execute_command("/otp help", [])
+
+    call_tool.assert_not_called()
+    fetch_help.assert_called_once()
+    assert not result.startswith("❌")
+
+
+# --- /help (bare, top-level) -------------------------------------------------
+
+
+def test_execute_command_bare_help_calls_fetch_help_index():
+    fake_index = {
+        "message": "...",
+        "capabilities": [{"capability": "/otp", "label": "OTP", "summary": "...", "commands": "get_otp, help"}],
+    }
+    with patch.object(commands.mcp_client, "fetch_help_index", return_value=fake_index) as fetch_help_index:
+        result = commands.execute_command("/help", [])
+
+    fetch_help_index.assert_called_once_with()
+    assert "/otp" in result
+    assert not result.startswith("❌")
+
+
+def test_execute_command_bare_help_never_calls_fetch_commands_or_the_registry():
+    # Bare "/help" must short-circuit before parse_command()/the registry
+    # even runs - parse_command() itself would reject a one-word command.
+    with patch.object(commands.mcp_client, "fetch_help_index", return_value={"message": "ok"}), patch.object(
+        commands.mcp_client, "fetch_commands"
+    ) as fetch_commands:
+        commands.execute_command("/help", [])
+
+    fetch_commands.assert_not_called()
+
+
+def test_execute_command_bare_help_surfaces_mcp_server_error_body():
+    error_body = io.BytesIO(b'{"error": "mcp_server unreachable"}')
+    http_error = HTTPError("http://mcp/commands/help", 502, "Bad Gateway", {}, error_body)
+    with patch.object(commands.mcp_client, "fetch_help_index", side_effect=http_error):
+        result = commands.execute_command("/help", [])
+
+    assert result.startswith("❌")
+    assert "mcp_server unreachable" in result
+
+
+def test_execute_command_does_not_treat_a_help_flavored_capability_name_as_bare_help():
+    # "/help_something" is a normal (if unregistered) capability name -
+    # the bare-"/help" check must not fire on a prefix match.
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=[]), patch.object(
+        commands.mcp_client, "list_tools", return_value=[]
+    ), patch.object(commands.mcp_client, "fetch_help_index") as fetch_help_index:
+        result = commands.execute_command("/help_something get_otp", [])
+
+    fetch_help_index.assert_not_called()
+    assert result.startswith("❌")
+    assert "help_something" in result
 
 
 # --- execute_command ---------------------------------------------------------
@@ -248,7 +283,19 @@ def test_execute_command_happy_path_calls_call_tool_with_coerced_arguments():
         result = commands.execute_command("/otp get_otp recipient=a@example.com", [])
 
     assert result == "OTP sent."
-    call_tool.assert_called_once_with("request_otp_tool", {"recipient": "a@example.com"})
+    call_tool.assert_called_once_with("request_otp_tool", {"recipient": "a@example.com"}, headers=None)
+
+
+def test_execute_command_forwards_on_progress_to_call_tool():
+    on_progress = lambda message: None  # noqa: E731
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ), patch.object(commands.mcp_client, "call_tool", return_value="OTP sent.") as call_tool:
+        commands.execute_command("/otp get_otp recipient=a@example.com", [], on_progress=on_progress)
+
+    call_tool.assert_called_once_with(
+        "request_otp_tool", {"recipient": "a@example.com"}, headers=None, on_progress=on_progress
+    )
 
 
 def test_execute_command_reports_unknown_capability():
@@ -280,46 +327,176 @@ def test_execute_command_coerces_integer_params():
         result = commands.execute_command("/widgets count n=5", [])
 
     assert result == "5"
-    call_tool.assert_called_once_with("count_tool", {"n": 5})
+    call_tool.assert_called_once_with("count_tool", {"n": 5}, headers=None)
 
 
-def test_execute_command_resolves_a_file_format_param_from_attachments():
-    tool = _tool(
-        "summarize_tool",
-        input_schema={"properties": {"content": {"type": "string", "format": "file"}}, "required": ["content"]},
+# --- identity injection -------------------------------------------------
+
+
+def _identity_tool(name):
+    # No identity field in the schema at all - it's no longer a declared
+    # tool parameter (see mcp_server's services/identity_context.py); the
+    # caller's identity is attached out-of-band as an HTTP header instead
+    # (mcp_client.call_tool's `headers`), never part of `arguments`.
+    return _tool(
+        name,
+        input_schema={
+            "properties": {"system_name": {"type": "string"}},
+            "required": ["system_name"],
+        },
     )
-    specs = [{"capability": "docs", "name": "summarize", "description": "summarize", "tool_name": "summarize_tool"}]
+
+
+def test_execute_command_sends_requester_email_header_for_email_identity_tools():
+    tool = _identity_tool("tool_server_start")
+    specs = [{"capability": "server", "name": "start", "description": "start", "tool_name": "tool_server_start"}]
+    fake_user = SimpleNamespace(email="alice@example.com", username="alice")
     with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
         commands.mcp_client, "list_tools", return_value=[tool]
-    ), patch.object(commands.mcp_client, "call_tool", return_value="done") as call_tool, patch.object(
-        commands.attachments_store, "read_attachment_text", return_value="file contents here"
-    ) as read_text:
-        result = commands.execute_command("/docs summarize content=notes.txt", [], "chat123")
+    ), patch.object(commands.mcp_client, "call_tool", return_value="ok") as call_tool, patch.object(
+        commands, "current_user", fake_user
+    ), patch.dict(commands._IDENTITY_INJECTED_TOOLS, {"tool_server_start": "email"}):
+        commands.execute_command("/server start system_name=srv-demo", [])
 
-    assert result == "done"
-    call_tool.assert_called_once_with("summarize_tool", {"content": "file contents here"})
-    read_text.assert_called_once_with(commands.settings.attachments_dir, "chat123", "notes.txt")
-
-
-def test_execute_command_reports_a_missing_attachment_for_a_file_format_param():
-    tool = _tool(
-        "summarize_tool",
-        input_schema={"properties": {"content": {"type": "string", "format": "file"}}, "required": ["content"]},
+    call_tool.assert_called_once_with(
+        "tool_server_start", {"system_name": "srv-demo"},
+        headers={"X-Requester-Email": "alice@example.com"},
     )
-    specs = [{"capability": "docs", "name": "summarize", "description": "summarize", "tool_name": "summarize_tool"}]
+
+
+def test_execute_command_sends_requester_username_header_for_username_identity_tools():
+    tool = _identity_tool("tool_server_restart")
+    specs = [{"capability": "server", "name": "restart", "description": "restart", "tool_name": "tool_server_restart"}]
+    fake_user = SimpleNamespace(email="alice@example.com", username="alice")
     with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
         commands.mcp_client, "list_tools", return_value=[tool]
-    ), patch.object(commands.attachments_store, "read_attachment_text", return_value=None):
-        result = commands.execute_command("/docs summarize content=notes.txt", [], "chat123")
+    ), patch.object(commands.mcp_client, "call_tool", return_value="ok") as call_tool, patch.object(
+        commands, "current_user", fake_user
+    ), patch.dict(commands._IDENTITY_INJECTED_TOOLS, {"tool_server_restart": "username"}):
+        commands.execute_command("/server restart system_name=srv-demo", [])
 
-    assert result.startswith("❌")
-    assert "notes.txt" in result
+    call_tool.assert_called_once_with(
+        "tool_server_restart", {"system_name": "srv-demo"},
+        headers={"X-Requester-Username": "alice"},
+    )
 
 
-def test_execute_command_still_works_with_no_chat_id_for_non_file_params():
+# --- /<capability> help -----------------------------------------------------
+
+
+def test_execute_command_help_calls_fetch_help_with_target_and_formats_result():
     with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
         commands.mcp_client, "list_tools", return_value=_otp_tools()
-    ), patch.object(commands.mcp_client, "call_tool", return_value="OTP sent."):
-        result = commands.execute_command("/otp get_otp recipient=a@example.com", [])
+    ), patch.object(
+        commands.mcp_client,
+        "fetch_help",
+        return_value={"message": "help text", "tools": [{"tool": "request_otp_tool"}]},
+    ) as fetch_help:
+        result = commands.execute_command("/otp help target=tools", [])
 
-    assert result == "OTP sent."
+    fetch_help.assert_called_once_with("otp", target="tools", command=None)
+    assert "help text" in result
+    assert "request_otp_tool" in result
+
+
+def test_execute_command_help_defaults_target_to_all():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ), patch.object(commands.mcp_client, "fetch_help", return_value={"message": "ok"}) as fetch_help:
+        commands.execute_command("/otp help", [])
+
+    fetch_help.assert_called_once_with("otp", target="all", command=None)
+
+
+def test_execute_command_help_passes_command_param_through():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ), patch.object(commands.mcp_client, "fetch_help", return_value={"message": "ok"}) as fetch_help:
+        commands.execute_command("/otp help command=get_otp", [])
+
+    fetch_help.assert_called_once_with("otp", target="all", command="get_otp")
+
+
+def test_execute_command_help_does_not_require_help_to_be_a_registered_command():
+    # "help" is deliberately never in the registry (see commands.py's
+    # module docstring) - it must still work for a capability whose real
+    # commands ARE registered, without hitting the "Unknown command"
+    # branch that would fire if it looked help up in the registry.
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ), patch.object(commands.mcp_client, "fetch_help", return_value={"message": "ok"}):
+        result = commands.execute_command("/otp help", [])
+
+    assert not result.startswith("❌")
+
+
+def test_execute_command_help_rejects_unknown_param():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ):
+        result = commands.execute_command("/otp help bogus=1", [])
+
+    assert result.startswith("❌")
+    assert "bogus" in result
+
+
+def test_execute_command_help_reports_unknown_capability():
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ):
+        result = commands.execute_command("/nope help", [])
+
+    assert result.startswith("❌")
+    assert "nope" in result
+
+
+def test_execute_command_help_surfaces_mcp_server_error_body():
+    error_body = io.BytesIO(b'{"error": "Unknown help target \'bogus\'"}')
+    http_error = HTTPError("http://mcp/commands/help/otp", 400, "Bad Request", {}, error_body)
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=_otp_command_specs()), patch.object(
+        commands.mcp_client, "list_tools", return_value=_otp_tools()
+    ), patch.object(commands.mcp_client, "fetch_help", side_effect=http_error):
+        result = commands.execute_command("/otp help target=bogus", [])
+
+    assert result.startswith("❌")
+    assert "Unknown help target" in result
+
+
+def test_execute_command_rejects_a_typed_identity_value_since_it_is_not_a_real_param():
+    # requested_by_username isn't in the tool's schema at all any more (see
+    # _identity_tool above) - typing it on the command line hits the
+    # ordinary "unknown param" path rather than silently overriding
+    # anything, since there's no tool-schema field left for it to collide
+    # with.
+    tool = _identity_tool("tool_server_restart")
+    specs = [{"capability": "server", "name": "restart", "description": "restart", "tool_name": "tool_server_restart"}]
+    fake_user = SimpleNamespace(email="alice@example.com", username="alice")
+    with patch.object(commands.mcp_client, "fetch_commands", return_value=specs), patch.object(
+        commands.mcp_client, "list_tools", return_value=[tool]
+    ), patch.object(commands.mcp_client, "call_tool", return_value="ok") as call_tool, patch.object(
+        commands, "current_user", fake_user
+    ):
+        result = commands.execute_command("/server restart system_name=srv-demo requested_by_username=someone-else", [])
+
+    assert result.startswith("❌")
+    assert "requested_by_username" in result
+    call_tool.assert_not_called()
+
+
+def test_params_from_schema_reads_the_input_hints():
+    schema = {
+        "properties": {
+            "capability": {"type": "string", "input": "select", "options_url": "/system/check-capabilities"},
+            "level": {"type": "integer", "minimum": 1, "maximum": 5, "input": "range", "step": 1},
+            "mode": {"type": "string", "enum": ["fast", "slow"]},
+            "note": {"anyOf": [{"type": "string", "maxLength": 20, "pattern": "^[a-z]+$"}, {"type": "null"}]},
+        }
+    }
+
+    params = {p.name: p for p in commands._params_from_schema(schema)}
+
+    assert params["capability"].input == "select"
+    assert params["capability"].options_url == "/system/check-capabilities"
+    assert (params["level"].minimum, params["level"].maximum, params["level"].step, params["level"].input) == (1, 5, 1, "range")
+    assert params["mode"].enum == ["fast", "slow"]
+    assert (params["note"].max_length, params["note"].pattern) == (20, "^[a-z]+$")

@@ -1,18 +1,21 @@
-"""MCP client wrapper - the only place this process talks to the MCP server.
-
-Provider-agnostic on purpose: every LLM provider (openai_provider.py,
-claude_provider.py, ...) reshapes this same live catalog into its own
-wire format. This file only knows the generic MCP shape.
+"""MCP client wrapper - this process's connection to mcp_server for
+everything except the LLM Q&A path: slash commands (services/commands.py)
+and admin/extension/capability management. The Chat page's "ask the
+model" path no longer goes through here - it calls the configured
+ai_agent instead (see services/ai_agent_client.py), which holds its own
+persistent connection to mcp_server.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
-from urllib.parse import urlsplit
+from typing import Any, Callable
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
+import httpx
+from flask import current_app
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
@@ -27,11 +30,22 @@ async def _list_tools_async() -> list[Any]:
             return result.tools
 
 
-async def _call_tool_async(name: str, arguments: dict[str, Any]) -> str:
-    async with streamablehttp_client(settings.mcp_server_url) as (read, write, _):
+async def _call_tool_async(
+    name: str,
+    arguments: dict[str, Any],
+    headers: dict[str, str] | None = None,
+    on_progress: Callable[[str], None] | None = None,
+) -> str:
+    async def progress_callback(progress: float, total: float | None, message: str | None) -> None:
+        if message:
+            on_progress(message)
+
+    async with streamablehttp_client(settings.mcp_server_url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            result = await session.call_tool(name, arguments)
+            result = await session.call_tool(
+                name, arguments, progress_callback=progress_callback if on_progress else None
+            )
             parts = [getattr(block, "text", str(block)) for block in result.content]
             return "\n".join(parts) if parts else "(no output)"
 
@@ -39,7 +53,7 @@ async def _call_tool_async(name: str, arguments: dict[str, Any]) -> str:
 def _tool_is_enabled(name: str, enabled: set[str]) -> bool:
     """Extension tools are namespaced ``{ext_id}__original_name`` (double
     underscore) by mcp_server; this server's own built-in tools
-    (``request_otp_tool`` etc) have no such prefix and are never subject
+    (``tool_server_list`` etc) have no such prefix and are never subject
     to the toggle. An extension tool is only kept when its extension id
     is in ``enabled`` - an empty set (the default) drops every extension
     tool, which is the deliberate safe default: an unconfigured/newly
@@ -62,8 +76,22 @@ def list_tools(enabled_extensions: list[str] | None = None) -> list[Any]:
     return [tool for tool in tools if _tool_is_enabled(tool.name, enabled)]
 
 
-def call_tool(name: str, arguments: dict[str, Any]) -> str:
-    return asyncio.run(_call_tool_async(name, arguments))
+def call_tool(
+    name: str,
+    arguments: dict[str, Any],
+    headers: dict[str, str] | None = None,
+    on_progress: Callable[[str], None] | None = None,
+) -> str:
+    """``headers`` carries caller-identity out-of-band for the small set of
+    tools that need it for an audit trail - see
+    services/commands.py's _IDENTITY_INJECTED_TOOLS and mcp_server's
+    services/identity_context.py. Never used for the normal tool-call
+    path, which passes everything through ``arguments`` instead.
+
+    ``on_progress`` receives each progress message a long-running tool
+    reports (see mcp_server's services/progress.py) while the call is still
+    in flight; it runs on this call's own event-loop thread."""
+    return asyncio.run(_call_tool_async(name, arguments, headers, on_progress))
 
 
 async def _list_resource_templates_async() -> list[Any]:
@@ -136,6 +164,67 @@ def fetch_commands() -> list[dict[str, Any]]:
         return json.loads(response.read().decode("utf-8"))
 
 
+def fetch_options(path: str) -> list[dict[str, str]]:
+    """Options for a select param, from a path on mcp_server (a tool's
+    ``options_url``): a JSON list of strings, a list of
+    ``{"value", "label"}`` objects, or a ``{value: label}`` object -
+    always returned as ``[{"value", "label"}, ...]``. Only a plain
+    same-origin path is accepted, since the schema (an extension's too)
+    is not trusted to name a host."""
+    if not path.startswith("/") or path.startswith("//") or "://" in path:
+        raise ValueError(f"options_url must be a path on mcp_server, got {path!r}")
+    split = urlsplit(settings.mcp_server_url)
+    with urlopen(f"{split.scheme}://{split.netloc}{path}", timeout=10) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    if isinstance(data, dict):
+        return [{"value": str(k), "label": str(v)} for k, v in data.items()]
+    # A {value, label, ...} object may carry extra fields; the form reads them
+    # through a param's `sets`/`shows`.
+    return [
+        {**{k: str(v) for k, v in o.items()}, "value": str(o["value"]), "label": str(o.get("label", o["value"]))}
+        if isinstance(o, dict) else {"value": str(o), "label": str(o)}
+        for o in data
+    ]
+
+
+def fetch_help_index() -> dict[str, Any]:
+    """The top-level `/help` index from mcp_server's plain-HTTP
+    ``/commands/help`` endpoint (no capability path segment) - see
+    mcp_server/help_routes.py::get_help_index. One row per enabled
+    built-in capability (id, label, summary, its full command list),
+    shaped the same way fetch_help() below is so services/commands.py
+    runs it through the same format_command_result() with no special
+    rendering. Same failure behavior as fetch_help() below.
+    """
+    split = urlsplit(settings.mcp_server_url)
+    url = f"{split.scheme}://{split.netloc}/commands/help"
+    with urlopen(url, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_help(capability: str, target: str = "all", command: str | None = None) -> dict[str, Any]:
+    """`/<capability> help` data from mcp_server's plain-HTTP
+    ``/commands/help/{capability}`` endpoint - see
+    mcp_server/help_routes.py. Shaped like a normal tool result
+    (``message`` plus ``tools``/``commands``/``workflow`` list[dict]
+    fields), so services/commands.py runs it through the same
+    ``format_command_result()`` every other command result gets, with no
+    special-cased rendering.
+
+    Raises ``urllib.error.HTTPError`` for an unknown capability (404) or
+    an unknown target/command name (400) - same as fetch_commands()
+    above, left to propagate so the caller can turn its body's
+    ``{"error": "..."}`` into a user-facing CommandError message.
+    """
+    split = urlsplit(settings.mcp_server_url)
+    params = {"target": target}
+    if command:
+        params["command"] = command
+    url = f"{split.scheme}://{split.netloc}/commands/help/{capability}?{urlencode(params)}"
+    with urlopen(url, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def add_extension(label: str, url: str, description: str = "") -> dict[str, Any]:
     """POST a new extension to mcp_server's ``/extensions`` (see
     ``fetch_extensions`` above for why this is stdlib urllib rather than a
@@ -189,6 +278,46 @@ def fetch_capabilities() -> list[dict[str, Any]]:
     decides how to surface it."""
     with urlopen(_capabilities_url(), timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _upload_url() -> str:
+    """mcp_server's /upload endpoint - a sibling of /extensions on the same
+    origin, built the same way (see _extensions_url() above)."""
+    split = urlsplit(settings.mcp_server_url)
+    return f"{split.scheme}://{split.netloc}/upload"
+
+
+def upload_file(filename: str, content: bytes, content_type: str | None) -> dict[str, Any]:
+    """POST a file to mcp_server's ``POST /upload`` (see mcp_server's
+    upload_routes.py) so a command-form modal's file-format param can be
+    filled with a real server-side path. Unlike every other function in
+    this module, this one needs a real multipart body - not worth
+    hand-building with stdlib urllib, so this is the one call in this
+    module that uses ``httpx`` (already an installed dependency of the
+    ``mcp``/``anthropic``/``openai`` SDKs this app already depends on)
+    instead.
+
+    Authenticated the same way mcp_server authenticates the one call it
+    makes back into this app (chat_app's own internal_routes.py) - the
+    shared ``INTERNAL_API_TOKEN`` secret, read from Flask's app config
+    since this is the first function here that needs a request context to
+    run in (it's only ever called from the ``/api/upload`` route handler).
+
+    Raises ``httpx.HTTPStatusError``/``httpx.RequestError`` on any
+    failure (mcp_server unreachable, rejected the token, rejected the file
+    type) - left to propagate so the route layer decides how to surface
+    it, same convention every other function in this module follows for
+    ``urllib.error.HTTPError``.
+    """
+    token = current_app.config.get("INTERNAL_API_TOKEN", "")
+    response = httpx.post(
+        _upload_url(),
+        files={"file": (filename, content, content_type or "application/octet-stream")},
+        headers={"X-Internal-Token": token},
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def set_capability_enabled(name: str, enabled: bool) -> dict[str, Any]:

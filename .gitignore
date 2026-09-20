@@ -1,39 +1,63 @@
 __pycache__/
 *.pyc
 .venv/
-venv_*/
+.venv_*/
 *.egg-info/
+.claude/*
+!.claude/skills/
+.pytest_cache/
+.secret
+.vscode
+
+# server_launcher.py's saved presets - personal, per-machine, not source.
+/server_launcher/presets.json
+# server_launcher.py's one-shot "keep running in background" state, written
+# on close and consumed (deleted) on the next launch - not source, and
+# stale if committed (whatever was running at commit time, not now).
+/server_launcher/kept_running.json
 
 # mcp_server's real config/secrets/runtime-state, mirroring chat_app's
-# src/configs + src/secrets + src/data split. config_*.json holds
+# configs + secrets + data split. config_*.json holds
 # structure (committed) with ${VAR} placeholders for anything sensitive;
 # secret_*.env holds the real values (gitignored) those placeholders
 # resolve to. Both keep an .example twin, which IS committed.
-/mcp_server/src/secrets/*
-!/mcp_server/src/secrets/*.example
-!/mcp_server/src/secrets/README.md
+/mcp_server/.secrets/*
+!/mcp_server/.secrets/*.example
 
-# ai_agent's real API keys / pinned-provider selection, mirroring
-# mcp_server's secret_*.env treatment - only the .example is committed.
+# ai_agent's real API keys / pinned-provider selection, same treatment
+# as mcp_server's secret_*.env above - only the .example is committed.
 /ai_agent/secrets/*
 !/ai_agent/secrets/*.example
+!/ai_agent/secrets/README.md
+/ai_agent/configs/*
+!/ai_agent/configs/*.example
 
-# mcp_server's real host inventory and approver/SMTP-account addresses.
-# The equivalent data lived in the old root-level config.json, which was
-# gitignored outright - these two carry the same real deployment details
-# (no literal secrets, those are all ${VAR}) and keep the same treatment.
-# config_extensions.json and config_capabilities.json are NOT listed
-# here - low-sensitivity structure, tracked normally like their
+# mcp_server's real SMTP-account addresses. The equivalent data lived in the old root-level config.json,
+# which was gitignored outright - these carry the same real deployment
+# details (no literal secrets, those are all ${VAR}) and keep the same
+# treatment. config_extensions.json and config_capabilities.json are NOT
+# listed here - low-sensitivity structure, tracked normally like their
 # .example twins.
-/mcp_server/src/configs/config_hosts.json
-/mcp_server/src/configs/config_email.json
+/mcp_server/configs/config_email.json
 
-# Runtime state, not source: pending approval requests, one-time-code
+# Runtime state, not source: one-time-code
 # records, and any capability's own data/ (e.g. capabilities/otp/data/).
 # All hold security-relevant material or are regenerated on every run.
-/mcp_server/src/data/*
-!/mcp_server/src/data/README.md
+/mcp_server/.data/
+/mcp_server/.logs/
+/mcp_server/.cache/
+
+# Per-capability state/config under mcp_server/specifics/<capability_name>/:
+# dot-prefixed folders are untracked runtime state and secrets; the plain
+# configs/ folder next to them is tracked. Includes audit DBs and
+# JobWatcher persisted state ({state_dir}/{WatcherClass}/{key}.json).
+/mcp_server/specifics/*/.data/
+/mcp_server/specifics/*/.logs/
+/mcp_server/specifics/*/.cache/
+/mcp_server/specifics/*/.secrets/
 *.db
+
+
 
 # Runtime logs: combined server.log plus one file per error reference id
 # (see chat_app/mcp_server's logging_setup.py / errors.py). Regenerated
@@ -41,7 +65,7 @@ venv_*/
 # "logs/") - unanchored, this also matched chat_app's SOURCE blueprint at
 # pages/logs/, silently excluding it from version control entirely.
 /chat_app/logs/
-/mcp_server/src/logs/
+/ai_agent/data/token_usage.json
 
 zip_versions/
 
@@ -50,10 +74,11 @@ zip_versions/
 .worktrees/
 
 MCPServer.yaml
+.sessions/
+.output/
+PyRFC
+config_*.json
+!/ai_agent/configs/config_token_limits.json
+dev_rfc.log
 
-# Real deployment compose file - had real SMTP/admin secrets pasted
-# directly into `environment:` (unlike zima_host_combined.yaml / the
-# per-service zima_host.yaml templates, which stay tracked because they
-# only carry [PLACE ... HERE] placeholders). Keep using it locally, just
-# never commit it again.
-/zima_host.yaml
+

@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from mcp import types
 
@@ -32,14 +32,18 @@ class SyncMcpClient:
     def _run(self, coro: Any) -> Any:
         return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
 
-    def connect_all(self, config_path: Path) -> list[ServerStatus]:
-        return self._run(self._registry.connect_all(config_path))
+    def connect_all(self, config_path: Path, url_overrides: dict[str, str] | None = None) -> list[ServerStatus]:
+        return self._run(self._registry.connect_all(config_path, url_overrides))
 
     def list_tools(self) -> list[types.Tool]:
         return self._run(self._registry.list_tools())
 
-    def call_tool(self, name: str, arguments: dict[str, Any]) -> types.CallToolResult:
-        return self._run(self._registry.call_tool(name, arguments))
+    def call_tool(
+        self, name: str, arguments: dict[str, Any], on_progress: Callable[[str], None] | None = None
+    ) -> types.CallToolResult:
+        if on_progress is None:
+            return self._run(self._registry.call_tool(name, arguments))
+        return self._run(self._registry.call_tool(name, arguments, on_progress=on_progress))
 
     def close(self) -> None:
         """Close every connection and stop the background loop/thread.

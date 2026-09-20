@@ -1,4 +1,4 @@
-"""Tests for infra/email.py.
+"""Tests for services/email.py.
 
 ``smtplib.SMTP`` is mocked - these assert on what would be sent and to
 whom, not on real SMTP behavior. Note the mock stands in for the context
@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.infra.app_config import EmailConfig
-from src.infra.email import send_email
+from src.services.app_config import EmailConfig
+from src.services.email import send_email
 
 
 CONFIG = EmailConfig(
@@ -218,7 +218,7 @@ def test_body_text_overrides_the_derived_version():
         send_email(CONFIG, "Subject", "<p>Body</p>", body_text="Handwritten")
 
     parts = _sent_message(server).get_payload()
-    assert parts[0].get_payload().strip() == "Handwritten"
+    assert parts[0].get_payload().startswith("Handwritten")
     assert "<p>Body</p>" in parts[1].get_payload()
 
 
@@ -236,3 +236,21 @@ def test_date_and_message_id_headers_are_set():
     # The domain must match From: make_msgid()'s default is the local
     # hostname, which leaks internal naming and reads as forged.
     assert message["Message-ID"].endswith("@example.com>")
+
+
+def test_every_message_ends_with_the_auto_generated_notice(monkeypatch):
+    from src.services import email as email_module
+
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self, *a): pass
+        def sendmail(self, sender, to, raw): sent.append(raw)
+
+    monkeypatch.setattr(email_module.smtplib, "SMTP_SSL", FakeSMTP)
+    cfg = email_module.EmailConfig(smtp_server="s", smtp_port=465, from_address="a@x.com", security="ssl")
+    email_module.send_email(cfg, "subj", "<p>hello</p>", to=["b@x.com"])
+    assert sent[0].count(email_module.AUTO_GENERATED_NOTICE) == 2  # plain and HTML parts

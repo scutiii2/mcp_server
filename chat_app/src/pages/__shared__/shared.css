@@ -56,11 +56,14 @@ a {
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
+  align-self: flex-start;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  position: sticky;
+  top: 0;
   transition: width 0.18s ease;
 }
 
@@ -164,6 +167,7 @@ a {
   margin: 0;
   padding: 0.5rem;
   flex-grow: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -314,6 +318,13 @@ a {
 
 main {
   flex-grow: 1;
+  /* min-width: 0 overrides the flex item default (min-width: auto), which
+     otherwise sizes main's shrink floor off its widest descendant's
+     content - e.g. a wide table many levels down in Chat's #log - even
+     through #log's own overflow-x: hidden. Without this, main (and so the
+     whole body flex row) gets pushed wider than the viewport instead of
+     letting that descendant scroll within its own bounds. */
+  min-width: 0;
   width: 100%;
   padding: 2rem;
 }
@@ -552,6 +563,15 @@ button:disabled {
 
 .overview-title {
   text-align: center;
+}
+
+.overview-logo {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 0.75rem;
+  border-radius: 14px;
+  object-fit: contain;
 }
 
 .tiles {

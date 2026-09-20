@@ -2,18 +2,23 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from src.utils.catalog import catalog
+
 _LOG_FORMAT = "[%(asctime)s] %(levelname)s %(name)s: %(message)s"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
+@catalog
 class DailyFileHandler(logging.Handler):
     def __init__(self, logs_dir: str | Path):
         super().__init__()
         self.logs_dir = Path(logs_dir)
 
+    @catalog
     def current_log_path(self) -> Path:
         return self.logs_dir / f"{datetime.now():%m%d%Y}.txt"
 
+    @catalog
     def emit(self, record: logging.LogRecord) -> None:
         try:
             self.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -24,7 +29,8 @@ class DailyFileHandler(logging.Handler):
             self.handleError(record)
 
 
-def get_logger(name: str, logs_dir: str | Path = "src/logs") -> logging.Logger:
+@catalog
+def get_logger(name: str, logs_dir: str | Path = "logs") -> logging.Logger:
     logger = logging.getLogger(name)
     logs_dir = Path(logs_dir)
     has_handler = any(

@@ -154,8 +154,8 @@ def test_list_apps_report_is_readable_text():
     with patch("docker.from_env", return_value=client):
         result = domain.list_apps()
 
-    assert "jellyfin" in result.report
-    assert "running" in result.report
+    assert "jellyfin" in result.message
+    assert "running" in result.message
 
 
 def test_empty_host_reports_no_apps_rather_than_raising():
@@ -167,7 +167,7 @@ def test_empty_host_reports_no_apps_rather_than_raising():
         result = domain.list_apps()
 
     assert result.apps == []
-    assert "No apps found" in result.report
+    assert "No apps found" in result.message
 
 
 def test_dangling_image_falls_back_to_the_short_id():

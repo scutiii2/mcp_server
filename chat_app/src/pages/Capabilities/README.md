@@ -13,3 +13,12 @@ invoke real MCP tools with caller-supplied arguments. `PAGE_PERMISSION`
 is a tuple of both - visible in `nav_pages` to an account holding
 either one, same pattern as the Logs page. `CSRF_EXEMPT = True`: see
 Chat's README for why.
+
+A "Run"/"Read" result shows the same Markdown rendering as a chat "/"
+command reply, not the tool's raw JSON - `try_tool()`/`read_resource_route()`
+run the result through `services/command_formatting.py`'s
+`format_command_result()` (see `../../../../mcp_server/src/capabilities/README.md`'s
+"Output formatting" section for the contract-shape convention this
+depends on) and return both `formatted` and the untouched `result` text;
+`result_panel.html`/`script.js` render `formatted` by default with a
+"Show raw JSON" toggle underneath for the wire response.

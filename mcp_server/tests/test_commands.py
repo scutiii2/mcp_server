@@ -24,7 +24,7 @@ def test_infer_capability_reads_the_segment_after_capabilities():
 
 def test_infer_capability_rejects_a_module_with_no_capabilities_segment():
     with pytest.raises(ValueError, match="Cannot infer a capability id"):
-        commands._infer_capability("src.infra.email")
+        commands._infer_capability("src.services.email")
 
 
 def test_command_records_capability_name_description_and_tool_name():

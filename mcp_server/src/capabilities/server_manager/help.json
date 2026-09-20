@@ -1,0 +1,19 @@
+{
+  "summary": "Start, stop, restart and list the Docker containers on this host.",
+  "tools": [
+    {"name": "tool_srv_startApp", "purpose": "Start a stopped app.", "connection": "Docker socket", "commands": ["start"]},
+    {"name": "tool_srv_stopApp", "purpose": "Stop a running app.", "connection": "Docker socket", "commands": ["stop"]},
+    {"name": "tool_srv_restartApp", "purpose": "Restart an app.", "connection": "Docker socket", "commands": ["restart"]},
+    {"name": "tool_srv_listApps", "purpose": "List every app with status and image.", "connection": "Docker socket", "commands": ["list"]}
+  ],
+  "commands": [
+    {"name": "start", "tool": "tool_srv_startApp", "params": [{"name": "name", "required": true, "default": null, "description": "Container name as Docker shows it."}]},
+    {"name": "stop", "tool": "tool_srv_stopApp", "params": [{"name": "name", "required": true, "default": null, "description": "Container name as Docker shows it."}]},
+    {"name": "restart", "tool": "tool_srv_restartApp", "params": [{"name": "name", "required": true, "default": null, "description": "Container name as Docker shows it."}]},
+    {"name": "list", "tool": "tool_srv_listApps", "params": []}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_srv_listApps", "ai_only_step": false, "explanation": "Find the exact container name."},
+    {"sequence": "2", "tool": "tool_srv_startApp", "ai_only_step": false, "explanation": "Start, stop or restart it by name."}
+  ]
+}

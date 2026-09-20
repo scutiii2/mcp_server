@@ -4,7 +4,7 @@ Mirrors chat_app/src/errors.py - see that module's docstring
 for the full reasoning. Short version: ``str(exc)`` is written for a
 traceback reader, not for whoever ends up looking at a page built from
 it, and routinely contains filesystem paths, hostnames, or credentials.
-Here that matters for approval_routes.py's failure page in particular -
+Here that matters for HTTP failure pages in particular -
 reachable by clicking a link in an email, so not necessarily read by
 whoever wrote the code that raised.
 

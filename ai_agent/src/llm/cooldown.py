@@ -18,15 +18,19 @@ from __future__ import annotations
 
 import time
 
+from src.catalog import catalog
+
 DEFAULT_COOLDOWN_SECONDS = 60.0
 
 _cooldown_until: dict[str, float] = {}
 
 
+@catalog
 def start_cooldown(provider_id: str, seconds: float = DEFAULT_COOLDOWN_SECONDS) -> None:
     _cooldown_until[provider_id] = time.monotonic() + max(seconds, 1.0)
 
 
+@catalog
 def seconds_remaining(provider_id: str) -> float:
     until = _cooldown_until.get(provider_id)
     if until is None:
@@ -34,10 +38,12 @@ def seconds_remaining(provider_id: str) -> float:
     return max(0.0, until - time.monotonic())
 
 
+@catalog
 def is_in_cooldown(provider_id: str) -> bool:
     return seconds_remaining(provider_id) > 0
 
 
+@catalog
 def reset(provider_id: str | None = None) -> None:
     """Clear cooldown state - used by tests, and available for an admin
     'force retry now' action later if that turns out to be useful."""
@@ -47,6 +53,7 @@ def reset(provider_id: str | None = None) -> None:
         _cooldown_until.pop(provider_id, None)
 
 
+@catalog
 def extract_retry_after_seconds(error: Exception) -> float | None:
     """Both openai and anthropic's rate-limit errors carry the original
     httpx response, which may include a Retry-After header - prefer the

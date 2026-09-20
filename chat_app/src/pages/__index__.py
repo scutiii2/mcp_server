@@ -9,7 +9,14 @@ from src.services.authz import has_permission
 PAGES_DIR = Path(__file__).resolve().parent
 
 _ACCOUNT_MENU_PAGES = ("Account", "Admin")
-_LOGO_FILENAME = "logo.png"
+_LOGO_CANDIDATES = ("logo.svg", "logo.png", "logo.ico", "logo.jpg")
+
+
+def _find_logo_filename(static_folder: str) -> str | None:
+    for name in _LOGO_CANDIDATES:
+        if (Path(static_folder) / name).exists():
+            return name
+    return None
 
 
 def discover_page_modules(pages_dir: Path = PAGES_DIR) -> list[str]:
@@ -55,12 +62,20 @@ def register_pages(
         )
 
     app.config["PAGES"] = pages
-    app.config["APP_LOGO_AVAILABLE"] = (Path(app.static_folder) / _LOGO_FILENAME).exists()
+    app.config["APP_LOGO_FILENAME"] = _find_logo_filename(app.static_folder)
 
     @app.context_processor
     def inject_page_layout():
         layouts = {p["name"].lower(): p.get("layout", "full") for p in app.config.get("PAGES", [])}
         return {"page_layout": layouts.get(request.blueprint, "full")}
+
+    @app.context_processor
+    def inject_app_identity():
+        logo_filename = app.config.get("APP_LOGO_FILENAME")
+        return {
+            "app_name": app.config.get("APP_NAME", "Chat"),
+            "app_logo_url": url_for("static", filename=logo_filename) if logo_filename else None,
+        }
 
     @app.context_processor
     def inject_nav_pages():
@@ -84,13 +99,7 @@ def register_pages(
         account_menu_pages = [
             p for p in all_pages if p["name"] in _ACCOUNT_MENU_PAGES and _visible(p)
         ]
-        app_logo_url = (
-            url_for("static", filename=_LOGO_FILENAME)
-            if app.config.get("APP_LOGO_AVAILABLE")
-            else None
-        )
         return {
             "nav_pages": nav_pages,
             "account_menu_pages": account_menu_pages,
-            "app_logo_url": app_logo_url,
         }

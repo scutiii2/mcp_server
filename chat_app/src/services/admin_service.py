@@ -1,7 +1,6 @@
 from src.models import Account, Permission, Role
 from src.services.authz import registered_permissions
 
-
 class ProtectedAccountError(Exception):
     pass
 
@@ -19,6 +18,10 @@ def list_roles(db_session) -> list[Role]:
 
 def list_accounts(db_session) -> list[Account]:
     return db_session.query(Account).order_by(Account.username).all()
+
+
+def list_permissions(db_session) -> list[Permission]:
+    return db_session.query(Permission).order_by(Permission.name).all()
 
 
 def create_role(db_session, name: str, description: str | None) -> Role:
@@ -78,4 +81,47 @@ def remove_role_from_account(db_session, account: Account, role: Role) -> None:
             f"Account '{account.username}' is protected; its roles cannot be stripped"
         )
     account.roles = [r for r in account.roles if r.id != role.id]
+    db_session.commit()
+
+
+def update_account(db_session, account: Account, username: str, email: str) -> Account:
+    if account.is_protected:
+        raise ProtectedAccountError(
+            f"Account '{account.username}' is protected and cannot be edited"
+        )
+    existing_username = (
+        db_session.query(Account)
+        .filter(Account.username == username, Account.id != account.id)
+        .first()
+    )
+    if existing_username is not None:
+        raise ValueError(f"Username '{username}' is already in use")
+    existing_email = (
+        db_session.query(Account).filter(Account.email == email, Account.id != account.id).first()
+    )
+    if existing_email is not None:
+        raise ValueError(f"Email '{email}' is already in use")
+    account.username = username
+    account.email = email
+    db_session.commit()
+    return account
+
+
+def delete_account(db_session, account: Account, actor: Account) -> None:
+    if account.is_protected:
+        raise ProtectedAccountError(f"Account '{account.username}' is protected and cannot be deleted")
+    if account.id == actor.id:
+        raise ProtectedAccountError("You cannot delete your own account")
+    db_session.delete(account)
+    db_session.commit()
+
+
+def update_permission(db_session, permission: Permission, description: str | None) -> Permission:
+    permission.description = description
+    db_session.commit()
+    return permission
+
+
+def delete_permission(db_session, permission: Permission) -> None:
+    db_session.delete(permission)
     db_session.commit()

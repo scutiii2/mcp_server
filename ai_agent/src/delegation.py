@@ -8,7 +8,7 @@ A genuinely distinct specialized subagent (its own system prompt/tool
 scope/model) is still a new ai_agent instance - this module is what lets
 any instance reach one once it exists, including itself.
 
-Isolated from both provider files so neither claude_provider.py nor
+Isolated from both provider files so neither anthropic_provider.py nor
 openai_provider.py duplicates the tool-schema/dispatch logic - each just
 calls is_available()/tool_description()/TOOL_PARAMETERS/call() from here.
 
@@ -80,6 +80,10 @@ async def _call_tool(url: str, name: str, arguments: dict[str, Any]) -> dict[str
 
 
 def call(agent_id: str, question: str, depth: int) -> str:
+    """Blocking. Must run in a worker thread (the providers dispatch it via
+    anyio.to_thread.run_sync): asyncio.run() below fails inside a running
+    event loop, and delegating to this same instance needs its event loop
+    free to serve the nested ask() rather than blocked waiting on it."""
     if depth >= _MAX_DELEGATION_DEPTH:
         raise ValueError(f"max delegation depth ({_MAX_DELEGATION_DEPTH}) reached")
 

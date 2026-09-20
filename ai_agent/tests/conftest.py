@@ -13,5 +13,5 @@ the duration of each test, never this module-level default.
 
 import os
 
-os.environ.setdefault("AI_AGENT_PROVIDER", "claude")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
+os.environ.setdefault("AI_AGENT_PROVIDER", "anthropic")
+os.environ.setdefault("CLAUDE_API_KEY", "test-key")

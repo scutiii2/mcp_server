@@ -1,4 +1,4 @@
-"""Tests for infra/ssh.py's security-relevant behavior.
+"""Tests for services/ssh.py's security-relevant behavior.
 
 No network and no SSH server: these cover the two things that are pure
 logic - how a command gets quoted before it reaches a remote shell, and
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import paramiko
 import pytest
 
-from src.infra.ssh import SSHClient, _new_client
+from src.services.ssh import SSHClient, _new_client
 
 
 # --- shell quoting -----------------------------------------------------

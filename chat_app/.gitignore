@@ -39,12 +39,12 @@ ENV/
 !.env.example
 
 # --- AuthTemplate runtime/generated data (per spec) ---
-src/secrets/*
-!src/secrets/*.env.example
-!src/secrets/README.md
-src/logs/
-src/data/*
-!src/data/README.md
+secrets/*
+!secrets/*.env.example
+!secrets/README.md
+logs/
+data/*
+!data/README.md
 
 # --- Git worktrees ---
 .worktrees/

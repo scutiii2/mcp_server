@@ -1,9 +1,18 @@
 /* Confirmation modal, used in place of the browser's native confirm() -
-   see modal.js's confirmModal(). Included wherever a page needs it (see
-   chat/template/index.html, account/template/index.html) the same way
-   sidebar.css/js are: a <link>/<script> pair pointing at shared.static. */
+   see modal.js's confirmModal(). Chat-page-specific: __shared__/shared.css
+   has its own, unrelated modal system (a class-toggle ".open" pattern
+   used elsewhere, e.g. the account pages) that happens to reuse several
+   of the same plain names (.modal-overlay, .modal-message, .modal-actions)
+   - since that stylesheet loads on every page via base.html, its
+   ".modal-overlay { opacity: 0; pointer-events: none }" default (meant to
+   be toggled visible via ".open") silently applied here too, since this
+   component's create/destroy lifecycle never adds ".open" - making every
+   confirm dialog on this page invisible and unclickable despite being
+   correctly positioned in the DOM. Every class below is prefixed
+   "chat-modal-" specifically to never collide with that (or any other)
+   shared stylesheet again. */
 
-.modal-overlay {
+.chat-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(20, 24, 31, 0.35);
@@ -14,7 +23,7 @@
   padding: 20px;
 }
 
-.modal-dialog {
+.chat-modal-dialog {
   background: #fff;
   border-radius: 10px;
   padding: 20px;
@@ -25,11 +34,11 @@
   box-sizing: border-box;
 }
 
-.modal-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin: 0 0 8px; }
-.modal-message { font-size: 13px; color: #555; margin: 0 0 18px; line-height: 1.5; }
+.chat-modal-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin: 0 0 8px; }
+.chat-modal-message { font-size: 13px; color: #555; margin: 0 0 18px; line-height: 1.5; }
 
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.modal-btn {
+.chat-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.chat-modal-btn {
   font-size: 13px;
   font-weight: 500;
   padding: 7px 14px;
@@ -37,13 +46,106 @@
   border: 1px solid transparent;
   cursor: pointer;
 }
-.modal-btn:focus-visible { outline: 2px solid #185fa5; outline-offset: 2px; }
+.chat-modal-btn:focus-visible { outline: 2px solid #185fa5; outline-offset: 2px; }
 
-.modal-btn-cancel { background: #fff; border-color: #ccc; color: #333; }
-.modal-btn-cancel:hover { background: #f5f5f4; }
+.chat-modal-btn-cancel { background: #fff; border-color: #ccc; color: #333; }
+.chat-modal-btn-cancel:hover { background: #f5f5f4; }
 
-.modal-btn-confirm { background: #185fa5; color: #fff; }
-.modal-btn-confirm:hover { background: #124a80; }
+.chat-modal-btn-confirm { background: #185fa5; color: #fff; }
+.chat-modal-btn-confirm:hover { background: #124a80; }
 
-.modal-btn-danger { background: #d9534f; color: #fff; }
-.modal-btn-danger:hover { background: #c9302c; }
+.chat-modal-btn-danger { background: #d9534f; color: #fff; }
+.chat-modal-btn-danger:hover { background: #c9302c; }
+
+/* Command-form modal - see command_form_modal.js's openCommandFormModal().
+   Same "chat-modal-" prefix rule as above, for the same reason. */
+
+.chat-modal-dialog--form {
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.chat-modal-form-row { margin-bottom: 14px; }
+.chat-modal-form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+.chat-modal-form-required { color: #d9534f; margin-left: 2px; }
+.chat-modal-form-hint { font-size: 11px; color: #888; margin-top: 3px; }
+
+.chat-modal-form-row input[type="text"],
+.chat-modal-form-row input[type="number"],
+.chat-modal-form-row select {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.chat-modal-form-row input[type="checkbox"] { width: auto; }
+
+.chat-modal-form-embed {
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: -6px 0 14px;
+  font-size: 12px;
+}
+.chat-modal-form-embed-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.chat-modal-form-embed-key { color: #888; }
+.chat-modal-form-embed-value { color: #333; font-family: monospace; }
+
+.chat-modal-dropzone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.chat-modal-dropzone--dragover { border-color: #185fa5; background: #eef4fb; color: #185fa5; }
+
+.chat-modal-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.chat-modal-attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0f0ee;
+  border-radius: 12px;
+  padding: 3px 6px 3px 10px;
+  font-size: 12px;
+  color: #333;
+}
+.chat-modal-attachment-chip button {
+  border: none;
+  background: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+}
+.chat-modal-attachment-chip button:hover { color: #d9534f; }
+
+.chat-modal-form-error {
+  font-size: 12px;
+  color: #d9534f;
+  margin: -8px 0 12px;
+}
+.chat-modal-form-error.hidden { display: none; }

@@ -6,7 +6,7 @@ API call.
 
 - **`test_agent_config.py`** - provider/model resolution, including the
   fail-loud `AgentConfigError` paths.
-- **`test_claude_provider.py`, `test_openai_provider.py`** - the 6-round
+- **`test_anthropic_provider.py`, `test_openai_provider.py`** - the 6-round
   tool-calling loop, cancellation checkpoint, and rate-limit cooldown,
   with the SDK client and `src.mcp_upstream` both mocked.
 - **`test_server.py`** - the `ask`/`status`/`cancel` FastMCP tool

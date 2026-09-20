@@ -90,7 +90,6 @@
       {% if can_view_errors %}<input type="hidden" name="errors_actor" value="{{ errors_actor }}">{% endif %}
       <label for="chat_traces_actor">Show entries for</label>
       <select id="chat_traces_actor" name="chat_traces_actor" onchange="this.form.submit()">
-        <option value="server"{% if chat_traces_actor == "server" %} selected{% endif %}>Server</option>
         {% for account in accounts %}
         <option value="{{ account.id }}"{% if chat_traces_actor == account.id|string %} selected{% endif %}>{{ account.username }}</option>
         {% endfor %}
@@ -116,5 +115,6 @@
     </ul>
   </section>
   {% endif %}
+
 </div>
 {% endblock %}

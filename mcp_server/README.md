@@ -1,45 +1,39 @@
 # mcp_server
 
-A general-purpose MCP (Model Context Protocol) tool server: SSH host
-health checks, email one-time-passcode verification, a human-approval
-gate for irreversible actions, and a proxy for other MCP servers'
-tools ("extensions"). Built to be called by `chat_app` or any other MCP
-client speaking streamable HTTP.
+A general-purpose MCP (Model Context Protocol) tool server: a proxy for other MCP
+servers' tools ("extensions"), and a `server_manager` capability for
+starting/stopping/restarting/listing managed apps. Built to be called by
+`chat_app` or any other MCP client speaking streamable HTTP.
 
 ## Requirements
 
 - Python >= 3.11
-- An SMTP account for outbound mail (OTP codes, approval-request emails)
-- (optional) one or more SSH-reachable hosts for the host-health capability
+- An SMTP account for outbound mail (watcher notifications)
+
 
 ## Setup
 
-1. From `mcp_server/`, install dependencies:
-
-   ```
-   pip install -e ".[dev]"
-   ```
-
-2. Copy the `.example` files under `src/secrets/` and `src/configs/` and
+1. Copy the `.example` files under `.secrets/` and `configs/` and
    fill in real values - see [Configuration](#configuration).
 
-3. Run the server:
+2. Run the server:
 
    ```
-   run_mcp_server.bat
+   run.bat
    ```
 
-   (from the repo root; activates `venv_mcp` and runs `py -m src.run`.)
+   (from `mcp_server/` - creates `.venv_mcp` and installs this project
+   into it in editable mode on first run, then runs `py -m src.run`.)
 
 ## Configuration
 
 Both loaded once at boot by `src/run.py`:
 
-- **`src/secrets/*.env`** - credentials, gitignored. Copy each
+- **`.secrets/*.env`** - credentials, gitignored. Copy each
   `*.env.example` to the matching `*.env`. See
-  [`src/secrets/README.md`](src/secrets/README.md).
-- **`src/configs/*.json`** - structure, mostly committed. See
-  [`src/configs/README.md`](src/configs/README.md).
+  [`docs/secrets.md`](docs/secrets.md).
+- **`configs/*.json`** - structure, mostly committed. See
+  [`configs/README.md`](configs/README.md).
 
 ## Code layout
 
@@ -53,8 +47,7 @@ Each tool this server offers lives under its own folder in
 [`src/capabilities/README.md`](src/capabilities/README.md) for the
 shape every capability follows and how to add a new one:
 
-- [`capabilities/host_health/README.md`](src/capabilities/host_health/README.md)
-- [`capabilities/otp/README.md`](src/capabilities/otp/README.md)
+- [`capabilities/server_manager`](src/capabilities/server_manager) - start/stop/restart/list managed apps (`/server ...`)
 
 Every capability can be turned off without touching code, live - no
 restart needed. `GET /capabilities` lists each one's current state;
@@ -70,12 +63,18 @@ see [`src/resources/README.md`](src/resources/README.md).
 
 ## Runtime state
 
-- **`src/data/README.md`** - state shared across capabilities.
-- Each capability's own `data/` folder (e.g.
-  `capabilities/otp/data/`), when it has one - documented in that
-  capability's own README.
-- **`src/logs/`** - `server.log` plus one file per error reference id,
+Dot-prefixed folders hold untracked runtime state and secrets; plain
+`configs/` folders are tracked.
+
+- **`.data/`** - state shared across capabilities (`pending_requests.db`,
+  `uploads/`).
+- **`.logs/`** - `server.log` plus one file per error reference id,
   regenerated on every run.
+- **`.cache/`** - regenerable shared cache, if any.
+- **`specifics/<capability_name>/`** - the same layout (`.data/`,
+  `.logs/`, `.cache/`, `.secrets/`, `configs/`) for state and config
+  that a single capability owns outright. Only `configs/` is tracked.
+  Documented in that capability's own README.
 
 ## Tests
 

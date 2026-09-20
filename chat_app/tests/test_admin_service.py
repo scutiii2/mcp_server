@@ -233,6 +233,144 @@ def test_delete_role_clears_account_and_permission_associations(app):
         assert fetched_permission.roles == []
 
 
+def test_list_permissions_returns_all_permissions_sorted_by_name(app):
+    with app.app_context():
+        db.session.add(Permission(name="zeta.perm"))
+        db.session.add(Permission(name="alpha.perm"))
+        db.session.commit()
+
+        permissions = admin_service.list_permissions(db.session)
+
+        assert [p.name for p in permissions] == ["alpha.perm", "zeta.perm"]
+
+
+def test_update_account_changes_username_and_email(app):
+    with app.app_context():
+        account = Account(username="old_name", email="old@example.com", password_hash="hashed")
+        db.session.add(account)
+        db.session.commit()
+        account_id = account.id
+
+        admin_service.update_account(db.session, account, "new_name", "new@example.com")
+
+        fetched = db.session.get(Account, account_id)
+        assert fetched.username == "new_name"
+        assert fetched.email == "new@example.com"
+
+
+def test_update_account_rejects_duplicate_username(app):
+    with app.app_context():
+        db.session.add(Account(username="taken", email="taken@example.com", password_hash="hashed"))
+        account = Account(username="renaming", email="renaming@example.com", password_hash="hashed")
+        db.session.add(account)
+        db.session.commit()
+
+        with pytest.raises(ValueError):
+            admin_service.update_account(db.session, account, "taken", "renaming@example.com")
+
+
+def test_update_account_rejects_duplicate_email(app):
+    with app.app_context():
+        db.session.add(Account(username="other", email="taken@example.com", password_hash="hashed"))
+        account = Account(username="renaming2", email="renaming2@example.com", password_hash="hashed")
+        db.session.add(account)
+        db.session.commit()
+
+        with pytest.raises(ValueError):
+            admin_service.update_account(db.session, account, "renaming2", "taken@example.com")
+
+
+def test_update_account_raises_for_protected_account(app):
+    with app.app_context():
+        account = Account(
+            username="protected_edit",
+            email="protected_edit@example.com",
+            password_hash="hashed",
+            is_protected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        with pytest.raises(admin_service.ProtectedAccountError):
+            admin_service.update_account(db.session, account, "renamed", "renamed@example.com")
+
+
+def test_delete_account_removes_it(app):
+    with app.app_context():
+        actor = Account(username="actor", email="actor@example.com", password_hash="hashed")
+        account = Account(username="deletable_account", email="deletable@example.com", password_hash="hashed")
+        db.session.add_all([actor, account])
+        db.session.commit()
+        account_id = account.id
+
+        admin_service.delete_account(db.session, account, actor)
+
+        assert db.session.get(Account, account_id) is None
+
+
+def test_delete_account_raises_for_protected_account(app):
+    with app.app_context():
+        actor = Account(username="actor2", email="actor2@example.com", password_hash="hashed")
+        account = Account(
+            username="protected_delete",
+            email="protected_delete@example.com",
+            password_hash="hashed",
+            is_protected=True,
+        )
+        db.session.add_all([actor, account])
+        db.session.commit()
+        account_id = account.id
+
+        with pytest.raises(admin_service.ProtectedAccountError):
+            admin_service.delete_account(db.session, account, actor)
+
+        assert db.session.get(Account, account_id) is not None
+
+
+def test_delete_account_raises_for_self_delete(app):
+    with app.app_context():
+        account = Account(username="self_deleter", email="self_deleter@example.com", password_hash="hashed")
+        db.session.add(account)
+        db.session.commit()
+        account_id = account.id
+
+        with pytest.raises(admin_service.ProtectedAccountError):
+            admin_service.delete_account(db.session, account, account)
+
+        assert db.session.get(Account, account_id) is not None
+
+
+def test_update_permission_changes_description(app):
+    with app.app_context():
+        permission = Permission(name="desc_test.action", description="old")
+        db.session.add(permission)
+        db.session.commit()
+        permission_id = permission.id
+
+        admin_service.update_permission(db.session, permission, "new description")
+
+        fetched = db.session.get(Permission, permission_id)
+        assert fetched.description == "new description"
+        assert fetched.name == "desc_test.action"
+
+
+def test_delete_permission_removes_it_and_role_association(app):
+    with app.app_context():
+        role = Role(name="perm_delete_role")
+        permission = Permission(name="deletable_perm.action")
+        role.permissions.append(permission)
+        db.session.add(role)
+        db.session.commit()
+        permission_id = permission.id
+        role_id = role.id
+
+        admin_service.delete_permission(db.session, permission)
+
+        assert db.session.get(Permission, permission_id) is None
+        fetched_role = db.session.get(Role, role_id)
+        assert fetched_role.permissions == []
+
+
 def test_delete_role_rejects_deleting_administrator_role(app):
     with app.app_context():
         role = Role(name="Administrator", description="Full-access bootstrap role")

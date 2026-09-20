@@ -1,5 +1,5 @@
 """A minimal, self-contained stdio MCP server - a reference fixture for
-testing infra/extensions.py's proxy mechanism, not a real integration.
+testing services/extensions.py's proxy mechanism, not a real integration.
 
 Two trivial tools, ``echo`` and ``add``, exist only so a test can spawn
 this as a real subprocess, connect to it as a real MCP client, list its
@@ -12,7 +12,7 @@ proving the mechanism needs nothing beyond this venv), and is invocable
 as a module so config_extensions.json's entries can name it the same
 way they'd name any real upstream server:
 
-    venv_mcp\\Scripts\\python.exe -m src._fixtures.reference_extension_server
+    .venv_mcp\\Scripts\\python.exe -m src._fixtures.reference_extension_server
 """
 
 from __future__ import annotations

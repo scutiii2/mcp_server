@@ -102,4 +102,4 @@ def list_apps() -> AppListResult:
         width = max(len(app.name) for app in apps)
         report = "\n".join(f"{app.name:<{width}}  {app.status:<10} {app.image}" for app in apps)
 
-    return AppListResult(apps=apps, report=report)
+    return AppListResult(apps=apps, message=report)

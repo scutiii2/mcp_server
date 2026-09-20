@@ -1,4 +1,4 @@
-"""Tests for infra/capability_registry.py.
+"""Tests for services/capability_registry.py.
 
 Uses a real FastMCP instance throughout, not a mock - the whole point of
 this module is manipulating that instance's actual tool/resource dicts,
@@ -10,13 +10,13 @@ from __future__ import annotations
 import pytest
 from mcp.server.fastmcp import FastMCP
 
-from src.infra import capability_registry as registry
+from src.services import capability_registry as registry
 
 
 @pytest.fixture(autouse=True)
 def clean_registry():
     """Each test gets its own empty registry - module-level state, same
-    reasoning as infra/approvals.py's _REGISTRY tests."""
+    same registry-isolation reasoning as the other registry tests."""
     registry._REGISTRY.clear()
     yield
     registry._REGISTRY.clear()
@@ -36,6 +36,67 @@ def test_capturing_registers_a_tool_defined_inside_the_block(mcp):
     assert "make_widget" in {t.name for t in mcp._tool_manager.list_tools()}
     assert registry.names() == ["widgets"]
     assert registry.is_enabled("widgets") is True
+
+
+def test_capturing_defaults_the_label_to_the_name(mcp):
+    with registry.capturing(mcp, "widgets"):
+        pass
+
+    assert registry.label("widgets") == "widgets"
+
+
+def test_capturing_records_an_explicit_label(mcp):
+    with registry.capturing(mcp, "widgets", label="Widgets"):
+        pass
+
+    assert registry.label("widgets") == "Widgets"
+
+
+def test_tool_names_lists_only_this_capabilitys_tools(mcp):
+    with registry.capturing(mcp, "widgets"):
+        @mcp.tool()
+        def make_widget() -> str:
+            return "widget"
+
+    with registry.capturing(mcp, "gadgets"):
+        @mcp.tool()
+        def make_gadget() -> str:
+            return "gadget"
+
+    assert registry.tool_names("widgets") == ["make_widget"]
+    assert registry.tool_names("gadgets") == ["make_gadget"]
+
+
+def test_tool_names_survives_disabling(mcp):
+    """A disabled capability's handle keeps its captured tools (see
+    set_enabled()) - tool_names() must keep reporting them, since
+    chat_app's Capabilities page groups a disabled capability's
+    (currently absent) tools by name too."""
+    with registry.capturing(mcp, "widgets"):
+        @mcp.tool()
+        def make_widget() -> str:
+            return "widget"
+
+    registry.set_enabled(mcp, "widgets", False)
+
+    assert registry.tool_names("widgets") == ["make_widget"]
+
+
+def test_resource_names_lists_only_this_capabilitys_resources(mcp):
+    with registry.capturing(mcp, "widgets"):
+        @mcp.resource("widget://catalog/{id}")
+        def get_widget(id: str) -> str:
+            return f"widget {id}"
+
+    assert registry.resource_names("widgets") == ["get_widget"]
+
+
+def test_tool_names_and_resource_names_empty_for_a_capability_with_neither(mcp):
+    with registry.capturing(mcp, "empty"):
+        pass
+
+    assert registry.tool_names("empty") == []
+    assert registry.resource_names("empty") == []
 
 
 def test_capturing_only_attributes_tools_defined_inside_its_own_block(mcp):
@@ -154,49 +215,6 @@ def test_a_capability_with_no_tools_or_resources_is_still_registered(mcp):
     assert registry.is_enabled("empty") is True
     registry.set_enabled(mcp, "empty", False)  # must not raise
     assert registry.is_enabled("empty") is False
-
-
-def test_tool_names_lists_a_capabilitys_tools(mcp):
-    with registry.capturing(mcp, "widgets"):
-        @mcp.tool()
-        def make_widget() -> str:
-            return "widget"
-
-        @mcp.tool()
-        def paint_widget() -> str:
-            return "painted"
-
-    assert registry.tool_names("widgets") == ["make_widget", "paint_widget"]
-
-
-def test_tool_names_survives_disabling(mcp):
-    """Disabling only removes tools from the live `mcp` instance - the
-    registry's own record (what a caller derives capability ownership
-    from) must still report them."""
-    with registry.capturing(mcp, "widgets"):
-        @mcp.tool()
-        def make_widget() -> str:
-            return "widget"
-
-    registry.set_enabled(mcp, "widgets", False)
-
-    assert registry.tool_names("widgets") == ["make_widget"]
-
-
-def test_tool_names_empty_for_a_capability_with_no_tools(mcp):
-    with registry.capturing(mcp, "empty"):
-        pass
-
-    assert registry.tool_names("empty") == []
-
-
-def test_resource_template_names_lists_a_capabilitys_resources(mcp):
-    with registry.capturing(mcp, "widgets"):
-        @mcp.resource("widget://catalog/{id}")
-        def get_widget(id: str) -> str:
-            return f"widget {id}"
-
-    assert registry.resource_template_names("widgets") == ["get_widget"]
 
 
 def test_names_lists_every_captured_capability_sorted(mcp):

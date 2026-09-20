@@ -78,13 +78,6 @@ services:
       # service's comment.
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "8010"
-      # Read by an emailed approve/deny link (otp/host_health
-      # capabilities, both disabled by default in
-      # config_capabilities.json) - must resolve back to this container
-      # from wherever you'll be reading that email, so your NAS's real
-      # LAN IP or hostname. Never 127.0.0.1 - that's loopback INSIDE
-      # this container, meaningless to whoever clicks the link.
-      MCP_PUBLIC_BASE_URL: "http://[YOUR NAS LAN IP OR HOSTNAME]:8010"
       # Only needed if config_email.json actually references
       # ${SMTP_PASSWORD} (it does by default) - an app-specific
       # password, not your account password. See

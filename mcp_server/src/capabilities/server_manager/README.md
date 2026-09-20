@@ -1,22 +1,38 @@
 # capabilities/server_manager/
 
-Start, stop, restart, and list the Docker containers on this host -
-four tools (`start_app_tool`, `stop_app_tool`, `restart_app_tool`,
-`list_apps_tool`), also invocable as `/server_manager start|stop|restart|list`.
+Start, stop, restart and list the Docker containers on this host - four tools.
 
-**Reads:** nothing under `../../configs/` - there's no per-deployment
-config here, just whatever Docker daemon `docker.from_env()` finds.
+## Tools
 
-**Requires:** the host's Docker socket reachable from this process. The
-intended deployment (`../../../zima_host.yaml`) runs this server as its
-own container on the same ZimaOS box as the apps it manages, with
-`/var/run/docker.sock:/var/run/docker.sock` bind-mounted in - so it
-controls sibling containers on the same daemon, not a remote one.
-Without that mount, every tool here fails with a message saying so; the
-rest of the server is unaffected (see `domain.py`'s docstring for why).
+| Tool | Purpose | Connection |
+| --- | --- | --- |
+| `tool_srv_startApp` | Start a stopped app. | Docker socket |
+| `tool_srv_stopApp` | Stop a running app. | Docker socket |
+| `tool_srv_restartApp` | Restart an app. | Docker socket |
+| `tool_srv_listApps` | List every app with status and image. | Docker socket |
 
-**Owns no data or secrets of its own** - it only starts/stops/restarts
-containers that already exist and reads their state back.
+## Slash commands
 
-**Toggle:** `"server_manager"` in `../../configs/config_capabilities.json`.
-Disabling it removes all four tools.
+| Tool | Slash command | Parameters |
+| --- | --- | --- |
+| `tool_srv_startApp` | `/server start` | <ul><li>`name` - required. Container name as Docker shows it.</li></ul> |
+| `tool_srv_stopApp` | `/server stop` | <ul><li>`name` - required. Container name as Docker shows it.</li></ul> |
+| `tool_srv_restartApp` | `/server restart` | <ul><li>`name` - required. Container name as Docker shows it.</li></ul> |
+| `tool_srv_listApps` | `/server list` | <ul><li>none.</li></ul> |
+
+## Typical workflow
+
+| Sequence | Tool | Explanation |
+| --- | --- | --- |
+| 1 | `tool_srv_listApps` | Find the exact container name. |
+| 2 | `tool_srv_startApp` / `stopApp` / `restartApp` | Act on it by name. |
+
+## Configuration
+
+No config or secrets. Needs the host's Docker socket reachable
+(`/var/run/docker.sock` bind-mounted if this server runs in a container);
+without it each tool fails with a message saying so and the rest of the
+server is unaffected. The client is built per call, so a missing socket
+never breaks startup. Actions are reversible and not approval-gated.
+
+Toggle: `"server"` in `configs/config_capabilities.json`.

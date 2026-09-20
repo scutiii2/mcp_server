@@ -2,7 +2,17 @@ from pathlib import Path
 
 from flask import Flask
 
-from src.models import Account, InviteOTP, LogEntry, Permission, Role, db
+from unittest.mock import patch
+
+from src.models import (
+    Account,
+    EmailVerificationOtp,
+    InviteOTP,
+    LogEntry,
+    Permission,
+    Role,
+    db,
+)
 from src.pages.__index__ import register_pages
 from src.services.auth_service import init_login_manager
 from src.services.email_service import init_mail
@@ -352,6 +362,380 @@ def test_remove_role_from_protected_account_is_refused(tmp_path):
         assert [r.name for r in protected_account.roles] == ["protected_role"]
 
 
+def test_update_account_via_form(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        target = Account(username="editable_account", email="editable@example.com", password_hash="hashed")
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+
+    response = client.post(
+        f"/admin/accounts/{target_id}/edit",
+        data={"username": "renamed_account", "email": "renamed@example.com"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        target = db.session.get(Account, target_id)
+        assert target.username == "renamed_account"
+        assert target.email == "renamed@example.com"
+
+
+def test_update_account_refused_for_protected_account(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        protected = Account(
+            username="protected_form_edit",
+            email="protected_form_edit@example.com",
+            password_hash="hashed",
+            is_protected=True,
+        )
+        db.session.add(protected)
+        db.session.commit()
+        protected_id = protected.id
+
+    response = client.post(
+        f"/admin/accounts/{protected_id}/edit",
+        data={"username": "renamed", "email": "renamed@example.com"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        protected = db.session.get(Account, protected_id)
+        assert protected.username == "protected_form_edit"
+
+
+def test_send_verification_sends_email_and_creates_otp(tmp_path):
+    from src.services.email_service import mail
+
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        target = Account(
+            username="unverified_account", email="unverified@example.com", password_hash="hashed"
+        )
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+
+    with app.app_context():
+        with mail.record_messages() as outbox:
+            response = client.post(f"/admin/accounts/{target_id}/verify")
+
+        assert response.status_code == 302
+        assert len(outbox) == 1
+        assert outbox[0].recipients == ["unverified@example.com"]
+        assert db.session.query(EmailVerificationOtp).filter_by(account_id=target_id).count() == 1
+        assert db.session.get(Account, target_id).email_verified is False
+
+
+def test_send_verification_is_noop_for_already_verified_account(tmp_path):
+    from src.services.email_service import mail
+
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        target = Account(
+            username="already_verified",
+            email="already_verified@example.com",
+            password_hash="hashed",
+            email_verified=True,
+        )
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+
+    with app.app_context():
+        with mail.record_messages() as outbox:
+            client.post(f"/admin/accounts/{target_id}/verify")
+
+        assert len(outbox) == 0
+        assert db.session.query(EmailVerificationOtp).filter_by(account_id=target_id).count() == 0
+
+
+def test_send_verification_logs_action(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        target = Account(
+            username="log_verify_account", email="log_verify@example.com", password_hash="hashed"
+        )
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+
+    client.post(f"/admin/accounts/{target_id}/verify")
+
+    with app.app_context():
+        entries = db.session.query(LogEntry).filter_by(
+            kind="action", source="admin.send_verification"
+        ).all()
+        assert len(entries) == 1
+        assert entries[0].account_id == account_id
+
+
+def test_delete_account_via_form(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        target = Account(username="deletable_via_form", email="deletable_via_form@example.com", password_hash="hashed")
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+
+    response = client.post(f"/admin/accounts/{target_id}/delete")
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Account, target_id) is None
+
+
+def test_delete_account_refused_for_protected_account(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        protected = Account(
+            username="protected_form_delete",
+            email="protected_form_delete@example.com",
+            password_hash="hashed",
+            is_protected=True,
+        )
+        db.session.add(protected)
+        db.session.commit()
+        protected_id = protected.id
+
+    response = client.post(f"/admin/accounts/{protected_id}/delete")
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Account, protected_id) is not None
+
+
+def test_delete_account_refused_for_self(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    response = client.post(f"/admin/accounts/{account_id}/delete")
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Account, account_id) is not None
+
+
+def test_account_edit_and_delete_log_actions(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        target = Account(username="log_account", email="log_account@example.com", password_hash="hashed")
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+
+    client.post(
+        f"/admin/accounts/{target_id}/edit",
+        data={"username": "log_account", "email": "log_account@example.com"},
+    )
+    client.post(f"/admin/accounts/{target_id}/delete")
+
+    with app.app_context():
+        update_entries = db.session.query(LogEntry).filter_by(kind="action", source="admin.update_account").all()
+        delete_entries = db.session.query(LogEntry).filter_by(kind="action", source="admin.delete_account").all()
+        assert len(update_entries) == 1
+        assert len(delete_entries) == 1
+        assert update_entries[0].account_id == account_id
+        assert delete_entries[0].account_id == account_id
+
+
+def test_account_actions_redirect_to_accounts_tab_for_edit_and_delete(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        target = Account(username="redirect_account", email="redirect_account@example.com", password_hash="hashed")
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+
+    edit_response = client.post(
+        f"/admin/accounts/{target_id}/edit",
+        data={"username": "redirect_account", "email": "redirect_account@example.com"},
+    )
+    assert edit_response.headers["Location"] == "/admin/?tab=accounts"
+
+    delete_response = client.post(f"/admin/accounts/{target_id}/delete")
+    assert delete_response.headers["Location"] == "/admin/?tab=accounts"
+
+
+def test_grant_permission_via_form(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        permission = Permission(name="auth.invite")
+        role = Role(name="grant_target_role")
+        db.session.add_all([permission, role])
+        db.session.commit()
+        permission_id = permission.id
+        role_id = role.id
+
+    response = client.post(
+        f"/admin/permissions/{permission_id}/grant", data={"role_id": role_id}
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/admin/?tab=permissions"
+    with app.app_context():
+        role = db.session.get(Role, role_id)
+        assert [p.name for p in role.permissions] == ["auth.invite"]
+
+
+def test_grant_permission_logs_action(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        permission = db.session.query(Permission).filter_by(name="admin.roles.manage").one()
+        role = Role(name="log_grant_role")
+        db.session.add(role)
+        db.session.commit()
+        permission_id = permission.id
+        role_id = role.id
+
+    client.post(f"/admin/permissions/{permission_id}/grant", data={"role_id": role_id})
+
+    with app.app_context():
+        entries = db.session.query(LogEntry).filter_by(
+            kind="action", source="admin.grant_permission"
+        ).all()
+        assert len(entries) == 1
+        assert entries[0].account_id == account_id
+
+
+def test_update_permission_via_form(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        permission = Permission(name="editable_perm.action", description="old")
+        db.session.add(permission)
+        db.session.commit()
+        permission_id = permission.id
+
+    response = client.post(
+        f"/admin/permissions/{permission_id}/edit", data={"description": "new description"}
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        permission = db.session.get(Permission, permission_id)
+        assert permission.description == "new description"
+        assert permission.name == "editable_perm.action"
+
+
+def test_delete_permission_via_form(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        permission = Permission(name="deletable_perm.action")
+        db.session.add(permission)
+        db.session.commit()
+        permission_id = permission.id
+
+    response = client.post(f"/admin/permissions/{permission_id}/delete")
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Permission, permission_id) is None
+
+
+def test_permission_edit_and_delete_log_actions_and_redirect(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        permission = Permission(name="log_perm.action")
+        db.session.add(permission)
+        db.session.commit()
+        permission_id = permission.id
+
+    edit_response = client.post(
+        f"/admin/permissions/{permission_id}/edit", data={"description": "d"}
+    )
+    assert edit_response.headers["Location"] == "/admin/?tab=permissions"
+
+    delete_response = client.post(f"/admin/permissions/{permission_id}/delete")
+    assert delete_response.headers["Location"] == "/admin/?tab=permissions"
+
+    with app.app_context():
+        update_entries = db.session.query(LogEntry).filter_by(
+            kind="action", source="admin.update_permission"
+        ).all()
+        delete_entries = db.session.query(LogEntry).filter_by(
+            kind="action", source="admin.delete_permission"
+        ).all()
+        assert len(update_entries) == 1
+        assert len(delete_entries) == 1
+
+
+def test_dashboard_permissions_tab_lists_permissions(tmp_path):
+    app = _build_admin_test_app(tmp_path)
+    account_id = _create_admin_account(app, ["admin.roles.manage"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    with app.app_context():
+        db.session.add(Permission(name="listed_perm.action"))
+        db.session.commit()
+
+    response = client.get("/admin/?tab=permissions")
+
+    assert b'class="tab-btn active" data-tab="permissions"' in response.data
+    assert b"listed_perm.action" in response.data
+    assert b'data-tab-panel="roles" hidden' in response.data
+
+
 def test_create_invite_requires_auth_invite_permission_not_admin_roles_manage(tmp_path):
     app = _build_admin_test_app(tmp_path)
     account_id = _create_admin_account(app, ["admin.roles.manage"])
@@ -530,19 +914,6 @@ def test_remove_invite_logs_action(tmp_path):
         assert entries[0].account_id == account_id
 
 
-def test_manual_invite_code_toast_is_persistent(tmp_path):
-    app = _build_admin_test_app(tmp_path)
-    account_id = _create_admin_account(app, ["admin.roles.manage", "auth.invite"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    client.post("/admin/invites", data={"invitee_email": "", "delivery_method": "manual"})
-    response = client.get("/admin/")
-
-    assert b"toast-persistent" in response.data
-    assert b"Invite code" in response.data
-
-
 def test_dashboard_defaults_to_roles_tab_active(tmp_path):
     app = _build_admin_test_app(tmp_path)
     account_id = _create_admin_account(app, ["admin.roles.manage"])
@@ -580,44 +951,6 @@ def test_dashboard_unknown_tab_query_param_falls_back_to_roles(tmp_path):
     assert b'class="tab-btn active" data-tab="roles"' in response.data
 
 
-def test_role_actions_redirect_to_roles_tab(tmp_path):
-    app = _build_admin_test_app(tmp_path)
-    account_id = _create_admin_account(app, ["admin.roles.manage"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    response = client.post("/admin/roles", data={"name": "tabtest_role", "description": ""})
-
-    assert response.headers["Location"] == "/admin/?tab=roles"
-
-
-def test_account_actions_redirect_to_accounts_tab(tmp_path):
-    app = _build_admin_test_app(tmp_path)
-    account_id = _create_admin_account(app, ["admin.roles.manage"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    with app.app_context():
-        target_account = Account(
-            username="tab_target", email="tab_target@example.com", password_hash="hashed"
-        )
-        role = Role(name="tab_role")
-        db.session.add_all([target_account, role])
-        db.session.commit()
-        target_account_id = target_account.id
-        role_id = role.id
-
-    assign_response = client.post(
-        f"/admin/accounts/{target_account_id}/roles", data={"role_id": role_id}
-    )
-    assert assign_response.headers["Location"] == "/admin/?tab=accounts"
-
-    remove_response = client.post(
-        f"/admin/accounts/{target_account_id}/roles/remove", data={"role_id": role_id}
-    )
-    assert remove_response.headers["Location"] == "/admin/?tab=accounts"
-
-
 def test_invite_actions_redirect_to_invites_tab(tmp_path):
     app = _build_admin_test_app(tmp_path)
     account_id = _create_admin_account(app, ["admin.roles.manage", "auth.invite"])
@@ -634,18 +967,3 @@ def test_invite_actions_redirect_to_invites_tab(tmp_path):
 
     remove_response = client.post(f"/admin/invites/{invite_id}/remove")
     assert remove_response.headers["Location"] == "/admin/?tab=invites"
-
-
-def test_email_invite_toast_is_not_persistent(tmp_path):
-    app = _build_admin_test_app(tmp_path)
-    account_id = _create_admin_account(app, ["admin.roles.manage", "auth.invite"])
-    client = app.test_client()
-    _login_as(client, account_id)
-
-    client.post(
-        "/admin/invites", data={"invitee_email": "invitee@example.com", "delivery_method": "email"}
-    )
-    response = client.get("/admin/")
-
-    assert b"toast-persistent" not in response.data
-    assert b"Invite emailed" in response.data

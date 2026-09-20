@@ -15,12 +15,14 @@ from __future__ import annotations
 import asyncio
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from mcp import types
 from mcp.client.session import ClientSession
 
+from src.catalog import catalog
 from src.config import ServerConfig, load_servers_config
 from src.transports import open_session
 
@@ -32,8 +34,18 @@ NAMESPACE_SEPARATOR = "__"
 
 # How long connecting to one server (open transport + initialize +
 # list_tools) may take before it's recorded as failed - bounded so one
-# hung server can't stall connect_all() indefinitely.
+# hung server can't stall connect_all() indefinitely. Also set as the
+# connected ClientSession's default read_timeout_seconds, which is why
+# call_tool() below must override it per-call with CALL_TIMEOUT_SECONDS
+# instead of inheriting this connect-phase value.
 CONNECT_TIMEOUT_SECONDS = 10.0
+
+# How long a single tool call may run before it's treated as failed.
+# Deliberately separate from CONNECT_TIMEOUT_SECONDS: a real tool call
+# (e.g. a slow-backend one on the main mcp_server) routinely takes longer
+# than a connect handshake should ever take, so reusing that shorter
+# budget here would time out legitimate slow tools, not just hung ones.
+CALL_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass
@@ -65,6 +77,7 @@ def _namespace(server_id: str, tools: list[types.Tool]) -> list[types.Tool]:
     ]
 
 
+@catalog
 class McpClientRegistry:
     """Owns every live upstream connection for the life of the process.
     Connect once via connect_all(), then call list_tools()/call_tool()
@@ -79,18 +92,37 @@ class McpClientRegistry:
         self._sessions: dict[str, ClientSession] = {}
         self._last_known_tools: dict[str, list[types.Tool]] = {}
         self._statuses: list[ServerStatus] = []
+        self._configs: dict[str, ServerConfig] = {}
 
+    @catalog
     def statuses(self) -> list[ServerStatus]:
         return list(self._statuses)
 
-    async def connect_all(self, config_path: Path) -> list[ServerStatus]:
+    @catalog
+    async def connect_all(self, config_path: Path, url_overrides: dict[str, str] | None = None) -> list[ServerStatus]:
         """Connect to every server in `config_path`, isolated - one bad
         entry is recorded as an error status and never stops a sibling
-        from connecting."""
-        for server_id, config in load_servers_config(config_path).items():
+        from connecting. `url_overrides` is forwarded to
+        load_servers_config() - see its docstring."""
+        self._configs = load_servers_config(config_path, url_overrides)
+        for server_id, config in self._configs.items():
             await self._connect_one(server_id, config)
         return self.statuses()
 
+    async def _reconnect(self, server_id: str) -> None:
+        """Replace one dead upstream session using its startup config."""
+        config = self._configs.get(server_id)
+        if config is None:
+            raise KeyError(f"No configuration for server {server_id!r}")
+
+        stack = self._stacks.pop(server_id, None)
+        self._sessions.pop(server_id, None)
+        self._last_known_tools.pop(server_id, None)
+        if stack is not None:
+            await stack.aclose()
+        await self._connect_one(server_id, config)
+
+    @catalog
     async def _connect_one(self, server_id: str, config: ServerConfig) -> ServerStatus:
         local_stack = AsyncExitStack()
         try:
@@ -126,6 +158,7 @@ class McpClientRegistry:
         self._statuses.append(status)
         return status
 
+    @catalog
     async def _live_tools_for(self, server_id: str, session: ClientSession) -> list[types.Tool]:
         try:
             listed = await session.list_tools()
@@ -135,6 +168,7 @@ class McpClientRegistry:
         self._last_known_tools[server_id] = namespaced_tools
         return namespaced_tools
 
+    @catalog
     async def list_tools(self) -> list[types.Tool]:
         """The merged catalog, fetched live from every connected server on
         each call - so a server's tools changing at runtime is reflected
@@ -145,17 +179,48 @@ class McpClientRegistry:
         )
         return [tool for tools in results for tool in tools]
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> types.CallToolResult:
+    @catalog
+    async def call_tool(
+        self, name: str, arguments: dict[str, Any], on_progress: Callable[[str], None] | None = None
+    ) -> types.CallToolResult:
         """Route `name` (as returned by list_tools(), e.g. "main__ping")
         to whichever server owns it. Raises KeyError for a name that
         isn't currently connected - callers are expected to only call
-        names they just got from list_tools()."""
+        names they just got from list_tools().
+
+        `on_progress` receives each message the tool reports while it runs
+        (an MCP progress notification with a message); it is called on this
+        registry's own event-loop thread."""
         server_id, separator, upstream_name = name.partition(NAMESPACE_SEPARATOR)
         session = self._sessions.get(server_id) if separator else None
         if session is None:
             raise KeyError(f"No tool named {name!r} on any connected server")
-        return await session.call_tool(upstream_name, arguments)
 
+        extra: dict[str, Any] = {}
+        if on_progress is not None:
+
+            async def progress_callback(progress: float, total: float | None, message: str | None) -> None:
+                if message:
+                    on_progress(message)
+
+            extra["progress_callback"] = progress_callback
+
+        try:
+            return await session.call_tool(
+                upstream_name, arguments, read_timeout_seconds=timedelta(seconds=CALL_TIMEOUT_SECONDS), **extra
+            )
+        except RuntimeError as error:
+            if str(error) != "Session terminated":
+                raise
+            await self._reconnect(server_id)
+            recovered_session = self._sessions.get(server_id)
+            if recovered_session is None:
+                raise
+            return await recovered_session.call_tool(
+                upstream_name, arguments, read_timeout_seconds=timedelta(seconds=CALL_TIMEOUT_SECONDS), **extra
+            )
+
+    @catalog
     async def aclose(self) -> None:
         """Close every open connection. One server failing to close
         cleanly must not stop the others."""

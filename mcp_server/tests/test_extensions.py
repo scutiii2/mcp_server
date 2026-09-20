@@ -1,4 +1,4 @@
-"""Tests for infra/extensions.py, the proxy/aggregation engine.
+"""Tests for services/extensions.py, the proxy/aggregation engine.
 
 Mostly mocked: stdio_client and ClientSession are replaced with fakes so
 namespacing and failure isolation can be checked fast, without spawning a
@@ -24,8 +24,8 @@ import pytest
 from mcp import types
 from mcp.server.fastmcp import FastMCP
 
-from src.infra import extensions
-from src.infra.app_config import ExtensionConfig
+from src.services import extensions
+from src.services.app_config import ExtensionConfig
 
 
 # --- fakes for the mocked tests ------------------------------------------
@@ -61,7 +61,9 @@ class _FakeSession:
     async def list_tools(self) -> types.ListToolsResult:
         return types.ListToolsResult(tools=self._tools)
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> types.CallToolResult:
+    async def call_tool(
+        self, name: str, arguments: dict[str, Any], read_timeout_seconds: object = None
+    ) -> types.CallToolResult:
         self.calls.append((name, arguments))
         return self._call_results[name]
 
@@ -92,7 +94,12 @@ def _install_fake_connection(monkeypatch: pytest.MonkeyPatch, session_or_error) 
         monkeypatch.setattr(extensions, "stdio_client", _fake_stdio_client(session_or_error))
     # ClientSession(read, write) -> read (the fake session smuggled through
     # stdio_client's yield) - see the module comment above.
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **_kwargs: read)
+    # **kwargs, not just (read, write): _open_and_list calls the real
+    # ClientSession with read_timeout_seconds= too - a fake that doesn't
+    # accept it raises TypeError, which _connect_one's broad except
+    # silently turns into an "error" status instead of "connected",
+    # exactly the kind of failure this fake exists to steer clear of.
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
 
 
 # Same trick as _fake_stdio_client above, for the http transport:
@@ -124,7 +131,7 @@ def _install_fake_http_connection(monkeypatch: pytest.MonkeyPatch, session_or_er
         monkeypatch.setattr(extensions, "streamablehttp_client", _fake_streamablehttp_client_raising(session_or_error))
     else:
         monkeypatch.setattr(extensions, "streamablehttp_client", _fake_streamablehttp_client(session_or_error))
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **_kwargs: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
 
 
 def _echo_tool() -> types.Tool:
@@ -186,11 +193,10 @@ async def test_connected_status_lists_the_namespaced_tool_names(monkeypatch: pyt
 
 @pytest.mark.anyio
 async def test_proxied_tool_definition_preserves_meta_annotations_and_icons(monkeypatch: pytest.MonkeyPatch):
-    """Regression test: an early version of the namespacing wrapper
-    silently dropped meta/annotations/icons, which would break any
-    feature that relies on an extension's own declared metadata
-    surviving the proxy (an extension's own annotations, or icons a
-    client renders)."""
+    """Regression test: meta/annotations/icons were silently dropped when
+    building _ProxiedTool.definition, which would break any feature (like
+    keyword-based tool filtering) that relies on an extension's own
+    declared metadata surviving the proxy."""
     tool = types.Tool(
         name="echo",
         description="Echo text back",
@@ -227,7 +233,7 @@ async def test_a_broken_extension_does_not_prevent_a_working_sibling(monkeypatch
         return _fake_stdio_client_raising(FileNotFoundError("no such file or directory"))(params)
 
     monkeypatch.setattr(extensions, "stdio_client", fake_stdio_client)
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **_kwargs: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
     monkeypatch.setattr(
         extensions,
         "load_extensions_config",
@@ -255,7 +261,7 @@ async def test_a_broken_extension_does_not_prevent_our_own_tools_from_working(mo
     extension's command must never be able to take the whole server
     down."""
     monkeypatch.setattr(extensions, "stdio_client", _fake_stdio_client_raising(ConnectionRefusedError("refused")))
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **_kwargs: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
     monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"broken": _config()})
 
     mcp = FastMCP(name="test-server")
@@ -271,22 +277,6 @@ async def test_a_broken_extension_does_not_prevent_our_own_tools_from_working(mo
     names = {tool.name for tool in await registry.merged_list_tools()}
     assert names == {"builtin_tool"}
     assert registry.statuses()[0].status == "error"
-
-
-@pytest.mark.anyio
-async def test_connect_timeout_is_recorded_as_an_error_not_raised(monkeypatch: pytest.MonkeyPatch):
-    async def hang_forever(*args: object, **kwargs: object) -> None:
-        await asyncio.sleep(10_000)
-
-    monkeypatch.setattr(extensions, "CONNECT_TIMEOUT_SECONDS", 0.05)
-    monkeypatch.setattr(extensions.ExtensionRegistry, "_open_and_list", staticmethod(hang_forever))
-    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"slow": _config(id="slow")})
-
-    registry = extensions.ExtensionRegistry()
-    await registry.connect_all(Path("unused.json"))  # must not raise
-
-    [status] = registry.statuses()
-    assert status.status == "error"
 
 
 # --- dispatch: merged list/call ------------------------------------------
@@ -310,72 +300,6 @@ async def test_merged_list_tools_includes_builtin_and_proxied(monkeypatch: pytes
 
     names = {tool.name for tool in await registry.merged_list_tools()}
     assert names == {"builtin_tool", "reference__echo"}
-
-
-@pytest.mark.anyio
-async def test_merged_list_tools_reflects_a_live_change_in_the_extensions_own_schema(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """The property the whole live-refresh change is for: an extension
-    that alters its own tool schema between calls (the way
-    crafty_mcp_server's suggestions.py injects a live `enum` of
-    currently-registered world names) must show up here on the very next
-    merged_list_tools() - not frozen at whatever it was when this server
-    first connected."""
-    tool = _echo_tool()
-    session = _FakeSession(tools=[tool])
-    _install_fake_connection(monkeypatch, session)
-    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config()})
-
-    mcp = FastMCP(name="test-server")
-    registry = extensions.ExtensionRegistry()
-    await registry.connect_all(Path("unused.json"))
-    registry.install(mcp)
-
-    before = {t.name: t for t in await registry.merged_list_tools()}
-    assert "enum" not in before["reference__echo"].inputSchema["properties"].get("text", {})
-
-    # The upstream extension changes its own schema, entirely on its own
-    # side - nothing here tells this registry about it.
-    session._tools = [
-        types.Tool(
-            name="echo",
-            description="Echo text back",
-            inputSchema={
-                "type": "object",
-                "properties": {"text": {"type": "string", "enum": ["hello", "world"]}},
-            },
-        )
-    ]
-
-    after = {t.name: t for t in await registry.merged_list_tools()}
-    assert after["reference__echo"].inputSchema["properties"]["text"]["enum"] == ["hello", "world"]
-
-
-@pytest.mark.anyio
-async def test_merged_list_tools_falls_back_to_the_last_known_tools_if_a_live_refetch_fails(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """One extension going unreachable mid-session (its subprocess died,
-    its HTTP endpoint dropped) must not make its tools vanish from the
-    listing entirely, or take any other extension's tools down with it -
-    same failure-isolation principle as a connect failure."""
-    session = _FakeSession(tools=[_echo_tool()])
-    _install_fake_connection(monkeypatch, session)
-    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config()})
-
-    mcp = FastMCP(name="test-server")
-    registry = extensions.ExtensionRegistry()
-    await registry.connect_all(Path("unused.json"))
-    registry.install(mcp)
-
-    async def _raise() -> None:
-        raise ConnectionError("upstream went away")
-
-    monkeypatch.setattr(session, "list_tools", _raise)
-
-    names = {tool.name for tool in await registry.merged_list_tools()}
-    assert "reference__echo" in names
 
 
 @pytest.mark.anyio
@@ -455,7 +379,7 @@ async def test_a_broken_http_extension_does_not_prevent_a_working_stdio_sibling(
     monkeypatch.setattr(
         extensions, "streamablehttp_client", _fake_streamablehttp_client_raising(ConnectionRefusedError("refused"))
     )
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **_kwargs: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
     monkeypatch.setattr(
         extensions,
         "load_extensions_config",

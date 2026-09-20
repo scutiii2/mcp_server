@@ -17,12 +17,12 @@ def test_register_then_is_cancelled_is_false_until_cancelled():
     assert cancellation.is_cancelled("req-1") is False
 
 
-def test_register_clears_a_stale_entry_for_a_reused_id():
+def test_registration_preserves_cancellation_received_during_startup():
     cancellation.cancel("req-1")
     assert cancellation.is_cancelled("req-1") is True
 
     cancellation.register("req-1")
-    assert cancellation.is_cancelled("req-1") is False
+    assert cancellation.is_cancelled("req-1") is True
 
     cancellation.clear("req-1")
 

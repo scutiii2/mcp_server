@@ -15,6 +15,10 @@ class Account(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     is_protected = db.Column(db.Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    # Proven, not merely claimed: set only once this account has consumed a
+    # valid EmailVerificationOtp sent to `email` (see otp_service.py). An
+    # unverified account's inbox ownership is unconfirmed.
+    email_verified = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

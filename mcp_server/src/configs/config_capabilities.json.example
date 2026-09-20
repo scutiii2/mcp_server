@@ -1,5 +1,0 @@
-{
-  "host_health": { "enabled": true },
-  "otp": { "enabled": true },
-  "server_manager": { "enabled": true }
-}

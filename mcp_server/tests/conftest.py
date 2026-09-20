@@ -12,7 +12,7 @@ from src.config import settings as base_settings
 def log_dir(tmp_path, monkeypatch):
     """Points errors.report()'s per-error files at a throwaway directory.
 
-    Without this, any test that triggers report() (e.g. approval_submit's
+    Without this, any test that triggers report() (e.g. a route handler's
     failure branch) would write into the real, CWD-relative logs/
     directory as a side effect of running the test suite."""
     test_settings = dataclasses.replace(base_settings, log_dir=tmp_path / "logs")

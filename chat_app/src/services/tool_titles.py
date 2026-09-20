@@ -13,6 +13,8 @@ supports, and needs no changes to ``mcp_server`` at all.
 
 from __future__ import annotations
 
+from src.utils.catalog import catalog
+
 # Explicit overrides for tools whose auto-generated title wouldn't read
 # well. The fallback below just title-cases the name, which mangles
 # acronyms and initialisms ("get_cpu_usage_tool" -> "Get Cpu Usage") - so
@@ -25,6 +27,7 @@ from __future__ import annotations
 _OVERRIDES: dict[str, str] = {}
 
 
+@catalog
 def title_for(tool_name: str) -> str:
     if tool_name in _OVERRIDES:
         return _OVERRIDES[tool_name]

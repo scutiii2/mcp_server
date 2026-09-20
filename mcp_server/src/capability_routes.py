@@ -9,22 +9,17 @@ able to do to itself.
 GET /capabilities returns a JSON array shaped exactly like::
 
     {
-        "name": "host_health", "enabled": true, "title": "Host Health", "command_id": "host",
-        "tools": ["get_host_health_tool"], "resources": ["host_health"],
+        "name": "server",
+        "enabled": true,
+        "label": "Server Manager",
+        "tools": ["tool_srv_listApps", ...],
+        "resources": []
     }
 
-``title``/``command_id`` come from infra/capability_metadata.py - see
-its docstring. ``name`` stays the real capability id (what PATCH still
-needs); ``title``/``command_id``/``tools``/``resources`` are chat_app's
-own display concern.
-
-``tools``/``resources`` come straight from capability_registry's own
-record of what each capability registered (see its tool_names()/
-resource_template_names() docstrings) - present even while a capability
-is disabled, since disabling only unregisters them from the live `mcp`
-instance, not from that record. This is what lets chat_app's
-tool_capabilities.py derive which capability owns a tool/resource
-without a second, hand-maintained map that could drift from this one.
+``label``/``tools``/``resources`` let chat_app derive its Capabilities
+page grouping (which tool belongs to which capability, and what to call
+it) entirely from this one live response, instead of hand-maintaining
+its own copy - see chat_app's ``services/tool_capabilities.py``.
 
 PATCH /capabilities/{name} takes ``{"enabled": bool}`` and returns that
 same shape for the capability just changed - 404 for an unknown name,
@@ -46,8 +41,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src.config import settings
-from src.infra import capability_metadata, capability_registry
-from src.infra.app_config import save_capabilities_config
+from src.services import capability_registry
+from src.services.app_config import save_capabilities_config
 from src.server import mcp
 
 
@@ -55,10 +50,9 @@ def _status_json(name: str) -> dict[str, object]:
     return {
         "name": name,
         "enabled": capability_registry.is_enabled(name),
-        "title": capability_metadata.title_for(name),
-        "command_id": capability_metadata.command_id_for(name),
+        "label": capability_registry.label(name),
         "tools": capability_registry.tool_names(name),
-        "resources": capability_registry.resource_template_names(name),
+        "resources": capability_registry.resource_names(name),
     }
 
 

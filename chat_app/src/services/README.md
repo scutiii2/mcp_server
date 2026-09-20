@@ -34,11 +34,16 @@ thin; logic that touches the DB or makes a policy decision lives here.
 - `email_service.py` — `mail` (Flask-Mail singleton), `init_mail()`,
   `send_invite_email()`: the auto-email delivery option for invites
   generated on the Admin page.
-- `admin_service.py` — `list_roles()`, `list_accounts()`, `create_role()`,
+- `admin_service.py` — `list_roles()`, `list_accounts()`,
+  `list_permissions()`, `create_role()`, `update_role()`, `delete_role()`,
   `assign_permission_to_role()` (validated against
   `authz.registered_permissions()`), `remove_permission_from_role()`,
-  `assign_role_to_account()`, `remove_role_from_account()` (raises
-  `ProtectedAccountError` for `is_protected` accounts).
+  `update_permission()` (description only — `name` is never editable, it's
+  wired to `@require_permission` decorators in code),
+  `delete_permission()`, `assign_role_to_account()`,
+  `remove_role_from_account()`, `update_account()`, `delete_account()`
+  (the latter three all raise `ProtectedAccountError` for `is_protected`
+  accounts; `delete_account()` also refuses self-deletion).
 - `log_service.py` — `log_action()`, `log_error()` (backs the Errors
   tab's automatic capture in `run.py`, never called manually elsewhere),
   `list_entries()` (kind + server-vs-account filter, row-capped) — all

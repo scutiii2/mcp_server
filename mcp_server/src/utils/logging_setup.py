@@ -6,7 +6,7 @@ logs land here too; a StreamHandler alongside the file handler because
 attaching any handler to the root logger suppresses Python's stderr
 "lastResort" handler). Deliberately duplicated rather than shared: the
 two apps live in separate venvs with no dependency between them (see
-infra/app_config.py's docstring for the same convention elsewhere in
+services/app_config.py's docstring for the same convention elsewhere in
 this repo).
 """
 
@@ -17,11 +17,14 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from src.utils.catalog import catalog
+
 _MAX_BYTES = 5_000_000
 _BACKUP_COUNT = 3
 _FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
+@catalog
 def configure_logging(log_dir: Path) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter(_FORMAT)
