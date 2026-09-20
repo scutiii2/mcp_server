@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from typing import Any
 
 _parser = argparse.ArgumentParser(add_help=False)
@@ -59,8 +60,18 @@ if _args.mcp_url:
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from src import agent_config, agent_registry, mcp_upstream
-from src.llm.base_provider import ChatCancelled
+# agent_config resolves provider/key/role/config files at import time and
+# raises on a bad value; show that as one clean line instead of a traceback.
+# Anything else (a real bug, ImportError...) still propagates untouched.
+_CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError"}
+try:
+    from src import agent_config, agent_registry, mcp_upstream
+    from src.llm.base_provider import ChatCancelled
+except Exception as _exc:
+    if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
+        raise
+    sys.stderr.write(f"\nai_agent cannot start - configuration error:\n  {_exc}\n\n")
+    sys.exit(1)
 
 HOST = os.getenv("AI_AGENT_HOST", "127.0.0.1")
 PORT = int(os.getenv("AI_AGENT_PORT", "9100"))
