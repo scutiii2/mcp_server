@@ -53,6 +53,9 @@ changes the convention for every project after it.
 3. For every config/secret file, write both the real (gitignored) file
    and a `.example` twin with placeholder values, matching how
    `mcp_server/configs/*.json.example` and `secrets/*.env.example` do it.
+   Loaders should auto-create a missing real file by copying its
+   `.example` (see `chat_app/src/utils/config_loader.py`,
+   `ai_agent/src/seed.py`) rather than raising on first run.
 4. Write `README.md` covering: what the project does, requirements,
    setup steps, how to run it — model it on `mcp_server/README.md`.
 6. Register it with `server_launcher.py` (repo root) if it should be

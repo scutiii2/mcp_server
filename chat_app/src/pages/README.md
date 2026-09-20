@@ -57,6 +57,8 @@ registered by `__index__.py` at app-boot time (see `register_pages()`).
 - [`Auth/`](Auth/README.md) — the merged login/registration/logout flow.
 - [`Admin/`](Admin/README.md) — role/permission/account administration
   and invite generation. Reached via the account menu, not `nav_pages`.
+- [`ConfigIssues/`](ConfigIssues/README.md) — lists invalid or placeholder
+  config/secret values; every page redirects here while any exist.
 - [`Logs/`](Logs/README.md) — server and per-account activity/error
   log viewer. Visible in `nav_pages` to any account holding
   `logs.view` and/or `logs.errors.view`.

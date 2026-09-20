@@ -32,9 +32,9 @@ from scratch.
 A role is a system-prompt persona layered onto whichever provider an
 instance is already running — it does not pick a model or a provider.
 
-1. Edit `ai_agent/configs/config_ai_agent_roles.json` (copy from the
-   `.example` first if it doesn't exist yet — the real file is
-   gitignored and the process refuses to start without it):
+1. Edit `ai_agent/configs/config_ai_agent_roles.json` (the real file is
+   gitignored; it is auto-created from the `.example` on first load, so
+   edit the `.example` too to keep the two in sync):
 
    ```json
    {

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Config Issues{% endblock %}
+{% block content %}
+<h1>Config Issues</h1>
+{% if issues %}
+<p>Fix the values below in <code>configs/</code> or <code>secrets/</code>, then reload this page. Other pages redirect here until every issue is resolved.</p>
+<table>
+  <thead><tr><th>File</th><th>Key</th><th>Problem</th></tr></thead>
+  <tbody>
+    {% for issue in issues %}
+    <tr><td>{{ issue.file }}</td><td>{{ issue.key }}</td><td>{{ issue.message }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No config issues found.</p>
+<p><a href="{{ url_for('overview.index') }}">Continue</a></p>
+{% endif %}
+{% endblock %}

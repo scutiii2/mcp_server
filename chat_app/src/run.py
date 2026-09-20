@@ -29,6 +29,7 @@ from src.models import db
 from src.pages.__index__ import register_pages
 from src.services import log_service
 from src.services.auth_service import ensure_bootstrap_admin, init_login_manager
+from src.services.config_validation import install_config_guard
 from src.services.db_migrations import apply_additive_column_migrations, drop_retired_tables
 from src.services.email_service import init_mail
 from src.services.security.pipeline import load_security_configs, register_security_pipeline
@@ -94,9 +95,14 @@ def create_app(config: dict | None = None) -> Flask:
     os.environ.setdefault("CAPABILITY_CACHE_PATH", str(DATA_DIR / "capability_tool_cache.json"))
     os.environ.setdefault("USAGE_DB_PATH", str(DATA_DIR / "usage.db"))
 
-    app.config["APP_NAME"] = load_json_config(APP_DIR / "configs" / "config_app.json").get(
-        "app_name", "Chat"
-    )
+    # A broken config must not crash boot: the config guard below redirects
+    # every page to the ConfigIssues page, which lists what is wrong.
+    try:
+        app.config["APP_NAME"] = load_json_config(APP_DIR / "configs" / "config_app.json").get(
+            "app_name", "Chat"
+        )
+    except (OSError, ValueError, AttributeError):
+        app.config["APP_NAME"] = "Chat"
     app.config["SECRET_KEY"] = app_secrets.get("SECRET_KEY") or "dev-insecure-key-change-me"
     raw_db_uri = db_secrets.get("DATABASE_URL") or f"sqlite:///{DATA_DIR / 'app.db'}"
     app.config["SQLALCHEMY_DATABASE_URI"] = _resolve_sqlite_uri(raw_db_uri, BASE_DIR)
@@ -124,8 +130,12 @@ def create_app(config: dict | None = None) -> Flask:
         if dropped_tables:
             logger.warning("Dropped retired table(s): %s", ", ".join(dropped_tables))
 
-    security_configs = load_security_configs(APP_DIR / "configs")
+    try:
+        security_configs = load_security_configs(APP_DIR / "configs")
+    except (OSError, ValueError):
+        security_configs = {}
     csrf_extension = register_security_pipeline(app, security_configs)
+    install_config_guard(app, APP_DIR)
 
     init_login_manager(app)
     init_mail(app, APP_DIR / "secrets")

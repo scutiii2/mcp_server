@@ -128,7 +128,7 @@ Do these in order — each step depends on the last:
 
    `commands[].name` is the bare sub-command (`"list"`, not `"/server list"`) — the capability id prefix is added at render time. A manual, human-only workflow step uses the literal string `"(manual - no tool)"` for `tool`.
 
-5. Add a toggle entry to both `mcp_server/configs/config_capabilities.json` **and** `config_capabilities.json.example`:
+5. Add a toggle entry to both `mcp_server/configs/config_capabilities.json` **and** `config_capabilities.json.example` (the real file is auto-created from the example only when missing, so an existing one needs the entry added by hand):
 
    ```json
    { "<id>": { "enabled": true } }

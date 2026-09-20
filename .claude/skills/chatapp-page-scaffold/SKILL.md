@@ -11,10 +11,11 @@ source of truth this skill compresses) auto-discovers one Flask
 blueprint per subfolder at boot (`register_pages()` in
 `pages/__index__.py`). There's no central routes file to edit — adding
 a page means adding a folder; deleting one removes it from routing and
-navigation automatically. Ten pages exist today (`Auth`, `Admin`,
-`Logs`, `Overview`, `Account`, `Sample`, `Chat`, `Capabilities`,
-`Watchers`) — **`Sample/` is kept specifically as the copy-from
-template**; start there.
+navigation automatically. Pages today: `Auth`, `Admin`, `Logs`,
+`Overview`, `Account`, `Chat`, `Capabilities`, `Watchers`,
+`ConfigIssues`. There is no `Sample/` template any more — copy
+`Logs/` (permission-gated, page-local static) or `Overview/` (minimal)
+and strip what you don't need.
 
 **REQUIRED SUB-SKILL:** Use checking-the-catalog before writing any new
 reusable function/class for this page (a formatter, a validator, a
@@ -36,11 +37,11 @@ anything without an `__index__.py`, and imports
 
 - The folder name **must** match what you want the URL prefix and blueprint import path to be. `_url_prefix_for()` lowercases it (`Watchers` → `/watchers`), except `Overview` → `/` (the post-login landing page).
 - `__index__.py` **must** expose a module-level `blueprint` (a `Blueprint` instance) — that's the only hard requirement; everything else below is convention, not enforced by code, but every existing page follows it and deviating breaks the generic rendering/nav logic other pages rely on.
-- An empty `__init__.py` is still required (makes the folder importable as a package) — copy `Sample/__init__.py` (empty) rather than omitting it.
+- An empty `__init__.py` is still required (makes the folder importable as a package) — create an empty `__init__.py` rather than omitting it.
 
 ## Scaffold a new page
 
-1. Copy `pages/Sample/` to `pages/<PageName>/` (PascalCase folder name — this becomes both the URL prefix and the blueprint's Python package name).
+1. Copy a small existing page (`pages/Overview/` is the minimal one) to `pages/<PageName>/` (PascalCase folder name — this becomes both the URL prefix and the blueprint's Python package name).
 2. In `<PageName>/__index__.py`:
 
    ```python
@@ -76,10 +77,20 @@ anything without an `__index__.py`, and imports
    {% endblock %}
    ```
 
-4. `<PageName>/README.md` — URL prefix, routes table, permissions, templates, anything the page owns under its own `data/`/`configs/`. `Sample/README.md` is the minimal shape; `Capabilities/README.md` or `Watchers/README.md` for a page with several routes/tabs worth documenting individually.
+4. `<PageName>/README.md` — URL prefix, routes table, permissions, templates, anything the page owns under its own `data/`/`configs/`. `ConfigIssues/README.md` is the minimal shape; `Capabilities/README.md` or `Watchers/README.md` for a page with several routes/tabs worth documenting individually.
 5. Add one line to `pages/README.md`'s "Pages" list linking the new README — that's the only place a new page needs a manual mention.
 
 That's it — no registry, no imports elsewhere. `register_pages()` picks it up on the next app boot because the folder exists and `__index__.py` has a `blueprint`.
+
+## Config guard and the ConfigIssues page
+
+`services/config_validation.py` validates every `configs/*.json` and
+`secrets/*.env` and installs a `before_request` guard: while any issue
+exists, every route redirects to `/configissues` (exempt: that blueprint,
+`internal`, static; off when `TESTING`). A new page needs nothing for
+this — but a **new config/secret key or file** should get a checker in
+`_JSON_CHECKS` / `_ENV_CHECKS` there, plus a test in
+`tests/test_config_validation.py`. Don't put secret values in messages.
 
 ## Permission gating (controls both access AND nav visibility)
 
@@ -91,7 +102,7 @@ That's it — no registry, no imports elsewhere. `register_pages()` picks it up 
 
 ## Page-local static assets (only if the page needs its own CSS/JS)
 
-`Sample` has none — its styling comes entirely from `__shared__/shared.css`.
+`Overview` and `ConfigIssues` have none — their styling comes entirely from `__shared__/shared.css`.
 If the new page needs page-specific behavior or styling, follow `Chat/__index__.py`'s pattern:
 
 ```python
