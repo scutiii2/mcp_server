@@ -31,3 +31,19 @@ Give each item found by the catalog its own description (catalog_service current
 
 **Revisit when**: continuing the token-optimization work — pick up at item 3.
 
+## Terminal chat client `chat_cli/` (deferred 2026-09-21)
+
+**Context**: A CLI that behaves like the chat_app web chat, so conversations can run in a terminal. Design chosen, not yet implemented.
+
+**Approved design**:
+- **Architecture**: option B. The CLI talks directly to `ai_agent` / `mcp_server`, reusing the logic in `chat_app/src/services/ai_agent_client.py` and `mcp_client.py`. It does not go through chat_app's HTTP API or login.
+- **Location**: new top-level folder `chat_cli/`, laid out per the `root-project-scaffold` skill.
+- **Features**: token streaming, tool-call progress display, and an agent picker (same agents as the web UI's Agent dropdown).
+- **Suggested libraries**: `rich` for rendering, `prompt_toolkit` for input.
+
+**Known trade-off**: going direct skips chat_app's auth, permissions, usage limits and stored chat history, and duplicates some of that logic. Attachments were not requested and are out of scope.
+
+**Why not built now**: user asked to log it instead of implementing.
+
+**Revisit when**: user wants this built. First check whether `ai_agent_client.py` can be imported or shared cleanly (for example via `catalog_service`) instead of copied. Decide whether the CLI keeps its own chat history.
+
