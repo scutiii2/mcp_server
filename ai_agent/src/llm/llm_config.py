@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from src.catalog import catalog
+from src.seed import seed_from_example
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_llms.json"
 _PLACEHOLDER = re.compile(r"^\{([A-Z0-9_]+)\}$")
@@ -27,6 +28,7 @@ _config: dict[str, Any] | None = None
 def _load() -> dict[str, Any]:
     global _config
     if _config is None:
+        seed_from_example(_CONFIG_PATH)
         _config = json.loads(_CONFIG_PATH.read_text())
     return _config
 

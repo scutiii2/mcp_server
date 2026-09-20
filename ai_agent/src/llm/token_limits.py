@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from src.catalog import catalog
+from src.seed import seed_from_example
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_token_limits.json"
 _REQUIRED_FIELDS = (
@@ -31,6 +32,7 @@ def _load_config() -> dict[str, dict[str, Any]]:
     global _config
     if _config is not None:
         return _config
+    seed_from_example(_CONFIG_PATH)
     raw = json.loads(_CONFIG_PATH.read_text())
     if not isinstance(raw, dict) or not isinstance(raw.get("default"), dict):
         raise ValueError("config_token_limits.json must contain a 'default' object")

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from src.catalog import catalog
+from src.seed import seed_from_example
 
 
 @catalog
@@ -120,6 +121,7 @@ def load_servers_config(path: Path, url_overrides: dict[str, str] | None = None)
     MCP_SERVER_URL repoint the "main" upstream server without editing
     config_servers.json. Ignored for a stdio entry or an unknown server_id.
     """
+    seed_from_example(path)
     raw_data = json.loads(path.read_text(encoding="utf-8"))
     servers = {server_id: _build_server(server_id, raw) for server_id, raw in raw_data.items()}
     for server_id, url in (url_overrides or {}).items():

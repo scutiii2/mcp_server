@@ -14,10 +14,13 @@ from typing import Any
 import anyio
 from dotenv import dotenv_values
 
+from src.seed import seed_from_example
+
 _SECRETS_PATH = Path(__file__).resolve().parent.parent / "secrets" / "secret_llm.env"
 
 
 def _load_secrets_into_environ() -> None:
+    seed_from_example(_SECRETS_PATH)
     for key, value in dotenv_values(_SECRETS_PATH).items():
         if value:
             os.environ.setdefault(key, value)

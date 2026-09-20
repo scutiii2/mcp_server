@@ -16,9 +16,16 @@ from pathlib import Path
 # one-file-per-concern split (secret_app.env, secret_smtp.env,
 # secret_ssh.env today; a future capability that owns a real secret adds
 # its own file here with zero changes to this loop).
+import shutil
+
 from dotenv import load_dotenv
 
 _SECRETS_DIR = Path(".secrets")
+# Auto-create any missing secret_*.env from its .env.example twin.
+for _example in sorted(_SECRETS_DIR.glob("*.env.example")):
+    _target = _example.with_suffix("")
+    if not _target.exists():
+        shutil.copyfile(_example, _target)
 for _env_file in sorted(_SECRETS_DIR.glob("*.env")):
     load_dotenv(_env_file)
 

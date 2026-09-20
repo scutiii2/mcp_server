@@ -69,6 +69,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -230,6 +231,9 @@ def load_config(config_path: Path) -> dict[str, Any]:
     Returns the document exactly as written, ``${VAR}`` placeholders and
     all; a loader resolves the part it needs with ``resolve_section``.
     """
+    example_path = config_path.with_name(config_path.name + ".example")
+    if not config_path.exists() and example_path.exists():
+        shutil.copyfile(example_path, config_path)
     if not config_path.exists():
         raise FileNotFoundError(
             f"Config file not found: {config_path}. Copy {config_path.name}.example "

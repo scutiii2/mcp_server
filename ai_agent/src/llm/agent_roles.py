@@ -19,6 +19,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from src.seed import seed_from_example
+
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_ai_agent_roles.json"
 
 _config: dict[str, Any] | None = None
@@ -34,6 +36,7 @@ class AgentRoleError(Exception):
 def _load() -> dict[str, Any]:
     global _config
     if _config is None:
+        seed_from_example(_CONFIG_PATH)
         try:
             _config = json.loads(_CONFIG_PATH.read_text())
         except FileNotFoundError as exc:
