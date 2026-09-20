@@ -7,7 +7,7 @@
 {% if app_logo_url %}<img src="{{ app_logo_url }}" alt="" class="overview-logo">{% endif %}
 <h1 class="overview-title">{{ app_name }}</h1>
 <div class="tiles">
-  {% for page in nav_pages %}
+  {% for page in nav_pages if page.name != "ConfigIssues" %}
   <a class="tile" href="{{ page.url_prefix }}">
     <span class="tile-icon">{{ page.name[0] }}</span>
     <span class="tile-name">{{ page.name }}</span>

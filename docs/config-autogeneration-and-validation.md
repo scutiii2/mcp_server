@@ -36,7 +36,9 @@ required (`SECRET_KEY`, `INTERNAL_API_TOKEN`, API keys) must still be filled in.
   is set. Messages contain file and key names only, never secret values.
 - `src/pages/ConfigIssues/` (`/configissues`) lists the issues as file / key /
   problem. The route is intentionally not login-gated, because a broken config can
-  make login unusable. `config.issues.view` only controls the nav link.
+  make login unusable. `config.issues.view` only controls the nav link. The page
+  is hidden from the Overview tiles (`Overview/overview.html` skips
+  `ConfigIssues`) but still appears in the sidebar.
 - `install_config_guard()` adds a `before_request` hook: while any issue exists,
   every route redirects to `/configissues`. Exempt: that blueprint, `internal`,
   static files. Off when `TESTING` is set. Results are cached by file mtime, so
