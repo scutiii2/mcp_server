@@ -47,3 +47,44 @@ Give each item found by the catalog its own description (catalog_service current
 
 **Revisit when**: user wants this built. First check whether `ai_agent_client.py` can be imported or shared cleanly (for example via `catalog_service`) instead of copied. Decide whether the CLI keeps its own chat history.
 
+## Consolidate secret .env and config .json files (deferred 2026-09-21)
+
+**Context**: Many secret/config files are tiny (most under 300 bytes) and split by habit. Proposal to merge them; not approved for implementation yet.
+
+**Proposed merges**:
+- **chat_app secrets** (6 files to 2): `secret_app`, `secret_db`, `secret_internal_api`, `secret_mcp`, `secret_smtp` into `secret_chat_app.env`. `secret_bootstrap_admin.env` stays separate (isolated password, edited for a different reason).
+- **mcp_server secrets**: merge `secret_app`, `secret_internal_api`, `secret_smtp` into one file. `secret_ssh.env` stays separate (more sensitive).
+- **chat_app configs** (7 files to 3): `config_security_fingerprint`, `_headers`, `_ip_filter`, `_rate_limit` into one `config_security.json` with a top-level key per feature. `config_app` + `config_usage_limits` into `config_app.json`. `config_agents.json` stays.
+- **mcp_server configs**: `config_capabilities` + `config_extensions` into `config_mcp_server.json`.
+- **ai_agent**: leave alone. `config_llms.json` (3 KB) is edited on its own. Merging `config_servers` / `config_token_limits` / `config_ai_agent_roles` is optional and low value.
+
+**Notes**:
+- `INTERNAL_API_TOKEN` exists in both chat_app and mcp_server and must match. Do not share a file across projects (keeps each project self-contained).
+- `chat_app/configs/config_agents.json` and `ai_agent/configs/config_agents.json` are identical (265 bytes). Check whether both are needed.
+
+**Work involved**: update every loader, the `.example` twins, `config_validation.py` per-file checkers, tests, READMEs and the four scaffold skills (`aiagent-scaffold`, `chatapp-page-scaffold`, `mcp-capability-scaffold`, `root-project-scaffold`). Add a one-time migration that reads the old files when the new one is missing, so existing real secrets (for example the bootstrap admin password) are not lost. Trade-off: one typo can break several settings in a merged file, and a merged `config_security.json` reloads all four features together.
+
+**Why not built now**: user asked to log it instead of implementing.
+
+**Revisit when**: user wants this built. Start with chat_app (most files, plus the ConfigIssues validation to update).
+
+## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21)
+
+**Context**: Today mcp_server is a hub: external MCPs are added as "extensions" (`mcp_server/configs/config_extensions.json`, `/extensions` endpoint) and their tools arrive proxied as `{ext_id}__{tool}`. `ai_agent` already has a multi-server list (`configs/config_servers.json`, `McpClientRegistry`, tools namespaced `<server>__<tool>`) with mcp_server as the single `main` entry. `chat_app` (`services/mcp_client.py`) connects to mcp_server only and manages extensions through its `/extensions` endpoint. Goal: chat_app lists MCPs directly, mcp_server is just one entry, no proxying.
+
+**Target design**: chat_app and ai_agent connect to N MCP servers side by side (mcp_server, github MCP, others). mcp_server exposes only its own capabilities.
+
+**Plan (two steps, keeps the app working throughout)**:
+1. Give chat_app a multi-server registry (reuse or share the ai_agent registry idea) and an MCP list config replacing `MCP_SERVER_URL`. Keep mcp_server's `/extensions` working meanwhile. Capabilities page gets add/remove MCP writing that config; Chat page "extension" toggles become per-MCP toggles (`_tool_is_enabled` filters by server id).
+2. Migrate existing extensions to MCP entries, then delete the proxy in mcp_server (`extension_routes.py`, `config_extensions.json`, `/extensions`, extension code in `command_routes.py` / `capability_routes.py`). Keep `/commands`.
+
+**Decision needed**: how chat_app and ai_agent share the MCP list. Options: one shared file (simple, breaks "each project self-contained") or chat_app as source of truth pushing it to ai_agent over the existing `ask` tool call (cleaner).
+
+**Trade-offs**: less code in mcp_server, one concept instead of two, other MCPs stay available when mcp_server is down. External MCPs would skip whatever mcp_server adds on top (`capability_meta` registration, `ai_explain_result`, help entries). Check what `chat_app/src/services/tool_capabilities.py` needs before deciding.
+
+**Size**: medium to large. Touches chat_app services and the Capabilities and Chat pages, ai_agent config plumbing, mcp_server routes, docs, and the scaffold skills that mention extensions. Overlaps with the config-consolidation item above (`config_extensions.json` would be deleted rather than merged).
+
+**Why not built now**: user asked to log it instead of implementing.
+
+**Revisit when**: user wants this built. Start with step 1.
+
