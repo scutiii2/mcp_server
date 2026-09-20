@@ -9,12 +9,12 @@ __pycache__/
 .secret
 .vscode
 
-# server_launcher.py's saved presets - personal, per-machine, not source.
-/server_launcher/presets.json
-# server_launcher.py's one-shot "keep running in background" state, written
+# server_launcher's saved presets - personal, per-machine, not source.
+/server_launcher/data/presets.json
+# server_launcher's one-shot "keep running in background" state, written
 # on close and consumed (deleted) on the next launch - not source, and
 # stale if committed (whatever was running at commit time, not now).
-/server_launcher/kept_running.json
+/server_launcher/data/kept_running.json
 
 # mcp_server's real config/secrets/runtime-state, mirroring chat_app's
 # configs + secrets + data split. config_*.json holds

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import server_launcher
+from src import discovery, instance as instance_module, models, storage, window
 
 
 class GroupPersistenceTests(unittest.TestCase):
@@ -25,16 +25,16 @@ class GroupPersistenceTests(unittest.TestCase):
                 with self.subTest(fields=fields):
                     raw = {"Stack": {"members": [valid, {**valid, **fields}]}}
                     groups_path.write_text(json.dumps(raw), encoding="utf-8")
-                    with patch.object(server_launcher, "_GROUPS_PATH", groups_path):
-                        self.assertEqual(server_launcher._load_groups(), {})
+                    with patch.object(storage, "_GROUPS_PATH", groups_path):
+                        self.assertEqual(storage._load_groups(), {})
 
     def test_groups_round_trip_through_json(self) -> None:
         """Catches a missing or incomplete persisted group-member field."""
         groups = {
-            "Local stack": server_launcher.ServerGroup(
+            "Local stack": models.ServerGroup(
                 "Local stack",
                 [
-                    server_launcher.GroupMember(
+                    models.GroupMember(
                         "ai_agent",
                         9100,
                         {"AI_AGENT_PROVIDER": "anthropic"},
@@ -46,9 +46,9 @@ class GroupPersistenceTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as directory:
-            with patch.object(server_launcher, "_GROUPS_PATH", Path(directory) / "groups.json"):
-                server_launcher._save_groups(groups)
-                loaded = server_launcher._load_groups()
+            with patch.object(storage, "_GROUPS_PATH", Path(directory) / "groups.json"):
+                storage._save_groups(groups)
+                loaded = storage._load_groups()
 
         self.assertEqual(loaded, groups)
 
@@ -57,8 +57,8 @@ class GroupPersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             groups_path = Path(directory) / "groups.json"
             groups_path.write_text("not JSON", encoding="utf-8")
-            with patch.object(server_launcher, "_GROUPS_PATH", groups_path):
-                loaded = server_launcher._load_groups()
+            with patch.object(storage, "_GROUPS_PATH", groups_path):
+                loaded = storage._load_groups()
 
         self.assertEqual(loaded, {})
 
@@ -67,19 +67,19 @@ class GroupPersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             groups_path = Path(directory) / "groups.json"
             groups_path.write_bytes(b"\xff\xfe")
-            with patch.object(server_launcher, "_GROUPS_PATH", groups_path):
-                loaded = server_launcher._load_groups()
+            with patch.object(storage, "_GROUPS_PATH", groups_path):
+                loaded = storage._load_groups()
 
         self.assertEqual(loaded, {})
 
 
 class GroupTabTests(unittest.TestCase):
     def test_tab_switch_keeps_actions_before_list_and_refresh_on_servers(self) -> None:
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         for attribute in (
             "servers_tab_btn", "instances_tab_btn", "groups_tab_btn", "_instance_actions",
             "_instance_actions_row", "_kill_instances_button", "_refresh_button",
-            "_clear_closed_button", "_create_group_button", "sidebar_list",
+            "_clear_closed_button", "_restart_all_button", "_create_group_button", "sidebar_list",
             "_render_sidebar", "_render_server_detail", "_render_instance_detail",
             "_render_group_detail",
         ):
@@ -105,7 +105,7 @@ class GroupTabTests(unittest.TestCase):
 
     def test_select_group_sets_selection_and_renders_detail(self) -> None:
         """Catches a group click that leaves detail state out of sync."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         launcher._render_sidebar = Mock()
         launcher._render_group_detail = Mock()
 
@@ -120,7 +120,7 @@ class GroupManagementTests(unittest.TestCase):
     def test_dialog_rechecks_selected_instance_identity_and_liveness_on_save(self) -> None:
         for change in ("stopped", "removed", "replaced", "unchanged"):
             with self.subTest(change=change):
-                launcher = object.__new__(server_launcher.LauncherWindow)
+                launcher = object.__new__(window.LauncherWindow)
                 launcher.root = Mock()
                 live = SimpleNamespace(
                     template=SimpleNamespace(key="ai_agent"), port=9100, extra_env={},
@@ -130,12 +130,12 @@ class GroupManagementTests(unittest.TestCase):
                 launcher._save_group = Mock(return_value=True)
                 launcher._set_tab = Mock()
                 launcher._select_group = Mock()
-                with patch.multiple(server_launcher.tk, Toplevel=Mock(), Label=Mock(),
+                with patch.multiple(window.tk, Toplevel=Mock(), Label=Mock(),
                                     Entry=Mock(), Checkbutton=Mock(), Frame=Mock(),
                                     StringVar=Mock(return_value=Mock(get=Mock(return_value="Stack"))),
                                     BooleanVar=Mock(return_value=Mock(get=Mock(return_value=True)))), \
-                     patch.object(server_launcher, "RoundedButton") as button, \
-                     patch.object(server_launcher.messagebox, "showerror") as error:
+                     patch.object(window, "RoundedButton") as button, \
+                     patch.object(window.messagebox, "showerror") as error:
                     launcher._show_create_group_dialog()
                     save = next(call.kwargs["command"] for call in button.call_args_list
                                 if call.args[1] == "Save")
@@ -148,7 +148,7 @@ class GroupManagementTests(unittest.TestCase):
                     save()
                 if change == "unchanged":
                     launcher._save_group.assert_called_once_with(
-                        "Stack", [server_launcher.GroupMember("ai_agent", 9100)],
+                        "Stack", [models.GroupMember("ai_agent", 9100)],
                     )
                     error.assert_not_called()
                 else:
@@ -157,7 +157,7 @@ class GroupManagementTests(unittest.TestCase):
 
     def test_live_group_members_snapshot_only_running_instances(self) -> None:
         """Catches stopped instances or mutable env state leaking into a saved group."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         env = {"AI_AGENT_PROVIDER": "anthropic"}
         live = SimpleNamespace(
             template=SimpleNamespace(key="ai_agent"), port=9100, extra_env=env,
@@ -174,7 +174,7 @@ class GroupManagementTests(unittest.TestCase):
 
         self.assertEqual(
             members,
-            [server_launcher.GroupMember(
+            [models.GroupMember(
                 "ai_agent", 9100, {"AI_AGENT_PROVIDER": "anthropic"},
                 "--gateway openrouter", "OpenRouter",
             )],
@@ -182,13 +182,13 @@ class GroupManagementTests(unittest.TestCase):
 
     def test_save_group_replaces_existing_recipe_after_confirmation(self) -> None:
         """Catches replacement that mutates memory without saving the new recipe."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         launcher.root = Mock()
-        launcher.groups = {"Local stack": server_launcher.ServerGroup("Local stack", [])}
-        members = [server_launcher.GroupMember("ai_agent", 9100)]
+        launcher.groups = {"Local stack": models.ServerGroup("Local stack", [])}
+        members = [models.GroupMember("ai_agent", 9100)]
 
-        with patch.object(server_launcher.messagebox, "askyesno", return_value=True) as confirm, \
-             patch.object(server_launcher, "_save_groups") as save_groups:
+        with patch.object(window.messagebox, "askyesno", return_value=True) as confirm, \
+             patch.object(window, "_save_groups") as save_groups:
             saved = launcher._save_group("Local stack", members)
 
         self.assertTrue(saved)
@@ -198,14 +198,14 @@ class GroupManagementTests(unittest.TestCase):
 
     def test_save_group_keeps_existing_recipe_when_replacement_declined(self) -> None:
         """Catches a declined replacement overwriting a saved recipe anyway."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         launcher.root = Mock()
-        original = server_launcher.ServerGroup("Local stack", [server_launcher.GroupMember("old", 1)])
+        original = models.ServerGroup("Local stack", [models.GroupMember("old", 1)])
         launcher.groups = {"Local stack": original}
 
-        with patch.object(server_launcher.messagebox, "askyesno", return_value=False), \
-             patch.object(server_launcher, "_save_groups") as save_groups:
-            saved = launcher._save_group("Local stack", [server_launcher.GroupMember("new", 2)])
+        with patch.object(window.messagebox, "askyesno", return_value=False), \
+             patch.object(window, "_save_groups") as save_groups:
+            saved = launcher._save_group("Local stack", [models.GroupMember("new", 2)])
 
         self.assertFalse(saved)
         self.assertIs(launcher.groups["Local stack"], original)
@@ -213,18 +213,18 @@ class GroupManagementTests(unittest.TestCase):
 
     def test_delete_group_removes_recipe_without_stopping_live_instances(self) -> None:
         """Catches group deletion affecting the instances from which it was saved."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         launcher.root = Mock()
         launcher.active_tab = "groups"
         launcher.selected_group_name = "Local stack"
         live = Mock()
         launcher.instances = {"live": live}
-        launcher.groups = {"Local stack": server_launcher.ServerGroup("Local stack", [])}
+        launcher.groups = {"Local stack": models.ServerGroup("Local stack", [])}
         launcher._render_sidebar = Mock()
         launcher._render_group_detail = Mock()
 
-        with patch.object(server_launcher.messagebox, "askyesno", return_value=True), \
-             patch.object(server_launcher, "_save_groups") as save_groups:
+        with patch.object(window.messagebox, "askyesno", return_value=True), \
+             patch.object(window, "_save_groups") as save_groups:
             launcher._delete_group("Local stack")
 
         self.assertEqual(launcher.groups, {})
@@ -238,25 +238,25 @@ class GroupManagementTests(unittest.TestCase):
 class GroupStartTests(unittest.TestCase):
     def test_multi_member_preflight_blocks_every_launch_for_invalid_or_conflicting_members(self) -> None:
         for second_member in (
-            server_launcher.GroupMember("ai_agent", 9101, None),
-            server_launcher.GroupMember("ai_agent", "9101"),
-            server_launcher.GroupMember([], 9101),
-            server_launcher.GroupMember("ai_agent", 9100),
-            server_launcher.GroupMember("missing", 9101),
-            server_launcher.GroupMember("ai_agent", 9200),
+            models.GroupMember("ai_agent", 9101, None),
+            models.GroupMember("ai_agent", "9101"),
+            models.GroupMember([], 9101),
+            models.GroupMember("ai_agent", 9100),
+            models.GroupMember("missing", 9101),
+            models.GroupMember("ai_agent", 9200),
         ):
             with self.subTest(second_member=second_member):
-                launcher = object.__new__(server_launcher.LauncherWindow)
+                launcher = object.__new__(window.LauncherWindow)
                 launcher.root = Mock()
                 launcher.templates = [SimpleNamespace(key="ai_agent", display_name="AI Agent")]
-                launcher.groups = {"Stack": server_launcher.ServerGroup("Stack", [
-                    server_launcher.GroupMember("ai_agent", 9100), second_member,
+                launcher.groups = {"Stack": models.ServerGroup("Stack", [
+                    models.GroupMember("ai_agent", 9100), second_member,
                 ])}
                 launcher.instances = {}
                 launcher._wire_instance = Mock()
-                with patch.object(server_launcher, "_port_in_use", side_effect=lambda port: port == 9200), \
-                     patch.object(server_launcher, "Instance") as instance, \
-                     patch.object(server_launcher.messagebox, "showerror") as error:
+                with patch.object(window, "_port_in_use", side_effect=lambda port: port == 9200), \
+                     patch.object(window, "Instance") as instance, \
+                     patch.object(window.messagebox, "showerror") as error:
                     launcher._start_group("Stack")
                 instance.assert_not_called()
                 launcher._wire_instance.assert_not_called()
@@ -264,27 +264,27 @@ class GroupStartTests(unittest.TestCase):
                 error.assert_called_once()
 
     def test_preflight_reports_duplicate_ports_even_when_they_are_free(self) -> None:
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         launcher.templates = [SimpleNamespace(key="ai_agent", display_name="AI Agent")]
-        group = server_launcher.ServerGroup("Stack", [
-            server_launcher.GroupMember("ai_agent", 9100),
-            server_launcher.GroupMember("ai_agent", 9100),
+        group = models.ServerGroup("Stack", [
+            models.GroupMember("ai_agent", 9100),
+            models.GroupMember("ai_agent", 9100),
         ])
-        with patch.object(server_launcher, "_port_in_use", return_value=False):
+        with patch.object(window, "_port_in_use", return_value=False):
             self.assertEqual(launcher._group_start_issues(group), [
                 "Port 9100 is requested by more than one group member.",
             ])
 
     def test_group_preflight_lists_missing_templates_and_occupied_ports(self) -> None:
         """Catches a group launch proceeding despite every validation blocker."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         launcher.templates = [SimpleNamespace(key="ai_agent", display_name="AI Agent")]
-        group = server_launcher.ServerGroup("Stack", [
-            server_launcher.GroupMember("missing", 8000),
-            server_launcher.GroupMember("ai_agent", 9100),
+        group = models.ServerGroup("Stack", [
+            models.GroupMember("missing", 8000),
+            models.GroupMember("ai_agent", 9100),
         ])
 
-        with patch.object(server_launcher, "_port_in_use", side_effect=lambda port: port == 9100):
+        with patch.object(window, "_port_in_use", side_effect=lambda port: port == 9100):
             issues = launcher._group_start_issues(group)
 
         self.assertEqual(issues, [
@@ -294,26 +294,26 @@ class GroupStartTests(unittest.TestCase):
 
     def test_start_group_does_not_launch_when_preflight_fails(self) -> None:
         """Catches an invalid group partially launching before reporting its errors."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         launcher.root = Mock()
-        launcher.groups = {"Stack": server_launcher.ServerGroup("Stack", [])}
+        launcher.groups = {"Stack": models.ServerGroup("Stack", [])}
         launcher._group_start_issues = Mock(return_value=["Port 9100 is already in use."])
 
-        with patch.object(server_launcher, "Instance") as instance, \
-             patch.object(server_launcher.messagebox, "showerror"):
+        with patch.object(window, "Instance") as instance, \
+             patch.object(window.messagebox, "showerror"):
             launcher._start_group("Stack")
 
         instance.assert_not_called()
 
     def test_start_group_uses_each_saved_member_configuration_exactly(self) -> None:
         """Catches group starts changing a saved port or launch option."""
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         template = SimpleNamespace(key="ai_agent", display_name="AI Agent")
-        member = server_launcher.GroupMember(
+        member = models.GroupMember(
             "ai_agent", 9100, {"AI_AGENT_PROVIDER": "anthropic"},
             "--gateway openrouter", "OpenRouter",
         )
-        launcher.groups = {"Stack": server_launcher.ServerGroup("Stack", [member])}
+        launcher.groups = {"Stack": models.ServerGroup("Stack", [member])}
         launcher.templates = [template]
         launcher.instances = {}
         launcher.status = Mock()
@@ -323,7 +323,7 @@ class GroupStartTests(unittest.TestCase):
         launcher._select_instance = Mock()
         created = SimpleNamespace(id="ai_agent:9100:1")
 
-        with patch.object(server_launcher, "Instance", return_value=created) as instance:
+        with patch.object(window, "Instance", return_value=created) as instance:
             launcher._start_group("Stack")
 
         instance.assert_called_once_with(
@@ -339,8 +339,8 @@ class GroupStartTests(unittest.TestCase):
 class InstanceTests(unittest.TestCase):
     def test_instance_remembers_the_preset_used_to_start_it(self) -> None:
         template = SimpleNamespace(key="demo")
-        with patch.object(server_launcher.Instance, "_launch"):
-            instance = server_launcher.Instance(
+        with patch.object(instance_module.Instance, "_launch"):
+            instance = instance_module.Instance(
                 template, 8123, {}, "", preset_name="local development"
             )
 
@@ -349,7 +349,7 @@ class InstanceTests(unittest.TestCase):
 
 class ClearClosedInstancesTests(unittest.TestCase):
     def test_clear_closed_instances_removes_only_closed_entries_and_selection(self) -> None:
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         open_instance = SimpleNamespace(is_alive=lambda: True)
         closed_instance = SimpleNamespace(is_alive=lambda: False)
         launcher.instances = {"open": open_instance, "closed": closed_instance}
@@ -369,7 +369,7 @@ class ClearClosedInstancesTests(unittest.TestCase):
 
 class InstanceSidebarTests(unittest.TestCase):
     def test_sidebar_shows_only_the_port_when_instance_has_a_preset(self) -> None:
-        launcher = object.__new__(server_launcher.LauncherWindow)
+        launcher = object.__new__(window.LauncherWindow)
         instance = SimpleNamespace(
             id="demo:8123:1",
             template=SimpleNamespace(display_name="Demo"),
@@ -383,7 +383,7 @@ class InstanceSidebarTests(unittest.TestCase):
         launcher.instance_dots = {}
         launcher.sidebar_list = SimpleNamespace(winfo_children=lambda: [])
 
-        with patch.object(server_launcher, "RoundedCard") as card:
+        with patch.object(window, "RoundedCard") as card:
             launcher._render_sidebar()
 
         self.assertEqual(card.call_args.kwargs["secondary"], ":8123")

@@ -6,7 +6,7 @@ REM same time, override the env vars before calling this, e.g.:
 REM   set AI_AGENT_PROVIDER=openai
 REM   set AI_AGENT_PORT=9101
 REM   run.bat
-REM (server_launcher.py's per-instance flag editor does exactly this.)
+REM (server_launcher's per-instance flag editor does exactly this.)
 REM
 REM Extra args (e.g. --gateway openrouter) pass straight through to
 REM src.server - see its --help.

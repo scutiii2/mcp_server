@@ -173,7 +173,7 @@ A tool's return value is a Pydantic model, serialized by FastMCP as JSON — the
 | `ai_agent` (anthropic) | `run.bat` | `ai_agent/` (`.venv_ai_agent`, `py -m src.server`, default `AI_AGENT_PROVIDER=anthropic`/`:9100`) |
 | `ai_agent` (openai) | `run.bat` | `ai_agent/` (same venv; `set AI_AGENT_PROVIDER=openai` and `set AI_AGENT_PORT=9101` first) |
 | `chat_app` | `run.bat` | `chat_app/` (`.venv_chat`, `py -m src.run`) |
-| Desktop launcher | `python server_launcher.py` | repo root — Tkinter UI autodetecting every `<project>/run.bat`; start/stop/restart with live logs, port auto-assigned if taken |
+| Desktop launcher | `server_launcherun.bat` | repo root — Tkinter UI autodetecting every `<project>/run.bat`; start/stop/restart with live logs, port auto-assigned if taken |
 
 Each needs its own `secrets/*.env.example` and `configs/*.json.example` files copied and filled in before first run — see each service's own `README.md` and `secrets/README.md` / `configs/README.md`.
 

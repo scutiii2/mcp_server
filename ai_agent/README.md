@@ -45,7 +45,7 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
    ```
 
    Override `AI_AGENT_HOST` if you need a non-default bind address.
-   `server_launcher.py` (repo root) does the same thing per-instance
+   `server_launcher` (repo root) does the same thing per-instance
    through its own field editor, without needing to `set` anything by
    hand.
 

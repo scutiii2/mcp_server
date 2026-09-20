@@ -167,6 +167,6 @@ def create_app(config: dict | None = None) -> Flask:
 if __name__ == "__main__":
     flask_app = create_app()
     # CHAT_APP_PORT lets a second instance run alongside the default one
-    # (e.g. server_launcher.py's auto-assigned port when 5000 is taken) -
+    # (e.g. server_launcher's auto-assigned port when 5000 is taken) -
     # Flask's own run() has no env-var port lookup of its own.
     flask_app.run(port=int(os.getenv("CHAT_APP_PORT", "5000")), debug=True)

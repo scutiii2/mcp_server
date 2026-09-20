@@ -2,10 +2,6 @@
 
 Deferred items — not scheduled, revisit when the trigger condition below is met.
 
-## server_launcher folder structure (added 2026-09-14)
-
-Make `server_launcher`'s file structure match `chat_app`'s (package layout: `src/`, etc.) — still a standalone app, just not one god file (`server_launcher.py` currently holds everything).
-
 ## Catalog item descriptions (added 2026-09-14)
 
 Give each item found by the catalog its own description (catalog_service currently lacks per-item descriptions).
@@ -34,12 +30,4 @@ Give each item found by the catalog its own description (catalog_service current
 - Pre-existing (unrelated) test failures noticed while verifying this session's change, not caused by it — still open: `test_anthropic_provider_streaming.py` (3 tests, `_tool_schemas` lambda signature mismatch), `test_token_limits.py::test_weekly_limit_returns_time_until_oldest_usage_expires`, `test_agent_config.py` (3 tests) + `test_server.py` (2 tests) — all `token_saver` kwarg mismatch in test fakes vs. `server.py`'s `ask()` signature.
 
 **Revisit when**: continuing the token-optimization work — pick up at item 3.
-
-## server_launcher: show applied preset per running instance (added 2026-09-16)
-
-**Context**: `server_launcher.py`'s `Preset` (name, port, env_vars, args - see `_load_presets`/`_save_presets`) is applied to the launch-form fields (`apply_preset()`) before starting an instance, but the running `Instance` itself doesn't remember which preset (if any) it was started with.
-
-**Ask**: for each running instance, show which preset was selected when it was started - so the instance list/detail view names the preset instead of just port/template.
-
-**Revisit when**: implementing - likely needs `Instance` to carry a `preset_name: str | None`, set at start time (whatever currently calls `apply_preset()` / launches from the form should stash the active preset's name), and a small label added wherever running instances are rendered (`_adopt_running_instances`/instance list rendering).
 
