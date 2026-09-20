@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import datetime
 import subprocess
 import threading
 import time
@@ -11,6 +12,14 @@ from typing import Callable
 from .config import _POLL_MS, _RESTART_WAIT_SECONDS
 from .models import ServerTemplate
 from .processes import _ensure_venv, _kill_pid_tree, _pid_alive, _spawn
+
+
+class _TimestampedLog(collections.deque):
+    """Deque of log lines that prefixes each appended line with date and time."""
+
+    def append(self, line: str) -> None:
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        super().append(f"[{stamp}] {line}")
 
 
 class Instance:
@@ -27,7 +36,7 @@ class Instance:
         # trustworthy preset provenance. Self-started instances receive the
         # selected preset name from the server form instead.
         self.preset_name = preset_name
-        self.log_lines: collections.deque[str] = collections.deque(maxlen=4000)
+        self.log_lines: collections.deque[str] = _TimestampedLog(maxlen=4000)
         self.process: subprocess.Popen | None = None
         # Set only when this Instance wraps a process this window didn't
         # spawn itself (found already listening on a template's default

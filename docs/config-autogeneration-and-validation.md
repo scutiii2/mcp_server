@@ -94,6 +94,16 @@ Now, on every start, the protected account (`is_protected=True`) is updated from
 - Tests: `tests/test_bootstrap_admin.py`
   (`test_ensure_bootstrap_admin_updates_existing_admin_from_secrets_each_call`).
 
+## 6. server_launcher: timestamps in instance logs
+
+Every line in an instance's log pane is prefixed with the date and time, e.g.
+`[2026-09-21 14:03:07] Virtual environment ready.`
+
+`Instance.log_lines` (`server_launcher/src/instance.py`) is now a
+`_TimestampedLog`, a `deque` subclass that stamps each line on `append`. This
+covers server stdout, venv setup messages and restart notices. Lines already in
+the log before the change are not stamped.
+
 ## Known limitations
 
 - The tests `test_capabilities_page::test_try_tool_allowed_with_try_permission`,
