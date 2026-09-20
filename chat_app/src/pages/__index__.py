@@ -94,7 +94,7 @@ def register_pages(
         nav_pages = [
             p
             for p in all_pages
-            if p["name"] not in ("Overview", "Auth", *_ACCOUNT_MENU_PAGES) and _visible(p)
+            if p["name"] not in ("Overview", "Auth", "ConfigIssues", *_ACCOUNT_MENU_PAGES) and _visible(p)
         ]
         account_menu_pages = [
             p for p in all_pages if p["name"] in _ACCOUNT_MENU_PAGES and _visible(p)

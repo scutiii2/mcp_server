@@ -3,7 +3,13 @@
 Summary of the work done on `chat_app`, `ai_agent` and `mcp_server` so that a
 missing or invalid config/secret no longer crashes startup with an opaque traceback.
 
-Commits: `011b1e2`, `4c6ef5c`, `74f7506` (branch `home`).
+Commits (branch `home`): `011b1e2`, `4c6ef5c`, `74f7506` (sections 1-4),
+`bf884bc` (section 5), `49a66d4` (ConfigIssues hidden from Overview),
+`667096b` (section 6), `5f5cc60` (section 7). Section 8 and the ConfigIssues sidebar removal are in the
+latest commit (see `git log`).
+
+Later sections 5-8 go beyond config validation: they record follow-up changes
+made in the same working sessions.
 
 ## Problem
 
@@ -36,9 +42,9 @@ required (`SECRET_KEY`, `INTERNAL_API_TOKEN`, API keys) must still be filled in.
   is set. Messages contain file and key names only, never secret values.
 - `src/pages/ConfigIssues/` (`/configissues`) lists the issues as file / key /
   problem. The route is intentionally not login-gated, because a broken config can
-  make login unusable. `config.issues.view` only controls the nav link. The page
-  is hidden from the Overview tiles (`Overview/overview.html` skips
-  `ConfigIssues`) but still appears in the sidebar.
+  make login unusable. The page is excluded from `nav_pages` in
+  `pages/__index__.py`, so it appears in neither the sidebar nor the Overview
+  tiles; it is reached only through the guard redirect or its URL.
 - `install_config_guard()` adds a `before_request` hook: while any issue exists,
   every route redirects to `/configissues`. Exempt: that blueprint, `internal`,
   static files. Off when `TESTING` is set. Results are cached by file mtime, so
@@ -103,6 +109,37 @@ Every line in an instance's log pane is prefixed with the date and time, e.g.
 `_TimestampedLog`, a `deque` subclass that stamps each line on `append`. This
 covers server stdout, venv setup messages and restart notices. Lines already in
 the log before the change are not stamped.
+
+## 7. Deferred: terminal chat client `chat_cli/`
+
+Logged in `_TODO.md`, not built. A CLI that behaves like the chat_app web chat.
+
+- Talks directly to `ai_agent` / `mcp_server` (reusing the logic in
+  `chat_app/src/services/ai_agent_client.py` and `mcp_client.py`), not through
+  chat_app's HTTP API or login.
+- New top-level folder `chat_cli/`, laid out per the `root-project-scaffold` skill.
+- Features: token streaming, tool-call progress display, agent picker.
+- Trade-off: skips chat_app's auth, permissions, usage limits and stored chat
+  history. Attachments are out of scope.
+- Open questions: can `ai_agent_client.py` be shared instead of copied, and does
+  the CLI keep its own history.
+
+## 8. chat_app: auth page access rules
+
+In `chat_app/src/pages/Auth/__index__.py`:
+
+- `/auth/login` and `/auth/register` (GET and POST) redirect to `/` when the user
+  is already logged in.
+- `/auth/verify-email` and `/auth/verify-email/resend` need a logged-in account
+  whose email is not yet verified. Logged out redirects to `/auth/login`; already
+  verified redirects to `/`.
+- To make that work, `register` now logs the new account in
+  (`login_user`) before redirecting to `/auth/verify-email`, and the
+  `pending_verification_account_id` session key is gone. After a correct code the
+  user stays logged in and is sent to `/`.
+- Tests: `tests/test_auth_page.py`.
+- Not changed: `verify_credentials` does not check `email_verified`, so an
+  unverified user can still log in and use the rest of the app.
 
 ## Known limitations
 

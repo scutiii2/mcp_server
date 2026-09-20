@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_user, logout_user
 
 from src.models import Account, SecurityEvent, db
@@ -25,6 +25,8 @@ _FINGERPRINT_CONFIG_PATH = (
 
 @blueprint.route("/login", methods=["GET", "POST"])
 def login():
+    if current_user.is_authenticated:
+        return redirect("/")
     if request.method == "GET":
         return render_template("login.html", error=None)
 
@@ -66,6 +68,8 @@ def login():
 
 @blueprint.route("/register", methods=["GET", "POST"])
 def register():
+    if current_user.is_authenticated:
+        return redirect("/")
     if request.method == "GET":
         return render_template("register.html", error=None)
 
@@ -82,25 +86,24 @@ def register():
 
     verification, code = otp_service.create_email_verification(db.session, account)
     email_service.send_email_verification(account.email, code, verification.expires_at)
-    session["pending_verification_account_id"] = account.id
+    login_user(account)
     return redirect(url_for("auth.verify_email"))
 
 
-def _pending_verification_account() -> Account | None:
-    account_id = session.get("pending_verification_account_id")
-    if account_id is None:
-        return None
-    return db.session.get(Account, account_id)
+def _unverified_account_or_redirect():
+    """Verification pages need a logged-in account that is not yet verified."""
+    if not current_user.is_authenticated:
+        return None, redirect(url_for("auth.login"))
+    if current_user.email_verified:
+        return None, redirect("/")
+    return current_user, None
 
 
 @blueprint.route("/verify-email", methods=["GET", "POST"])
 def verify_email():
-    account = _pending_verification_account()
-    if account is None:
-        return redirect(url_for("auth.login"))
-    if account.email_verified:
-        session.pop("pending_verification_account_id", None)
-        return redirect(url_for("auth.login"))
+    account, blocked = _unverified_account_or_redirect()
+    if blocked is not None:
+        return blocked
 
     if request.method == "GET":
         return render_template("verify_email.html", email=account.email, error=None)
@@ -112,16 +115,15 @@ def verify_email():
 
     otp_service.consume_email_verification(db.session, verification)
     log_service.log_action(db.session, account, "auth.verify_email", "Email verified")
-    session.pop("pending_verification_account_id", None)
-    flash("Email verified — you can now log in")
-    return redirect(url_for("auth.login"))
+    flash("Email verified")
+    return redirect("/")
 
 
 @blueprint.route("/verify-email/resend", methods=["POST"])
 def resend_verification_email():
-    account = _pending_verification_account()
-    if account is None or account.email_verified:
-        return redirect(url_for("auth.login"))
+    account, blocked = _unverified_account_or_redirect()
+    if blocked is not None:
+        return blocked
 
     verification, code = otp_service.create_email_verification(db.session, account)
     email_service.send_email_verification(account.email, code, verification.expires_at)

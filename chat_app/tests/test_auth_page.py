@@ -293,7 +293,7 @@ def test_verify_email_with_correct_code_marks_account_verified(tmp_path):
     response = client.post("/auth/verify-email", data={"code": code})
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/auth/login"
+    assert response.headers["Location"] == "/"
     with app.app_context():
         assert db.session.query(Account).filter_by(username="verifyme").one().email_verified is True
 
@@ -310,7 +310,7 @@ def test_verify_email_with_wrong_code_fails(tmp_path):
         assert db.session.query(Account).filter_by(username="verifyme").one().email_verified is False
 
 
-def test_verify_email_page_requires_a_pending_registration(tmp_path):
+def test_verify_email_page_requires_login(tmp_path):
     app = _build_auth_test_app(tmp_path)
     client = app.test_client()
 
@@ -335,3 +335,54 @@ def test_resend_verification_issues_a_new_code(tmp_path):
     with app.app_context():
         after = db.session.query(otp_service.EmailVerificationOtp).filter_by(account_id=account.id).count()
         assert after == before + 1
+
+
+def test_login_and_register_redirect_home_when_already_logged_in(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+
+    with app.app_context():
+        db.session.add(
+            Account(
+                username="loggedin",
+                email="loggedin@example.com",
+                password_hash=generate_password_hash("correct-password"),
+            )
+        )
+        db.session.commit()
+
+    client = app.test_client()
+    client.post("/auth/login", data={"username": "loggedin", "password": "correct-password"})
+
+    for path in ("/auth/login", "/auth/register"):
+        for response in (client.get(path), client.post(path, data={})):
+            assert response.status_code == 302
+            assert response.headers["Location"] == "/"
+
+
+def test_verify_email_and_resend_redirect_home_when_already_verified(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _register(client, app=app)
+
+    with app.app_context():
+        account = db.session.query(Account).filter_by(username="verifyme").one()
+        account.email_verified = True
+        db.session.commit()
+
+    for response in (
+        client.get("/auth/verify-email"),
+        client.post("/auth/verify-email", data={"code": "x"}),
+        client.post("/auth/verify-email/resend"),
+    ):
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/"
+
+
+def test_resend_verification_requires_login(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+
+    response = client.post("/auth/verify-email/resend")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/auth/login"
