@@ -51,6 +51,7 @@ def ask(
     history: list[dict[str, Any]],
     enabled_extensions: list[str],
     request_id: str | None = None,
+    caveman: bool = False,
 ) -> dict[str, Any]:
     return asyncio.run(
         _call_tool(
@@ -61,6 +62,7 @@ def ask(
                 "history": history,
                 "enabled_extensions": enabled_extensions,
                 "request_id": request_id,
+                "caveman": caveman,
             },
         )
     )
@@ -72,6 +74,7 @@ async def ask_stream(
     history: list[dict[str, Any]],
     enabled_extensions: list[str],
     request_id: str | None = None,
+    caveman: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streaming sibling of ask() - same one-connection-per-call shape,
     but yields every step_start/step_end/token progress event live as it
@@ -100,7 +103,8 @@ async def ask_stream(
                             "history": history,
                             "enabled_extensions": enabled_extensions,
                             "request_id": request_id,
-                                    },
+                            "caveman": caveman,
+                        },
                         progress_callback=on_progress,
                     )
             if result.isError:

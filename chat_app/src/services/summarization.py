@@ -36,9 +36,9 @@ MAX_RECOMPRESS_ATTEMPTS = 2
 # (see __index__.py's _maybe_auto_summarize) transparently runs a
 # summarize_chat before the user's actual turn - conceptually the SAME
 # number as script.js's own CONTEXT_USAGE_THRESHOLD_RATIO (phase 1's bar
-# coloring), kept at the same 0.8 value by hand since Python and the
+# coloring), kept at the same 0.6 value by hand since Python and the
 # browser can't share one literal across that boundary.
-AUTO_SUMMARIZE_THRESHOLD_RATIO = 0.8
+AUTO_SUMMARIZE_THRESHOLD_RATIO = 0.6
 
 _CLAUDE_MODEL_PREFIX = "claude"
 

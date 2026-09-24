@@ -233,7 +233,7 @@ def test_chat_api_persists_chat_trace_log_entry_on_success(tmp_path, monkeypatch
     client = app.test_client()
     _login_as(client, account_id)
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         yield {"type": "final", "response": "hello back", "tools_used": ["server_note_lookup"], "tool_calls": [],
                "provider_id": "openai", "model": "gpt-5.6-sol", "total_tokens": 42,
                "context_tokens": 128, "context_window": 8192, "cancelled": False}
@@ -272,7 +272,7 @@ def test_chat_api_persists_the_times_messages_were_sent(tmp_path, monkeypatch):
     client = app.test_client()
     _login_as(client, account_id)
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         yield {"type": "final", "response": "hello back", "cancelled": False}
 
     with patch.object(chat_index.ai_agent_client, "ask_stream", fake_ask_stream):
@@ -296,7 +296,7 @@ def test_chat_api_saves_tool_steps_on_the_assistant_message(tmp_path, monkeypatc
     client = app.test_client()
     _login_as(client, account_id)
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         yield {"type": "step_start", "id": "1", "tool": "tool_server_list", "label": "Listing servers",
                "arguments": {"system_name": "s4h-demo"}}
         yield {"type": "step_end", "id": "1", "ok": True, "result": "x" * 5000}
@@ -330,7 +330,7 @@ def test_chat_api_relays_step_and_token_events_before_the_final_event(tmp_path, 
     client = app.test_client()
     _login_as(client, account_id)
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         yield {"type": "step_start", "id": "1", "tool": "tool_server_start", "label": "Checking server status",
                "arguments": {"system_name": "s4e"}}
         yield {"type": "step_end", "id": "1", "ok": True, "result": "RUNNING at 42%"}
@@ -372,7 +372,7 @@ def test_chat_api_unexpected_error_produces_log_entry_and_safe_response(tmp_path
     client = app.test_client()
     _login_as(client, account_id)
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         yield {"type": "error", "message": "boom", "unplanned": True}
 
     with patch.object(chat_index.ai_agent_client, "ask_stream", fake_ask_stream):
@@ -393,7 +393,7 @@ def test_chat_api_agent_tool_error_shown_verbatim(tmp_path, monkeypatch):
     client = app.test_client()
     _login_as(client, account_id)
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         yield {"type": "error", "message": "claude is rate-limited right now - try again in 42s"}
 
     with patch.object(chat_index.ai_agent_client, "ask_stream", fake_ask_stream):
@@ -468,7 +468,7 @@ def test_chat_api_non_command_input_asks_the_configured_agent(tmp_path, monkeypa
     # instead of via assert_called_once()/call_args.
     calls = []
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         calls.append(url)
         yield {"type": "final", "response": "hi back", "tools_used": [], "tool_calls": [],
                "provider_id": "openai", "model": "gpt-5.6-sol", "total_tokens": None, "cancelled": False}
@@ -516,7 +516,7 @@ def test_chat_api_auto_summarizes_before_send_when_threshold_crossed(tmp_path, m
     ask_results = [turn1_result, turn2_result]
     ask_calls = []
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         ask_calls.append(history)
         yield {"type": "final", **ask_results[len(ask_calls) - 1]}
 
@@ -599,7 +599,7 @@ def test_chat_api_auto_summarize_fires_again_on_a_second_threshold_crossing(tmp_
     # ask_stream is a plain async-generator function, not a MagicMock.
     ask_call_count = [0]
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         index = ask_call_count[0]
         ask_call_count[0] += 1
         yield {"type": "final", **ask_results[index]}
@@ -642,7 +642,7 @@ def test_chat_api_cancelled_result_shows_cancelled_message_without_error_logging
     client = app.test_client()
     _login_as(client, account_id)
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         yield {"type": "final", "response": "⏹️ Cancelled.", "cancelled": True}
 
     with patch.object(chat_index.ai_agent_client, "ask_stream", fake_ask_stream):
@@ -992,7 +992,7 @@ def test_chat_api_llm_history_excludes_log_attachment_messages(tmp_path, monkeyp
     ]
     calls = []
 
-    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None):
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
         calls.append(history)
         yield {"type": "final", "response": "hi back", "tools_used": [], "tool_calls": [],
                "provider_id": "openai", "model": "gpt-5.6-sol", "total_tokens": None, "cancelled": False}
@@ -1712,3 +1712,24 @@ def test_param_options_api_requires_the_placeholder_argument(tmp_path, monkeypat
 
     assert response.status_code == 400
     fetch.assert_not_called()
+
+
+def test_chat_api_counts_delegated_agents_toward_the_usage_limit(tmp_path, monkeypatch):
+    app = _build_chat_test_app(tmp_path, monkeypatch)
+    account_id = _create_account(app, "delegator", ["chat.access"])
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    async def fake_ask_stream(url, question, history, enabled_extensions, request_id=None, caveman=False):
+        yield {"type": "final", "response": "ok", "tools_used": [], "tool_calls": [],
+               "provider_id": "openai", "model": "gpt", "total_tokens": 40, "cancelled": False,
+               "agent_usage": [
+                   {"provider_id": "openai", "model": "gpt", "total_tokens": 40},
+                   {"provider_id": "anthropic", "model": "claude", "total_tokens": 25},
+               ]}
+
+    with patch.object(chat_index.ai_agent_client, "ask_stream", fake_ask_stream), \
+         patch.object(chat_index.usage_limits, "record_usage") as record_usage:
+        client.post("/chat/api/chat", json={"question": "hi", "history": []})
+
+    assert sum(c.args[2] for c in record_usage.call_args_list) == 65

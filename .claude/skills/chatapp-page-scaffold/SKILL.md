@@ -139,28 +139,6 @@ the client side: `res.body.getReader()` + `TextDecoder`, splitting on
 `\n\n` frame boundaries, dispatching on each event's `type`. Copy this
 pattern rather than reinventing SSE framing for a new page.
 
-## A page action that changes mcp_server state (Watchers' recipients)
-
-`Watchers/` began read-only and now has one write action, the Recipients
-column's Edit button - copy it for a similar "edit a per-row setting" need:
-
-- **A separate permission for the write.** Reading stays `watchers.view`; the
-  `POST /watchers/api/recipients` route is gated by its own
-  `register_permission("watchers.manage")` + `@require_permission("watchers.manage")`,
-  so viewing a page never implies changing it. Tell the user who to grant it to, or
-  the button just returns 403.
-- **The route only forwards.** It validates the shape (`capability`,
-  `system_name`, ...), picks the mcp_server tool (a capability's `tool_<alias>_setWatcherRecipients`) and calls it through `_call_tool_json`; address
-  validation and the "new recipient gets a status email" side effect stay in
-  mcp_server, and the tool's own message is what the page shows.
-- **Client side.** The row carries what identifies its target in `data-*`
-  attributes (`data-system-label`, `data-job-name`, ...); one delegated click handler
-  per table body reads them, `window.prompt`s for the value, POSTs JSON, then re-runs
-  the page's refresh function. Escape everything you put in `innerHTML`
-  (`escapeHtml`) - recipient addresses are user input.
-- **Refresh interval.** The 15 s auto-refresh re-renders the table body, so any
-  open edit UI must be modal/blocking (a prompt is) or it is lost mid-edit.
-
 ## Logging
 
 chat_app's logger factory is `src.utils.logging_setup.get_logger(__name__)` — a daily-rotating file logger writing to `logs/{MM}{DD}{YYYY}.txt` (see `chat_app/src/utils/README.md`). Get one logger per module at import time and log where something worth knowing happens — auth failures, external service calls, unexpected errors — not per-request boilerplate. This is a different mechanism from `mcp_server`'s root-logger setup (`configure_logging()`); the two apps deliberately don't share logging code (separate venvs — same convention as the rest of this repo's per-app duplication), so don't import one app's `logging_setup` from the other.

@@ -41,7 +41,7 @@ from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI, RateLimit
 
 from src import delegation
 from src.llm import cancellation, cooldown, llm_config, token_limits
-from src.llm.agent_roles import SYSTEM_PROMPT
+from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
     BaseProvider, ChatCancelled, ChatResult, LiveUsage, OnEvent, ToolCallRecord, dispatch_with_progress, step_event,
 )
@@ -260,11 +260,12 @@ async def run_chat(
     request_id: str | None = None,
     depth: int = 0,
     on_event: OnEvent | None = None,
+    caveman: bool = False,
 ) -> ChatResult:
     client = _get_client()
     model_name = model or DEFAULT_MODEL
     history = token_limits.trim_history_to_fit(history, PROVIDER_ID, _limit_gateway())
-    messages: list[Any] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    messages: list[Any] = [{"role": "system", "content": system_prompt_for(caveman)}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
@@ -278,6 +279,8 @@ async def run_chat(
     # never reported usage should say "unknown" (see ChatResult.total_tokens),
     # not "zero tokens".
     total_tokens: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
     meter = LiveUsage(on_event)
     # The full prompt just sent (all resent history), not a sum across
     # rounds like total_tokens - overwritten each round rather than
@@ -311,6 +314,12 @@ async def run_chat(
             round_tokens = getattr(usage, "total_tokens", None) if usage is not None else None
             if round_tokens is not None:
                 total_tokens = (total_tokens or 0) + round_tokens
+            round_input = getattr(usage, "input_tokens", None) if usage is not None else None
+            if round_input is not None:
+                input_tokens = (input_tokens or 0) + round_input
+            round_output = getattr(usage, "output_tokens", None) if usage is not None else None
+            if round_output is not None:
+                output_tokens = (output_tokens or 0) + round_output
             await meter.round_done(round_tokens)
             context_tokens = getattr(usage, "input_tokens", None) if usage is not None else None
 
@@ -324,6 +333,8 @@ async def run_chat(
                     model=model_name,
                     total_tokens=total_tokens,
                     context_tokens=context_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
 
             if text_parts and on_event:
@@ -364,6 +375,8 @@ async def run_chat(
         model=model_name,
         total_tokens=total_tokens,
         context_tokens=context_tokens,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
 
 

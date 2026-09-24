@@ -121,3 +121,21 @@ def test_call_tool_raises_plain_exception_on_iserror_result():
             raise AssertionError("expected RuntimeError")
         except RuntimeError as error:
             assert "rate-limited" in str(error)
+
+
+def test_call_reports_the_delegates_agent_usage_to_the_bound_sink(monkeypatch):
+    usage = [{"provider_id": "openai", "model": "gpt", "input_tokens": 5, "output_tokens": 2, "total_tokens": 7}]
+
+    async def fake_call_tool(url, name, arguments):
+        return {"response": "sub-answer", "agent_usage": usage}
+
+    monkeypatch.setattr(delegation, "_call_tool", fake_call_tool)
+    monkeypatch.setattr(delegation.agent_registry, "get_agent", lambda agent_id: {"url": "http://x/mcp"})
+
+    sink, token = delegation.bind_usage()
+    try:
+        assert delegation.call("other", "q", 0) == "sub-answer"
+    finally:
+        delegation.reset_usage(token)
+
+    assert sink == usage

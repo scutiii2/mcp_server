@@ -9,8 +9,7 @@ fetch in `index()` - see `script.js`'s `refreshWatchers()`).
 
 A capability with watchers exposes a tool-only tool named
 `tool_<alias>_listWatchers` returning `{"watchers": [...]}` (each row: `key`,
-`phase`, `started_at`, `last_polled_at`, `detail`, `recipients`), and
-optionally `tool_<alias>_setWatcherRecipients(key, recipients)`.
+`phase`, `started_at`, `last_polled_at`, `detail`, `recipients`).
 `GET /watchers/api/watchers` finds every `listWatchers` tool in the live tool
 catalog, calls each and tags rows with their `capability` alias, so a new
 capability's watchers appear here with no chat_app change. A capability that
@@ -22,12 +21,11 @@ breaking the page.
 One table: **Watcher** (key, capability alias, expandable `detail`),
 **Status** (`running` "Running", `completed` "Success",
 `failed`/`timed_out` "Failed"), **Duration** (elapsed, started/finished
-times) and **Recipients** with an Edit button. Client-side filters (all run
+times) and **Recipients** (read-only). Client-side filters (all run
 on the already-fetched array): capability chips (built from the data),
 status chips, started-from/until range, and a text search. The table
 refreshes every 15s.
 
-Viewing is gated by `watchers.view`. Editing recipients
-(`POST /watchers/api/recipients` with `capability`, `key`, `recipients`) is
-gated by `watchers.manage` and calls that capability's
+Viewing is gated by `watchers.view`. Recipients cannot be edited here; they
+are set on the mcp_server side through the capability's
 `tool_<alias>_setWatcherRecipients`.

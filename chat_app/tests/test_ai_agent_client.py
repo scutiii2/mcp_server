@@ -36,6 +36,7 @@ def test_ask_calls_the_ask_tool_with_every_field():
         "history": [{"role": "user", "content": "prior"}],
         "enabled_extensions": ["reference"],
         "request_id": "req-1",
+        "caveman": False,
     }
     assert result["response"] == "hi"
 

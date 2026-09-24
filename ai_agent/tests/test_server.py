@@ -26,6 +26,8 @@ def test_ask_returns_the_result_shape_chat_app_expects():
             model="claude-sonnet-5",
             total_tokens=42,
             context_tokens=30,
+            input_tokens=30,
+            output_tokens=12,
         )
         fake_status = {"model": "claude-sonnet-5", "context_window": 200_000}
         with patch("src.server.agent_config.run_chat", new_callable=AsyncMock, return_value=fake_result) as fake_run_chat, \
@@ -47,6 +49,9 @@ def test_ask_returns_the_result_shape_chat_app_expects():
             "tools_used": ["get_status_tool"],
             "tool_calls": [{"name": "get_status_tool", "arguments": {}, "result": "ok"}],
             "total_tokens": 42,
+            "agent_usage": [{"provider_id": "anthropic", "model": "claude-sonnet-5", "input_tokens": 30, "output_tokens": 12, "total_tokens": 42}],
+            "input_tokens": 30,
+            "output_tokens": 12,
             "context_tokens": 30,
             "context_window": 200_000,
             "provider_id": "anthropic",
@@ -97,7 +102,7 @@ def test_ask_relays_events_via_ctx_report_progress():
     0/None - chat_app cares only about the message payload, not a
     percentage), and pass it through to run_chat as on_event=..."""
     async def _run():
-        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None):
+        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False):
             await on_event({"type": "step_start", "id": "1", "tool": "x"})
             return ChatResult(response="done")
 
@@ -121,7 +126,7 @@ def test_ask_on_event_is_a_noop_without_ctx():
     client that doesn't support progress), on_event must not blow up -
     it should just do nothing."""
     async def _run():
-        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None):
+        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False):
             await on_event({"type": "step_start", "id": "1", "tool": "x"})
             return ChatResult(response="done")
 

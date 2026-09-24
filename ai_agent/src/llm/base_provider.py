@@ -132,6 +132,11 @@ class ChatResult:
     model: str = ""
     total_tokens: int | None = None
     context_tokens: int | None = None
+    # Sums across every round of the turn, like total_tokens.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    # Usage of every agent this turn delegated to; own usage is not repeated here.
+    delegated_usage: list[dict[str, Any]] = field(default_factory=list)
 
 
 @catalog

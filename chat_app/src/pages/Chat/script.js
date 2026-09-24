@@ -252,6 +252,21 @@ function parseDownloadMarkers(text) {
   return { mainText, downloads };
 }
 
+// The streamed text is shown as it arrives, so a marker being typed out
+// ("[[DOWNLOAD filename=...") would flash as raw text until it completes.
+// Hide complete markers and any unfinished one at the tail; the finished
+// reply turns them into download cards (renderReplyBody()).
+function hideDownloadMarkers(text) {
+  const complete = text.replace(DOWNLOAD_MARKER_RE, '');
+  const open = complete.lastIndexOf('[[');
+  if (open === -1) return complete;
+  const tail = complete.slice(open);
+  if (tail.includes(']]')) return complete;
+  return '[[DOWNLOAD'.startsWith(tail) || tail.startsWith('[[DOWNLOAD')
+    ? complete.slice(0, open).trimEnd()
+    : complete;
+}
+
 function formatFileSize(bytes) {
   if (!bytes) return '';
   if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
@@ -269,8 +284,27 @@ function buildDownloadAttachment(download) {
   chip.className = 'msg-log-chip';
   chip.href = download.url;
   chip.textContent = `⬇ Download ${download.filename}${download.bytes ? ` (${formatFileSize(download.bytes)})` : ''}`;
+  chip.title = chip.textContent;
   attachment.appendChild(chip);
   return attachment;
+}
+
+// Renders an assistant reply into a bubble that already exists (the one the
+// stream was typing into): Markdown for the text, and each [[DOWNLOAD ...]]
+// marker as a download card right after it - the same result appendMsg()
+// gives a reply loaded from history, so a download button appears the moment
+// the reply finishes, not after a reload.
+function renderReplyBody(wrap, text) {
+  const { mainText, downloads } = parseDownloadMarkers(text);
+  const content = ensureMsgContent(wrap);
+  renderMarkdown(content, mainText);
+  wrap.querySelectorAll(':scope > .msg-download-attachment').forEach(el => el.remove());
+  let anchor = content;
+  downloads.forEach(download => {
+    const card = buildDownloadAttachment(download);
+    anchor.after(card);
+    anchor = card;
+  });
 }
 
 function toggleChatHistorySelectionMode() {
@@ -1182,7 +1216,7 @@ function formatCommandTimerText(ms, aiUsed, totalTokens, modelLabel) {
 // phase 1 - the same constant a later auto-summarize trigger and /clear
 // warning would read, so all three stay in lockstep rather than three
 // independently-tuned numbers drifting apart.
-const CONTEXT_USAGE_THRESHOLD_RATIO = 0.8;
+const CONTEXT_USAGE_THRESHOLD_RATIO = 0.6;
 
 // Renders the "context used / limit" bar in .toprow from the last turn's
 // context_tokens/context_window (see chat_api's assistant_entry / a
@@ -1197,6 +1231,50 @@ const CONTEXT_USAGE_THRESHOLD_RATIO = 0.8;
 // ring still renders, unfilled/grey, rather than disappearing, so the
 // dropdown always has a same-row counterpart. Only hides when the window
 // itself is unknown (no provider selected/reachable yet).
+// Per-agent input/output/total tokens for this chat, summed from each
+// assistant turn's saved provider_id/model and usage. Turns a provider never
+// reported usage for (or command turns without AI) add nothing.
+function renderAgentTokenBreakdown() {
+  const totals = new Map();
+  for (const turn of history) {
+    if (turn.role !== 'assistant' || !turn.provider_id) continue;
+    // agent_usage lists this turn's own agent plus every delegated one;
+    // turns saved before it existed fall back to their own single reading.
+    const entries = Array.isArray(turn.agent_usage) && turn.agent_usage.length
+      ? turn.agent_usage : [turn];
+    for (const entry of entries) {
+      if (!entry.provider_id) continue;
+      const label = modelLabel(entry.provider_id, entry.model);
+      const row = totals.get(label) || { input: 0, output: 0, total: 0 };
+      row.input += entry.input_tokens || 0;
+      row.output += entry.output_tokens || 0;
+      row.total += entry.total_tokens || 0;
+      totals.set(label, row);
+    }
+  }
+  const list = document.getElementById('context-usage-agents-list');
+  list.replaceChildren();
+  if (!totals.size) {
+    const empty = document.createElement('div');
+    empty.className = 'context-usage-popover-note';
+    empty.textContent = 'No agent usage yet in this chat.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const [label, row] of totals) {
+    const line = document.createElement('div');
+    line.className = 'context-usage-popover-row';
+    const name = document.createElement('span');
+    name.className = 'context-usage-popover-label';
+    name.textContent = label;
+    const value = document.createElement('span');
+    value.className = 'context-usage-popover-value';
+    value.textContent = `${row.input.toLocaleString()} in / ${row.output.toLocaleString()} out (${row.total.toLocaleString()})`;
+    line.append(name, value);
+    list.appendChild(line);
+  }
+}
+
 function updateContextUsage(contextTokens, contextWindow) {
   const el = document.getElementById('context-usage');
   const ring = document.getElementById('context-usage-btn');
@@ -1235,6 +1313,10 @@ function updateContextUsage(contextTokens, contextWindow) {
   document.getElementById('context-usage-popover-value').textContent = known
     ? `${contextTokens.toLocaleString()} / ${contextWindow.toLocaleString()} (${pct}%)`
     : `– / ${contextWindow.toLocaleString()}`;
+  const fmtTokens = (n) => (typeof n === 'number' ? n.toLocaleString() : '–');
+  document.getElementById('context-usage-io-input').textContent = fmtTokens(lastTurnIo.input);
+  document.getElementById('context-usage-io-output').textContent = fmtTokens(lastTurnIo.output);
+  renderAgentTokenBreakdown();
   document.getElementById('context-usage-popover-bar-fill').style.width = known ? `${(ratio * 100).toFixed(1)}%` : '0%';
   document.getElementById('context-usage-popover-note').textContent = !known
     ? 'This provider has not reported token usage yet - showing its context window only.'
@@ -1251,6 +1333,9 @@ function updateContextUsage(contextTokens, contextWindow) {
 // re-deriving it from scratch at every call site.
 let lastContextTokens = null;
 let lastContextWindow = null;
+// Input/output tokens summed over the last turn (all tool rounds); shown in
+// the context popover next to the context-window reading.
+let lastTurnIo = { input: null, output: null };
 
 function contextUsageFallbackWindow() {
   const provider = providersById[document.getElementById('provider').value];
@@ -1268,11 +1353,38 @@ function refreshContextUsage() {
 // Shared 6-hour / weekly token usage (GET /api/usage), shown under the
 // context bar in the same popover. Fetched on open and after each turn.
 function formatUsageReset(iso) {
-  if (!iso) return 'No usage in this window.';
+  if (!iso) return 'No usage';
   const mins = Math.max(0, Math.round(((typeof iso === 'number' ? iso * 1000 : new Date(iso).getTime()) - Date.now()) / 60000));
   const text = mins >= 1440 ? `${Math.floor(mins / 1440)}d ${Math.floor((mins % 1440) / 60)}h`
     : mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
-  return `Oldest usage drops off in ${text}.`;
+  return `Frees up in ${text}`;
+}
+
+// Sidebar "Usage" panel: session (6h) and weekly limit bars plus the
+// calendar month's total and top agents, from the same /api/usage payload.
+function renderSidebarUsage(data) {
+  const pct = (w) => (w.limit > 0 ? Math.min(w.used / w.limit, 1) : 0);
+  for (const [key, id] of [['six_hour', 'session'], ['weekly', 'week']]) {
+    const ratio = pct(data[key]);
+    document.getElementById(`sidebar-usage-${id}-pct`).textContent = `${Math.round(ratio * 100)}% used`;
+    const fill = document.getElementById(`sidebar-usage-${id}-fill`);
+    fill.style.width = `${(ratio * 100).toFixed(1)}%`;
+    fill.classList.toggle('is-full', ratio >= 1);
+    document.getElementById(`sidebar-usage-${id}-reset`).textContent = formatUsageReset(data[key].reset_at);
+  }
+  document.getElementById('sidebar-usage-month').textContent = `${data.month.used.toLocaleString()} tokens`;
+  const agents = document.getElementById('sidebar-usage-agents');
+  agents.replaceChildren();
+  for (const row of data.month.top_agents || []) {
+    const line = document.createElement('div');
+    line.className = 'usage-table-row';
+    const name = document.createElement('span');
+    name.textContent = `${row.agent} ${row.model || ''}`.trim();
+    const value = document.createElement('span');
+    value.textContent = row.tokens.toLocaleString();
+    line.append(name, value);
+    agents.appendChild(line);
+  }
 }
 
 async function refreshTokenUsage() {
@@ -1290,6 +1402,7 @@ async function refreshTokenUsage() {
       fill.classList.toggle('is-full', ratio >= 1);
       document.getElementById(`usage-${id}-reset`).textContent = formatUsageReset(w.reset_at);
     }
+    renderSidebarUsage(data);
   } catch (_) { /* popover keeps last values */ }
 }
 
@@ -1315,6 +1428,32 @@ async function refreshTokenUsage() {
   });
   document.addEventListener('click', (e) => {
     if (!popover.classList.contains('hidden') && !popover.contains(e.target) && e.target !== btn) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
+})();
+
+(function initSidebarUsage() {
+  const btn = document.getElementById('sidebar-usage-btn');
+  const panel = document.getElementById('sidebar-usage-panel');
+  if (!btn || !panel) return;
+  function close() {
+    panel.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+  }
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (panel.classList.contains('hidden')) {
+      panel.classList.remove('hidden');
+      btn.setAttribute('aria-expanded', 'true');
+      refreshTokenUsage();
+    } else {
+      close();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!panel.classList.contains('hidden') && !panel.contains(e.target) && e.target !== btn) close();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') close();
@@ -1442,7 +1581,7 @@ async function startChatJob(question) {
         question, history: launch.priorHistory, provider: selectedProvider,
         model: selectedModel.classList.contains('hidden') ? null : selectedModel.value,
         enabled_extensions: currentEnabledExtensions(), chat_id: originalId,
-        request_id: requestId, background: true,
+        request_id: requestId, background: true, caveman: cavemanEnabled(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -1557,7 +1696,7 @@ function createLiveReply(state) {
       } else if (event.type === 'token') {
         thinking.remove();
         if (!wrap) wrap = appendMsg('assistant', '', new Date().toISOString());
-        renderMarkdown(ensureMsgContent(wrap), state.streamText);
+        renderMarkdown(ensureMsgContent(wrap), hideDownloadMarkers(state.streamText));
         document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
       } else if (event.type === 'final' || event.type === 'error') {
         dispose();
@@ -1570,19 +1709,20 @@ function createLiveReply(state) {
           const role = event.kind === 'command' ? 'command' : 'assistant';
           if (wrap && event.kind === 'command') { wrap.remove(); wrap = null; }
           if (!wrap) wrap = appendMsg(role, event.response, new Date().toISOString());
-          else renderMarkdown(ensureMsgContent(wrap), event.response);
+          else renderReplyBody(wrap, event.response);
           const elapsed = typeof event.elapsed_seconds === 'number' ? event.elapsed_seconds * 1000 : Date.now() - started;
           timer.textContent = event.kind === 'command'
             ? formatCommandTimerText(elapsed, event.ai_used, event.total_tokens, modelLabel(event.provider_id, event.model))
             : formatTimerText(elapsed, event.total_tokens, modelLabel(event.provider_id, event.model), event.recursive_rounds);
           wrap.appendChild(timer);
           const turn = { role: 'assistant', content: event.response };
-          for (const field of ['kind', 'ai_used', 'elapsed_seconds', 'provider_id', 'model', 'total_tokens', 'context_tokens', 'context_window', 'recursive_rounds']) {
+          for (const field of ['kind', 'ai_used', 'elapsed_seconds', 'provider_id', 'model', 'total_tokens', 'context_tokens', 'input_tokens', 'output_tokens', 'agent_usage', 'context_window', 'recursive_rounds']) {
             if (event[field] !== undefined && event[field] !== null) turn[field] = event[field];
           }
           history.push(turn);
           state.history = history.slice();
           lastContextTokens = typeof event.context_tokens === 'number' ? event.context_tokens : null;
+          lastTurnIo = { input: event.input_tokens, output: event.output_tokens };
           lastContextWindow = typeof event.context_window === 'number' ? event.context_window : null;
           refreshContextUsage();
           refreshTokenUsage();
@@ -2210,6 +2350,7 @@ async function loadChat(chatId, generation = chatViewGeneration) {
     // module-level lastContextTokens/lastContextWindow, not a shadowing
     // local, so later provider switches still see this chat's reading.
     lastContextTokens = null;
+    lastTurnIo = { input: null, output: null };
     lastContextWindow = null;
     chat.messages.forEach((message) => {
       const displayRole = message.kind === 'command' ? 'command'
@@ -2236,11 +2377,15 @@ async function loadChat(chatId, generation = chatViewGeneration) {
         if (message.model) turn.model = message.model;
         if (typeof message.total_tokens === 'number') turn.total_tokens = message.total_tokens;
         if (typeof message.context_tokens === 'number') turn.context_tokens = message.context_tokens;
+        if (typeof message.input_tokens === 'number') turn.input_tokens = message.input_tokens;
+        if (typeof message.output_tokens === 'number') turn.output_tokens = message.output_tokens;
+        if (Array.isArray(message.agent_usage)) turn.agent_usage = message.agent_usage;
         if (typeof message.context_window === 'number') turn.context_window = message.context_window;
         if (message.recursive_rounds) turn.recursive_rounds = message.recursive_rounds;
         if (typeof message.context_tokens === 'number' && typeof message.context_window === 'number') {
           lastContextTokens = message.context_tokens;
           lastContextWindow = message.context_window;
+          lastTurnIo = { input: message.input_tokens, output: message.output_tokens };
         }
         if (typeof message.elapsed_seconds === 'number' && wrap) {
           const text = message.kind === 'command'
@@ -2299,6 +2444,7 @@ async function openChat(chatId, { reload = false, navigation = reload ? 'none' :
   lastUsedProviderId = null;
   lastUsedModelId = null;
   lastContextTokens = null;
+  lastTurnIo = { input: null, output: null };
   lastContextWindow = null;
   exitHistoryRecall(false);
   document.getElementById('q').value = '';
@@ -3033,6 +3179,7 @@ document.getElementById('provider').addEventListener('change', () => {
   // selected. Falls straight back to the newly-selected provider's bare
   // context_window until its own next real turn reports usage.
   lastContextTokens = null;
+  lastTurnIo = { input: null, output: null };
   lastContextWindow = null;
   refreshContextUsage();
 });
@@ -3045,6 +3192,21 @@ document.querySelector('.sidebar-new-chat-btn').addEventListener('click', event 
 });
 document.getElementById('chat-history-select-btn').addEventListener('click', showManageChats);
 document.getElementById('ext-toggle-btn').addEventListener('click', toggleExtPanel);
+
+// Caveman mode: terse AI replies. Sent with every chat request; the flag
+// lives only in the browser (localStorage) - the server keeps no state.
+const CAVEMAN_STORAGE_KEY = 'chat.caveman';
+function cavemanEnabled() {
+  return localStorage.getItem(CAVEMAN_STORAGE_KEY) === '1';
+}
+function renderCavemanToggle() {
+  document.getElementById('caveman-toggle-btn').setAttribute('aria-pressed', String(cavemanEnabled()));
+}
+document.getElementById('caveman-toggle-btn').addEventListener('click', () => {
+  localStorage.setItem(CAVEMAN_STORAGE_KEY, cavemanEnabled() ? '0' : '1');
+  renderCavemanToggle();
+});
+renderCavemanToggle();
 document.getElementById('ext-close-btn').addEventListener('click', closeExtPanel);
 document.getElementById('ext-overlay').addEventListener('click', closeExtPanel);
 document.getElementById('ext-add-form').addEventListener('submit', submitAddExtension);

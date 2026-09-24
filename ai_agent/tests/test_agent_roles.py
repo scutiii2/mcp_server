@@ -107,3 +107,12 @@ def test_ops_specialist_role_prepends_persona(monkeypatch):
     assert system_prompt == (
         "You are an ops specialist.\n\nUse tools. Confirm before destructive actions."
     )
+
+
+def test_system_prompt_for_appends_caveman_instructions_only_when_asked():
+    from src.llm import agent_roles
+
+    assert agent_roles.system_prompt_for(False) == agent_roles.SYSTEM_PROMPT
+    on = agent_roles.system_prompt_for(True)
+    assert on.startswith(agent_roles.SYSTEM_PROMPT)
+    assert agent_roles.CAVEMAN_INSTRUCTIONS in on

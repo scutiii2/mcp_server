@@ -121,6 +121,7 @@ async def ask(
     enabled_extensions: list[str] | None = None,
     request_id: str | None = None,
     depth: int = 0,
+    caveman: bool = False,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
@@ -129,6 +130,8 @@ async def ask(
     cooperatively before its next round. depth is set only by a
     delegating peer's own delegate_to_agent call (see delegation.py) -
     chat_app never sets it, so it defaults to 0 for every top-level call.
+    caveman appends terse-reply instructions to the system prompt for this
+    turn only.
     ctx, if the MCP client requested it, is FastMCP's injected Context -
     used below only to relay run_chat's live step/token events as MCP
     progress notifications; chat_app's own tool call never needs to pass
@@ -147,7 +150,7 @@ async def ask(
     try:
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
-            on_event=on_event,
+            on_event=on_event, caveman=caveman,
         )
     except ChatCancelled:
         return _cancelled_result()
@@ -158,6 +161,20 @@ async def ask(
             {"name": c.name, "arguments": c.arguments, "result": c.result} for c in result.tool_calls
         ],
         "total_tokens": result.total_tokens,
+        # Own usage first, then every delegated agent's, so chat_app can
+        # break tokens down per agent.
+        "agent_usage": [
+            {
+                "provider_id": result.provider_id,
+                "model": result.model,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+                "total_tokens": result.total_tokens,
+            },
+            *result.delegated_usage,
+        ],
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
         "context_tokens": result.context_tokens,
         "context_window": agent_config.status()["context_window"],
         "provider_id": result.provider_id,

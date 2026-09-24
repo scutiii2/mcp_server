@@ -22,6 +22,7 @@ request_id=None (cancellation.py already treats a falsy id as
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar, Token
 from typing import Any
 
 from mcp import ClientSession
@@ -30,6 +31,21 @@ from mcp.client.streamable_http import streamablehttp_client
 from src import agent_registry
 
 TOOL_NAME = "delegate_to_agent"
+
+# Token usage of every agent this turn delegated to (including their own
+# nested delegations). agent_config.run_chat binds a fresh list per turn;
+# call() runs on a worker thread that inherits the context, so it appends
+# to that same list. None outside a bound turn (usage is then just dropped).
+_usage_sink: ContextVar[list[dict[str, Any]] | None] = ContextVar("delegation_usage_sink", default=None)
+
+
+def bind_usage() -> tuple[list[dict[str, Any]], Token]:
+    usage: list[dict[str, Any]] = []
+    return usage, _usage_sink.set(usage)
+
+
+def reset_usage(token: Token) -> None:
+    _usage_sink.reset(token)
 
 # Each hop is itself a full up-to-6-round ask() call, so this bounds a
 # worst case that's real but not tiny. 2 hops makes a genuine multi-step
@@ -105,4 +121,8 @@ def call(agent_id: str, question: str, depth: int) -> str:
             },
         )
     )
+    sink = _usage_sink.get()
+    if sink is not None:
+        # The delegate's own entries already include anything it delegated on.
+        sink.extend(result.get("agent_usage") or [])
     return result.get("response", "")

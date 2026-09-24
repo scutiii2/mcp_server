@@ -3,7 +3,7 @@
 {% block sidebar %}{% include "sidebar.html" %}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('chat.static', filename='modal.css') }}">
-<link rel="stylesheet" href="{{ url_for('chat.static', filename='styles.css') }}?v=download-attachment">
+<link rel="stylesheet" href="{{ url_for('chat.static', filename='styles.css') }}?v=usage-caveman">
 <div class="chat-layout">
   <aside id="chat-sidebar" aria-label="Chat navigation">
     <div class="chat-history-panel" id="chat-history-panel">
@@ -17,6 +17,33 @@
     </div>
     <div id="chat-sidebar-list">
       <div id="chat-history-list" class="chat-history-list"><p class="chat-history-empty">Loading...</p></div>
+    </div>
+    <div id="sidebar-usage" class="sidebar-usage">
+      <div id="sidebar-usage-panel" class="sidebar-usage-panel hidden" role="dialog" aria-label="Token usage">
+        <div class="usage-title">Usage</div>
+        <div class="usage-limit">
+          <div class="usage-limit-head">
+            <span class="usage-limit-name">Current session (6 hours)</span>
+            <strong id="sidebar-usage-session-pct"></strong>
+          </div>
+          <div class="context-usage-popover-bar-track"><div id="sidebar-usage-session-fill" class="context-usage-popover-bar-fill"></div></div>
+          <div id="sidebar-usage-session-reset" class="context-usage-popover-note"></div>
+        </div>
+        <div class="usage-limit">
+          <div class="usage-limit-head">
+            <span class="usage-limit-name">This week (7 days)</span>
+            <strong id="sidebar-usage-week-pct"></strong>
+          </div>
+          <div class="context-usage-popover-bar-track"><div id="sidebar-usage-week-fill" class="context-usage-popover-bar-fill"></div></div>
+          <div id="sidebar-usage-week-reset" class="context-usage-popover-note"></div>
+        </div>
+        <div class="usage-table">
+          <div class="usage-table-row"><span>This month</span><span id="sidebar-usage-month"></span></div>
+        </div>
+        <div id="sidebar-usage-agents" class="usage-table"></div>
+        <a class="sidebar-usage-link" href="/usage/">Open usage tracker</a>
+      </div>
+      <button id="sidebar-usage-btn" type="button" class="chat-history-select-btn" aria-haspopup="true" aria-expanded="false" title="Token usage">Usage</button>
     </div>
     <div id="manage-chats-view">
       <button id="chat-history-select-btn" type="button" class="chat-history-select-btn" aria-pressed="false" title="Manage chats">Manage Chats</button>
@@ -33,6 +60,7 @@
         <button id="ext-toggle-btn" type="button" class="ext-toggle-btn" aria-expanded="false" aria-controls="ext-panel">Extensions</button>
         <select id="model" class="hidden"><option>&mdash;</option></select>
         <select id="provider"><option>Loading providers...</option></select>
+        <button id="caveman-toggle-btn" type="button" class="caveman-toggle-btn" aria-pressed="false" title="Terse replies from the AI">CAVEMAN</button>
         <button id="provider-refresh-btn" type="button" class="provider-refresh-btn" title="Refresh agent list">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
@@ -43,28 +71,38 @@
             <span id="context-usage-pct" class="context-usage-pct"></span>
           </button>
           <div id="context-usage-popover" class="context-usage-popover hidden" role="dialog" aria-label="Context window usage">
-            <div class="context-usage-popover-row">
-              <span class="context-usage-popover-label">Context window</span>
-              <span id="context-usage-popover-value" class="context-usage-popover-value"></span>
+            <div class="usage-title">Usage</div>
+            <div class="usage-limit">
+              <div class="usage-limit-head">
+                <span class="usage-limit-name">Last 6 hours</span>
+                <span class="usage-limit-meta"><span id="usage-six-hour-reset"></span> <strong id="usage-six-hour-value"></strong></span>
+              </div>
+              <div class="context-usage-popover-bar-track"><div id="usage-six-hour-fill" class="context-usage-popover-bar-fill"></div></div>
             </div>
-            <div class="context-usage-popover-bar-track">
-            <div id="context-usage-popover-bar-fill" class="context-usage-popover-bar-fill"></div>
-          </div>
-          <div id="context-usage-popover-note" class="context-usage-popover-note"></div>
-          <div class="context-usage-popover-section">
-            <div class="context-usage-popover-row">
-              <span class="context-usage-popover-label">Last 6 hours</span>
-              <span id="usage-six-hour-value" class="context-usage-popover-value"></span>
+            <div class="usage-limit">
+              <div class="usage-limit-head">
+                <span class="usage-limit-name">Last 7 days</span>
+                <span class="usage-limit-meta"><span id="usage-weekly-reset"></span> <strong id="usage-weekly-value"></strong></span>
+              </div>
+              <div class="context-usage-popover-bar-track"><div id="usage-weekly-fill" class="context-usage-popover-bar-fill"></div></div>
             </div>
-            <div class="context-usage-popover-bar-track"><div id="usage-six-hour-fill" class="context-usage-popover-bar-fill"></div></div>
-            <div id="usage-six-hour-reset" class="context-usage-popover-note"></div>
-            <div class="context-usage-popover-row">
-              <span class="context-usage-popover-label">Last 7 days</span>
-              <span id="usage-weekly-value" class="context-usage-popover-value"></span>
+            <div class="usage-heading">This chat</div>
+            <div class="usage-limit">
+              <div class="usage-limit-head">
+                <span class="usage-limit-name">Context window</span>
+                <strong id="context-usage-popover-value" class="usage-limit-meta"></strong>
+              </div>
+              <div class="context-usage-popover-bar-track"><div id="context-usage-popover-bar-fill" class="context-usage-popover-bar-fill"></div></div>
+              <div id="context-usage-popover-note" class="context-usage-popover-note"></div>
             </div>
-            <div class="context-usage-popover-bar-track"><div id="usage-weekly-fill" class="context-usage-popover-bar-fill"></div></div>
-            <div id="usage-weekly-reset" class="context-usage-popover-note"></div>
-          </div>
+            <div class="usage-table">
+              <div class="usage-table-row"><span>Input (last turn)</span><span id="context-usage-io-input"></span></div>
+              <div class="usage-table-row"><span>Output (last turn)</span><span id="context-usage-io-output"></span></div>
+            </div>
+            <details id="context-usage-agents" class="context-usage-agents">
+              <summary>Breakdown by agent</summary>
+              <div id="context-usage-agents-list" class="usage-table"></div>
+            </details>
         </div>
       </div>
         <button id="chat-export-btn" type="button" class="chat-export-btn" title="Export as .md" aria-label="Export as .md">

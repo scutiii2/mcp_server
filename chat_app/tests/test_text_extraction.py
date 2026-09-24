@@ -94,6 +94,20 @@ def test_extract_xlsx_single_sheet():
     assert result["truncated"] is False
 
 
+def test_extract_xlsx_keeps_blank_cells_so_columns_stay_aligned():
+    buffer = io.BytesIO()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["Role", "Field", "Activity", "Action"])
+    sheet.append(["Z_ROLE", "DOKAR", None, "Remove"])
+    sheet.append([None, None, None, None])
+    workbook.save(buffer)
+
+    result = text_extraction.extract_text("request.xlsx", buffer.getvalue())
+
+    assert result["text"] == "Role | Field | Activity | Action\nZ_ROLE | DOKAR |  | Remove"
+
+
 def test_extract_xlsx_multiple_sheets_labels_each_with_its_title():
     buffer = io.BytesIO()
     workbook = Workbook()

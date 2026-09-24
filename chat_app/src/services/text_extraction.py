@@ -113,7 +113,13 @@ def _extract_xlsx(content: bytes) -> str:
     for sheet in workbook.worksheets:
         rows = []
         for row in sheet.iter_rows(values_only=True):
-            cells = [str(cell) for cell in row if cell is not None]
+            # Blank cells stay as empty columns: dropping them shifts every
+            # later value left, so a row with a blank Activity reads as if
+            # its Action were in the Activity column. Trailing blanks are
+            # trimmed, and a row with no values at all is skipped.
+            cells = ["" if cell is None else str(cell) for cell in row]
+            while cells and not cells[-1]:
+                cells.pop()
             if cells:
                 rows.append(" | ".join(cells))
         if rows:

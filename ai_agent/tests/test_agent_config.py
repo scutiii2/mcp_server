@@ -18,6 +18,8 @@ import importlib
 
 import pytest
 
+from src.llm.base_provider import ChatResult
+
 
 @pytest.fixture(autouse=True)
 def _no_real_secrets_file(monkeypatch, tmp_path):
@@ -122,16 +124,16 @@ def test_run_chat_registers_and_clears_cancellation_around_the_call(monkeypatch)
 
         captured_args = {}
 
-        async def _fake_run_chat(question, history, model, enabled_extensions, request_id, depth, on_event=None):
+        async def _fake_run_chat(question, history, model, enabled_extensions, request_id, depth, on_event=None, caveman=False):
             calls.append(("run_chat", request_id))
             captured_args["args"] = (question, history, model, enabled_extensions, request_id, depth)
-            return "fake-result"
+            return ChatResult(response="fake-result")
 
         monkeypatch.setattr(reloaded._PROVIDER_MODULE, "run_chat", _fake_run_chat)
 
         result = await reloaded.run_chat("hi", [], ["reference"], "req-1", depth=1)
 
-        assert result == "fake-result"
+        assert result.response == "fake-result"
         assert calls == [("register", "req-1"), ("run_chat", "req-1"), ("clear", "req-1")]
         assert captured_args["args"] == ("hi", [], None, ["reference"], "req-1", 1)
 
@@ -153,9 +155,9 @@ def test_run_chat_defaults_depth_to_zero(monkeypatch):
     async def _run():
         captured = {}
 
-        async def _fake_run_chat(question, history, model, enabled_extensions, request_id, depth, on_event=None):
+        async def _fake_run_chat(question, history, model, enabled_extensions, request_id, depth, on_event=None, caveman=False):
             captured["depth"] = depth
-            return "fake-result"
+            return ChatResult(response="fake-result")
 
         monkeypatch.setattr(reloaded._PROVIDER_MODULE, "run_chat", _fake_run_chat)
 
@@ -219,8 +221,7 @@ def test_run_chat_awaits_async_provider_and_forwards_on_event(monkeypatch):
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
     from src import agent_config
-    from src.llm.base_provider import ChatResult
-
+    
     reloaded = importlib.reload(agent_config)
 
     async def _run():
@@ -260,7 +261,7 @@ def test_run_chat_falls_back_to_thread_for_sync_provider(monkeypatch):
         fake_result = ChatResult(response="sync result")
         sync_provider_called = []
 
-        def _sync_run_chat(question, history, model, enabled_extensions, request_id, depth):
+        def _sync_run_chat(question, history, model, enabled_extensions, request_id, depth, caveman=False):
             sync_provider_called.append((question, history, model, enabled_extensions, request_id, depth))
             return fake_result
 

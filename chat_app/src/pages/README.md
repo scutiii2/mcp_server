@@ -73,4 +73,7 @@ registered by `__index__.py` at app-boot time (see `register_pages()`).
   `capabilities.try`.
 - [`Watchers/`](Watchers/README.md) — read-only status of background
   watchers of any mcp_server capability (discovered live), with
-  filters and editable recipients. Gated by `watchers.view`.
+  filters and read-only recipients. Gated by `watchers.view`.
+- [`Usage/`](Usage/README.md) — token usage tracker: stat cards, a 12-month
+  heatmap, per-agent breakdown and Markdown export. Own usage needs
+  `chat.access`; other users' usage needs `usage.view_all`.

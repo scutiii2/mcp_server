@@ -324,7 +324,10 @@ def remove_extension_api(extension_id):
 @blueprint.route("/api/usage")
 @require_permission("chat.access")
 def usage_api():
-    return jsonify(usage_limits.get_usage(settings.usage_db_path, current_user.username))
+    data = usage_limits.get_usage(settings.usage_db_path, current_user.username)
+    month = usage_limits.usage_report(settings.usage_db_path, current_user.username, "month")
+    data["month"]["top_agents"] = month["by_agent"][:3]
+    return jsonify(data)
 
 
 @blueprint.route("/api/chats")
@@ -740,6 +743,7 @@ def chat_api():
                     return
                 async for event in ai_agent_client.ask_stream(
                     agent["url"], question, history, data.get("enabled_extensions", []), job.provider_request_id,
+                    caveman=bool(data.get("caveman", False)),
                 ):
                     yield event
 
@@ -840,12 +844,32 @@ def chat_api():
             model_used = event.get("model", "")
             total_tokens = event.get("total_tokens")
             context_tokens = event.get("context_tokens")
+            input_tokens = event.get("input_tokens")
+            output_tokens = event.get("output_tokens")
+            agent_usage = event.get("agent_usage")
             context_window = event.get("context_window")
             kind = event.get("kind", "assistant")
             ai_used = event.get("ai_used")
 
-            if isinstance(total_tokens, int):
-                usage_limits.record_usage(settings.usage_db_path, user.username, total_tokens)
+            # The limit counts every agent that worked on this turn: agent_usage
+            # holds the top-level agent plus each delegated one. total_tokens
+            # alone (top-level only) is the fallback for older ai_agent replies.
+            # One usage row per agent, sharing a timestamp so the tracker sees
+            # a single turn.
+            turn_ts = datetime.now(timezone.utc).isoformat()
+            usage_rows = [u for u in (agent_usage or []) if isinstance(u, dict)] or [{
+                "provider_id": provider_id, "model": model_used, "total_tokens": total_tokens,
+                "input_tokens": input_tokens, "output_tokens": output_tokens,
+            }]
+            for usage_row in usage_rows:
+                row_total = usage_row.get("total_tokens")
+                if isinstance(row_total, int):
+                    usage_limits.record_usage(
+                        settings.usage_db_path, user.username, row_total,
+                        agent=usage_row.get("provider_id") or None, model=usage_row.get("model") or None,
+                        input_tokens=usage_row.get("input_tokens"), output_tokens=usage_row.get("output_tokens"),
+                        chat_id=chat_id, ts=turn_ts,
+                    )
 
             # Base this turn's save on the chat's OWN current persisted
             # transcript, never on the client's `history` payload: phase 5's
@@ -893,6 +917,12 @@ def chat_api():
                 assistant_entry["total_tokens"] = total_tokens
             if context_tokens is not None:
                 assistant_entry["context_tokens"] = context_tokens
+            if input_tokens is not None:
+                assistant_entry["input_tokens"] = input_tokens
+            if output_tokens is not None:
+                assistant_entry["output_tokens"] = output_tokens
+            if agent_usage:
+                assistant_entry["agent_usage"] = agent_usage
             if context_window is not None:
                 assistant_entry["context_window"] = context_window
             transcript = history_in + current_turn + [assistant_entry]
@@ -939,6 +969,9 @@ def chat_api():
                     "model": model_used,
                     "total_tokens": total_tokens,
                     "context_tokens": context_tokens,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "agent_usage": agent_usage,
                     "context_window": context_window,
                     "elapsed_seconds": elapsed_seconds,
                     # Dead weight carried over verbatim from the pre-streaming

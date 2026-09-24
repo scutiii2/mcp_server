@@ -44,7 +44,7 @@ from anthropic import (
 
 from src import delegation
 from src.llm import cancellation, cooldown, llm_config, token_limits
-from src.llm.agent_roles import SYSTEM_PROMPT
+from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
     BaseProvider, ChatCancelled, ChatResult, LiveUsage, OnEvent, ToolCallRecord, dispatch_with_progress, step_event,
 )
@@ -253,8 +253,10 @@ async def run_chat(
     request_id: str | None = None,
     depth: int = 0,
     on_event: OnEvent | None = None,
+    caveman: bool = False,
 ) -> ChatResult:
     client = _get_client()
+    system_prompt = system_prompt_for(caveman)
     model_name = model or DEFAULT_MODEL
     history = token_limits.trim_history_to_fit(history, PROVIDER_ID)
     messages: list[dict[str, Any]] = [*history, {"role": "user", "content": question}]
@@ -272,6 +274,8 @@ async def run_chat(
     # this stays a plain int rather than the optional/"unknown" handling the
     # other providers need.
     total_tokens = 0
+    input_tokens = 0
+    output_tokens = 0
     meter = LiveUsage(on_event)
     # The full prompt just sent (all resent history + this round's tool
     # results), not a sum across rounds like total_tokens - this is what
@@ -284,7 +288,7 @@ async def run_chat(
         for _ in range(token_limits.max_tool_rounds(PROVIDER_ID)):
             if cancellation.is_cancelled(request_id):
                 raise ChatCancelled()
-            token_limits.enforce_context_limit(PROVIDER_ID, [SYSTEM_PROMPT, *messages])
+            token_limits.enforce_context_limit(PROVIDER_ID, [system_prompt, *messages])
             # Every round is streamed, so text appears as the model writes
             # it. A round that ends in tool_use may still have streamed some
             # text first; "token_reset" tells the client to drop it, since
@@ -293,7 +297,7 @@ async def run_chat(
             async with client.messages.stream(
                 model=model_name,
                 max_tokens=token_limits.max_output_tokens(PROVIDER_ID),
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=messages,
                 tools=schemas,
             ) as stream:
@@ -304,6 +308,8 @@ async def run_chat(
                     await meter.chars(len(chunk))
                 response = await stream.get_final_message()
             total_tokens += response.usage.input_tokens + response.usage.output_tokens
+            input_tokens += response.usage.input_tokens
+            output_tokens += response.usage.output_tokens
             await meter.round_done(response.usage.input_tokens + response.usage.output_tokens)
             context_tokens = response.usage.input_tokens
 
@@ -316,6 +322,8 @@ async def run_chat(
                     model=model_name,
                     total_tokens=total_tokens,
                     context_tokens=context_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
 
             if text_parts and on_event:
@@ -357,6 +365,8 @@ async def run_chat(
         model=model_name,
         total_tokens=total_tokens,
         context_tokens=context_tokens,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
 
 

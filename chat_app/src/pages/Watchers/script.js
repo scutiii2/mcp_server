@@ -98,31 +98,11 @@ function applyFilters() {
   renderRows(filtered);
 }
 
-// Recipients live on the mcp_server watcher; the Edit chip carries which
-// watcher it belongs to (data-*) so the click handler can save it.
+// Recipients are display-only here; they are set on the mcp_server side
+// (tool_<alias>_setWatcherRecipients).
 function recipientsCell(w) {
   const recipients = w.recipients || [];
-  const list = recipients.map(escapeHtml).join('<br>') || '<span class="muted">none</span>';
-  return `${list}<br><button type="button" class="chip" data-recipients="${escapeHtml(recipients.join(', '))}"
-    data-capability="${escapeHtml(w.capability)}" data-key="${escapeHtml(watcherKey(w))}">Edit</button>`;
-}
-
-async function editRecipients(button) {
-  const answer = window.prompt('Email recipients (comma-separated; empty clears):', button.dataset.recipients || '');
-  if (answer === null) return;
-  try {
-    const res = await fetch('/watchers/api/recipients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ capability: button.dataset.capability, key: button.dataset.key, recipients: answer }),
-    });
-    const data = await res.json();
-    if (data.status !== 'ok') { showError(data.message); return; }
-    hideError();
-    refreshWatchers();
-  } catch (err) {
-    showError(`Request failed: ${err}`);
-  }
+  return recipients.map(escapeHtml).join('<br>') || '<span class="muted">none</span>';
 }
 
 function renderRows(watchers) {
@@ -188,10 +168,6 @@ function initFilters() {
     document.getElementById('watchers-filter-end').value = '';
     document.getElementById('watchers-filter-search').value = '';
     applyFilters();
-  });
-  document.getElementById('watchers-body').addEventListener('click', (event) => {
-    const edit = event.target.closest('button[data-recipients]');
-    if (edit) editRecipients(edit);
   });
 }
 

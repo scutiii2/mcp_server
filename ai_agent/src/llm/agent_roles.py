@@ -81,3 +81,20 @@ def _compose_system_prompt(config: dict[str, Any], role: dict[str, Any]) -> str:
 
 ROLE_ID, _ROLE = _resolve()
 SYSTEM_PROMPT = _compose_system_prompt(_load(), _ROLE)
+
+# Appended to SYSTEM_PROMPT per request when chat_app's caveman toggle is on.
+# A prompt-level instruction, not a post-process filter: a regex pass would
+# risk mangling code blocks, error strings and proper nouns.
+CAVEMAN_INSTRUCTIONS = (
+    "Respond terse, like a smart caveman. Keep all technical substance; cut "
+    "only fluff. Drop articles (a/an/the), filler (just/really/basically), "
+    "pleasantries and hedging. Fragments are fine. Use short synonyms. Keep "
+    "code blocks, commands, file paths, error messages, identifiers and "
+    "numbers exactly as they are. Never drop not/no/never/only/except: they "
+    "flip meaning. Use full, plain sentences for warnings and for anything "
+    "irreversible or destructive. Write in the language the user writes in."
+)
+
+
+def system_prompt_for(caveman: bool = False) -> str:
+    return f"{SYSTEM_PROMPT}\n\n{CAVEMAN_INSTRUCTIONS}" if caveman else SYSTEM_PROMPT

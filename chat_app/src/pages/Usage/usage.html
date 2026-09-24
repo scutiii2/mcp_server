@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Usage{% endblock %}
+{% block sidebar %}{% include "sidebar.html" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('usage.static', filename='style.css') }}">
+<div class="usage-page">
+  <div class="usage-page-head">
+    <h1>Usage</h1>
+    <a class="usage-back" href="/chat/">Back to chat</a>
+  </div>
+
+  <div class="usage-toolbar">
+    <div class="usage-tabs" role="tablist">
+      {% for key, label in ranges %}
+      <a class="usage-tab{% if key == range_key %} active{% endif %}"
+         href="?range={{ key }}{% if username != current_user.username %}&user={{ username }}{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <div class="usage-actions">
+      {% if can_view_all %}
+      <form method="get" class="usage-user-form">
+        <input type="hidden" name="range" value="{{ range_key }}">
+        <select name="user" onchange="this.form.submit()" aria-label="User">
+          <option value="{{ current_user.username }}">{{ current_user.username }} (you)</option>
+          {% for name in users if name != current_user.username %}
+          <option value="{{ name }}"{% if name == username %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+      <a class="usage-export" href="{{ url_for('usage.export_markdown', range=range_key, user=username) }}">Export .md</a>
+    </div>
+  </div>
+
+  {% if username != current_user.username %}
+  <p class="usage-viewing">Viewing <strong>{{ username }}</strong>'s usage.</p>
+  {% endif %}
+
+  <div class="usage-cards">
+    <div class="usage-card"><span class="usage-card-label">Chats</span><span class="usage-card-value">{{ report.chats }}</span></div>
+    <div class="usage-card"><span class="usage-card-label">Turns</span><span class="usage-card-value">{{ report.turns }}</span></div>
+    <div class="usage-card"><span class="usage-card-label">Total tokens</span><span class="usage-card-value" title="{{ '{:,}'.format(report.total_tokens) }}">{{ compact(report.total_tokens) }}</span></div>
+    <div class="usage-card"><span class="usage-card-label">Active days</span><span class="usage-card-value">{{ report.active_days }}</span></div>
+    <div class="usage-card"><span class="usage-card-label">Peak hour</span><span class="usage-card-value">{{ peak_hour }}</span></div>
+    <div class="usage-card"><span class="usage-card-label">Favorite agent</span><span class="usage-card-value usage-card-value-text">{{ favorite }}</span></div>
+  </div>
+
+  <section class="usage-section">
+    <h2>Last 12 months</h2>
+    <div class="usage-heatmap" role="img" aria-label="Daily token usage over the last 12 months">
+      {% for week in heatmap.weeks %}
+      <div class="usage-heatmap-week">
+        {% for day in week %}
+        {% if day.level is none %}
+        <span class="usage-heatmap-day empty"></span>
+        {% else %}
+        <span class="usage-heatmap-day level-{{ day.level }}" title="{{ day.date }}: {{ '{:,}'.format(day.tokens) }} tokens"></span>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="usage-legend">Less <span class="usage-heatmap-day level-0"></span><span class="usage-heatmap-day level-1"></span><span class="usage-heatmap-day level-2"></span><span class="usage-heatmap-day level-3"></span><span class="usage-heatmap-day level-4"></span> More</div>
+  </section>
+
+  <section class="usage-section">
+    <h2>By agent</h2>
+    {% if report.by_agent %}
+    <div class="usage-table">
+      {% set top = report.by_agent[0].tokens %}
+      {% for row in report.by_agent %}
+      <div class="usage-table-row">
+        <span class="usage-table-name">{{ row.agent }}{% if row.model %} <small>{{ row.model }}</small>{% endif %}</span>
+        <span class="usage-table-bar"><span style="width: {{ (row.tokens * 100 // top) if top else 0 }}%"></span></span>
+        <span class="usage-table-value">{{ '{:,}'.format(row.tokens) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="usage-note">Input {{ '{:,}'.format(report.input_tokens) }} · Output {{ '{:,}'.format(report.output_tokens) }} (turns recorded before input/output tracking count only toward the total).</p>
+    {% else %}
+    <p class="usage-note">No usage in this range.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

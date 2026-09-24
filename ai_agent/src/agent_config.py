@@ -14,6 +14,7 @@ from typing import Any
 import anyio
 from dotenv import dotenv_values
 
+from src import delegation
 from src.seed import seed_from_example
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent / "secrets" / "secret_llm.env"
@@ -89,6 +90,7 @@ async def run_chat(
     request_id: str | None = None,
     depth: int = 0,
     on_event: Any = None,
+    caveman: bool = False,
 ) -> ChatResult:
     """Run a chat completion request through the configured provider.
 
@@ -102,14 +104,17 @@ async def run_chat(
     provider has nowhere to await it from.
     """
     cancellation.register(request_id)
+    delegated_usage, usage_token = delegation.bind_usage()
     try:
         if cancellation.is_cancelled(request_id):
             raise ChatCancelled()
         if inspect.iscoroutinefunction(_PROVIDER_MODULE.run_chat):
-            return await _PROVIDER_MODULE.run_chat(
+            result = await _PROVIDER_MODULE.run_chat(
                 question, history, MODEL, enabled_extensions, request_id, depth,
-                on_event=on_event,
+                on_event=on_event, caveman=caveman,
             )
+            result.delegated_usage = delegated_usage
+            return result
         # Phase 1: openai_provider is still sync - run it off the event
         # loop thread so a slow completion doesn't block other requests
         # this ai_agent process is serving. on_event is dropped here on
@@ -118,9 +123,11 @@ async def run_chat(
         return await anyio.to_thread.run_sync(
             lambda: _PROVIDER_MODULE.run_chat(
                 question, history, MODEL, enabled_extensions, request_id, depth,
+                caveman=caveman,
             )
         )
     finally:
+        delegation.reset_usage(usage_token)
         cancellation.clear(request_id)
 
 
