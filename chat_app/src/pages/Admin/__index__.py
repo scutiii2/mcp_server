@@ -170,14 +170,18 @@ def send_verification(account_id):
         flash(f"'{account.username}' is already verified")
     else:
         verification, code = otp_service.create_email_verification(db.session, account)
-        email_service.send_email_verification(account.email, code, verification.expires_at)
-        log_service.log_action(
-            db.session,
-            current_user,
-            "admin.send_verification",
-            f"Sent verification email to '{account.username}'",
-        )
-        flash(f"Verification email sent to '{account.email}'")
+        try:
+            email_service.send_email_verification(account.email, code, verification.expires_at)
+        except email_service.EmailDeliveryError as error:
+            flash(str(error))
+        else:
+            log_service.log_action(
+                db.session,
+                current_user,
+                "admin.send_verification",
+                f"Sent verification email to '{account.username}'",
+            )
+            flash(f"Verification email sent to '{account.email}'")
     return redirect(url_for("admin.dashboard", tab="accounts"))
 
 
@@ -315,10 +319,15 @@ def create_invite():
     )
 
     if delivery_method == "email" and invitee_email:
-        email_service.send_invite_email(invitee_email, code, invite.expires_at)
-        flash(f"Invite emailed to {invitee_email}")
-    else:
-        flash(f"Invite code (copy and share manually — shown once): {code}", "persistent")
+        try:
+            email_service.send_invite_email(invitee_email, code, invite.expires_at)
+        except email_service.EmailDeliveryError as error:
+            # Code is only recoverable now; fall back to manual sharing instead of losing it.
+            flash(str(error))
+        else:
+            flash(f"Invite emailed to {invitee_email}")
+            return redirect(url_for("admin.dashboard", tab="invites"))
+    flash(f"Invite code (copy and share manually — shown once): {code}", "persistent")
 
     return redirect(url_for("admin.dashboard", tab="invites"))
 

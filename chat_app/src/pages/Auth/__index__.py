@@ -78,15 +78,23 @@ def register():
     password = request.form.get("password", "")
     invite_code = request.form.get("invite_code", "")
 
-    account = auth_service.register_account(db.session, username, email, password, invite_code)
+    try:
+        account = auth_service.register_account(db.session, username, email, password, invite_code)
+    except auth_service.RegistrationError as error:
+        return render_template("register.html", error=str(error)), 409
     if account is None:
         return render_template("register.html", error="Invalid or expired invite code"), 400
 
     log_service.log_action(db.session, account, "auth.register", "Account registered")
 
-    verification, code = otp_service.create_email_verification(db.session, account)
-    email_service.send_email_verification(account.email, code, verification.expires_at)
+    # Account is already committed, so log in even if the email fails;
+    # the verify page's "Resend code" lets the user retry once SMTP works.
     login_user(account)
+    verification, code = otp_service.create_email_verification(db.session, account)
+    try:
+        email_service.send_email_verification(account.email, code, verification.expires_at)
+    except email_service.EmailDeliveryError as error:
+        flash(str(error))
     return redirect(url_for("auth.verify_email"))
 
 
@@ -126,7 +134,10 @@ def resend_verification_email():
         return blocked
 
     verification, code = otp_service.create_email_verification(db.session, account)
-    email_service.send_email_verification(account.email, code, verification.expires_at)
+    try:
+        email_service.send_email_verification(account.email, code, verification.expires_at)
+    except email_service.EmailDeliveryError as error:
+        return render_template("verify_email.html", email=account.email, error=str(error)), 503
     return render_template("verify_email.html", email=account.email, error=None, resent=True)
 
 

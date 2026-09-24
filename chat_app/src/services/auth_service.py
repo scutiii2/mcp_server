@@ -2,6 +2,7 @@ import secrets as secrets_module
 
 from flask import Flask
 from flask_login import LoginManager
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from src.models import Account, LoginAttempt, Permission, Role, db
@@ -39,12 +40,33 @@ def record_login_attempt(
     return attempt
 
 
+class RegistrationError(ValueError):
+    """Registration rejected for a reason safe to show the registrant."""
+
+
+def _duplicate_account_message(db_session, username: str, email: str) -> str | None:
+    if db_session.query(Account.id).filter_by(username=username).first() is not None:
+        return "Username is already taken"
+    if db_session.query(Account.id).filter_by(email=email).first() is not None:
+        return "Email is already registered"
+    return None
+
+
 def register_account(
     db_session, username: str, email: str, password: str, invite_code: str
 ) -> Account | None:
+    """Returns None for a bad invite; raises RegistrationError for a duplicate username/email.
+
+    The invite is checked first so account existence is only revealed to invite holders,
+    and it is left unconsumed when registration is rejected.
+    """
     invite = otp_service.find_valid_invite(db_session, invite_code)
     if invite is None:
         return None
+
+    duplicate = _duplicate_account_message(db_session, username, email)
+    if duplicate is not None:
+        raise RegistrationError(duplicate)
 
     account = Account(
         username=username,
@@ -52,8 +74,15 @@ def register_account(
         password_hash=generate_password_hash(password),
     )
     db_session.add(account)
-    otp_service.consume_invite(db_session, invite)
-    db_session.commit()
+    try:
+        otp_service.consume_invite(db_session, invite)
+    except IntegrityError as error:
+        # Lost a race with a concurrent registration; rollback also restores the invite.
+        db_session.rollback()
+        raise RegistrationError(
+            _duplicate_account_message(db_session, username, email)
+            or "Username or email is already registered"
+        ) from error
     return account
 
 

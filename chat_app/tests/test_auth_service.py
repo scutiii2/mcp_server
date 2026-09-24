@@ -1,3 +1,4 @@
+import pytest
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from src.models import Account, InviteOTP, db
@@ -103,6 +104,28 @@ def test_register_account_rejects_reused_invite_code(app):
 
     assert first is not None
     assert second is None
+
+
+@pytest.mark.parametrize(
+    ("username", "email", "expected_message"),
+    [
+        ("taken", "fresh@example.com", "Username is already taken"),
+        ("fresh", "taken@example.com", "Email is already registered"),
+    ],
+)
+def test_register_account_rejects_duplicate_and_keeps_invite(app, username, email, expected_message):
+    with app.app_context():
+        existing = Account(username="taken", email="taken@example.com", password_hash="hashed")
+        db.session.add(existing)
+        db.session.commit()
+
+        invite, code = otp_service.create_invite(db.session, existing.id, None, "manual")
+
+        with pytest.raises(auth_service.RegistrationError, match=expected_message):
+            auth_service.register_account(db.session, username, email, "pw", code)
+
+        assert db.session.get(InviteOTP, invite.id).used_at is None
+        assert db.session.query(Account).count() == 1
 
 
 def test_init_login_manager_user_loader_returns_account(app):

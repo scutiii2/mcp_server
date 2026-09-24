@@ -7,7 +7,7 @@ from src.models import Account, LogEntry, LoginAttempt, SecurityEvent, db
 from src.pages.__index__ import register_pages
 from src.services import otp_service
 from src.services.auth_service import init_login_manager
-from src.services.email_service import init_mail
+from src.services.email_service import init_mail, mail
 
 _SHARED_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "src" / "pages" / "__shared__"
 
@@ -376,6 +376,40 @@ def test_verify_email_and_resend_redirect_home_when_already_verified(tmp_path):
     ):
         assert response.status_code == 302
         assert response.headers["Location"] == "/"
+
+
+def _refuse_smtp(monkeypatch):
+    def refuse(message):
+        raise ConnectionRefusedError(10061, "actively refused")
+
+    monkeypatch.setattr(mail, "send", refuse)
+
+
+def test_register_still_logs_in_when_verification_email_fails(tmp_path, monkeypatch):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _refuse_smtp(monkeypatch)
+
+    _register(client, app=app)
+
+    with client.session_transaction() as flask_session:
+        assert "_user_id" in flask_session
+    response = client.get("/auth/verify-email")
+    assert response.status_code == 200
+    assert b"could not be sent" in response.data
+
+
+def test_resend_verification_shows_error_when_email_fails(tmp_path, monkeypatch):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _register(client, app=app)
+    _refuse_smtp(monkeypatch)
+
+    response = client.post("/auth/verify-email/resend")
+
+    assert response.status_code == 503
+    assert b"could not be sent" in response.data
+    assert b"A new code was sent" not in response.data
 
 
 def test_resend_verification_requires_login(tmp_path):

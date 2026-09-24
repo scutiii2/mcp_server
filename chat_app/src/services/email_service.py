@@ -1,3 +1,5 @@
+import logging
+import smtplib
 from pathlib import Path
 
 from flask import Flask
@@ -5,7 +7,23 @@ from flask_mail import Mail, Message
 
 from src.utils.config_loader import load_env_secrets
 
+logger = logging.getLogger(__name__)
+
 mail = Mail()
+
+
+class EmailDeliveryError(RuntimeError):
+    """SMTP send failed (server unreachable, auth rejected, etc.)."""
+
+
+def _deliver(message: Message) -> None:
+    try:
+        mail.send(message)
+    except (smtplib.SMTPException, OSError) as error:
+        logger.warning("Email to %s failed: %s", message.recipients, error)
+        raise EmailDeliveryError(
+            "Email could not be sent. Check the SMTP settings in secrets/secret_smtp.env."
+        ) from error
 
 
 def init_mail(app: Flask, secrets_dir: Path) -> None:
@@ -31,7 +49,7 @@ def send_invite_email(invitee_email: str, code: str, expires_at) -> None:
             f"This code expires at {expires_at.isoformat()} and can only be used once.\n"
         ),
     )
-    mail.send(message)
+    _deliver(message)
 
 
 def send_email_verification(email: str, code: str, expires_at) -> None:
@@ -44,4 +62,4 @@ def send_email_verification(email: str, code: str, expires_at) -> None:
             f"This code expires at {expires_at.isoformat()} and can only be used once.\n"
         ),
     )
-    mail.send(message)
+    _deliver(message)
