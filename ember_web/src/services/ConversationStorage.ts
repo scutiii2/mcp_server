@@ -45,6 +45,7 @@ function isConversation(value: unknown): value is Conversation {
     typeof c.title === "string" &&
     typeof c.createdAt === "number" &&
     typeof c.updatedAt === "number" &&
+    (c.agentId === undefined || typeof c.agentId === "string") &&
     Array.isArray(c.messages) &&
     c.messages.every(isChatMessage)
   );

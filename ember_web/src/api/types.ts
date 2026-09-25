@@ -63,6 +63,15 @@ export interface Conversation {
   id: string;
   title: string;
   messages: ChatMessage[];
+  /** ai_agent id this chat last talked to; absent on chats saved before it existed. */
+  agentId?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+/** One registered ai_agent instance (ai_agent's list_agents tool). */
+export interface AgentInfo {
+  id: string;
+  label: string;
+  url: string;
 }

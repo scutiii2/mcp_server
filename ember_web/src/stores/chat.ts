@@ -1,8 +1,9 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import { AiAgentClient } from "../api/AiAgentClient";
+import type { AiAgentClient } from "../api/AiAgentClient";
 import type { AgentEvent, ChatMessage, Conversation } from "../api/types";
 import { LocalConversationStorage, type ConversationStorage } from "../services/ConversationStorage";
+import { useAgentsStore } from "./agents";
 
 const TITLE_MAX_CHARS = 60;
 
@@ -11,9 +12,10 @@ function titleFrom(question: string): string {
   return oneLine.length > TITLE_MAX_CHARS ? `${oneLine.slice(0, TITLE_MAX_CHARS - 1)}…` : oneLine;
 }
 
-/** All saved conversations plus the one live turn, against one ai_agent instance. */
+/** All saved conversations plus the one live turn. Which ai_agent answers
+ * comes from the agents store. */
 export const useChatStore = defineStore("chat", () => {
-  const agent = new AiAgentClient(import.meta.env.VITE_AI_AGENT_URL);
+  const agents = useAgentsStore();
   const storage: ConversationStorage = new LocalConversationStorage();
 
   const conversations = ref<Conversation[]>(storage.load());
@@ -24,7 +26,9 @@ export const useChatStore = defineStore("chat", () => {
   const streaming = ref(""); // answer text arriving live
   const activity = ref(""); // current tool step, if any
   const busy = ref(false);
-  let activeRequestId: string | null = null; // id of the ask() in flight
+  // The ask() in flight: its id and the agent answering it, so Stop cancels
+  // on that agent even if the picker changed since.
+  let inFlight: { requestId: string; client: AiAgentClient } | null = null;
 
   const active = computed(() => conversations.value.find((c) => c.id === activeId.value) ?? null);
   const messages = computed<ChatMessage[]>(() => active.value?.messages ?? []);
@@ -78,13 +82,16 @@ export const useChatStore = defineStore("chat", () => {
     // Held for the whole turn: switching chats is blocked while busy, but the
     // answer must land in this conversation regardless.
     const conversation = ensureActive(question);
+    const { agent, client } = agents.current();
+    conversation.agentId = agent.id;
     const history = [...conversation.messages];
     conversation.messages.push({ role: "user", content: question });
     conversation.updatedAt = Date.now();
     busy.value = true;
-    activeRequestId = crypto.randomUUID();
+    const requestId = crypto.randomUUID();
+    inFlight = { requestId, client };
     try {
-      const result = await agent.ask(question, history, activeRequestId, onEvent);
+      const result = await client.ask(question, history, requestId, onEvent);
       // On cancel, keep whatever had streamed in before ai_agent stopped.
       const content =
         result.cancelled && streaming.value
@@ -94,7 +101,7 @@ export const useChatStore = defineStore("chat", () => {
     } catch (err) {
       conversation.messages.push({ role: "assistant", content: `error: ${err}` });
     } finally {
-      activeRequestId = null;
+      inFlight = null;
       streaming.value = "";
       activity.value = "";
       busy.value = false;
@@ -105,9 +112,9 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Stops the turn in flight; send()'s own result handling finishes up. */
   async function stop(): Promise<void> {
-    if (!activeRequestId) return;
+    if (!inFlight) return;
     activity.value = "stopping ...";
-    await agent.cancel(activeRequestId);
+    await inFlight.client.cancel(inFlight.requestId);
   }
 
   function newChat(): void {
@@ -118,6 +125,9 @@ export const useChatStore = defineStore("chat", () => {
   function selectChat(id: string): void {
     if (busy.value) return;
     activeId.value = id;
+    // Reopening a chat switches back to the agent it was last talking to.
+    const agentId = conversations.value.find((c) => c.id === id)?.agentId;
+    if (agentId) agents.select(agentId);
   }
 
   function deleteChat(id: string): void {

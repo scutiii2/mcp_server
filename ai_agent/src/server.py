@@ -216,6 +216,16 @@ def cancel(request_id: str) -> dict[str, Any]:
     return {"cancelled": agent_config.cancel(request_id)}
 
 
+@mcp.tool()
+def list_agents() -> dict[str, Any]:
+    """Every registered ai_agent instance (id, label, url), this one
+    included - for a browser client such as ember_web, which can't read
+    configs/config_agents.json itself. Re-reads the file first so
+    instances started or stopped since this one booted show up."""
+    agent_registry.reload()
+    return {"agents": agent_registry.all_agents()}
+
+
 def main() -> None:
     mcp_upstream.connect()
     agent_registry.register(_AGENT_ID, f"{agent_config.status()['vendor_label']} Agent", _AGENT_URL)

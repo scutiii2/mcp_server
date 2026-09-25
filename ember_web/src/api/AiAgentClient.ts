@@ -1,7 +1,7 @@
 import { McpClientBase } from "./McpClientBase";
-import type { AgentEvent, AskResult, ChatMessage } from "./types";
+import type { AgentEvent, AgentInfo, AskResult, ChatMessage } from "./types";
 
-/** ai_agent instance's MCP tools: status, ask (streamed), cancel. */
+/** ai_agent instance's MCP tools: status, ask (streamed), cancel, list_agents. */
 export class AiAgentClient extends McpClientBase {
   /** ai_agent's status tool: provider availability. */
   async status(): Promise<Record<string, unknown>> {
@@ -37,5 +37,11 @@ export class AiAgentClient extends McpClientBase {
   async cancel(requestId: string): Promise<boolean> {
     const result = await this.callTool("cancel", { request_id: requestId });
     return result.cancelled === true;
+  }
+
+  /** Every registered ai_agent instance, this one included. */
+  async listAgents(): Promise<AgentInfo[]> {
+    const result = await this.callTool("list_agents", {});
+    return Array.isArray(result.agents) ? (result.agents as AgentInfo[]) : [];
   }
 }

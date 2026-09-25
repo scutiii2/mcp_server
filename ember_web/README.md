@@ -7,8 +7,9 @@ directly to `ai_agent` (chat) and `mcp_server` (tool listing) using
 
 ## Features
 
-- Chat with one `ai_agent` instance, with live token streaming and tool-step
-  indicators (from the MCP progress notifications `ask()` sends).
+- Chat with any registered `ai_agent` instance (picked from a dropdown fed
+  by `ai_agent`'s `list_agents` tool), with live token streaming and
+  tool-step indicators (from the MCP progress notifications `ask()` sends).
 - Stop button (`ai_agent`'s `cancel` tool; takes effect at the next round).
 - Markdown rendering, sanitized with DOMPurify.
 - Several conversations, saved in this browser's `localStorage`.

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { ref } from "vue";
+import AgentPicker from "../components/AgentPicker.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import MessageList from "../components/MessageList.vue";
@@ -50,7 +51,10 @@ function onSelect(id: string): void {
         :activity="activity"
         :busy="busy"
       />
-      <ChatInput :busy="busy" @send="chat.send" @stop="chat.stop" />
+      <div class="composer-area">
+        <AgentPicker class="picker" :locked="busy" />
+        <ChatInput :busy="busy" @send="chat.send" @stop="chat.stop" />
+      </div>
     </div>
   </section>
 </template>
@@ -72,6 +76,15 @@ function onSelect(id: string): void {
 .messages {
   flex: 1;
   min-height: 0;
+}
+.composer-area {
+  flex-shrink: 0;
+}
+/* Lines up with ChatInput's centered 820px column. */
+.picker {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 .menu {
   display: none;
