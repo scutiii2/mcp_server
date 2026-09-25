@@ -32,11 +32,13 @@ function messageOf(data: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function apiRequest<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export async function apiRequest<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
   // Every POST is JSON, even with no payload: ember_api rejects anything
-  // else as a CSRF guard.
+  // else as a CSRF guard. Other methods send a body only when given one.
   const init: RequestInit = { method, credentials: "same-origin" };
-  if (method === "POST") {
+  if (method === "POST" || body !== undefined) {
     init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(body ?? {});
   }

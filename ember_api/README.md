@@ -66,6 +66,18 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/auth/verify-email/resend` | cookie | `{sent: true}`; `503` if SMTP failed, `409` if already verified. |
 | `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
 | `GET` | `/api/admin/invites` | `admin.manage` | Open (unused, unexpired) invites, without codes. |
+| `DELETE` | `/api/admin/invites/{id}` | `admin.manage` | `204`; the code stops working. `409` if already used. |
+| `GET` | `/api/admin/accounts` | `admin.manage` | `[{id, username, email, email_verified, is_active, is_protected, created_at, roles: [{id, name}]}]` |
+| `PATCH` | `/api/admin/accounts/{id}` | `admin.manage` | Any of `{username, email, is_active}` -> the account. Disabling ends its sessions. `409` taken name/email, protected account, or disabling yourself. |
+| `DELETE` | `/api/admin/accounts/{id}` | `admin.manage` | `204`. `409` for the protected account or yourself. |
+| `PUT` `DELETE` | `/api/admin/accounts/{id}/roles/{role_id}` | `admin.manage` | Assign / remove a role -> the account. `409` removing from the protected account, or removing your own last `admin.manage`. |
+| `POST` | `/api/admin/accounts/{id}/send-verification` | `admin.manage` | `{sent: true}`; `409` already verified, `503` SMTP failed. |
+| `GET` | `/api/admin/roles` | `admin.manage` | `[{id, name, description, is_protected, permissions, account_count}]` |
+| `POST` | `/api/admin/roles` | `admin.manage` | `{name, description?}` -> `201` role. `409` name taken (case-insensitive). |
+| `PATCH` | `/api/admin/roles/{id}` | `admin.manage` | Any of `{name, description}` (`""` clears it) -> the role. Administrator can't be renamed. |
+| `DELETE` | `/api/admin/roles/{id}` | `admin.manage` | `204`. `409` for Administrator, or if it's your only source of `admin.manage`. |
+| `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `admin.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last `admin.manage`. |
+| `GET` | `/api/admin/permissions` | `admin.manage` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |
 | `GET` | `/api/agents` | `chat.use` | Registered ai_agent instances as `[{id, label}]` - no URLs. |
 | `GET` `POST` `DELETE` | `/api/mcp/agents/{agent_id}` | `chat.use` | MCP Streamable HTTP proxy to that agent. `404` if the id isn't in ai_agent's registry. |
 | `GET` `POST` `DELETE` | `/api/mcp/server` | `tools.use` | MCP Streamable HTTP proxy to mcp_server. |
@@ -130,7 +142,7 @@ src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AgentDirectory, McpPolicy, McpProxy, permissions
+              AdminService, AgentDirectory, McpPolicy, McpProxy, permissions
   routes/     auth, admin, mcp
   utils/      config_loader
 tests/

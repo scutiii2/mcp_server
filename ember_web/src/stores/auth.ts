@@ -34,6 +34,11 @@ export const useAuthStore = defineStore("auth", () => {
     return loaded;
   }
 
+  /** Re-reads the account, e.g. after an admin changed its roles. */
+  async function refresh(): Promise<void> {
+    account.value = await authClient.me();
+  }
+
   async function login(username: string, password: string): Promise<void> {
     account.value = await authClient.login(username, password);
   }
@@ -60,5 +65,5 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  return { account, hasPermission, ensureLoaded, login, register, verifyEmail, resendVerification, logout };
+  return { account, hasPermission, ensureLoaded, refresh, login, register, verifyEmail, resendVerification, logout };
 });

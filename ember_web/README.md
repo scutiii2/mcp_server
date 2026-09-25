@@ -18,7 +18,9 @@ URL, token or key.
 - Several conversations, saved in this browser's `localStorage` per account.
 - Tools page: list and run `mcp_server` tools from forms generated from their
   JSON Schema.
-- Admin page: create invite codes (optionally emailed), list open invites.
+- Admin page, three tabs: Accounts (edit, enable/disable, add/remove roles,
+  send verification, delete), Roles (create, edit, delete, permission
+  checkboxes) and Invites (create, optionally email, list, revoke).
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
   `admin.manage`); ember_api enforces the same rules on every call.
 - Light and dark theme following the system setting.
@@ -75,8 +77,9 @@ src/
   views/        pages: Chat, Tools, Admin, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ChatInput, MarkdownContent,
                 ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+    admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
   router/       routes + access guard, safe post-login redirect
-  utils/        markdown rendering, tool-schema forms
+  utils/        markdown rendering, tool-schema forms, error/time formatting
 ```
 
 ## Security notes
