@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Repo convention (see root .gitignore): real config/secret files stay
+# local, only their .example twins are committed.
+.env
+.env.*
+!.env.example
+/configs/*
+!/configs/*.example
+!/configs/README.md
+/secrets/*
+!/secrets/*.example
+!/secrets/README.md
+
+# Vitest / Playwright output
+/coverage/
+/test-results/
+/playwright-report/
