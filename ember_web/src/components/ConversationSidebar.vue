@@ -1,13 +1,48 @@
 <script setup lang="ts">
+import { nextTick, ref } from "vue";
 import type { Conversation } from "../api/types";
 
 // locked: a turn is running - switching or starting chats is blocked.
-defineProps<{
+const props = defineProps<{
   conversations: Conversation[];
   activeId: string | null;
   locked: boolean;
 }>();
-const emit = defineEmits<{ new: []; select: [id: string]; delete: [id: string] }>();
+const emit = defineEmits<{
+  new: [];
+  select: [id: string];
+  delete: [id: string];
+  rename: [id: string, title: string];
+  deleteAll: [];
+}>();
+
+// The row being renamed, and its draft title.
+const renamingId = ref<string | null>(null);
+const draft = ref("");
+const renameInput = ref<HTMLInputElement[]>([]);
+
+async function startRename(c: Conversation): Promise<void> {
+  renamingId.value = c.id;
+  draft.value = c.title;
+  await nextTick();
+  renameInput.value[0]?.select();
+}
+
+function finishRename(save: boolean): void {
+  const id = renamingId.value;
+  if (id === null) return;
+  renamingId.value = null; // before emitting: blur fires again when the input goes
+  if (save) emit("rename", id, draft.value);
+}
+
+function confirmDelete(c: Conversation): void {
+  if (confirm(`Delete "${c.title}"? This can't be undone.`)) emit("delete", c.id);
+}
+
+function confirmDeleteAll(): void {
+  const count = props.conversations.length;
+  if (confirm(`Delete all ${count} chat${count === 1 ? "" : "s"}? This can't be undone.`)) emit("deleteAll");
+}
 </script>
 
 <template>
@@ -26,22 +61,57 @@ const emit = defineEmits<{ new: []; select: [id: string]; delete: [id: string] }
         :key="c.id"
         :class="['row', { active: c.id === activeId, locked }]"
         :title="c.title"
-        @click="emit('select', c.id)"
+        @click="renamingId !== c.id && emit('select', c.id)"
       >
-        <span class="title">{{ c.title }}</span>
-        <button
-          type="button"
-          class="delete"
-          title="Delete chat"
-          :disabled="locked && c.id === activeId"
-          @click.stop="emit('delete', c.id)"
-        >
-          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-          </svg>
-        </button>
+        <input
+          v-if="renamingId === c.id"
+          ref="renameInput"
+          v-model="draft"
+          class="rename"
+          aria-label="Chat title"
+          maxlength="120"
+          @click.stop
+          @keydown.enter.prevent="finishRename(true)"
+          @keydown.esc.prevent="finishRename(false)"
+          @blur="finishRename(true)"
+        />
+        <template v-else>
+          <span class="title" @dblclick.stop="startRename(c)">{{ c.title }}</span>
+          <button type="button" class="icon" title="Rename chat" @click.stop="startRename(c)">
+            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+              <path
+                d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="icon delete"
+            title="Delete chat"
+            :disabled="locked && c.id === activeId"
+            @click.stop="confirmDelete(c)"
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            </svg>
+          </button>
+        </template>
       </li>
     </ul>
+
+    <button
+      v-if="conversations.length > 1"
+      type="button"
+      class="delete-all"
+      :disabled="locked"
+      @click="confirmDeleteAll"
+    >
+      Delete all chats
+    </button>
   </aside>
 </template>
 
@@ -115,7 +185,7 @@ const emit = defineEmits<{ new: []; select: [id: string]; delete: [id: string] }
   text-overflow: ellipsis;
 }
 /* Shown on hover (or always on touch screens, which have no hover). */
-.delete {
+.icon {
   display: grid;
   place-items: center;
   width: 22px;
@@ -129,20 +199,50 @@ const emit = defineEmits<{ new: []; select: [id: string]; delete: [id: string] }
   background: transparent;
   opacity: 0;
 }
-.row:hover .delete,
-.delete:focus-visible {
+.row:hover .icon,
+.icon:focus-visible {
   opacity: 1;
 }
 @media (hover: none) {
-  .delete {
+  .icon {
     opacity: 1;
   }
+}
+.icon:hover:not(:disabled) {
+  color: var(--text);
 }
 .delete:hover:not(:disabled) {
   color: var(--danger);
 }
-.delete:disabled {
+.icon:disabled {
   cursor: default;
   opacity: 0;
+}
+.rename {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.delete-all {
+  margin-top: auto;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--muted);
+  background: transparent;
+}
+.delete-all:hover:not(:disabled) {
+  color: var(--danger);
+}
+.delete-all:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 </style>

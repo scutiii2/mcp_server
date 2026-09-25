@@ -15,7 +15,8 @@ URL, token or key.
   `ask()` sends).
 - Stop button (`ai_agent`'s `cancel` tool; takes effect at the next round).
 - Markdown rendering, sanitized with DOMPurify.
-- Several conversations, saved in this browser's `localStorage` per account.
+- Several conversations, saved in this browser's `localStorage` per account:
+  rename (double-click or pencil), export to Markdown, clear, delete, delete all.
 - Tools page: list and run `mcp_server` tools from forms generated from their
   JSON Schema.
 - Account page (click your username): profile, change email (re-verify),
@@ -81,7 +82,7 @@ src/
                 ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
   router/       routes + access guard, safe post-login redirect
-  utils/        markdown rendering, tool-schema forms, error/time formatting
+  utils/        markdown rendering, tool-schema forms, error/time formatting, chat export
 ```
 
 ## Security notes

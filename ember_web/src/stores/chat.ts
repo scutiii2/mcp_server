@@ -161,8 +161,35 @@ export const useChatStore = defineStore("chat", () => {
     persist();
   }
 
+  /** Blank titles are ignored; the chat keeps its old one. */
+  function renameChat(id: string, title: string): void {
+    const conversation = conversations.value.find((c) => c.id === id);
+    const trimmed = title.replace(/\s+/g, " ").trim();
+    if (!conversation || !trimmed || trimmed === conversation.title) return;
+    conversation.title = trimmed;
+    persist();
+  }
+
+  /** Empties a chat's messages but keeps the chat (title, agent). */
+  function clearChat(id: string): void {
+    if (busy.value && id === activeId.value) return;
+    const conversation = conversations.value.find((c) => c.id === id);
+    if (!conversation || conversation.messages.length === 0) return;
+    conversation.messages = [];
+    conversation.updatedAt = Date.now();
+    persist();
+  }
+
+  function deleteAllChats(): void {
+    if (busy.value) return; // the active chat's answer is still arriving
+    conversations.value = [];
+    activeId.value = null;
+    persist();
+  }
+
   return {
     activeId,
+    active,
     sortedConversations,
     messages,
     streaming,
@@ -173,5 +200,8 @@ export const useChatStore = defineStore("chat", () => {
     newChat,
     selectChat,
     deleteChat,
+    renameChat,
+    clearChat,
+    deleteAllChats,
   };
 });

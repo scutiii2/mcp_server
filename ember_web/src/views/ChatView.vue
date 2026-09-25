@@ -5,11 +5,14 @@ import AgentPicker from "../components/AgentPicker.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import MessageList from "../components/MessageList.vue";
+import { useAgentsStore } from "../stores/agents";
 import { useChatStore } from "../stores/chat";
+import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
 const chat = useChatStore();
 // storeToRefs keeps destructured state reactive; actions come off `chat`.
-const { sortedConversations, activeId, messages, streaming, activity, busy } = storeToRefs(chat);
+const { sortedConversations, activeId, active, messages, streaming, activity, busy } = storeToRefs(chat);
+const agentsStore = useAgentsStore();
 
 // Narrow screens only: the sidebar is a drawer toggled by the menu button.
 const drawerOpen = ref(false);
@@ -17,6 +20,23 @@ const drawerOpen = ref(false);
 function onNew(): void {
   chat.newChat();
   drawerOpen.value = false;
+}
+
+function exportActive(): void {
+  const conversation = active.value;
+  if (!conversation) return;
+  const agentLabel = agentsStore.agents.find((a) => a.id === conversation.agentId)?.label ?? conversation.agentId ?? null;
+  downloadText(
+    exportFileName(conversation.title, "md"),
+    conversationToMarkdown(conversation, agentLabel),
+    "text/markdown",
+  );
+}
+
+function clearActive(): void {
+  const conversation = active.value;
+  if (!conversation) return;
+  if (confirm(`Clear all messages in "${conversation.title}"? The chat itself stays.`)) chat.clearChat(conversation.id);
 }
 
 function onSelect(id: string): void {
@@ -35,6 +55,8 @@ function onSelect(id: string): void {
       @new="onNew"
       @select="onSelect"
       @delete="chat.deleteChat"
+      @rename="chat.renameChat"
+      @delete-all="chat.deleteAllChats"
     />
     <div v-if="drawerOpen" class="backdrop" @click="drawerOpen = false" />
 
@@ -52,7 +74,15 @@ function onSelect(id: string): void {
         :busy="busy"
       />
       <div class="composer-area">
-        <AgentPicker class="picker" :locked="busy" />
+        <div class="toolbar">
+          <AgentPicker :locked="busy" />
+          <div v-if="active && messages.length" class="chat-actions">
+            <button type="button" title="Download this chat as Markdown" @click="exportActive">Export</button>
+            <button type="button" title="Remove all messages from this chat" :disabled="busy" @click="clearActive">
+              Clear
+            </button>
+          </div>
+        </div>
         <ChatInput :busy="busy" @send="chat.send" @stop="chat.stop" />
       </div>
     </div>
@@ -81,10 +111,36 @@ function onSelect(id: string): void {
   flex-shrink: 0;
 }
 /* Lines up with ChatInput's centered 820px column. */
-.picker {
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
   max-width: 820px;
   margin: 0 auto;
   padding: 0 24px;
+}
+.chat-actions {
+  display: flex;
+  gap: 6px;
+}
+.chat-actions button {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.8em;
+  color: var(--muted);
+  background: transparent;
+}
+.chat-actions button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.chat-actions button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 .menu {
   display: none;
