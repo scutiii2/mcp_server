@@ -11,7 +11,20 @@ import { conversationToMarkdown, downloadText, exportFileName } from "../utils/c
 
 const chat = useChatStore();
 // storeToRefs keeps destructured state reactive; actions come off `chat`.
-const { sortedConversations, activeId, active, messages, streaming, activity, busy, caveman } = storeToRefs(chat);
+const {
+  sortedConversations,
+  activeId,
+  active,
+  messages,
+  streaming,
+  activity,
+  busy,
+  caveman,
+  listLoading,
+  chatLoading,
+  loadError,
+  saveError,
+} = storeToRefs(chat);
 const agentsStore = useAgentsStore();
 
 // Narrow screens only: the sidebar is a drawer toggled by the menu button.
@@ -52,6 +65,7 @@ function onSelect(id: string): void {
       :conversations="sortedConversations"
       :active-id="activeId"
       :locked="busy"
+      :loading="listLoading"
       @new="onNew"
       @select="onSelect"
       @delete="chat.deleteChat"
@@ -66,7 +80,19 @@ function onSelect(id: string): void {
           <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
       </button>
+      <div v-if="saveError || loadError" class="banner" role="alert">
+        <template v-if="saveError">
+          Couldn't save your chats: {{ saveError }}
+          <button type="button" @click="chat.retrySave()">Retry</button>
+        </template>
+        <template v-else>
+          Couldn't load chats: {{ loadError }}
+          <button type="button" @click="chat.reload()">Retry</button>
+        </template>
+      </div>
+      <p v-if="chatLoading" class="loading">Loading chat …</p>
       <MessageList
+        v-else
         class="messages"
         :messages="messages"
         :streaming="streaming"
@@ -114,6 +140,33 @@ function onSelect(id: string): void {
 .messages {
   flex: 1;
   min-height: 0;
+}
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 0.9em;
+  color: var(--danger);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.banner button {
+  padding: 2px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--danger);
+  background: transparent;
+}
+.loading {
+  flex: 1;
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
 }
 .composer-area {
   flex-shrink: 0;

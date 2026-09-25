@@ -15,7 +15,8 @@ URL, token or key.
   `ask()` sends).
 - Stop button (`ai_agent`'s `cancel` tool; takes effect at the next round).
 - Markdown rendering, sanitized with DOMPurify.
-- Several conversations, saved in this browser's `localStorage` per account:
+- Several conversations, saved per account in ember_api (they follow you to
+  any browser; chats from the old browser-only storage are uploaded once):
   rename (double-click or pencil), export to Markdown, clear, delete, delete all.
 - Tools page: list and run `mcp_server` tools from forms generated from their
   JSON Schema. Tools show readable titles (`tool_srv_startApp` -> "Start App")
@@ -78,7 +79,7 @@ point at ember_api's proxy routes - `/api/mcp/agents/{id}` and
 src/
   api/          http + AuthClient / AdminClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
-  services/     ConversationStorage (localStorage per account, swappable)
+  services/     ConversationStorage (ember_api chat history; one-time import of old local chats)
   stores/       Pinia: auth, agents, chat
   views/        pages: Chat, Tools, Admin, Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ChatInput, MarkdownContent,
@@ -93,9 +94,10 @@ src/
 
 - Access checks in the router only decide what the UI shows; ember_api
   enforces every permission itself.
-- Chats live in the browser (`localStorage`, one key per account), not on a
-  server: they don't follow you to another browser, and anyone with access
-  to this browser profile can read them.
+- Chats are stored in ember_api's database. The browser saves the question
+  when it's sent and the whole chat when the answer is in; closing the tab
+  mid-answer loses that answer (a server-run turn is a later step). A failed
+  save shows a banner with Retry instead of being dropped.
 - `ai_agent` and `mcp_server` must stay unreachable from outside this
   machine (bound to `127.0.0.1`): they don't check tokens on `/mcp`
   themselves - ember_api is the gate.

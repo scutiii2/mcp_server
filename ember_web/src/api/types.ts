@@ -67,6 +67,10 @@ export interface Conversation {
   messages: ChatMessage[];
   /** ai_agent id this chat last talked to; absent on chats saved before it existed. */
   agentId?: string;
+  /** False until the transcript is fetched (the list comes without it). */
+  messagesLoaded?: boolean;
+  /** From the server's list, for chats whose messages aren't loaded yet. */
+  messageCount?: number;
   createdAt: number;
   updatedAt: number;
 }

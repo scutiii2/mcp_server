@@ -7,6 +7,8 @@ const props = defineProps<{
   conversations: Conversation[];
   activeId: string | null;
   locked: boolean;
+  /** The chat list is still being fetched. */
+  loading?: boolean;
 }>();
 const emit = defineEmits<{
   new: [];
@@ -54,7 +56,7 @@ function confirmDeleteAll(): void {
       New chat
     </button>
 
-    <p v-if="conversations.length === 0" class="empty">No saved chats yet.</p>
+    <p v-if="conversations.length === 0" class="empty">{{ loading ? "Loading chats …" : "No saved chats yet." }}</p>
     <ul v-else class="list">
       <li
         v-for="c in conversations"

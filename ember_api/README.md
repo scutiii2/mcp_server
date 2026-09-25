@@ -80,6 +80,12 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `DELETE` | `/api/admin/roles/{id}` | `admin.manage` | `204`. `409` for Administrator, or if it's your only source of `admin.manage`. |
 | `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `admin.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last `admin.manage`. |
 | `GET` | `/api/admin/permissions` | `admin.manage` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |
+| `GET` | `/api/chats` | `chat.use` | This account's chats, newest first: `[{id, title, agent_id, message_count, created_at, updated_at}]` (no messages). |
+| `GET` | `/api/chats/{id}` | `chat.use` | One chat with `messages`. `404` if missing or another account's. |
+| `PUT` | `/api/chats/{id}` | `chat.use` | `{title, agent_id, messages: [{role, content}]}` creates or replaces the chat. `413` over 2 MB or 1000 chats. |
+| `PATCH` | `/api/chats/{id}` | `chat.use` | `{title}` renames. |
+| `DELETE` | `/api/chats/{id}`, `/api/chats` | `chat.use` | `204`; one chat, or all of this account's. |
+| `POST` | `/api/chats/import` | `chat.use` | `{chats: [{id, title, agent_id, messages, created_at, updated_at}]}` (times in ms) -> `{imported, skipped}`. Existing ids are skipped, never replaced. |
 | `GET` | `/api/agents` | `chat.use` | Registered ai_agent instances as `[{id, label}]` - no URLs. |
 | `GET` `POST` `DELETE` | `/api/mcp/agents/{agent_id}` | `chat.use` | MCP Streamable HTTP proxy to that agent. `404` if the id isn't in ai_agent's registry. |
 | `GET` `POST` `DELETE` | `/api/mcp/server` | `tools.use` | MCP Streamable HTTP proxy to mcp_server. |
@@ -131,6 +137,11 @@ today, so this only protects them while their ports aren't reachable except
 from this machine (keep them on `127.0.0.1`). Also, ai_agent doesn't pass the
 user's identity on to the mcp_server tools it calls itself.
 
+- **Chat history:** every query is filtered by the logged-in account, and
+  chat ids are unique per account, so another user's chat looks exactly like
+  a missing one (`404`). Limits: 2 MB per chat, 1000 chats per account.
+- **Body size:** requests over 32 MB are refused with `413` before they are
+  read (`src/body_limit.py`).
 - **Login rate limiting** (`services/rate_limiter.py`, config
   `security.rate_limit`): after 5 failed logins in 15 minutes from one IP or
   for one account, login answers `429` with `Retry-After` until 15 minutes
@@ -153,12 +164,12 @@ configs/   config_app.json(.example)          host, port, db path, session/cooki
 secrets/   secret_bootstrap_admin.env, secret_smtp.env, secret_internal_api.env (+ .example each)
 data/      ember_api.db (runtime, gitignored)
 src/
-  run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py
-  models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode
+  run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
+  models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AccountService, AdminService, AgentDirectory, LoginRateLimiter, McpPolicy, McpProxy,
+              AccountService, AdminService, AgentDirectory, ChatService, LoginRateLimiter, McpPolicy, McpProxy,
               permissions
-  routes/     auth, account, admin, mcp
+  routes/     auth, account, admin, chats, mcp
   utils/      config_loader
 tests/
 ```

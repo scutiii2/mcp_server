@@ -1,55 +1,109 @@
+import { chatsClient, type ChatSummary } from "../api/ChatsClient";
+import { ApiError } from "../api/http";
 import type { ChatMessage, Conversation } from "../api/types";
 
-/** Where conversations are kept. The chat store depends only on this, so a
- * server-backed implementation can replace LocalConversationStorage later. */
+/** Where conversations are kept. The chat store depends only on this. One
+ * call per change, since the store only ever changes one chat at a time. */
 export interface ConversationStorage {
-  load(): Conversation[];
-  save(conversations: Conversation[]): void;
+  /** Every chat, newest first, with `messages` not loaded yet. */
+  list(): Promise<Conversation[]>;
+  messages(id: string): Promise<ChatMessage[]>;
+  /** Creates or replaces the chat whole. */
+  put(conversation: Conversation): Promise<void>;
+  rename(id: string, title: string): Promise<void>;
+  remove(id: string): Promise<void>;
+  removeAll(): Promise<void>;
 }
 
-const KEY_PREFIX = "ember_web.conversations.v1";
+/** ember_api's per-account chat history. */
+export class ServerConversationStorage implements ConversationStorage {
+  async list(): Promise<Conversation[]> {
+    return (await chatsClient.list()).map(fromSummary);
+  }
 
-/** Keeps one account's conversations in this browser's localStorage as one
- * JSON array, under a key per account - two people sharing a browser never
- * see each other's chats. Storage can be missing or throw (private window,
- * blocked site data, quota full): reads then return [] and writes are
- * dropped, so chats simply stay in memory instead of breaking the app. */
-export class LocalConversationStorage implements ConversationStorage {
+  async messages(id: string): Promise<ChatMessage[]> {
+    return (await chatsClient.get(id)).messages;
+  }
+
+  async put(c: Conversation): Promise<void> {
+    await chatsClient.put(c.id, { title: c.title, agent_id: c.agentId ?? null, messages: c.messages });
+  }
+
+  async rename(id: string, title: string): Promise<void> {
+    await ignoreMissing(chatsClient.rename(id, title));
+  }
+
+  async remove(id: string): Promise<void> {
+    await ignoreMissing(chatsClient.remove(id));
+  }
+
+  async removeAll(): Promise<void> {
+    await chatsClient.removeAll();
+  }
+}
+
+/** A chat that was never saved (deleted before its first write reached the
+ * server) or is already gone: nothing left to do. */
+async function ignoreMissing(request: Promise<unknown>): Promise<void> {
+  try {
+    await request;
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) throw err;
+  }
+}
+
+function fromSummary(s: ChatSummary): Conversation {
+  return {
+    id: s.id,
+    title: s.title,
+    messages: [],
+    messagesLoaded: false,
+    messageCount: s.message_count,
+    agentId: s.agent_id ?? undefined,
+    createdAt: Date.parse(`${s.created_at}Z`),
+    updatedAt: Date.parse(`${s.updated_at}Z`),
+  };
+}
+
+const LEGACY_PREFIX = "ember_web.conversations.v1";
+
+/** Chats this browser kept in localStorage before history moved to
+ * ember_api. Read once per account to upload them, then removed. Storage
+ * can be missing or throw (private window, blocked site data): that just
+ * means there's nothing to import. */
+export class LegacyLocalChats {
   private readonly key: string;
 
   constructor(accountId: number) {
-    this.key = `${KEY_PREFIX}.${accountId}`;
-    try {
-      // Chats saved before login existed had no owner; drop them.
-      localStorage.removeItem(KEY_PREFIX);
-    } catch {
-      // storage unavailable - nothing to clean up
-    }
+    this.key = `${LEGACY_PREFIX}.${accountId}`;
   }
 
-  load(): Conversation[] {
+  read(): Conversation[] {
     try {
+      // Chats saved before login existed had no owner; never imported.
+      localStorage.removeItem(LEGACY_PREFIX);
       const raw = localStorage.getItem(this.key);
       if (!raw) return [];
       const parsed: unknown = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.filter(isConversation) : [];
     } catch (err) {
-      console.warn("ember_web: could not read saved conversations", err);
+      console.warn("ember_web: could not read locally saved chats", err);
       return [];
     }
   }
 
-  save(conversations: Conversation[]): void {
+  /** Only after the server confirmed the import. */
+  clear(): void {
     try {
-      localStorage.setItem(this.key, JSON.stringify(conversations));
-    } catch (err) {
-      console.warn("ember_web: could not save conversations", err);
+      localStorage.removeItem(this.key);
+    } catch {
+      // storage unavailable - nothing to clear
     }
   }
 }
 
 /** Drops anything malformed (hand-edited storage, an older format) instead
- * of letting one bad entry break the whole list. */
+ * of letting one bad entry break the import. */
 function isConversation(value: unknown): value is Conversation {
   if (typeof value !== "object" || value === null) return false;
   const c = value as Record<string, unknown>;

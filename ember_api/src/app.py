@@ -11,10 +11,12 @@ from fastapi import FastAPI
 
 from src.config import Settings
 from src.db import Database
+from src.body_limit import BodyLimitMiddleware
 from src.json_only import JsonOnlyMiddleware
 from src.security import SecurityMiddleware
-from src.routes import account, admin, auth, mcp
+from src.routes import account, admin, auth, chats, mcp
 from src.services.auth_service import AuthService
+from src.services.chat_service import MAX_CHAT_BYTES
 from src.services.email_service import EmailSender, SmtpEmailSender
 from src.services.mcp_proxy import McpProxy
 from src.services.otp_service import OtpService
@@ -22,6 +24,8 @@ from src.services.session_service import SessionService
 from src.utils.config_loader import load_env_secrets
 
 logger = logging.getLogger(__name__)
+
+MAX_REQUEST_BYTES = 16 * MAX_CHAT_BYTES
 
 # No read timeout: an MCP event stream stays open for as long as a chat turn
 # (or the session) lasts. Connect/write/pool still fail fast.
@@ -66,12 +70,15 @@ def create_app(
 
     app = FastAPI(title="ember_api", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(JsonOnlyMiddleware)
+    # Largest legitimate body: a chat-history import of several 2 MB chats.
+    app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)
     # Added last, so it runs first: blocked IPs never reach JSON checks or
     # routes, and even those rejections carry the security headers.
     app.add_middleware(SecurityMiddleware, settings=settings.security)
     app.include_router(auth.router)
     app.include_router(account.router)
     app.include_router(admin.router)
+    app.include_router(chats.router)
     app.include_router(mcp.router)
 
     @app.get("/api/health")
