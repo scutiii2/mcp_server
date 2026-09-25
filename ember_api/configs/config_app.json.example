@@ -5,5 +5,7 @@
   "session_cookie_name": "ember_session",
   "session_hours": 12,
   "cookie_secure": false,
-  "default_role": "Member"
+  "default_role": "Member",
+  "agents_registry_path": "../ai_agent/configs/config_agents.json",
+  "mcp_server_url": "http://127.0.0.1:8010/mcp"
 }

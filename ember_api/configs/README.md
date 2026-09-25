@@ -12,3 +12,5 @@ gitignored.
 | `session_hours` | How long a login lasts. |
 | `cookie_secure` | `true` once served over HTTPS (the cookie is then never sent over plain HTTP). |
 | `default_role` | Role every newly registered account gets (created with `chat.use` + `tools.use` if missing). |
+| `agents_registry_path` | ai_agent's `configs/config_agents.json` (relative to the ember_api folder). ember_api only proxies to agents listed there. |
+| `mcp_server_url` | mcp_server's MCP endpoint the proxy forwards to. |

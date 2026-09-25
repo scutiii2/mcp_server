@@ -15,7 +15,8 @@ hashes, same bootstrap-admin rules, same role/permission tables.
 |---|---|---|
 | 1 | Accounts, bootstrap admin, login/logout/me, sessions | done |
 | 2 | Registration with invite codes, email verification (SMTP) | done |
-| 3 | MCP proxy to ai_agent / mcp_server with permission checks | planned |
+| 3 | MCP proxy to ai_agent / mcp_server with permission checks | done |
+| 4 | ember_web switches to ember_api (login pages, `/api` via Vite proxy) | planned |
 
 ## Requirements
 
@@ -49,9 +50,10 @@ Tests:
 
 ## API
 
-All state-changing requests must send `Content-Type: application/json`
-(anything else gets `415`) - with the `SameSite=Strict` cookie this blocks
-cross-site request forgery.
+Every `POST` must send `Content-Type: application/json` (anything else gets
+`415`) - with the `SameSite=Strict` cookie this blocks cross-site request
+forgery. (Other methods need a CORS preflight cross-site, which ember_api
+never grants; the MCP client's session `DELETE` has no body at all.)
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|
@@ -63,6 +65,9 @@ cross-site request forgery.
 | `POST` | `/api/auth/verify-email/resend` | cookie | `{sent: true}`; `503` if SMTP failed, `409` if already verified. |
 | `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
 | `GET` | `/api/admin/invites` | `admin.manage` | Open (unused, unexpired) invites, without codes. |
+| `GET` | `/api/agents` | `chat.use` | Registered ai_agent instances as `[{id, label}]` - no URLs. |
+| `GET` `POST` `DELETE` | `/api/mcp/agents/{agent_id}` | `chat.use` | MCP Streamable HTTP proxy to that agent. `404` if the id isn't in ai_agent's registry. |
+| `GET` `POST` `DELETE` | `/api/mcp/server` | `tools.use` | MCP Streamable HTTP proxy to mcp_server. |
 | `GET` | `/api/health` | - | `{status: "ok"}` |
 
 ## Security model
@@ -89,6 +94,28 @@ cross-site request forgery.
   `/verify-email/resend` retries; an invite's code is still returned to the
   admin.
 
+- **MCP proxy:** the browser only ever talks to ember_api. Upstream URLs come
+  from server-side config (`mcp_server_url`) and ai_agent's own registry file
+  (`agents_registry_path`), never from the request. Only
+  `content-type`, `accept`, `mcp-session-id`, `mcp-protocol-version` and
+  `last-event-id` are forwarded; the browser's cookie and any
+  `X-Requester-*` / `X-Internal-Token` it sends are dropped, and ember_api
+  adds `X-Requester-Username` / `X-Requester-Email` from the session (plus
+  `X-Internal-Token` from `secrets/secret_internal_api.env`, if set).
+  Responses, including SSE, are relayed chunk by chunk; the upstream request
+  closes when the browser disconnects.
+- **What may pass** (`src/services/mcp_policy.py`, bodies up to 1 MB): the
+  MCP handshake (`initialize`, `ping`, a few notifications) for everyone;
+  on agents only `tools/call` of `ask` / `cancel` / `status`, with `ask`
+  limited to `question`, `history`, `request_id`, `enabled_extensions`,
+  `caveman` (no `depth`); on mcp_server `tools/list` and any `tools/call`.
+  Anything else gets a JSON-RPC error (`403`) and never reaches the server.
+
+**Important:** ai_agent and mcp_server don't check any token on `/mcp`
+today, so this only protects them while their ports aren't reachable except
+from this machine (keep them on `127.0.0.1`). Also, ai_agent doesn't pass the
+user's identity on to the mcp_server tools it calls itself.
+
 Not yet: login rate limiting, device fingerprinting, IP filter (chat_app has
 these in `services/security/`).
 
@@ -96,13 +123,14 @@ these in `services/security/`).
 
 ```
 configs/   config_app.json(.example)          host, port, db path, session/cookie settings
-secrets/   secret_bootstrap_admin.env(.example), secret_smtp.env(.example)
+secrets/   secret_bootstrap_admin.env, secret_smtp.env, secret_internal_api.env (+ .example each)
 data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode
-  services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP), permissions
-  routes/     auth, admin
+  services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
+              AgentDirectory, McpPolicy, McpProxy, permissions
+  routes/     auth, admin, mcp
   utils/      config_loader
 tests/
 ```
