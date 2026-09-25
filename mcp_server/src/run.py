@@ -35,7 +35,6 @@ from src.services.app_config import capability_enabled, load_capabilities_config
 from src.services.identity_context import IdentityContextMiddleware  # noqa: E402
 from src.utils.logging_setup import configure_logging  # noqa: E402
 from src.server import mcp  # noqa: E402
-from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 
 # Before anything else runs, so uvicorn's own request/error logging (once
 # it starts inside _serve() below) is captured on disk from the start,
@@ -173,18 +172,6 @@ async def _serve() -> None:
         # instead of taking the caller's identity as a tool argument -
         # see services/identity_context.py's module docstring for why.
         app.add_middleware(IdentityContextMiddleware)
-        # ember_web calls this server straight from the browser (chat_app
-        # calls it server-side, so CORS never applies to it). Added after
-        # IdentityContextMiddleware so it wraps it and answers preflight
-        # OPTIONS first. Mcp-Session-Id must be exposed or the browser MCP
-        # client can't read its session id and every follow-up fails.
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
-            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-            allow_headers=["*"],
-            expose_headers=["Mcp-Session-Id"],
-        )
         # Where a human (or chat_app's sidebar) checks what's connected -
         # also a plain HTTP route, same reasoning: nothing here is
         # something a model needs to call. See extension_routes.py.

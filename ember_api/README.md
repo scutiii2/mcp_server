@@ -17,7 +17,7 @@ hashes, same bootstrap-admin rules, same role/permission tables.
 | 2 | Registration with invite codes, email verification (SMTP) | done |
 | 3 | MCP proxy to ai_agent / mcp_server with permission checks | done |
 | 4 | ember_web switches to ember_api (login pages, `/api` via Vite proxy) | done |
-| 5 | Cleanup: drop the old direct CORS on ai_agent / mcp_server | planned |
+| 5 | Cleanup: drop the old direct CORS on ai_agent / mcp_server | done |
 
 ## Requirements
 
