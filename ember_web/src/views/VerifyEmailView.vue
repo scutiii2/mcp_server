@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import AuthCard from "../components/AuthCard.vue";
 import { useAuthStore } from "../stores/auth";
 
@@ -63,6 +63,8 @@ async function logout(): Promise<void> {
     </form>
     <template #footer>
       <button type="button" class="link-button" :disabled="busy" @click="resend">Send a new code</button>
+      &middot;
+      <RouterLink to="/account">Change email</RouterLink>
       &middot;
       <button type="button" class="link-button" @click="logout">Log out</button>
     </template>

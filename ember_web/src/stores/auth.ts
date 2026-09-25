@@ -1,6 +1,12 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import { authClient, type Account, type RegisterInput, type RegisterResult } from "../api/AuthClient";
+import {
+  authClient,
+  type Account,
+  type EmailChangeResult,
+  type RegisterInput,
+  type RegisterResult,
+} from "../api/AuthClient";
 import { onUnauthorized, UnauthorizedError } from "../api/http";
 
 /** Who is logged in. Other stores watch `account` to reset per-user state. */
@@ -57,6 +63,19 @@ export const useAuthStore = defineStore("auth", () => {
     await authClient.resendVerification();
   }
 
+  /** The account comes back unverified: the router then allows only the
+   * verify and account pages until the new code is entered. */
+  async function changeEmail(currentPassword: string, email: string): Promise<EmailChangeResult> {
+    const result = await authClient.changeEmail(currentPassword, email);
+    account.value = result.account;
+    return result;
+  }
+
+  /** Other sessions of this account are logged out; this one stays. */
+  async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    account.value = await authClient.changePassword(currentPassword, newPassword);
+  }
+
   async function logout(): Promise<void> {
     try {
       await authClient.logout();
@@ -65,5 +84,5 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  return { account, hasPermission, ensureLoaded, refresh, login, register, verifyEmail, resendVerification, logout };
+  return { account, hasPermission, ensureLoaded, refresh, login, register, verifyEmail, resendVerification, changeEmail, changePassword, logout };
 });

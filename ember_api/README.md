@@ -64,6 +64,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/auth/register` | - | `{username, email, password, invite_code}` -> `201 {account, verification_email_sent, email_error}`; logs in. `400` bad/expired/used invite, `409` taken username/email, `422` invalid fields. |
 | `POST` | `/api/auth/verify-email` | cookie | `{code}` -> the account, now verified. `400` wrong/expired code. |
 | `POST` | `/api/auth/verify-email/resend` | cookie | `{sent: true}`; `503` if SMTP failed, `409` if already verified. |
+| `POST` | `/api/account/email` | cookie | `{current_password, email}` -> `{account, verification_email_sent, email_error}`. The new email is unverified (permissions off) until its emailed code is entered. `400` wrong password, `409` email taken or bootstrap admin. |
+| `POST` | `/api/account/password` | cookie | `{current_password, new_password}` (8+ chars) -> the account. Logs out every other session. `400` wrong password, `409` bootstrap admin (change it in `secret_bootstrap_admin.env`). |
 | `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
 | `GET` | `/api/admin/invites` | `admin.manage` | Open (unused, unexpired) invites, without codes. |
 | `DELETE` | `/api/admin/invites/{id}` | `admin.manage` | `204`; the code stops working. `409` if already used. |
@@ -142,8 +144,8 @@ src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AdminService, AgentDirectory, McpPolicy, McpProxy, permissions
-  routes/     auth, admin, mcp
+              AccountService, AdminService, AgentDirectory, McpPolicy, McpProxy, permissions
+  routes/     auth, account, admin, mcp
   utils/      config_loader
 tests/
 ```

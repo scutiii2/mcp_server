@@ -30,7 +30,9 @@ async function logout(): Promise<void> {
       <RouterLink v-if="auth.hasPermission('admin.manage')" to="/admin">Admin</RouterLink>
     </nav>
     <div v-if="account" class="user">
-      <span class="username" :title="account.email">{{ account.username }}</span>
+      <RouterLink to="/account" class="username" :title="`${account.email} - account settings`">
+        {{ account.username }}
+      </RouterLink>
       <button type="button" class="logout" @click="logout">Log out</button>
     </div>
   </header>
@@ -74,6 +76,11 @@ nav {
 }
 .username {
   color: var(--muted);
+  text-decoration: none;
+}
+.username:hover,
+.username.router-link-exact-active {
+  color: var(--text);
 }
 .logout {
   padding: 3px 12px;

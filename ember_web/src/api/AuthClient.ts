@@ -24,7 +24,15 @@ export interface RegisterInput {
   invite_code: string;
 }
 
-/** ember_api's /api/auth routes. Stateless; the auth store holds the account. */
+export interface EmailChangeResult {
+  /** Now unverified (unless the email didn't actually change). */
+  account: Account;
+  /** False when SMTP failed or nothing changed; resend can retry. */
+  verification_email_sent: boolean;
+  email_error: string | null;
+}
+
+/** ember_api's /api/auth and /api/account routes. Stateless; the auth store holds the account. */
 export const authClient = {
   me: () => apiRequest<Account>("GET", "/api/auth/me"),
   login: (username: string, password: string) =>
@@ -33,4 +41,8 @@ export const authClient = {
   register: (input: RegisterInput) => apiRequest<RegisterResult>("POST", "/api/auth/register", input),
   verifyEmail: (code: string) => apiRequest<Account>("POST", "/api/auth/verify-email", { code }),
   resendVerification: () => apiRequest<{ sent: boolean }>("POST", "/api/auth/verify-email/resend"),
+  changeEmail: (current_password: string, email: string) =>
+    apiRequest<EmailChangeResult>("POST", "/api/account/email", { current_password, email }),
+  changePassword: (current_password: string, new_password: string) =>
+    apiRequest<Account>("POST", "/api/account/password", { current_password, new_password }),
 };

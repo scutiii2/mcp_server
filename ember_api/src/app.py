@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from src.config import Settings
 from src.db import Database
 from src.json_only import JsonOnlyMiddleware
-from src.routes import admin, auth, mcp
+from src.routes import account, admin, auth, mcp
 from src.services.auth_service import AuthService
 from src.services.email_service import EmailSender, SmtpEmailSender
 from src.services.mcp_proxy import McpProxy
@@ -66,6 +66,7 @@ def create_app(
     app = FastAPI(title="ember_api", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(JsonOnlyMiddleware)
     app.include_router(auth.router)
+    app.include_router(account.router)
     app.include_router(admin.router)
     app.include_router(mcp.router)
 

@@ -8,6 +8,9 @@ declare module "vue-router" {
     guestOnly?: boolean;
     /** The ember_api permission the page needs. */
     permission?: string;
+    /** Open to any logged-in account, verified or not (the Account page,
+     * so a mistyped email can be fixed). */
+    anyAccount?: boolean;
   }
 }
 
@@ -35,6 +38,12 @@ export const router = createRouter({
       component: () => import("../views/AdminView.vue"),
       meta: { permission: "admin.manage" },
     },
+    {
+      path: "/account",
+      name: "account",
+      component: () => import("../views/AccountView.vue"),
+      meta: { anyAccount: true },
+    },
     { path: "/login", name: "login", component: () => import("../views/LoginView.vue"), meta: { guestOnly: true } },
     {
       path: "/register",
@@ -59,7 +68,7 @@ router.beforeEach(async (to): Promise<true | RouteLocationRaw> => {
     return to.meta.guestOnly ? true : { name: "login", query: to.fullPath === "/" ? {} : { redirect: to.fullPath } };
   }
   if (!account.email_verified) {
-    return to.name === "verify-email" ? true : { name: "verify-email" };
+    return to.name === "verify-email" || to.meta.anyAccount ? true : { name: "verify-email" };
   }
 
   const home = HOME_PAGES.find((p) => auth.hasPermission(p.permission));

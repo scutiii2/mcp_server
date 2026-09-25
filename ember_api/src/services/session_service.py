@@ -55,6 +55,15 @@ class SessionService:
         await self._session.execute(delete(AuthSession).where(AuthSession.token_hash == _hash_token(token)))
         await self._session.commit()
 
+    async def revoke_others(self, account_id: int, keep_token: str) -> None:
+        """Ends every session of `account_id` except the one for `keep_token`."""
+        await self._session.execute(
+            delete(AuthSession).where(
+                AuthSession.account_id == account_id, AuthSession.token_hash != _hash_token(keep_token)
+            )
+        )
+        await self._session.commit()
+
     async def purge_expired(self) -> None:
         await self._session.execute(delete(AuthSession).where(AuthSession.expires_at <= utcnow()))
         await self._session.commit()

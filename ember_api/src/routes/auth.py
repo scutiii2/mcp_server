@@ -89,7 +89,7 @@ async def _start_session(response: Response, account: Account, sessions: Session
     )
 
 
-async def _send_verification(account: Account, otp: OtpService, email: EmailSender) -> str | None:
+async def send_verification_code(account: Account, otp: OtpService, email: EmailSender) -> str | None:
     """Sends a fresh code; returns the error message if delivery failed."""
     row, code = await otp.create_email_verification(account)
     try:
@@ -164,7 +164,7 @@ async def register(
     # Logged in even if the email fails: the account is committed, and
     # resend lets the user retry once SMTP works (same as chat_app).
     await _start_session(response, account, sessions, settings)
-    error = await _send_verification(account, otp, email)
+    error = await send_verification_code(account, otp, email)
     return RegisterOut(account=AccountOut.of(account), verification_email_sent=error is None, email_error=error)
 
 
@@ -189,7 +189,7 @@ async def resend_verification(
 ) -> EmailSentOut:
     if account.email_verified:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email is already verified")
-    error = await _send_verification(account, otp, email)
+    error = await send_verification_code(account, otp, email)
     if error:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, error)
     return EmailSentOut(sent=True)

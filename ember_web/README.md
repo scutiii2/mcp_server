@@ -18,6 +18,8 @@ URL, token or key.
 - Several conversations, saved in this browser's `localStorage` per account.
 - Tools page: list and run `mcp_server` tools from forms generated from their
   JSON Schema.
+- Account page (click your username): profile, change email (re-verify),
+  change password (logs out other devices). Reachable while unverified.
 - Admin page, three tabs: Accounts (edit, enable/disable, add/remove roles,
   send verification, delete), Roles (create, edit, delete, permission
   checkboxes) and Invites (create, optionally email, list, revoke).
@@ -74,7 +76,7 @@ src/
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (localStorage per account, swappable)
   stores/       Pinia: auth, agents, chat
-  views/        pages: Chat, Tools, Admin, Login, Register, VerifyEmail, NoAccess
+  views/        pages: Chat, Tools, Admin, Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ChatInput, MarkdownContent,
                 ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
