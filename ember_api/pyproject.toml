@@ -1,0 +1,26 @@
+[project]
+name = "ember_api"
+description = "Backend for ember_web: accounts, sessions and (later) the MCP proxy to ai_agent/mcp_server"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn>=0.30,<1.0",
+    "sqlalchemy[asyncio]>=2.0,<3.0",
+    "aiosqlite>=0.20,<1.0",
+    # Same password hashing as chat_app (generate/check_password_hash), so
+    # both apps store hashes in one format.
+    "werkzeug>=3.0,<4.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# httpx2: what starlette.testclient wants now (plain httpx is deprecated there).
+dev = ["pytest>=8.0", "httpx2"]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
