@@ -5,14 +5,17 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 /** What Client.callTool resolves to. */
 export type RawToolResult = Awaited<ReturnType<Client["callTool"]>>;
 
-/** One lazily-opened MCP session to one server; subclasses add typed tool methods. */
+/** One lazily-opened MCP session to one server, reached through ember_api's
+ * same-origin proxy (the session cookie rides along automatically);
+ * subclasses add typed tool methods. */
 export abstract class McpClientBase {
-  private readonly url: string;
+  private readonly path: string;
   private client: Client | null = null;
   private connecting: Promise<Client> | null = null;
 
-  constructor(url: string) {
-    this.url = url;
+  /** path: an ember_api proxy route, e.g. "/api/mcp/server". */
+  constructor(path: string) {
+    this.path = path;
   }
 
   /** Opens the session once. Concurrent first calls share one connect
@@ -30,7 +33,7 @@ export abstract class McpClientBase {
 
   private async open(): Promise<Client> {
     const client = new Client({ name: "ember_web", version: "0.1.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(this.url)));
+    await client.connect(new StreamableHTTPClientTransport(new URL(this.path, window.location.origin)));
     return client;
   }
 

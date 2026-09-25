@@ -7,16 +7,29 @@ export interface ConversationStorage {
   save(conversations: Conversation[]): void;
 }
 
-const STORAGE_KEY = "ember_web.conversations.v1";
+const KEY_PREFIX = "ember_web.conversations.v1";
 
-/** Keeps every conversation in this browser's localStorage as one JSON array.
- * Storage can be missing or throw (private window, blocked site data, quota
- * full): reads then return [] and writes are dropped, so chats simply stay
- * in memory for the session instead of breaking the app. */
+/** Keeps one account's conversations in this browser's localStorage as one
+ * JSON array, under a key per account - two people sharing a browser never
+ * see each other's chats. Storage can be missing or throw (private window,
+ * blocked site data, quota full): reads then return [] and writes are
+ * dropped, so chats simply stay in memory instead of breaking the app. */
 export class LocalConversationStorage implements ConversationStorage {
+  private readonly key: string;
+
+  constructor(accountId: number) {
+    this.key = `${KEY_PREFIX}.${accountId}`;
+    try {
+      // Chats saved before login existed had no owner; drop them.
+      localStorage.removeItem(KEY_PREFIX);
+    } catch {
+      // storage unavailable - nothing to clean up
+    }
+  }
+
   load(): Conversation[] {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(this.key);
       if (!raw) return [];
       const parsed: unknown = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.filter(isConversation) : [];
@@ -28,7 +41,7 @@ export class LocalConversationStorage implements ConversationStorage {
 
   save(conversations: Conversation[]): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+      localStorage.setItem(this.key, JSON.stringify(conversations));
     } catch (err) {
       console.warn("ember_web: could not save conversations", err);
     }

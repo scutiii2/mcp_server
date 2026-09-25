@@ -1,9 +1,10 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { AiAgentClient } from "../api/AiAgentClient";
 import type { AgentEvent, ChatMessage, Conversation } from "../api/types";
 import { LocalConversationStorage, type ConversationStorage } from "../services/ConversationStorage";
 import { useAgentsStore } from "./agents";
+import { useAuthStore } from "./auth";
 
 const TITLE_MAX_CHARS = 60;
 
@@ -16,9 +17,11 @@ function titleFrom(question: string): string {
  * comes from the agents store. */
 export const useChatStore = defineStore("chat", () => {
   const agents = useAgentsStore();
-  const storage: ConversationStorage = new LocalConversationStorage();
+  const auth = useAuthStore();
 
-  const conversations = ref<Conversation[]>(storage.load());
+  // Per account; null while logged out (then nothing is loaded or saved).
+  let storage: ConversationStorage | null = null;
+  const conversations = ref<Conversation[]>([]);
   // null = a fresh, not-yet-saved chat; it's only created on its first send,
   // so clicking "New chat" repeatedly never leaves empty entries behind.
   const activeId = ref<string | null>(null);
@@ -38,8 +41,22 @@ export const useChatStore = defineStore("chat", () => {
   );
 
   function persist(): void {
-    storage.save(conversations.value);
+    storage?.save(conversations.value);
   }
+
+  // Load the logged-in account's chats; on logout or a user switch, drop the
+  // previous user's chats from memory. A turn still streaming for the old
+  // user is stopped, so its answer can't land in the new user's list.
+  watch(
+    () => auth.account?.id ?? null,
+    (accountId) => {
+      void stop();
+      activeId.value = null;
+      storage = accountId === null ? null : new LocalConversationStorage(accountId);
+      conversations.value = storage?.load() ?? [];
+    },
+    { immediate: true },
+  );
 
   function onEvent(event: AgentEvent): void {
     switch (event.type) {
@@ -81,8 +98,15 @@ export const useChatStore = defineStore("chat", () => {
     if (!question || busy.value) return;
     // Held for the whole turn: switching chats is blocked while busy, but the
     // answer must land in this conversation regardless.
+    const turnAgent = agents.current();
     const conversation = ensureActive(question);
-    const { agent, client } = agents.current();
+    if (!turnAgent) {
+      conversation.messages.push({ role: "user", content: question });
+      conversation.messages.push({ role: "assistant", content: "error: no ai_agent is available" });
+      persist();
+      return;
+    }
+    const { agent, client } = turnAgent;
     conversation.agentId = agent.id;
     const history = [...conversation.messages];
     conversation.messages.push({ role: "user", content: question });

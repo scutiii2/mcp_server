@@ -5,7 +5,7 @@ import type { ToolInfo, ToolRunResult } from "../api/types";
 import ToolResultPanel from "../components/ToolResultPanel.vue";
 import ToolRunForm from "../components/ToolRunForm.vue";
 
-const server = new McpServerClient(import.meta.env.VITE_MCP_SERVER_URL);
+const server = new McpServerClient();
 
 const tools = ref<ToolInfo[]>([]);
 const loading = ref(true);

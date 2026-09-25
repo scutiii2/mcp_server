@@ -1,9 +1,14 @@
 import { McpClientBase } from "./McpClientBase";
 import type { JsonSchema, ToolInfo, ToolRunResult } from "./types";
 
-/** mcp_server's MCP surface as ember_web uses it. Holds no secrets: never
- * the internal API token, which must stay server-side. */
+/** mcp_server's MCP surface as ember_web uses it, via ember_api's
+ * /api/mcp/server proxy. Holds no secrets: ember_api adds identity and the
+ * internal token server-side. */
 export class McpServerClient extends McpClientBase {
+  constructor() {
+    super("/api/mcp/server");
+  }
+
   /** Every tool mcp_server currently exposes, following pagination. */
   async listTools(): Promise<ToolInfo[]> {
     const client = await this.session();

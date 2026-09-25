@@ -69,9 +69,9 @@ export interface Conversation {
   updatedAt: number;
 }
 
-/** One registered ai_agent instance (ai_agent's list_agents tool). */
+/** One registered ai_agent instance, as ember_api's GET /api/agents lists
+ * it. No URL: the browser only reaches agents through ember_api's proxy. */
 export interface AgentInfo {
   id: string;
   label: string;
-  url: string;
 }

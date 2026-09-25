@@ -7,7 +7,7 @@ import { useAgentsStore } from "../stores/agents";
 defineProps<{ locked: boolean }>();
 
 const agentsStore = useAgentsStore();
-const { agents, available, selected, loading } = storeToRefs(agentsStore);
+const { agents, available, selected, loading, loadError } = storeToRefs(agentsStore);
 
 onMounted(() => void agentsStore.refresh());
 
@@ -19,7 +19,14 @@ function onChange(event: Event): void {
 <template>
   <div class="agent-picker">
     <label for="agent-select">Agent</label>
-    <select id="agent-select" :value="selected.id" :disabled="locked" @change="onChange">
+    <select
+      id="agent-select"
+      :value="selected?.id ?? ''"
+      :disabled="locked || agents.length === 0"
+      :title="loadError"
+      @change="onChange"
+    >
+      <option v-if="agents.length === 0" value="">{{ loading ? "loading ..." : "no agents available" }}</option>
       <option v-for="a in agents" :key="a.id" :value="a.id">
         {{ a.label }}{{ available[a.id] === false ? " (unavailable)" : "" }}
       </option>

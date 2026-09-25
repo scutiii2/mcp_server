@@ -1,8 +1,13 @@
 import { McpClientBase } from "./McpClientBase";
-import type { AgentEvent, AgentInfo, AskResult, ChatMessage } from "./types";
+import type { AgentEvent, AskResult, ChatMessage } from "./types";
 
-/** ai_agent instance's MCP tools: status, ask (streamed), cancel, list_agents. */
+/** One ai_agent instance's MCP tools (status, ask streamed, cancel), via
+ * ember_api's /api/mcp/agents/{id} proxy. */
 export class AiAgentClient extends McpClientBase {
+  constructor(agentId: string) {
+    super(`/api/mcp/agents/${encodeURIComponent(agentId)}`);
+  }
+
   /** ai_agent's status tool: provider availability. */
   async status(): Promise<Record<string, unknown>> {
     return this.callTool("status", {});
@@ -37,11 +42,5 @@ export class AiAgentClient extends McpClientBase {
   async cancel(requestId: string): Promise<boolean> {
     const result = await this.callTool("cancel", { request_id: requestId });
     return result.cancelled === true;
-  }
-
-  /** Every registered ai_agent instance, this one included. */
-  async listAgents(): Promise<AgentInfo[]> {
-    const result = await this.callTool("list_agents", {});
-    return Array.isArray(result.agents) ? (result.agents as AgentInfo[]) : [];
   }
 }
