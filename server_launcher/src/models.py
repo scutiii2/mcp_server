@@ -12,12 +12,20 @@ class ServerTemplate:
     display_name: str
     description: str
     working_dir: Path
-    venv_python: Path
-    module: str
+    venv_python: Path | None  # None for a node project
+    module: str  # python: module run with -m; node: npm script name
     port_env_var: str
     default_port: int
     extra_env_vars: dict[str, str]  # editable flags besides port, e.g. AI_AGENT_PROVIDER
     supports_args: bool  # bat forwards %* to the process it runs
+    runtime: str = "python"  # "python" (venv + py -m) or "node" (npm run)
+
+    @property
+    def command_summary(self) -> str:
+        """One-line human description of what gets launched."""
+        if self.runtime == "node":
+            return f"npm run {self.module}"
+        return f"{self.venv_python.name}  -m {self.module}"
 
 
 @dataclass

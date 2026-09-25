@@ -11,7 +11,7 @@ from typing import Callable
 
 from .config import _POLL_MS, _RESTART_WAIT_SECONDS
 from .models import ServerTemplate
-from .processes import _ensure_venv, _kill_pid_tree, _pid_alive, _spawn
+from .processes import _ensure_runtime, _kill_pid_tree, _pid_alive, _spawn
 
 
 class _TimestampedLog(collections.deque):
@@ -89,7 +89,7 @@ class Instance:
             if generation == self._generation:
                 self._set_status(status)
 
-        if not _ensure_venv(self.template, self.log_lines):
+        if not _ensure_runtime(self.template, self.log_lines):
             set_status("failed")
             return
         set_status("running")

@@ -44,6 +44,9 @@ _VENV_RE = re.compile(r'call\s+\.venv_(\w+)\\Scripts\\activate')
 # run command (py -m src.run / py -m src.server) regardless of where in
 # the bat the bootstrap block sits relative to it.
 _MODULE_RE = re.compile(r'py\s+-m\s+(?!venv\b)(\S+)')
+# A node project's run.bat (e.g. ember_web): `npm run <script>` is its run
+# command, checked only when the python venv/module patterns above miss.
+_NPM_SCRIPT_RE = re.compile(r'npm\s+run\s+(\S+)')
 # Not anchored to line-start: ai_agent's run.bat sets its defaults via
 # `if not defined X set X=value`, so `set` doesn't always open the line.
 _SET_VAR_RE = re.compile(r"(?:^|\s)set\s+([A-Za-z_][A-Za-z0-9_]*)=([^\r\n]*)", re.IGNORECASE | re.MULTILINE)

@@ -1,10 +1,11 @@
-"""Port checks, PID lookup/kill and venv bootstrap + spawn helpers."""
+"""Port checks, PID lookup/kill, venv / node_modules bootstrap and spawn helpers."""
 
 from __future__ import annotations
 
 import collections
 import os
 import shlex
+import shutil
 import socket
 import subprocess
 from pathlib import Path
@@ -78,6 +79,37 @@ def _run_and_log(cmd: list[str], cwd: Path, log: collections.deque) -> int:
     return proc.wait()
 
 
+def _npm_executable() -> str | None:
+    """npm's real launcher on PATH (npm.cmd on Windows) - Popen needs the
+    full name, a bare "npm" isn't found without shell=True."""
+    return shutil.which("npm")
+
+
+def _ensure_runtime(template: ServerTemplate, log: collections.deque) -> bool:
+    """Makes sure `template` has what it needs to start: a venv for a
+    python project, node_modules for a node one. Returns False on failure."""
+    if template.runtime == "node":
+        return _ensure_node_modules(template, log)
+    return _ensure_venv(template, log)
+
+
+def _ensure_node_modules(template: ServerTemplate, log: collections.deque) -> bool:
+    """Runs `npm install` if node_modules is missing - mirrors the
+    bootstrap block in a node project's run.bat (see ember_web/run.bat)."""
+    if (template.working_dir / "node_modules").exists():
+        return True
+    npm = _npm_executable()
+    if npm is None:
+        log.append("npm not found on PATH - install Node.js first.")
+        return False
+    log.append(f"Installing {template.working_dir.name} dependencies (npm install) ...")
+    if _run_and_log([npm, "install"], template.working_dir, log) != 0:
+        log.append("Failed to install dependencies.")
+        return False
+    log.append("Dependencies ready.")
+    return True
+
+
 def _ensure_venv(template: ServerTemplate, log: collections.deque) -> bool:
     """Creates `template.venv_python`'s venv and editable-installs the
     project into it if it isn't there yet - mirrors the same
@@ -102,7 +134,13 @@ def _build_launch_args(
     template: ServerTemplate, port: int, extra_env: dict[str, str], extra_args: str,
 ) -> tuple[list[str], dict[str, str]]:
     env = {**os.environ, template.port_env_var: str(port), **extra_env}
-    cmd = [str(template.venv_python), "-m", template.module]
+    if template.runtime == "node":
+        # `--` hands the extra args to the script itself (vite), not npm.
+        cmd = [_npm_executable() or "npm.cmd", "run", template.module, "--"]
+        # The log pane is plain text - raw ANSI color codes would show as junk.
+        env.setdefault("NO_COLOR", "1")
+    else:
+        cmd = [str(template.venv_python), "-m", template.module]
     if template.supports_args and extra_args.strip():
         cmd += shlex.split(extra_args.strip())
     return cmd, env

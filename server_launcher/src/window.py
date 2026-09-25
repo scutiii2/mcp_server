@@ -578,7 +578,7 @@ class LauncherWindow:
                 ).pack(side="left", padx=(0, 8), pady=(6, 2))
 
         tk.Label(
-            body, text=f"{template.venv_python.name}  -m {template.module}   (cwd: {template.working_dir})",
+            body, text=f"{template.command_summary}   (cwd: {template.working_dir})",
             bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8), wraplength=560, justify="left",
         ).pack(anchor="w", pady=(16, 0))
 

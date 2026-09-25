@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from .config import (
-    _DESCRIPTION_RE, _LABEL_RE, _MODULE_RE, _PROJECT_PORT_ENV, _SET_VAR_RE, _VENV_RE, REPO_ROOT, SELF_DIR_NAME,
+    _DESCRIPTION_RE, _LABEL_RE, _MODULE_RE, _NPM_SCRIPT_RE, _PROJECT_PORT_ENV, _SET_VAR_RE, _VENV_RE, REPO_ROOT,
+    SELF_DIR_NAME,
 )
 from .models import ServerTemplate
 
@@ -22,13 +23,20 @@ def discover_templates() -> list[ServerTemplate]:
 
         venv_m = _VENV_RE.search(content)
         mod_m = _MODULE_RE.search(content)
-        if not (venv_m and mod_m):
+        npm_m = _NPM_SCRIPT_RE.search(content)
+        if venv_m and mod_m:
+            runtime = "python"
+            venv_python = (working_dir / f".venv_{venv_m.group(1)}" / "Scripts" / "python.exe").resolve()
+            module = mod_m.group(1)
+        elif npm_m and (working_dir / "package.json").exists():
+            runtime = "node"
+            venv_python = None
+            module = npm_m.group(1)
+        else:
             # Doesn't match this repo's established run.bat shape - skip
             # rather than guess at how to launch it.
             continue
 
-        venv_python = (working_dir / f".venv_{venv_m.group(1)}" / "Scripts" / "python.exe").resolve()
-        module = mod_m.group(1)
         supports_args = "%*" in content
 
         set_vars = {m.group(1).upper(): m.group(2).strip() for m in _SET_VAR_RE.finditer(content)}
@@ -58,6 +66,7 @@ def discover_templates() -> list[ServerTemplate]:
                 default_port=default_port,
                 extra_env_vars=extra_env_vars,
                 supports_args=supports_args,
+                runtime=runtime,
             )
         )
     return templates
