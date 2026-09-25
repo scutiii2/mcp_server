@@ -23,7 +23,7 @@ async function logout(): Promise<void> {
 
 <template>
   <header class="topbar">
-    <span class="wordmark">ember<span class="accent">_web</span></span>
+    <span class="wordmark">Ember</span>
     <nav v-if="account?.email_verified">
       <RouterLink v-if="auth.hasPermission('chat.use')" to="/">Chat</RouterLink>
       <RouterLink v-if="auth.hasPermission('tools.use')" to="/tools">Tools</RouterLink>
@@ -60,9 +60,6 @@ async function logout(): Promise<void> {
   margin-right: auto;
   font-weight: 700;
   letter-spacing: -0.01em;
-}
-.accent {
-  color: var(--accent);
 }
 nav {
   display: flex;

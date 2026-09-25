@@ -37,15 +37,15 @@ class SmtpEmailSender:
     async def send_invite(self, to: str, code: str, expires_at: datetime) -> None:
         await self._send(
             to,
-            "Your ember_web invite code",
-            f"You've been invited to ember_web.\n\nInvite code: {code}\n\n"
+            "Your Ember invite code",
+            f"You've been invited to Ember.\n\nInvite code: {code}\n\n"
             f"It works once and expires at {expires_at:%Y-%m-%d %H:%M} UTC.",
         )
 
     async def send_email_verification(self, to: str, code: str, expires_at: datetime) -> None:
         await self._send(
             to,
-            "Verify your ember_web email",
+            "Verify your Ember email",
             f"Your verification code: {code}\n\nIt expires at {expires_at:%Y-%m-%d %H:%M} UTC.",
         )
 

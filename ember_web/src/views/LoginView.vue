@@ -30,7 +30,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <AuthCard title="Log in" subtitle="Welcome back to ember_web.">
+  <AuthCard title="Log in" subtitle="Welcome back to Ember.">
     <form @submit.prevent="submit">
       <label>
         Username
