@@ -21,13 +21,14 @@ const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
   if (!q) return tools.value;
   return tools.value.filter(
-    (t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q),
+    (t) =>
+      t.title.toLowerCase().includes(q) || t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q),
   );
 });
 
 onMounted(async () => {
   try {
-    tools.value = (await server.listTools()).sort((a, b) => a.name.localeCompare(b.name));
+    tools.value = (await server.listTools()).sort((a, b) => a.title.localeCompare(b.title));
   } catch (err) {
     loadError.value = String(err);
   } finally {
@@ -71,7 +72,10 @@ async function run(name: string, args: Record<string, unknown>): Promise<void> {
       <ul v-else class="cards">
         <li v-for="t in filtered" :key="t.name" :class="['card', { open: openName === t.name }]">
           <button type="button" class="card-head" :aria-expanded="openName === t.name" @click="toggle(t.name)">
-            <code class="name">{{ t.name }}</code>
+            <span class="heading">
+              <span class="title">{{ t.title }}</span>
+              <code class="name">{{ t.name }}</code>
+            </span>
             <span class="chevron" aria-hidden="true">{{ openName === t.name ? "▾" : "▸" }}</span>
           </button>
           <p v-if="t.description" class="description">{{ t.description }}</p>
@@ -158,9 +162,20 @@ h2 {
   text-align: left;
   background: transparent;
 }
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+.title {
+  font-weight: 600;
+}
 .name {
   font-family: var(--mono);
-  font-weight: 600;
+  font-size: 0.8em;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .chevron {

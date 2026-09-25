@@ -156,6 +156,15 @@ def test_ask_depth_argument_is_refused(client: TestClient, upstream: FakeUpstrea
     assert upstream.requests == []
 
 
+def test_ask_with_caveman_is_forwarded(client: TestClient, upstream: FakeUpstream) -> None:
+    as_admin(client)
+
+    response = post(client, AGENT_PATH, call_tool("ask", {"question": "hi", "caveman": True}))
+
+    assert response.status_code == 200
+    assert len(upstream.requests) == 1
+
+
 def test_batch_with_one_bad_message_is_refused_whole(client: TestClient, upstream: FakeUpstream) -> None:
     as_admin(client)
 

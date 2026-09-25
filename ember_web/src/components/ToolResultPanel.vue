@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { ToolRunResult } from "../api/types";
+import { formatToolResult } from "../utils/toolResultFormat";
 import MarkdownContent from "./MarkdownContent.vue";
 
 const props = defineProps<{ result: ToolRunResult }>();
@@ -15,6 +16,11 @@ const prettyJson = computed<string | null>(() => {
     return null;
   }
 });
+
+/** Readable Markdown for a JSON object result, else null. */
+const formatted = computed(() => formatToolResult(props.result.text));
+// Formatted by default; the raw JSON is one click away.
+const showRaw = ref(false);
 
 const copied = ref(false);
 
@@ -33,9 +39,15 @@ async function copy(): Promise<void> {
   <div :class="['result', { failed: result.isError }]">
     <div class="bar">
       <span class="status">{{ result.isError ? "Tool reported an error" : "Result" }}</span>
-      <button type="button" class="copy" @click="copy">{{ copied ? "Copied" : "Copy" }}</button>
+      <span class="buttons">
+        <button v-if="formatted" type="button" class="copy" @click="showRaw = !showRaw">
+          {{ showRaw ? "Formatted" : "Raw JSON" }}
+        </button>
+        <button type="button" class="copy" @click="copy">{{ copied ? "Copied" : "Copy" }}</button>
+      </span>
     </div>
     <p v-if="!result.text" class="muted">(no text output)</p>
+    <MarkdownContent v-else-if="formatted && !showRaw" :text="formatted" />
     <pre v-else-if="prettyJson" class="json">{{ prettyJson }}</pre>
     <MarkdownContent v-else :text="result.text" />
   </div>
@@ -64,6 +76,10 @@ async function copy(): Promise<void> {
 }
 .failed .status {
   color: var(--danger);
+}
+.buttons {
+  display: flex;
+  gap: 6px;
 }
 .copy {
   padding: 2px 10px;

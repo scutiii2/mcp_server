@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import type { AiAgentClient } from "../api/AiAgentClient";
 import type { AgentEvent, ChatMessage, Conversation } from "../api/types";
 import { LocalConversationStorage, type ConversationStorage } from "../services/ConversationStorage";
+import { toolTitle } from "../utils/toolTitles";
 import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 
@@ -11,6 +12,27 @@ const TITLE_MAX_CHARS = 60;
 function titleFrom(question: string): string {
   const oneLine = question.replace(/\s+/g, " ").trim();
   return oneLine.length > TITLE_MAX_CHARS ? `${oneLine.slice(0, TITLE_MAX_CHARS - 1)}…` : oneLine;
+}
+
+function cavemanKey(accountId: number): string {
+  return `ember_web.caveman.${accountId}`;
+}
+
+// Per-viewer convenience: blocked storage just means the default (off).
+function readPreference(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writePreference(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore - see readPreference
+  }
 }
 
 /** All saved conversations plus the one live turn. Which ai_agent answers
@@ -32,6 +54,8 @@ export const useChatStore = defineStore("chat", () => {
   // The ask() in flight: its id and the agent answering it, so Stop cancels
   // on that agent even if the picker changed since.
   let inFlight: { requestId: string; client: AiAgentClient } | null = null;
+  // "Terse replies": asks ai_agent for short answers. Remembered per account.
+  const caveman = ref(false);
 
   const active = computed(() => conversations.value.find((c) => c.id === activeId.value) ?? null);
   const messages = computed<ChatMessage[]>(() => active.value?.messages ?? []);
@@ -54,6 +78,7 @@ export const useChatStore = defineStore("chat", () => {
       activeId.value = null;
       storage = accountId === null ? null : new LocalConversationStorage(accountId);
       conversations.value = storage?.load() ?? [];
+      caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
     },
     { immediate: true },
   );
@@ -67,7 +92,7 @@ export const useChatStore = defineStore("chat", () => {
         streaming.value = "";
         break;
       case "step_start":
-        activity.value = `running ${event.label ?? event.tool} ...`;
+        activity.value = `running ${event.label ?? toolTitle(event.tool)} ...`;
         break;
       case "step_end":
         activity.value = "";
@@ -115,7 +140,7 @@ export const useChatStore = defineStore("chat", () => {
     const requestId = crypto.randomUUID();
     inFlight = { requestId, client };
     try {
-      const result = await client.ask(question, history, requestId, onEvent);
+      const result = await client.ask(question, history, requestId, onEvent, { caveman: caveman.value });
       // On cancel, keep whatever had streamed in before ai_agent stopped.
       const content =
         result.cancelled && streaming.value
@@ -161,6 +186,12 @@ export const useChatStore = defineStore("chat", () => {
     persist();
   }
 
+  function setCaveman(on: boolean): void {
+    caveman.value = on;
+    const accountId = auth.account?.id;
+    if (accountId !== undefined) writePreference(cavemanKey(accountId), on ? "1" : "0");
+  }
+
   /** Blank titles are ignored; the chat keeps its old one. */
   function renameChat(id: string, title: string): void {
     const conversation = conversations.value.find((c) => c.id === id);
@@ -201,6 +232,8 @@ export const useChatStore = defineStore("chat", () => {
     selectChat,
     deleteChat,
     renameChat,
+    caveman,
+    setCaveman,
     clearChat,
     deleteAllChats,
   };

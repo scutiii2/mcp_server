@@ -20,10 +20,12 @@ export class AiAgentClient extends McpClientBase {
     history: ChatMessage[],
     requestId: string,
     onEvent: (event: AgentEvent) => void,
+    options: { caveman?: boolean } = {},
   ): Promise<AskResult> {
     const result = await this.callTool(
       "ask",
-      { question, history, request_id: requestId },
+      // caveman: ai_agent adds terse-reply instructions for this turn only.
+      { question, history, request_id: requestId, ...(options.caveman ? { caveman: true } : {}) },
       {
         onprogress: (progress) => {
           if (progress.message)

@@ -1,4 +1,5 @@
 import { McpClientBase } from "./McpClientBase";
+import { toolTitle } from "../utils/toolTitles";
 import type { JsonSchema, ToolInfo, ToolRunResult } from "./types";
 
 /** mcp_server's MCP surface as ember_web uses it, via ember_api's
@@ -19,6 +20,7 @@ export class McpServerClient extends McpClientBase {
       for (const t of page.tools) {
         tools.push({
           name: t.name,
+          title: t.title ?? t.annotations?.title ?? toolTitle(t.name),
           description: t.description ?? "",
           inputSchema: (t.inputSchema ?? {}) as JsonSchema,
         });

@@ -11,7 +11,7 @@ import { conversationToMarkdown, downloadText, exportFileName } from "../utils/c
 
 const chat = useChatStore();
 // storeToRefs keeps destructured state reactive; actions come off `chat`.
-const { sortedConversations, activeId, active, messages, streaming, activity, busy } = storeToRefs(chat);
+const { sortedConversations, activeId, active, messages, streaming, activity, busy, caveman } = storeToRefs(chat);
 const agentsStore = useAgentsStore();
 
 // Narrow screens only: the sidebar is a drawer toggled by the menu button.
@@ -76,6 +76,14 @@ function onSelect(id: string): void {
       <div class="composer-area">
         <div class="toolbar">
           <AgentPicker :locked="busy" />
+          <label class="terse" title="Ask the agent for short, terse answers">
+            <input
+              type="checkbox"
+              :checked="caveman"
+              @change="chat.setCaveman(($event.target as HTMLInputElement).checked)"
+            />
+            Terse replies
+          </label>
           <div v-if="active && messages.length" class="chat-actions">
             <button type="button" title="Download this chat as Markdown" @click="exportActive">Export</button>
             <button type="button" title="Remove all messages from this chat" :disabled="busy" @click="clearActive">
@@ -120,6 +128,15 @@ function onSelect(id: string): void {
   max-width: 820px;
   margin: 0 auto;
   padding: 0 24px;
+}
+.terse {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  font-size: 0.85em;
+  color: var(--muted);
+  cursor: pointer;
 }
 .chat-actions {
   display: flex;

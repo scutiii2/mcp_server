@@ -18,7 +18,10 @@ URL, token or key.
 - Several conversations, saved in this browser's `localStorage` per account:
   rename (double-click or pencil), export to Markdown, clear, delete, delete all.
 - Tools page: list and run `mcp_server` tools from forms generated from their
-  JSON Schema.
+  JSON Schema. Tools show readable titles (`tool_srv_startApp` -> "Start App")
+  and JSON results render as fields and tables, with the raw JSON a click away.
+- "Terse replies" toggle next to the Agent picker (ai_agent's `caveman`
+  option), remembered per account.
 - Account page (click your username): profile, change email (re-verify),
   change password (logs out other devices). Reachable while unverified.
 - Admin page, three tabs: Accounts (edit, enable/disable, add/remove roles,
@@ -82,7 +85,8 @@ src/
                 ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
   router/       routes + access guard, safe post-login redirect
-  utils/        markdown rendering, tool-schema forms, error/time formatting, chat export
+  utils/        markdown rendering, tool-schema forms, error/time formatting, chat export,
+                tool titles, tool-result formatting
 ```
 
 ## Security notes
