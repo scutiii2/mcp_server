@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from src.config import Settings
 from src.db import Database
 from src.json_only import JsonOnlyMiddleware
+from src.security import SecurityMiddleware
 from src.routes import account, admin, auth, mcp
 from src.services.auth_service import AuthService
 from src.services.email_service import EmailSender, SmtpEmailSender
@@ -65,6 +66,9 @@ def create_app(
 
     app = FastAPI(title="ember_api", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(JsonOnlyMiddleware)
+    # Added last, so it runs first: blocked IPs never reach JSON checks or
+    # routes, and even those rejections carry the security headers.
+    app.add_middleware(SecurityMiddleware, settings=settings.security)
     app.include_router(auth.router)
     app.include_router(account.router)
     app.include_router(admin.router)

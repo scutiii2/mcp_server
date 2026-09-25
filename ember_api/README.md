@@ -58,7 +58,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|
-| `POST` | `/api/auth/login` | - | `{username, password}` -> the account; sets the session cookie. `401` with one generic message on any failure. |
+| `POST` | `/api/auth/login` | - | `{username, password}` -> the account; sets the session cookie. `401` with one generic message on any failure; `429` + `Retry-After` after too many failures (`security.rate_limit`). |
 | `POST` | `/api/auth/logout` | cookie | `204`; deletes the session server-side and clears the cookie. |
 | `GET` | `/api/auth/me` | cookie | `{id, username, email, email_verified, roles, permissions}` or `401`. |
 | `POST` | `/api/auth/register` | - | `{username, email, password, invite_code}` -> `201 {account, verification_email_sent, email_error}`; logs in. `400` bad/expired/used invite, `409` taken username/email, `422` invalid fields. |
@@ -131,8 +131,20 @@ today, so this only protects them while their ports aren't reachable except
 from this machine (keep them on `127.0.0.1`). Also, ai_agent doesn't pass the
 user's identity on to the mcp_server tools it calls itself.
 
-Not yet: login rate limiting, device fingerprinting, IP filter (chat_app has
-these in `services/security/`).
+- **Login rate limiting** (`services/rate_limiter.py`, config
+  `security.rate_limit`): after 5 failed logins in 15 minutes from one IP or
+  for one account, login answers `429` with `Retry-After` until 15 minutes
+  after the last failure - checked before the password, so no hashing work
+  and no password answer during a lockout. Refused tries aren't recorded.
+- **Client IP** (`src/security.py`): the socket address, or the last
+  `X-Forwarded-For` hop when the peer is a `trusted_proxies` entry (Vite's
+  loopback proxy, which sets it). Used for the audit, rate limit and IP filter.
+- **IP filter:** optional allow/deny lists, `403` on every route.
+- **Headers:** nosniff, `X-Frame-Options: DENY`, `Referrer-Policy:
+  no-referrer`, `default-src 'none'` CSP on every response; HSTS when
+  `hsts_max_age` is set. ember_web's `vite preview` sets its own CSP.
+
+Not yet: device fingerprinting (chat_app's `services/security/fingerprint.py`).
 
 ## Layout
 
@@ -141,10 +153,11 @@ configs/   config_app.json(.example)          host, port, db path, session/cooki
 secrets/   secret_bootstrap_admin.env, secret_smtp.env, secret_internal_api.env (+ .example each)
 data/      ember_api.db (runtime, gitignored)
 src/
-  run.py, app.py, config.py, db.py, deps.py, json_only.py
+  run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AccountService, AdminService, AgentDirectory, McpPolicy, McpProxy, permissions
+              AccountService, AdminService, AgentDirectory, LoginRateLimiter, McpPolicy, McpProxy,
+              permissions
   routes/     auth, account, admin, mcp
   utils/      config_loader
 tests/

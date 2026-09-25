@@ -69,6 +69,11 @@ class AuthService:
             return LoginCheck(account=None, account_id=account.id)
         return LoginCheck(account=account, account_id=account.id)
 
+    async def account_id_for(self, username: str) -> int | None:
+        """Cheap lookup (no hashing) so rate limiting can run before the
+        deliberately slow password check."""
+        return await self._session.scalar(select(Account.id).where(Account.username == username))
+
     async def record_login_attempt(self, ip_address: str, account_id: int | None, succeeded: bool) -> None:
         self._session.add(LoginAttempt(ip_address=ip_address, account_id=account_id, succeeded=succeeded))
         await self._session.commit()

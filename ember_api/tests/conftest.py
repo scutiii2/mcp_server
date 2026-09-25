@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.app import create_app
-from src.config import Settings
+from src.config import SecuritySettings, Settings
 from src.services.email_service import EmailDeliveryError
 
 ADMIN_USERNAME = "root"
@@ -75,6 +75,7 @@ def make_settings(
     admin_password: str = ADMIN_PASSWORD,
     session_hours: int = 12,
     internal_token: str = "",
+    security: SecuritySettings | None = None,
 ) -> Settings:
     secrets_dir = tmp_path / "secrets"
     secrets_dir.mkdir(exist_ok=True)
@@ -97,6 +98,7 @@ def make_settings(
         secrets_dir=secrets_dir,
         agents_registry_path=registry,
         mcp_server_url=MCP_SERVER_URL,
+        security=security or SecuritySettings(),
     )
 
 
@@ -117,13 +119,16 @@ def client_factory(
     """Builds a started app (lifespan run) per call; all are closed at the end."""
     opened: list[TestClient] = []
 
-    def factory(**kwargs) -> TestClient:
+    def factory(address: str = "testclient", **kwargs) -> TestClient:
+        """address: the socket peer the app sees (default: Starlette's
+        "testclient"), for tests that depend on the client IP."""
         client = TestClient(
             create_app(
                 make_settings(tmp_path, **kwargs),
                 email_sender=email,
                 upstream_transport=httpx.MockTransport(upstream),
-            )
+            ),
+            client=(address, 50000),
         )
         client.__enter__()
         opened.append(client)

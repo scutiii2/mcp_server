@@ -18,9 +18,11 @@ from src.deps import (
     get_settings,
 )
 from src.models import Account
+from src.security import client_ip
 from src.services.auth_service import AuthService
 from src.services.email_service import EmailDeliveryError, EmailSender
 from src.services.otp_service import OtpService
+from src.services.rate_limiter import LoginRateLimiter
 from src.services.registration_service import RegistrationError, RegistrationService
 from src.services.session_service import SessionService
 
@@ -100,6 +102,11 @@ async def send_verification_code(account: Account, otp: OtpService, email: Email
     return None
 
 
+def _minutes(seconds: int) -> str:
+    minutes = -(-seconds // 60)  # round up: "1 minute" rather than "0 minutes"
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
+
+
 @router.post("/login")
 async def login(
     body: LoginRequest,
@@ -110,9 +117,21 @@ async def login(
     settings: Settings = Depends(get_settings),
 ) -> AccountOut:
     auth = AuthService(db)
+    ip_address = client_ip(request)
+    # Before the password check: a locked-out caller gets no answer about
+    # the password at all, and costs no hashing time.
+    retry_after = await LoginRateLimiter(db, settings.security).retry_after(
+        ip_address, await auth.account_id_for(body.username)
+    )
+    if retry_after is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many failed logins. Try again in {_minutes(retry_after)}.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     check = await auth.verify_credentials(body.username, body.password)
     account = check.account
-    ip_address = request.client.host if request.client else "unknown"
     await auth.record_login_attempt(ip_address, check.account_id, account is not None)
     if account is None:
         # One message for every failure reason, so usernames can't be probed.
