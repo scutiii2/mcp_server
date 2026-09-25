@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.db import Database
 from src.models import Account
+from src.services.email_service import EmailSender
+from src.services.otp_service import OtpService
 from src.services.session_service import SessionService
 
 
@@ -30,6 +32,14 @@ def get_session_service(
     return SessionService(session, settings.session_hours)
 
 
+def get_otp_service(session: AsyncSession = Depends(get_db_session)) -> OtpService:
+    return OtpService(session)
+
+
+def get_email_sender(request: Request) -> EmailSender:
+    return request.app.state.email_sender
+
+
 async def current_account(
     request: Request,
     settings: Settings = Depends(get_settings),
@@ -44,9 +54,12 @@ async def current_account(
 
 
 def require_permission(name: str) -> Callable[..., Awaitable[Account]]:
-    """Dependency factory: the logged-in account if it holds `name`, else 403."""
+    """Dependency factory: the logged-in account if it holds `name`, else 403.
+    An unverified email counts as holding no permissions at all."""
 
     async def dependency(account: Account = Depends(current_account)) -> Account:
+        if not account.email_verified:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Email not verified")
         if name not in account.permission_names:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing permission: {name}")
         return account

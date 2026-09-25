@@ -11,3 +11,4 @@ gitignored.
 | `session_cookie_name` | Name of the login cookie. |
 | `session_hours` | How long a login lasts. |
 | `cookie_secure` | `true` once served over HTTPS (the cookie is then never sent over plain HTTP). |
+| `default_role` | Role every newly registered account gets (created with `chat.use` + `tools.use` if missing). |

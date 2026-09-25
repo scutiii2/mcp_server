@@ -12,6 +12,8 @@ dependencies = [
     # both apps store hashes in one format.
     "werkzeug>=3.0,<4.0",
     "python-dotenv>=1.0",
+    # EmailStr validation on registration/invite requests.
+    "email-validator>=2.0,<3.0",
 ]
 
 [project.optional-dependencies]

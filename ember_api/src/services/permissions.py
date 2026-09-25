@@ -12,3 +12,7 @@ ALL_PERMISSIONS: dict[str, str] = {
 }
 
 ADMIN_ROLE = "Administrator"
+
+# What the default role (config_app.json's default_role) starts with when it
+# has to be created. Only applied on creation: later edits by an admin stick.
+DEFAULT_ROLE_PERMISSIONS = (CHAT_USE, TOOLS_USE)

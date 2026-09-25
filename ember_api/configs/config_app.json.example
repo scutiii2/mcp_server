@@ -4,5 +4,6 @@
   "database_path": "data/ember_api.db",
   "session_cookie_name": "ember_session",
   "session_hours": 12,
-  "cookie_secure": false
+  "cookie_secure": false,
+  "default_role": "Member"
 }

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from src.models import Account, LoginAttempt, Permission, Role
-from src.services.permissions import ADMIN_ROLE, ALL_PERMISSIONS
+from src.services.permissions import ADMIN_ROLE, ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS
 from src.utils.config_loader import load_env_secrets
 
 # Password hashing is deliberately slow (scrypt); it runs on a worker thread
@@ -109,12 +109,31 @@ class AuthService:
         await self._session.commit()
         return generated
 
-    async def _ensure_admin_role(self) -> Role:
+    async def ensure_default_role(self, name: str) -> None:
+        """Creates the role new registrations get, if missing, with
+        DEFAULT_ROLE_PERMISSIONS. An existing role is left exactly as is."""
+        if await self._session.scalar(select(Role).where(Role.name == name)) is not None:
+            return
+        permissions = await self._ensure_permissions()
+        self._session.add(
+            Role(
+                name=name,
+                description="Default role for newly registered accounts",
+                permissions=[permissions[p] for p in DEFAULT_ROLE_PERMISSIONS],
+            )
+        )
+        await self._session.commit()
+
+    async def _ensure_permissions(self) -> dict[str, Permission]:
         existing = {p.name: p for p in await self._session.scalars(select(Permission))}
         for name, description in ALL_PERMISSIONS.items():
             if name not in existing:
                 existing[name] = Permission(name=name, description=description)
                 self._session.add(existing[name])
+        return existing
+
+    async def _ensure_admin_role(self) -> Role:
+        existing = await self._ensure_permissions()
 
         role = await self._session.scalar(select(Role).where(Role.name == ADMIN_ROLE))
         if role is None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -8,9 +10,32 @@ from fastapi.testclient import TestClient
 
 from src.app import create_app
 from src.config import Settings
+from src.services.email_service import EmailDeliveryError
 
 ADMIN_USERNAME = "root"
 ADMIN_PASSWORD = "correct horse battery"
+
+
+@dataclass
+class FakeEmailSender:
+    """Records what would have been emailed; `fail` simulates SMTP being down."""
+
+    sent: list[tuple[str, str, str]] = field(default_factory=list)  # (kind, to, code)
+    fail: bool = False
+
+    async def send_invite(self, to: str, code: str, expires_at: datetime) -> None:
+        self._record("invite", to, code)
+
+    async def send_email_verification(self, to: str, code: str, expires_at: datetime) -> None:
+        self._record("verify", to, code)
+
+    def _record(self, kind: str, to: str, code: str) -> None:
+        if self.fail:
+            raise EmailDeliveryError("SMTP is down (fake)")
+        self.sent.append((kind, to, code))
+
+    def last_code(self, kind: str) -> str:
+        return next(code for k, _to, code in reversed(self.sent) if k == kind)
 
 
 def make_settings(tmp_path: Path, *, admin_password: str = ADMIN_PASSWORD, session_hours: int = 12) -> Settings:
@@ -34,12 +59,17 @@ def make_settings(tmp_path: Path, *, admin_password: str = ADMIN_PASSWORD, sessi
 
 
 @pytest.fixture
-def client_factory(tmp_path: Path) -> Iterator[Callable[..., TestClient]]:
+def email() -> FakeEmailSender:
+    return FakeEmailSender()
+
+
+@pytest.fixture
+def client_factory(tmp_path: Path, email: FakeEmailSender) -> Iterator[Callable[..., TestClient]]:
     """Builds a started app (lifespan run) per call; all are closed at the end."""
     opened: list[TestClient] = []
 
     def factory(**kwargs) -> TestClient:
-        client = TestClient(create_app(make_settings(tmp_path, **kwargs)))
+        client = TestClient(create_app(make_settings(tmp_path, **kwargs), email_sender=email))
         client.__enter__()
         opened.append(client)
         return client

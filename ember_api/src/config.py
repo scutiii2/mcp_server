@@ -22,6 +22,7 @@ class Settings:
     session_hours: int
     cookie_secure: bool
     secrets_dir: Path
+    default_role: str = "Member"
 
     @property
     def database_url(self) -> str:
@@ -44,4 +45,5 @@ def load_settings() -> Settings:
         session_hours=int(raw.get("session_hours", 12)),
         cookie_secure=bool(raw.get("cookie_secure", False)),
         secrets_dir=SECRETS_DIR,
+        default_role=raw.get("default_role") or "Member",
     )
