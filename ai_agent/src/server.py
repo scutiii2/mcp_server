@@ -58,7 +58,9 @@ if _args.role:
 if _args.mcp_url:
     os.environ["MCP_SERVER_URL"] = _args.mcp_url
 
+import uvicorn
 from mcp.server.fastmcp import Context, FastMCP
+from starlette.middleware.cors import CORSMiddleware
 
 # agent_config resolves provider/key/role/config files at import time and
 # raises on a bad value; show that as one clean line instead of a traceback.
@@ -218,7 +220,20 @@ def main() -> None:
     mcp_upstream.connect()
     agent_registry.register(_AGENT_ID, f"{agent_config.status()['vendor_label']} Agent", _AGENT_URL)
     try:
-        mcp.run(transport="streamable-http")
+        # Same app mcp.run(transport="streamable-http") would build, taken
+        # out so CORS can wrap it: ember_web calls this agent straight
+        # from the browser (chat_app calls it server-side, so CORS never
+        # applies to it). Mcp-Session-Id must be exposed or the browser
+        # MCP client can't read its session id and every follow-up fails.
+        app = mcp.streamable_http_app()
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+            allow_headers=["*"],
+            expose_headers=["Mcp-Session-Id"],
+        )
+        uvicorn.run(app, host=HOST, port=PORT, log_level=mcp.settings.log_level.lower())
     finally:
         agent_registry.deregister(_AGENT_ID)
         mcp_upstream.close()
