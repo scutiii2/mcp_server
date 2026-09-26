@@ -13,6 +13,7 @@ from src.deps import (
     current_account,
     get_db_session,
     get_email_sender,
+    get_log_writer,
     get_otp_service,
     get_session_service,
     get_settings,
@@ -21,6 +22,7 @@ from src.models import Account
 from src.security import client_ip
 from src.services.auth_service import AuthService
 from src.services.email_service import EmailDeliveryError, EmailSender
+from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
 from src.services.rate_limiter import LoginRateLimiter
 from src.services.registration_service import RegistrationError, RegistrationService
@@ -115,6 +117,7 @@ async def login(
     db: AsyncSession = Depends(get_db_session),
     sessions: SessionService = Depends(get_session_service),
     settings: Settings = Depends(get_settings),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> AccountOut:
     auth = AuthService(db)
     ip_address = client_ip(request)
@@ -138,6 +141,7 @@ async def login(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
 
     await _start_session(response, account, sessions, settings)
+    await logs.action(account, "auth.login", f"Logged in from {ip_address}")
     return AccountOut.of(account)
 
 
@@ -147,11 +151,15 @@ async def logout(
     response: Response,
     sessions: SessionService = Depends(get_session_service),
     settings: Settings = Depends(get_settings),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> None:
     """Always succeeds: logging out while already logged out is a no-op."""
     token = request.cookies.get(settings.session_cookie_name)
     if token:
+        account = await sessions.resolve(token)
         await sessions.revoke(token)
+        if account is not None:
+            await logs.action(account, "auth.logout", "Logged out")
     response.delete_cookie(settings.session_cookie_name, path="/")
 
 
@@ -169,6 +177,7 @@ async def register(
     sessions: SessionService = Depends(get_session_service),
     email: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> RegisterOut:
     """Creates the account, logs it in, and emails a verification code.
     Permissions stay inactive until the email is verified."""
@@ -183,6 +192,7 @@ async def register(
     # Logged in even if the email fails: the account is committed, and
     # resend lets the user retry once SMTP works (same as chat_app).
     await _start_session(response, account, sessions, settings)
+    await logs.action(account, "auth.register", "Registered with an invite code")
     error = await send_verification_code(account, otp, email)
     return RegisterOut(account=AccountOut.of(account), verification_email_sent=error is None, email_error=error)
 
@@ -192,11 +202,13 @@ async def verify_email(
     body: VerifyEmailRequest,
     account: Account = Depends(current_account),
     otp: OtpService = Depends(get_otp_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> AccountOut:
     if account.email_verified:
         return AccountOut.of(account)
     if not await otp.consume_email_verification(account, body.code):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
+    await logs.action(account, "auth.verify_email", f"Verified email {account.email}")
     return AccountOut.of(account)
 
 

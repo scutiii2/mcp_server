@@ -4,6 +4,7 @@ ember_api runs for it (chat.use)."""
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ from src.config import Settings
 from src.deps import get_agent_gateway, get_db_session, get_settings, get_turns, require_permission
 from src.models import Account, Chat
 from src.routes.mcp import get_agent_directory
+from src.routes.server_info import EXTENSION_ID_PATTERN
 from src.services import summarization
 from src.services.agent_directory import AgentDirectory
 from src.services.agent_gateway import AgentGateway, Caller
@@ -31,7 +33,7 @@ from src.services.chat_service import (
     decode_messages,
 )
 from src.services.permissions import CHAT_USE
-from src.services.turns import TooManyTurns, TurnConflict, TurnNotFound, TurnRegistry
+from src.services.turns import TooManyTurns, TurnConflict, TurnNotFound, TurnOptions, TurnRegistry
 from src.services.usage_service import LimitBlock, UsageService
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
@@ -42,7 +44,8 @@ _CHAT_ID_PATTERN = r"^[A-Za-z0-9-]{8,64}$"
 # Browser-made UUIDs; anything else is refused before touching the database.
 ChatId = Path(pattern=_CHAT_ID_PATTERN)
 TITLE_MAX = 120
-QUESTION_MAX = 100_000
+# Room for a question plus a few attached files' text (20k characters each).
+QUESTION_MAX = 200_000
 
 
 def get_chat_service(
@@ -103,6 +106,16 @@ class TurnRequest(BaseModel):
     question: str = Field(min_length=1, max_length=QUESTION_MAX)
     agent_id: str = Field(min_length=1, max_length=120)
     caveman: bool = False
+    # mcp_server extension ids whose tools the agent may use.
+    enabled_extensions: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("enabled_extensions")
+    @classmethod
+    def extension_ids(cls, ids: list[str]) -> list[str]:
+        bad = [i for i in ids if not re.fullmatch(EXTENSION_ID_PATTERN, i)]
+        if bad:
+            raise ValueError(f"not an extension id: {bad[0][:64]!r}")
+        return ids
     # Used only when this turn creates the chat.
     title: str | None = Field(default=None, max_length=TITLE_MAX)
 
@@ -370,7 +383,8 @@ async def start_turn(
         raise _too_large(error) from error
 
     try:
-        turn = turns.start(account.id, chat_id, agent, _caller(account), body.caveman)
+        options = TurnOptions(caveman=body.caveman, enabled_extensions=tuple(dict.fromkeys(body.enabled_extensions)))
+        turn = turns.start(account.id, chat_id, agent, _caller(account), options)
     except TurnConflict as error:
         raise _busy() from error
     except TooManyTurns as error:

@@ -11,11 +11,20 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.deps import current_account, get_db_session, get_email_sender, get_otp_service, get_session_service, get_settings
+from src.deps import (
+    current_account,
+    get_db_session,
+    get_email_sender,
+    get_log_writer,
+    get_otp_service,
+    get_session_service,
+    get_settings,
+)
 from src.models import Account
 from src.routes.auth import AccountOut, send_verification_code
 from src.services.account_service import AccountChangeError, AccountService, WrongPasswordError
 from src.services.email_service import EmailSender
+from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
 from src.services.session_service import SessionService
 
@@ -56,6 +65,7 @@ async def change_email(
     accounts: AccountService = Depends(get_account_service),
     otp: OtpService = Depends(get_otp_service),
     email: EmailSender = Depends(get_email_sender),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> EmailChangedOut:
     """The new email starts unverified, so permissions are off until the
     emailed code is entered on the verify page."""
@@ -63,6 +73,8 @@ async def change_email(
         changed = await accounts.change_email(account, body.current_password, str(body.email))
     except (AccountChangeError, WrongPasswordError) as error:
         raise _http_error(error) from error
+    if changed:
+        await logs.action(account, "account.email", f"Changed email to {account.email}")
     error = await send_verification_code(account, otp, email) if changed else None
     return EmailChangedOut(
         account=AccountOut.of(account),
@@ -79,6 +91,7 @@ async def change_password(
     accounts: AccountService = Depends(get_account_service),
     sessions: SessionService = Depends(get_session_service),
     settings: Settings = Depends(get_settings),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> AccountOut:
     """Every other session of this account is logged out; this one stays."""
     try:
@@ -87,4 +100,5 @@ async def change_password(
         raise _http_error(error) from error
     # current_account already proved the cookie is there and valid.
     await sessions.revoke_others(account.id, request.cookies[settings.session_cookie_name])
+    await logs.action(account, "account.password", "Changed password; other sessions logged out")
     return AccountOut.of(account)

@@ -37,6 +37,7 @@ def _build_agent() -> FastMCP:
         history: list[dict] | None = None,
         request_id: str | None = None,
         caveman: bool = False,
+        enabled_extensions: list[str] | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         headers = ctx.request_context.request.headers
@@ -45,7 +46,7 @@ def _build_agent() -> FastMCP:
         for text in ("Hel", "lo"):
             await ctx.report_progress(0, None, json.dumps({"type": "token", "text": text}))
         return {
-            "response": f"echo: {question} ({len(history or [])} earlier, caveman={caveman})",
+            "response": f"echo: {question} ({len(history or [])} earlier, caveman={caveman}, ext={enabled_extensions})",
             "cancelled": False,
             "total_tokens": 42,
             "seen": dict(seen),
@@ -98,11 +99,12 @@ def test_ask_streams_events_and_sends_identity(agent_url: str) -> None:
             history=[{"role": "user", "content": "earlier"}],
             request_id="r1",
             caveman=True,
+            enabled_extensions=["notes"],
             on_event=on_event,
         )
     )
 
-    assert result["response"] == "echo: hi (1 earlier, caveman=True)"
+    assert result["response"] == "echo: hi (1 earlier, caveman=True, ext=['notes'])"
     assert result["seen"] == {"username": "alice", "token": "s3cret"}
     assert [e["text"] for e in events] == ["Hel", "lo"]
 

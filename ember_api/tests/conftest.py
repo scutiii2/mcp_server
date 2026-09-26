@@ -16,6 +16,7 @@ from src.app import create_app
 from src.config import SecuritySettings, Settings, UsageSettings
 from src.services.agent_gateway import AgentCallError, Caller
 from src.services.email_service import EmailDeliveryError
+from src.services.server_tools import ServerUnavailable, WatcherReport
 
 ADMIN_USERNAME = "root"
 ADMIN_PASSWORD = "correct horse battery"
@@ -99,7 +100,7 @@ class FakeAgent:
         if self.gate is not None:
             self.loop.call_soon_threadsafe(self.gate.set)
 
-    async def ask(self, url, caller: Caller, *, question, history, request_id, caveman, on_event):
+    async def ask(self, url, caller: Caller, *, question, history, request_id, caveman, enabled_extensions, on_event):
         self.asks.append(
             {
                 "url": url,
@@ -108,6 +109,7 @@ class FakeAgent:
                 "history": history,
                 "request_id": request_id,
                 "caveman": caveman,
+                "enabled_extensions": enabled_extensions,
             }
         )
         for event in self.events:
@@ -147,6 +149,21 @@ class FakeAgent:
         return True
 
 
+@dataclass
+class FakeServerTools:
+    """Stands in for ember_api's own MCP client to mcp_server."""
+
+    report: WatcherReport = field(default_factory=WatcherReport)
+    unreachable: bool = False
+    callers: list[Caller] = field(default_factory=list)
+
+    async def watchers(self, caller: Caller) -> WatcherReport:
+        self.callers.append(caller)
+        if self.unreachable:
+            raise ServerUnavailable("connection refused (fake)")
+        return self.report
+
+
 def make_settings(
     tmp_path: Path,
     *,
@@ -179,6 +196,7 @@ def make_settings(
         mcp_server_url=MCP_SERVER_URL,
         security=security or SecuritySettings(),
         usage=usage or UsageSettings(),
+        config_path=tmp_path / "config_app.json",
     )
 
 
@@ -198,8 +216,13 @@ def agent() -> FakeAgent:
 
 
 @pytest.fixture
+def server_tools() -> FakeServerTools:
+    return FakeServerTools()
+
+
+@pytest.fixture
 def client_factory(
-    tmp_path: Path, email: FakeEmailSender, upstream: FakeUpstream, agent: FakeAgent
+    tmp_path: Path, email: FakeEmailSender, upstream: FakeUpstream, agent: FakeAgent, server_tools: FakeServerTools
 ) -> Iterator[Callable[..., TestClient]]:
     """Builds a started app (lifespan run) per call; all are closed at the end."""
     opened: list[TestClient] = []
@@ -213,6 +236,7 @@ def client_factory(
                 email_sender=email,
                 upstream_transport=httpx.MockTransport(upstream),
                 agent_gateway=agent,
+                server_tools=server_tools,
             ),
             client=(address, 50000),
         )

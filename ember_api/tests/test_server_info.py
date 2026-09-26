@@ -14,6 +14,9 @@ COMMANDS = [{"capability": "srv", "name": "list", "description": "List apps", "t
 CAPABILITIES = [
     {"name": "server_manager", "enabled": True, "label": "Server Manager", "tools": ["tool_srv_listApps"], "resources": []}
 ]
+EXTENSIONS = [
+    {"id": "notes", "label": "Notes", "description": "", "status": "connected", "error": None, "tools": ["notes__add"]}
+]
 
 
 def mcp_server(request: httpx.Request) -> httpx.Response:
@@ -31,6 +34,17 @@ def mcp_server(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=CAPABILITIES)
     if path == "/capabilities/server_manager" and request.method == "PATCH":
         return httpx.Response(200, json={**CAPABILITIES[0], "enabled": json.loads(request.content)["enabled"]})
+    if path == "/extensions" and request.method == "GET":
+        return httpx.Response(200, json=EXTENSIONS)
+    if path == "/extensions" and request.method == "POST":
+        body = json.loads(request.content)
+        created = {"id": "wiki", "label": body["label"], "description": body["description"], "status": "error",
+                   "error": "connection refused", "tools": []}
+        return httpx.Response(201, json=created)
+    if path == "/extensions/notes" and request.method == "DELETE":
+        return httpx.Response(204)
+    if path.startswith("/extensions/") and request.method == "DELETE":
+        return httpx.Response(404, json={"error": "Unknown extension 'gone'"})
     return httpx.Response(404, json={"error": "no route"})
 
 
@@ -96,3 +110,33 @@ def test_command_results_are_appended_to_a_chat(client: TestClient) -> None:
     assert client.get(f"/api/chats/{chat_id}").json()["messages"][:2] == [call, result]
     bad = client.post(f"/api/chats/{chat_id}/messages", json={"title": "x", "messages": []})
     assert bad.status_code == 422
+
+
+def test_extensions_listed_for_chat_users_and_managed_by_admins(
+    client_factory, email: FakeEmailSender, upstream: FakeUpstream
+) -> None:
+    upstream.handler = mcp_server
+    member = client_factory()
+    make_member(member, email)
+    login(member, "alice")
+    assert member.get("/api/extensions").json() == EXTENSIONS
+    new = {"label": "Wiki", "url": "http://wiki.internal/mcp"}
+    assert member.post("/api/extensions", json=new).status_code == 403
+    assert member.delete("/api/extensions/notes").status_code == 403
+
+    admin = as_admin(client_factory())
+    added = admin.post("/api/extensions", json={**new, "description": "  team wiki "})
+    assert added.status_code == 201, added.text
+    assert (added.json()["id"], added.json()["status"]) == ("wiki", "error")
+    assert json.loads(upstream.requests[-1].content) == {
+        "label": "Wiki", "url": "http://wiki.internal/mcp", "description": "team wiki"
+    }
+    assert admin.post("/api/extensions", json={"label": "X", "url": "file:///etc/passwd"}).status_code == 422
+    assert admin.delete("/api/extensions/notes").status_code == 204
+    gone = admin.delete("/api/extensions/gone")
+    assert (gone.status_code, gone.json()["detail"]) == (404, "Unknown extension 'gone'")
+    assert admin.delete("/api/extensions/Bad-Id").status_code == 422
+
+    root = admin.get("/api/auth/me").json()["id"]
+    logged = [e["message"] for e in admin.get("/api/logs/action", params={"actor": root}).json()]
+    assert logged[:2] == ["Removed extension 'notes'", "Added extension 'wiki' (http://wiki.internal/mcp)"]

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import type { ChatMessage } from "../api/types";
+import { splitAttachments } from "../utils/attachments";
 import MarkdownContent from "./MarkdownContent.vue";
 
 const props = defineProps<{
@@ -9,6 +10,11 @@ const props = defineProps<{
   activity: string;
   busy: boolean;
 }>();
+
+// A question's attached files, shown collapsed under what was typed.
+const userParts = computed(() =>
+  props.messages.map((m) => (m.role === "user" && !m.kind ? splitAttachments(m.content) : null)),
+);
 
 // Within this many px of the bottom counts as "following along".
 const STICK_THRESHOLD_PX = 80;
@@ -64,7 +70,13 @@ watch(
         <div v-else-if="m.kind === 'command' && m.role === 'user'" class="user-bubble command">{{ m.content }}</div>
         <MarkdownContent v-else-if="m.kind === 'command'" class="assistant command-result" :text="m.content" />
         <!-- Only model output is rendered as markdown; the user's own text stays literal. -->
-        <div v-else-if="m.role === 'user'" class="user-bubble">{{ m.content }}</div>
+        <div v-else-if="m.role === 'user'" class="user-bubble">
+          <template v-if="userParts[i]?.text">{{ userParts[i]?.text }}</template>
+          <details v-for="(a, j) in userParts[i]?.attachments ?? []" :key="j" class="attachment">
+            <summary>📎 {{ a.filename }} ({{ a.chars.toLocaleString() }} characters{{ a.truncated ? ", cut short" : "" }})</summary>
+            <pre>{{ a.text }}</pre>
+          </details>
+        </div>
         <div v-else class="assistant">
           <MarkdownContent :text="m.content" />
           <p v-if="m.model || m.total_tokens" class="meta">
@@ -111,6 +123,24 @@ watch(
 }
 .assistant {
   overflow-wrap: anywhere;
+}
+.attachment {
+  margin-top: 6px;
+  white-space: normal;
+  font-size: 0.85em;
+}
+.attachment summary {
+  cursor: pointer;
+}
+.attachment pre {
+  max-height: 240px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  background: var(--bg);
 }
 .meta {
   margin: 4px 0 0;

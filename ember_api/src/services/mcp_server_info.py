@@ -1,7 +1,7 @@
 """mcp_server's plain HTTP routes next to its /mcp endpoint: the command
-registry (/commands), capability help (/commands/help) and the capability
-switchboard (/capabilities) - the same routes chat_app's Chat and
-Capabilities pages use.
+registry (/commands), capability help (/commands/help), the capability
+switchboard (/capabilities) and the extension list (/extensions) - the same
+routes chat_app's Chat and Capabilities pages use.
 
 Only these fixed paths are reachable, with the same identity and
 internal-token headers as the MCP proxy; the browser never names a URL.
@@ -60,6 +60,8 @@ class McpServerInfo:
         except httpx.HTTPError as error:
             logger.warning("mcp_server %s %s unreachable: %s", method, path, error)
             raise McpServerUnavailable(str(error)) from error
+        if response.status_code == 204:
+            return None
         try:
             body = response.json()
         except ValueError:
@@ -88,3 +90,18 @@ class McpServerInfo:
 
     async def set_capability(self, account: Account, name: str, enabled: bool) -> dict[str, Any]:
         return await self._request("PATCH", f"/capabilities/{quote(name, safe='')}", account, json={"enabled": enabled})
+
+    async def extensions(self, account: Account) -> list[dict[str, Any]]:
+        """Extensions (other MCP servers mcp_server re-exposes, their tools
+        named "<id>__<tool>"): [{id, label, description, status, error, tools}]."""
+        body = await self._request("GET", "/extensions", account)
+        return body if isinstance(body, list) else []
+
+    async def add_extension(self, account: Account, label: str, url: str, description: str) -> dict[str, Any]:
+        """mcp_server connects to it and saves it to its config; an
+        unreachable URL is still added (status "error")."""
+        body = {"label": label, "url": url, "description": description}
+        return await self._request("POST", "/extensions", account, json=body)
+
+    async def remove_extension(self, account: Account, extension_id: str) -> None:
+        await self._request("DELETE", f"/extensions/{quote(extension_id, safe='')}", account)

@@ -79,6 +79,7 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
     ]
     asked = agent.asks[0]
     assert (asked["question"], asked["history"], asked["caveman"]) == ("What is up?", [], True)
+    assert asked["enabled_extensions"] == []
     assert asked["url"] == AGENTS[0]["url"]
     assert asked["caller"].username == "root"
 
@@ -381,3 +382,12 @@ def test_auto_summarize_failure_still_answers(client: TestClient, agent: FakeAge
 def test_bad_summarize_ratio_is_refused(ratio: float) -> None:
     with pytest.raises(ValueError):
         UsageSettings.from_config({"auto_summarize_ratio": ratio})
+
+
+def test_turn_passes_only_valid_extension_ids(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    assert start(client, chat_id, enabled_extensions=["notes", "wiki_2", "notes"]).status_code == 202
+    events(client, chat_id)
+    assert agent.asks[-1]["enabled_extensions"] == ["notes", "wiki_2"]
+    assert start(client, new_id(), enabled_extensions=["../etc"]).status_code == 422

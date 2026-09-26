@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
+import { withAttachments } from "../utils/attachments";
+import { errorMessage } from "../utils/errors";
 
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
 // suggest while "/..." is being typed (empty without tools.use).
@@ -9,6 +12,69 @@ const emit = defineEmits<{ send: [question: string]; stop: [] }>();
 
 const draft = ref("");
 const textarea = ref<HTMLTextAreaElement | null>(null);
+const fileInput = ref<HTMLInputElement | null>(null);
+const dragging = ref(false);
+
+/** A file attached to the next question. Its text is extracted by ember_api
+ * as soon as it's added, so sending doesn't wait for an upload. */
+interface PendingAttachment {
+  id: number;
+  filename: string;
+  state: "reading" | "ready" | "error";
+  text: string;
+  chars: number;
+  truncated: boolean;
+  error: string;
+}
+
+let nextAttachmentId = 1;
+const attachments = ref<PendingAttachment[]>([]);
+const reading = computed(() => attachments.value.some((a) => a.state === "reading"));
+const ready = computed(() => attachments.value.filter((a) => a.state === "ready"));
+const isCommand = computed(() => draft.value.trimStart().startsWith("/"));
+const canSend = computed(
+  () => !reading.value && (draft.value.trim() !== "" || (ready.value.length > 0 && !isCommand.value)),
+);
+
+async function addFiles(files: FileList | File[] | null | undefined): Promise<void> {
+  for (const file of Array.from(files ?? [])) {
+    const entry: PendingAttachment = {
+      id: nextAttachmentId++,
+      filename: file.name,
+      state: "reading",
+      text: "",
+      chars: 0,
+      truncated: false,
+      error: "",
+    };
+    attachments.value.push(entry);
+    const live = attachments.value[attachments.value.length - 1]!; // the reactive copy
+    // Each file on its own: one slow or broken file doesn't hold up the rest.
+    void attachmentsClient
+      .text(file)
+      .then((result) => {
+        Object.assign(live, { state: "ready", text: result.text, chars: result.char_count, truncated: result.truncated });
+      })
+      .catch((err: unknown) => {
+        Object.assign(live, { state: "error", error: errorMessage(err) });
+      });
+  }
+}
+
+function removeAttachment(id: number): void {
+  attachments.value = attachments.value.filter((a) => a.id !== id);
+}
+
+function onPick(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  void addFiles(input.files);
+  input.value = ""; // picking the same file again still fires change
+}
+
+function onDrop(event: DragEvent): void {
+  dragging.value = false;
+  void addFiles(event.dataTransfer?.files);
+}
 
 const MAX_SUGGESTIONS = 8;
 
@@ -53,10 +119,13 @@ function autoGrow(): void {
 }
 
 function submit(): void {
-  const question = draft.value.trim();
-  if (!question || props.busy) return;
-  emit("send", question);
+  if (!canSend.value || props.busy) return;
+  const typed = draft.value.trim();
+  // Slash commands run a tool, not the agent: attachments wait for a question.
+  const files = isCommand.value ? [] : ready.value;
+  emit("send", withAttachments(typed, files.map((a) => ({ filename: a.filename, chars: a.chars, truncated: a.truncated, text: a.text }))));
   draft.value = "";
+  if (!isCommand.value) attachments.value = attachments.value.filter((a) => a.state !== "ready");
   void nextTick(autoGrow);
 }
 
@@ -98,7 +167,34 @@ function onKeydown(event: KeyboardEvent): void {
       </li>
       <li class="hint" aria-hidden="true">Tab completes · Enter runs</li>
     </ul>
-    <div class="box">
+    <ul v-if="attachments.length" class="attachments">
+      <li v-for="a in attachments" :key="a.id" :class="a.state" :title="a.error || a.filename">
+        <span class="name">
+          {{ a.state === "reading" ? `Reading ${a.filename} …` : a.state === "error" ? `${a.filename}: ${a.error}` : a.filename }}
+          <small v-if="a.state === 'ready' && a.truncated">(cut to {{ a.chars.toLocaleString() }} characters)</small>
+        </span>
+        <button type="button" :aria-label="`Remove ${a.filename}`" @click="removeAttachment(a.id)">×</button>
+      </li>
+    </ul>
+    <div
+      :class="['box', { dragging }]"
+      @dragover.prevent="dragging = true"
+      @dragleave="dragging = false"
+      @drop.prevent="onDrop"
+    >
+      <input ref="fileInput" type="file" multiple hidden @change="onPick" />
+      <button type="button" class="attach" title="Attach files (text, code, PDF, Word, Excel)" @click="fileInput?.click()">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path
+            d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
       <textarea
         ref="textarea"
         v-model="draft"
@@ -112,7 +208,7 @@ function onKeydown(event: KeyboardEvent): void {
           <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
         </svg>
       </button>
-      <button v-else type="submit" class="round send" title="Send" :disabled="!draft.trim()">
+      <button v-else type="submit" class="round send" :title="reading ? 'Reading attachments …' : 'Send'" :disabled="!canSend">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path
             d="M12 19V5M5 12l7-7 7 7"
@@ -184,8 +280,67 @@ function onKeydown(event: KeyboardEvent): void {
   border-radius: 22px;
   background: var(--surface);
 }
-.box:focus-within {
+.box:focus-within,
+.box.dragging {
   border-color: var(--accent);
+}
+.attach {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 34px;
+  flex-shrink: 0;
+  margin-left: -8px;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  background: transparent;
+}
+.attach:hover {
+  color: var(--text);
+}
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+.attachments li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8em;
+  background: var(--surface);
+}
+.attachments li.reading {
+  color: var(--muted);
+}
+.attachments li.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.attachments .name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.attachments small {
+  color: var(--muted);
+}
+.attachments button {
+  padding: 0 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1em;
+  color: inherit;
+  background: transparent;
 }
 textarea {
   flex: 1;

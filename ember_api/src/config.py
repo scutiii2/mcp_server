@@ -102,6 +102,8 @@ class Settings:
     mcp_server_url: str = "http://127.0.0.1:8010/mcp"
     security: SecuritySettings = field(default_factory=SecuritySettings)
     usage: UsageSettings = field(default_factory=UsageSettings)
+    # Where these settings came from (the Config issues page re-reads it).
+    config_path: Path = CONFIGS_DIR / "config_app.json"
 
     @property
     def database_url(self) -> str:
@@ -129,6 +131,7 @@ def load_settings() -> Settings:
         mcp_server_url=raw.get("mcp_server_url") or "http://127.0.0.1:8010/mcp",
         security=SecuritySettings.from_config(raw.get("security", {})),
         usage=UsageSettings.from_config(raw.get("usage", {})),
+        config_path=CONFIGS_DIR / "config_app.json",
     )
 
 

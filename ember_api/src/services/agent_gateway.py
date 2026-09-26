@@ -18,9 +18,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
-from mcp import ClientSession
-from mcp.client.streamable_http import streamable_http_client
-from mcp.shared._httpx_utils import create_mcp_http_client
+
+from src.services.mcp_session import identity_headers, mcp_session, root_cause
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +52,7 @@ class AgentGateway(Protocol):
         history: list[dict[str, str]],
         request_id: str,
         caveman: bool,
+        enabled_extensions: list[str],
         on_event: EventHandler,
     ) -> dict[str, Any]: ...
 
@@ -66,10 +66,7 @@ class McpAgentGateway:
         self._internal_token = internal_token
 
     def _headers(self, caller: Caller) -> dict[str, str]:
-        headers = {"X-Requester-Username": caller.username, "X-Requester-Email": caller.email}
-        if self._internal_token:
-            headers["X-Internal-Token"] = self._internal_token
-        return headers
+        return identity_headers(caller.username, caller.email, self._internal_token)
 
     async def _call(
         self,
@@ -93,32 +90,27 @@ class McpAgentGateway:
         # raising inside them would surface as an ExceptionGroup from their
         # task groups (the same trap chat_app's client documents).
         try:
-            async with (
-                create_mcp_http_client(headers=self._headers(caller), timeout=_TIMEOUT) as http_client,
-                streamable_http_client(url, http_client=http_client) as (read, write, _),
-            ):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    result = await session.call_tool(
-                        tool, arguments, progress_callback=on_progress if on_event else None
-                    )
+            async with mcp_session(url, self._headers(caller), _TIMEOUT) as session:
+                result = await session.call_tool(tool, arguments, progress_callback=on_progress if on_event else None)
         except Exception as error:  # noqa: BLE001 - any transport failure is one "unreachable" outcome
             logger.warning("ai_agent %s %s failed: %s", url, tool, error)
-            raise AgentCallError(f"Could not reach the agent: {_root_cause(error)}") from error
+            raise AgentCallError(f"Could not reach the agent: {root_cause(error)}") from error
 
         if result.isError:
             parts = [getattr(block, "text", str(block)) for block in result.content]
             raise AgentCallError("\n".join(parts) if parts else f"{tool} failed")
         return result.structuredContent or {}
 
-    async def ask(self, url, caller, *, question, history, request_id, caveman, on_event):
-        return await self._call(
-            url,
-            caller,
-            "ask",
-            {"question": question, "history": history, "request_id": request_id, "caveman": caveman},
-            on_event,
-        )
+    async def ask(self, url, caller, *, question, history, request_id, caveman, enabled_extensions, on_event):
+        arguments = {
+            "question": question,
+            "history": history,
+            "request_id": request_id,
+            "caveman": caveman,
+            # Which extensions' tools the agent may use; none by default.
+            "enabled_extensions": enabled_extensions,
+        }
+        return await self._call(url, caller, "ask", arguments, on_event)
 
     async def interpret(self, url, caller, text):
         return await self._call(url, caller, "interpret", {"text": text})
@@ -127,9 +119,3 @@ class McpAgentGateway:
         result = await self._call(url, caller, "cancel", {"request_id": request_id})
         return bool(result.get("cancelled"))
 
-
-def _root_cause(error: BaseException) -> str:
-    """The first real error inside anyio's ExceptionGroup wrappers."""
-    while isinstance(error, BaseExceptionGroup) and error.exceptions:
-        error = error.exceptions[0]
-    return str(error) or type(error).__name__

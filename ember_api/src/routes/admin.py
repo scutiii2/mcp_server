@@ -10,10 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.deps import get_db_session, get_email_sender, get_otp_service, require_permission
+from src.deps import get_db_session, get_email_sender, get_log_writer, get_otp_service, require_permission
 from src.models import Account, InviteCode, Permission, Role
 from src.services.admin_service import AdminError, AdminService, NotFoundError
 from src.services.email_service import EmailDeliveryError, EmailSender
+from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
 from src.services.permissions import ADMIN_MANAGE, ADMIN_ROLE
 
@@ -170,6 +171,7 @@ async def update_account(
     body: UpdateAccountRequest,
     admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> AdminAccountOut:
     try:
         account = await admin_service.update_account(
@@ -181,6 +183,8 @@ async def update_account(
         )
     except AdminError as error:
         raise _http_error(error) from error
+    changed = ", ".join(k for k in ("username", "email", "is_active") if getattr(body, k) is not None)
+    await logs.action(admin, "admin.update_account", f"Updated account '{account.username}' ({changed})")
     return AdminAccountOut.of(account)
 
 
@@ -189,11 +193,15 @@ async def delete_account(
     account_id: int,
     admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> Response:
     try:
-        await admin_service.delete_account(admin, await admin_service.account(account_id))
+        target = await admin_service.account(account_id)
+        username = target.username
+        await admin_service.delete_account(admin, target)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.delete_account", f"Deleted account '{username}'")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -201,15 +209,16 @@ async def delete_account(
 async def assign_role(
     account_id: int,
     role_id: int,
-    _admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> AdminAccountOut:
     try:
-        account = await admin_service.assign_role(
-            await admin_service.account(account_id), await admin_service.role(role_id)
-        )
+        role = await admin_service.role(role_id)
+        account = await admin_service.assign_role(await admin_service.account(account_id), role)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.assign_role", f"Gave role '{role.name}' to '{account.username}'")
     return AdminAccountOut.of(account)
 
 
@@ -219,23 +228,25 @@ async def remove_role(
     role_id: int,
     admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> AdminAccountOut:
     try:
-        account = await admin_service.remove_role(
-            admin, await admin_service.account(account_id), await admin_service.role(role_id)
-        )
+        role = await admin_service.role(role_id)
+        account = await admin_service.remove_role(admin, await admin_service.account(account_id), role)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.remove_role", f"Took role '{role.name}' from '{account.username}'")
     return AdminAccountOut.of(account)
 
 
 @router.post("/accounts/{account_id}/send-verification")
 async def send_verification(
     account_id: int,
-    _admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
     otp: OtpService = Depends(get_otp_service),
     email: EmailSender = Depends(get_email_sender),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> EmailSentOut:
     try:
         account = await admin_service.account(account_id)
@@ -249,6 +260,7 @@ async def send_verification(
     except EmailDeliveryError as error:
         logger.warning("admin verification email to account %s failed: %s", account.id, error)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
+    await logs.action(admin, "admin.send_verification", f"Sent a verification code to '{account.username}'")
     return EmailSentOut(sent=True)
 
 
@@ -266,8 +278,9 @@ async def list_roles(
 @router.post("/roles", status_code=status.HTTP_201_CREATED)
 async def create_role(
     body: CreateRoleRequest,
-    _admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
     name = body.name.strip()
     if not name:
@@ -276,6 +289,7 @@ async def create_role(
         role = await admin_service.create_role(name, (body.description or "").strip() or None)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.create_role", f"Created role '{role.name}'")
     return RoleOut.of(role)
 
 
@@ -283,8 +297,9 @@ async def create_role(
 async def update_role(
     role_id: int,
     body: UpdateRoleRequest,
-    _admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
     name = body.name.strip() if body.name is not None else None
     if name == "":
@@ -297,6 +312,7 @@ async def update_role(
         )
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.update_role", f"Updated role '{role.name}'")
     return RoleOut.of(role)
 
 
@@ -305,11 +321,15 @@ async def delete_role(
     role_id: int,
     admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> Response:
     try:
-        await admin_service.delete_role(admin, await admin_service.role(role_id))
+        role = await admin_service.role(role_id)
+        name = role.name
+        await admin_service.delete_role(admin, role)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.delete_role", f"Deleted role '{name}'")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -317,13 +337,15 @@ async def delete_role(
 async def grant_permission(
     role_id: int,
     permission_name: str,
-    _admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
     try:
         role = await admin_service.grant_permission(await admin_service.role(role_id), permission_name)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.grant_permission", f"Gave '{permission_name}' to role '{role.name}'")
     return RoleOut.of(role)
 
 
@@ -333,11 +355,13 @@ async def revoke_permission(
     permission_name: str,
     admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
     try:
         role = await admin_service.revoke_permission(admin, await admin_service.role(role_id), permission_name)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.revoke_permission", f"Took '{permission_name}' from role '{role.name}'")
     return RoleOut.of(role)
 
 
@@ -358,6 +382,7 @@ async def create_invite(
     admin: Account = Depends(require_admin),
     otp: OtpService = Depends(get_otp_service),
     email: EmailSender = Depends(get_email_sender),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> CreatedInviteOut:
     if body.delivery_method == "email" and body.invitee_email is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invitee_email is required for email delivery")
@@ -373,6 +398,8 @@ async def create_invite(
             # The code is still returned, so the admin can pass it on by hand.
             logger.warning("invite email failed: %s", delivery_error)
             error = str(delivery_error)
+    target = f" for {invitee}" if invitee else ""
+    await logs.action(admin, "admin.create_invite", f"Created invite #{invite.id}{target}")
     return CreatedInviteOut(
         invite=InviteOut.of(invite),
         code=code,
@@ -393,11 +420,13 @@ async def list_invites(
 @router.delete("/invites/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_invite(
     invite_id: int,
-    _admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
+    logs: LogWriter = Depends(get_log_writer),
 ) -> Response:
     try:
         await admin_service.revoke_invite(invite_id)
     except AdminError as error:
         raise _http_error(error) from error
+    await logs.action(admin, "admin.revoke_invite", f"Revoked invite #{invite_id}")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from src.services.permissions import ALL_PERMISSIONS
 from tests.conftest import ADMIN_USERNAME, FakeEmailSender
 from tests.test_registration import as_admin, new_invite, register
 
@@ -69,11 +70,11 @@ def test_lists_accounts_roles_and_permissions(client: TestClient, email: FakeEma
 
     roles = {r["name"]: r for r in client.get("/api/admin/roles").json()}
     assert roles["Administrator"]["is_protected"] is True
-    assert roles["Administrator"]["permissions"] == ["admin.manage", "chat.use", "tools.use"]
+    assert roles["Administrator"]["permissions"] == sorted(ALL_PERMISSIONS)
     assert roles["Member"]["account_count"] == 1
 
     names = [p["name"] for p in client.get("/api/admin/permissions").json()]
-    assert names == ["admin.manage", "chat.use", "tools.use"]
+    assert names == sorted(ALL_PERMISSIONS)
 
 
 # --- accounts -----------------------------------------------------------------

@@ -139,6 +139,15 @@ configured) itself.
   usage limits. A new agent tool the server needs goes on `AgentGateway`
   (and `FakeAgent` in `tests/conftest.py`); one the browser may call
   directly goes in `AGENT_POLICY.tools` with its exact argument names.
+- **Data gathered from several mcp_server tools at once** (like the
+  Watchers page) goes through `services/server_tools.py` (`ServerTools`
+  Protocol, `McpServerTools` on one MCP session; `FakeServerTools` in
+  tests) behind its own permission, not through the browser proxy.
+- **Audit:** a route that changes something calls
+  `logs.action(account, "<area>.<verb>", "<what changed>")`
+  (`LogWriter` via `Depends(get_log_writer)`) after it succeeded. New
+  permissions go in `services/permissions.py`; the Administrator role gets
+  them on the next start.
 - Agent discovery is ember_api's `GET /api/agents` (reads ai_agent's
   `configs/config_agents.json`); don't add a tool for it.
 - Tests: route tests use `FakeAgent` (the `agent` fixture; `hold=True` keeps

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref } from "vue";
+import { RouterLink } from "vue-router";
 import AgentPicker from "../components/AgentPicker.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
@@ -28,6 +29,7 @@ const {
   working,
   contextUsage,
   commands,
+  enabledExtensions,
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
 const agentsStore = useAgentsStore();
@@ -134,6 +136,13 @@ function onSelect(id: string): void {
             />
             Terse replies
           </label>
+          <RouterLink
+            to="/extensions"
+            class="extensions"
+            title="Which extensions' tools the agent may use in your chats"
+          >
+            Extensions: {{ enabledExtensions.length ? enabledExtensions.join(", ") : "off" }}
+          </RouterLink>
           <span
             v-if="contextPercent !== null"
             :class="['context', { high: contextPercent >= 50 }]"
@@ -230,6 +239,18 @@ function onSelect(id: string): void {
   font-size: 0.85em;
   color: var(--muted);
   cursor: pointer;
+}
+.extensions {
+  max-width: 220px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8em;
+  color: var(--muted);
+  text-decoration: none;
+}
+.extensions:hover {
+  color: var(--text);
 }
 .context,
 .working {

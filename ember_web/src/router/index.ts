@@ -6,13 +6,16 @@ declare module "vue-router" {
   interface RouteMeta {
     /** Reachable without logging in (login, register). */
     guestOnly?: boolean;
-    /** The ember_api permission the page needs. */
-    permission?: string;
+    /** The ember_api permission the page needs; a list = any one of them. */
+    permission?: string | string[];
     /** Open to any logged-in account, verified or not (the Account page,
      * so a mistyped email can be fixed). */
     anyAccount?: boolean;
   }
 }
+
+// The Logs page shows whichever of its tabs these allow.
+export const LOG_PERMISSIONS = ["logs.view", "logs.errors.view", "logs.chat.view"];
 
 // Pages a logged-in, verified user may land on, in order of preference.
 const HOME_PAGES: { name: string; permission: string }[] = [
@@ -37,6 +40,30 @@ export const router = createRouter({
       name: "capabilities",
       component: () => import("../views/CapabilitiesView.vue"),
       meta: { permission: "tools.use" },
+    },
+    {
+      path: "/extensions",
+      name: "extensions",
+      component: () => import("../views/ExtensionsView.vue"),
+      meta: { permission: "chat.use" },
+    },
+    {
+      path: "/watchers",
+      name: "watchers",
+      component: () => import("../views/WatchersView.vue"),
+      meta: { permission: "watchers.view" },
+    },
+    {
+      path: "/logs",
+      name: "logs",
+      component: () => import("../views/LogsView.vue"),
+      meta: { permission: LOG_PERMISSIONS },
+    },
+    {
+      path: "/config-issues",
+      name: "config-issues",
+      component: () => import("../views/ConfigIssuesView.vue"),
+      meta: { permission: "config.issues.view" },
     },
     {
       path: "/usage",
@@ -87,7 +114,8 @@ router.beforeEach(async (to): Promise<true | RouteLocationRaw> => {
   if (to.meta.guestOnly || to.name === "verify-email") {
     return { name: home?.name ?? "no-access" };
   }
-  if (to.meta.permission && !auth.hasPermission(to.meta.permission)) {
+  const needed = to.meta.permission;
+  if (needed && !(Array.isArray(needed) ? needed.some((p) => auth.hasPermission(p)) : auth.hasPermission(needed))) {
     return { name: home?.name ?? "no-access" };
   }
   if (to.name === "no-access" && home) return { name: home.name };

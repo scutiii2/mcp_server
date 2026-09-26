@@ -10,6 +10,7 @@ import {
 } from "../services/ConversationStorage";
 import { SlashCommandRunner } from "../services/slashCommands";
 import { watchTurn } from "../services/turnStream";
+import { splitAttachments } from "../utils/attachments";
 import { errorMessage } from "../utils/errors";
 import { toolTitle } from "../utils/toolTitles";
 import { useAgentsStore } from "./agents";
@@ -21,12 +22,27 @@ const TITLE_MAX_CHARS = 60;
 const BACKGROUND_POLL_MS = 5000;
 
 function titleFrom(question: string): string {
-  const oneLine = question.replace(/\s+/g, " ").trim();
+  // What was typed, not the attached files' text.
+  const { text, attachments } = splitAttachments(question);
+  const oneLine = (text || attachments[0]?.filename || question).replace(/\s+/g, " ").trim();
   return oneLine.length > TITLE_MAX_CHARS ? `${oneLine.slice(0, TITLE_MAX_CHARS - 1)}…` : oneLine;
 }
 
 function cavemanKey(accountId: number): string {
   return `ember_web.caveman.${accountId}`;
+}
+
+function extensionsKey(accountId: number): string {
+  return `ember_web.extensions.${accountId}`;
+}
+
+function readExtensions(accountId: number): string[] {
+  try {
+    const parsed: unknown = JSON.parse(readPreference(extensionsKey(accountId)) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 // Per-viewer convenience: blocked storage just means the default (off).
@@ -79,6 +95,10 @@ export const useChatStore = defineStore("chat", () => {
   const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
   const caveman = ref(false);
+  // mcp_server extensions whose tools the agent (and slash commands) may use.
+  // None by default: a newly added extension is never in scope unasked.
+  // Remembered per account.
+  const enabledExtensions = ref<string[]>([]);
   // Slash commands (tools.use): the runner caches the command list and tool
   // schemas, so it's replaced per account.
   let commandRunner = new SlashCommandRunner();
@@ -240,6 +260,7 @@ export const useChatStore = defineStore("chat", () => {
       activeId.value = null;
       conversations.value = [];
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
+      enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
       commandRunner = new SlashCommandRunner();
       commands.value = [];
       if (accountId !== null) void loadList();
@@ -316,7 +337,7 @@ export const useChatStore = defineStore("chat", () => {
     if (!auth.hasPermission("tools.use")) return;
     const started = generation;
     try {
-      const list = await commandRunner.list();
+      const list = await commandRunner.list(enabledExtensions.value);
       if (started === generation) commands.value = list;
     } catch {
       if (started === generation) commands.value = [];
@@ -333,7 +354,7 @@ export const useChatStore = defineStore("chat", () => {
     working.value = "Running command ...";
     const started = generation;
     try {
-      const result = await commandRunner.run(text);
+      const result = await commandRunner.run(text, enabledExtensions.value);
       if (started !== generation) return;
       await appendMessages(
         [
@@ -387,6 +408,7 @@ export const useChatStore = defineStore("chat", () => {
         question,
         agent_id: agent.id,
         caveman: caveman.value,
+        enabled_extensions: enabledExtensions.value,
         title: conversation.title,
       });
       if (started !== generation) return;
@@ -453,6 +475,23 @@ export const useChatStore = defineStore("chat", () => {
     caveman.value = on;
     const accountId = auth.account?.id;
     if (accountId !== undefined) writePreference(cavemanKey(accountId), on ? "1" : "0");
+  }
+
+  /** Lets the agent (and slash commands) use extension `id`'s tools, or not. */
+  function setExtensionEnabled(id: string, on: boolean): void {
+    const next = new Set(enabledExtensions.value);
+    if (on) next.add(id);
+    else next.delete(id);
+    enabledExtensions.value = [...next].sort();
+    const accountId = auth.account?.id;
+    if (accountId !== undefined) writePreference(extensionsKey(accountId), JSON.stringify(enabledExtensions.value));
+    void loadCommands();
+  }
+
+  /** After extensions were added or removed: re-read tools and commands. */
+  function refreshCommands(): void {
+    commandRunner.invalidate();
+    void loadCommands();
   }
 
   /** Blank titles are ignored; the chat keeps its old one. */
@@ -549,6 +588,9 @@ export const useChatStore = defineStore("chat", () => {
     renameChat,
     caveman,
     setCaveman,
+    enabledExtensions,
+    setExtensionEnabled,
+    refreshCommands,
     clearChat,
     summarizeChat,
     deleteAllChats,

@@ -34,6 +34,8 @@ export interface TurnStart {
   question: string;
   agent_id: string;
   caveman: boolean;
+  /** mcp_server extensions whose tools the agent may use. */
+  enabled_extensions: string[];
   /** Used only when this turn creates the chat. */
   title?: string;
 }

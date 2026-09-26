@@ -12,6 +12,7 @@ from src.db import Database
 from src.models import Account
 from src.services.agent_gateway import AgentGateway
 from src.services.email_service import EmailSender
+from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
 from src.services.session_service import SessionService
 from src.services.turns import TurnRegistry
@@ -50,6 +51,10 @@ def get_turns(request: Request) -> TurnRegistry:
     return request.app.state.turns
 
 
+def get_log_writer(request: Request) -> LogWriter:
+    return request.app.state.logs
+
+
 async def current_account(
     request: Request,
     settings: Settings = Depends(get_settings),
@@ -60,18 +65,25 @@ async def current_account(
     account = await sessions.resolve(token) if token else None
     if account is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not logged in")
+    # For the error log, should this request fail unexpectedly.
+    request.state.account_id = account.id
     return account
 
 
 def require_permission(name: str) -> Callable[..., Awaitable[Account]]:
     """Dependency factory: the logged-in account if it holds `name`, else 403.
     An unverified email counts as holding no permissions at all."""
+    return require_any_permission(name)
+
+
+def require_any_permission(*names: str) -> Callable[..., Awaitable[Account]]:
+    """Like require_permission, satisfied by any one of `names`."""
 
     async def dependency(account: Account = Depends(current_account)) -> Account:
         if not account.email_verified:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Email not verified")
-        if name not in account.permission_names:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing permission: {name}")
+        if not account.permission_names.intersection(names):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing permission: {' or '.join(names)}")
         return account
 
     return dependency

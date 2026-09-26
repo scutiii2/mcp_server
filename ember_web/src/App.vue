@@ -2,6 +2,7 @@
 import { storeToRefs } from "pinia";
 import { watch } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
+import { LOG_PERMISSIONS } from "./router";
 import { useAuthStore } from "./stores/auth";
 
 const auth = useAuthStore();
@@ -28,7 +29,11 @@ async function logout(): Promise<void> {
       <RouterLink v-if="auth.hasPermission('chat.use')" to="/">Chat</RouterLink>
       <RouterLink v-if="auth.hasPermission('tools.use')" to="/tools">Tools</RouterLink>
       <RouterLink v-if="auth.hasPermission('tools.use')" to="/capabilities">Capabilities</RouterLink>
+      <RouterLink v-if="auth.hasPermission('chat.use')" to="/extensions">Extensions</RouterLink>
+      <RouterLink v-if="auth.hasPermission('watchers.view')" to="/watchers">Watchers</RouterLink>
       <RouterLink v-if="auth.hasPermission('chat.use')" to="/usage">Usage</RouterLink>
+      <RouterLink v-if="LOG_PERMISSIONS.some((p) => auth.hasPermission(p))" to="/logs">Logs</RouterLink>
+      <RouterLink v-if="auth.hasPermission('config.issues.view')" to="/config-issues">Config</RouterLink>
       <RouterLink v-if="auth.hasPermission('admin.manage')" to="/admin">Admin</RouterLink>
     </nav>
     <div v-if="account" class="user">
@@ -68,6 +73,13 @@ async function logout(): Promise<void> {
 nav {
   display: flex;
   gap: 4px;
+  min-width: 0;
+  /* Many pages on a narrow screen: scroll the tabs, not the page. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+nav a {
+  white-space: nowrap;
 }
 .user {
   display: flex;

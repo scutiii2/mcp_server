@@ -1,4 +1,5 @@
 import { commandsClient, type CommandInfo, type HelpTarget } from "../api/CommandsClient";
+import { EXTENSION_SEPARATOR } from "../api/ExtensionsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { JsonSchema, ToolInfo } from "../api/types";
 import { formatToolResult } from "../utils/toolResultFormat";
@@ -6,7 +7,11 @@ import { formatToolResult } from "../utils/toolResultFormat";
 /** "/<capability> <command> key=value ..." runs an mcp_server tool directly,
  * no AI involved (port of chat_app's services/commands.py). "/help" and
  * "/<capability> help [target=...] [command=...]" show capability help.
- * Every failure a user can fix comes back as a "❌ ..." result, never thrown. */
+ * Every failure a user can fix comes back as a "❌ ..." result, never thrown.
+ *
+ * Tools of enabled extensions are commands too: "/<extension id> <tool>"
+ * for tool "<extension id>__<tool>", with the tool's own description and
+ * schema. A built-in capability wins over an extension with the same id. */
 
 export class CommandError extends Error {}
 
@@ -114,6 +119,16 @@ function asMarkdown(value: unknown): string {
   return formatToolResult(text) ?? "```json\n" + JSON.stringify(value, null, 2) + "\n```";
 }
 
+/** "/<extension> help": the extension's tools, since mcp_server has no
+ * help text for them. */
+function extensionHelp(capability: string, commands: CommandInfo[]): string {
+  const lines = commands
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => `- \`/${capability} ${c.name}\`${c.description ? ` - ${c.description}` : ""}`);
+  return [`**${capability}** (extension) commands:`, "", ...lines].join("\n");
+}
+
 /** Runs commands; caches the command list and tool schemas per instance
  * (one per logged-in account, see the chat store). */
 export class SlashCommandRunner {
@@ -121,8 +136,13 @@ export class SlashCommandRunner {
   private commands: Promise<CommandInfo[]> | null = null;
   private tools: Promise<Map<string, ToolInfo>> | null = null;
 
-  /** For the input's suggestions; [] when unavailable. */
-  async list(): Promise<CommandInfo[]> {
+  /** Forgets the cached commands and tools (extensions changed). */
+  invalidate(): void {
+    this.commands = null;
+    this.tools = null;
+  }
+
+  private builtIns(): Promise<CommandInfo[]> {
     this.commands ??= commandsClient.list().catch((err: unknown) => {
       this.commands = null;
       throw err;
@@ -130,7 +150,7 @@ export class SlashCommandRunner {
     return this.commands;
   }
 
-  private async tool(name: string): Promise<ToolInfo | undefined> {
+  private toolMap(): Promise<Map<string, ToolInfo>> {
     this.tools ??= this.server
       .listTools()
       .then((all) => new Map(all.map((t) => [t.name, t])))
@@ -138,18 +158,51 @@ export class SlashCommandRunner {
         this.tools = null;
         throw err;
       });
-    return (await this.tools).get(name);
+    return this.tools;
+  }
+
+  private async tool(name: string): Promise<ToolInfo | undefined> {
+    return (await this.toolMap()).get(name);
+  }
+
+  /** Built-in commands plus the tools of `enabledExtensions`; extensions are
+   * left out (not failed) when the tool list can't be read. */
+  async list(enabledExtensions: readonly string[] = []): Promise<CommandInfo[]> {
+    const builtIns = await this.builtIns();
+    if (!enabledExtensions.length) return builtIns;
+    const taken = new Set(builtIns.map((c) => c.capability));
+    const enabled = new Set(enabledExtensions);
+    let tools: ToolInfo[] = [];
+    try {
+      tools = [...(await this.toolMap()).values()];
+    } catch {
+      return builtIns;
+    }
+    const fromExtensions: CommandInfo[] = [];
+    for (const t of tools) {
+      const at = t.name.indexOf(EXTENSION_SEPARATOR);
+      if (at <= 0) continue;
+      const capability = t.name.slice(0, at);
+      if (!enabled.has(capability) || taken.has(capability)) continue;
+      const name = t.name.slice(at + EXTENSION_SEPARATOR.length);
+      fromExtensions.push({ capability, name, description: t.description.split("\n")[0] ?? "", tool_name: t.name });
+    }
+    return [...builtIns, ...fromExtensions];
   }
 
   /** The result as Markdown for the chat. */
-  async run(text: string): Promise<string> {
+  async run(text: string, enabledExtensions: readonly string[] = []): Promise<string> {
     try {
       if (text.replace(/^\//, "").trim() === "help") return asMarkdown(await commandsClient.helpIndex());
       const parsed = parseCommand(text);
-      if (parsed.command === "help") return asMarkdown(await this.help(parsed));
-
-      const commands = await this.list();
+      const commands = await this.list(enabledExtensions);
       const ofCapability = commands.filter((c) => c.capability === parsed.capability);
+      if (parsed.command === "help") {
+        // mcp_server only has help for its own capabilities.
+        const extension = ofCapability.length > 0 && ofCapability.every((c) => c.tool_name.includes(EXTENSION_SEPARATOR));
+        return extension ? extensionHelp(parsed.capability, ofCapability) : asMarkdown(await this.help(parsed));
+      }
+
       if (ofCapability.length === 0) {
         const known = [...new Set(commands.map((c) => c.capability))].sort().join(", ") || "none";
         throw new CommandError(`Unknown capability "${parsed.capability}". Available: ${known}`);

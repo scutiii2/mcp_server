@@ -17,7 +17,12 @@ URL, token or key.
 - Stop button (takes effect at the agent's next round).
 - Slash commands: `/<capability> <command> key=value ...` runs an mcp_server
   tool directly (no AI), `/help` and `/<capability> help` show help; the input
-  suggests commands as you type (needs `tools.use`).
+  suggests commands as you type (needs `tools.use`). Tools of the extensions
+  you switched on are commands too: `/<extension> <tool>`.
+- Attach files to a question (paperclip or drag and drop): text and code
+  files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
+  characters each), which goes into the question; the chat shows each file
+  collapsed under what you typed.
 - Summarize (condense the history into a summary the agent keeps) and Clear
   (start afresh); earlier messages stay readable as a collapsed log. A chat
   is also summarized automatically once its context is 60% full. A
@@ -35,13 +40,24 @@ URL, token or key.
   per agent; admins also see every account.
 - Capabilities page: mcp_server's capabilities with their tools and
   resources, reading resources, and (admins) switching capabilities on/off.
+- Extensions page: mcp_server's extensions (other MCP servers) with their
+  status and tools; switch on the ones the agent may use in your chats
+  (remembered per account, shown next to the Agent picker). Admins add and
+  remove extensions.
+- Watchers page (`watchers.view`): every capability's background watchers,
+  refreshed every 15 s, with capability/status/date filters and search.
+- Logs page (any `logs.*` permission): Activity, Errors and Chat turns tabs,
+  each for the server or one account.
+- Config page (`config.issues.view`): problems in ember_api's config and
+  secret files.
 - Account page (click your username): profile, change email (re-verify),
   change password (logs out other devices). Reachable while unverified.
 - Admin page, three tabs: Accounts (edit, enable/disable, add/remove roles,
   send verification, delete), Roles (create, edit, delete, permission
   checkboxes) and Invites (create, optionally email, list, revoke).
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
-  `admin.manage`); ember_api enforces the same rules on every call.
+  `admin.manage`, `watchers.view`, `logs.*`, `config.issues.view`);
+  ember_api enforces the same rules on every call.
 - Light and dark theme following the system setting.
 
 ## Requirements
@@ -92,19 +108,22 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 
 ```
 src/
-  api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient
-                (ember_api REST),
+  api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
+                ExtensionsClient / WatchersClient / LogsClient / AttachmentsClient /
+                ConfigIssuesClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat
-  views/        pages: Chat, Tools, Capabilities, Usage, Admin, Account, Login, Register, VerifyEmail, NoAccess
+  views/        pages: Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues, Admin,
+                Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ChatInput, MarkdownContent,
                 ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
+    infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect
   utils/        markdown rendering, tool-schema forms, error/time formatting, chat export,
-                tool titles, tool-result formatting
+                tool titles, tool-result formatting, attachment blocks in questions
 ```
 
 ## Security notes

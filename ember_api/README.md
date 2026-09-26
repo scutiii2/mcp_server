@@ -86,7 +86,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `PATCH` | `/api/chats/{id}` | `chat.use` | `{title}` renames. |
 | `DELETE` | `/api/chats/{id}`, `/api/chats` | `chat.use` | `204`; one chat, or all of this account's. |
 | `POST` | `/api/chats/import` | `chat.use` | `{chats: [{id, title, agent_id, messages, created_at, updated_at}]}` (times in ms) -> `{imported, skipped}`. Existing ids are skipped, never replaced. |
-| `POST` | `/api/chats/{id}/turns` | `chat.use` | `{question, agent_id, caveman?, title?}` -> `202 {chat, sequence}`. Saves the question (creating the chat) and starts the answer **in ember_api**: it finishes, is saved and counts toward the usage limits even if the browser leaves. `404` unknown agent, `409` already answering, `429` usage limit or 3 answers already running. |
+| `POST` | `/api/chats/{id}/turns` | `chat.use` | `{question, agent_id, caveman?, enabled_extensions?, title?}` -> `202 {chat, sequence}`. `enabled_extensions`: extension ids whose tools the agent may use (none by default). Saves the question (creating the chat) and starts the answer **in ember_api**: it finishes, is saved and counts toward the usage limits even if the browser leaves. `404` unknown agent, `409` already answering, `429` usage limit or 3 answers already running. |
 | `GET` | `/api/chats/{id}/events?after=N` | `chat.use` | Server-Sent Events of the chat's running (or just finished) answer: a `snapshot` of the text so far when joining late, then `token` / `step_*` / `summarizing` events, last `final` `{message, cancelled}` or `error`. `404` when there's nothing to watch. |
 | `POST` | `/api/chats/{id}/cancel` | `chat.use` | `{cancelled}`; ai_agent stops at its next round, keeping what streamed. |
 | `POST` | `/api/chats/{id}/summarize` | `chat.use` | `{agent_id?}` -> the chat, its history replaced by a `summary` message plus a `log_attachment` (raw messages, never sent to the agent again). `502` if the agent couldn't; nothing changes then. |
@@ -98,6 +98,14 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/commands/help`, `/api/commands/help/{capability}?target=&command=` | `tools.use` | mcp_server's capability help (what `/help` shows). |
 | `GET` | `/api/capabilities` | `tools.use` | mcp_server's built-in capabilities: `[{name, label, enabled, tools, resources}]`. |
 | `PATCH` | `/api/capabilities/{name}` | `admin.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
+| `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools}]`. |
+| `POST` | `/api/extensions` | `admin.manage` | `{label, url, description?}` (http/https URL) -> `201` the extension; mcp_server connects to it and saves it (an unreachable one is still added, `status: "error"`). |
+| `DELETE` | `/api/extensions/{id}` | `admin.manage` | `204`; `404` unknown id. |
+| `GET` | `/api/watchers` | `watchers.view` | `{watchers, errors}`: every capability's background watchers (from each `tool_<alias>_listWatchers` tool), each row tagged with `capability`; `errors` names capabilities that didn't answer. `502` if mcp_server is unreachable or none answered. |
+| `GET` | `/api/logs` | any `logs.*` | `{kinds, accounts}`: the log kinds this account may read and every account to filter by. |
+| `GET` | `/api/logs/{kind}?actor=server\|<account id>` | `logs.view` (action), `logs.errors.view` (error), `logs.chat.view` (chat_trace) | The 200 newest entries: `[{id, kind, account_id, source, message, details, created_at}]`. |
+| `POST` | `/api/attachments/text` | `chat.use` | `{filename, data}` (base64, up to 15 MB) -> `{filename, text, char_count, truncated}`: text from a text/code, `.pdf`, `.docx` or `.xlsx` file, at most 20,000 characters. The file isn't kept. `400` with a readable reason when it can't be read. |
+| `GET` | `/api/config-issues` | `config.issues.view` | `[{file, key, message}]`: problems in `config_app.json`, the agent registry and the secret files. Never includes secret values. |
 | `GET` | `/api/agents` | `chat.use` | Registered ai_agent instances as `[{id, label}]` - no URLs. |
 | `GET` `POST` `DELETE` | `/api/mcp/agents/{agent_id}` | `chat.use` | MCP Streamable HTTP proxy to that agent. `404` if the id isn't in ai_agent's registry. |
 | `GET` `POST` `DELETE` | `/api/mcp/server` | `tools.use` | MCP Streamable HTTP proxy to mcp_server. |
@@ -112,10 +120,15 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   never blocks the event loop. Unknown usernames are checked against a dummy
   hash so they take as long as a wrong password.
 - **Audit:** every login attempt is stored in `login_attempts` (IP, matched
-  account if any, success).
-- **Permissions:** `chat.use`, `tools.use`, `admin.manage`
+  account if any, success). The activity log (`log_entries`, Logs page)
+  records logins, logouts, registration, email verification, account
+  changes, every admin action and capability/extension changes; errors and
+  one line per answered chat turn go there too. Entries older than 90 days
+  are deleted on startup; a deleted account's entries stay.
+- **Permissions:** `chat.use`, `tools.use`, `admin.manage`, `watchers.view`,
+  `logs.view`, `logs.errors.view`, `logs.chat.view`, `config.issues.view`
   (`src/services/permissions.py`). The Administrator role always holds all
-  of them. New registrations get `default_role` (config, default `Member`:
+  of them (new ones are added to it on startup). New registrations get `default_role` (config, default `Member`:
   `chat.use` + `tools.use`) - unlike chat_app, where new accounts get no
   role. An account with an unverified email holds no permissions at all.
 - **Invites and verification codes:** 10 random characters, stored as
@@ -159,6 +172,11 @@ user's identity on to the mcp_server tools it calls itself.
 - **Usage limits** (`services/usage_service.py`, config `usage`): tokens of
   every answer and summary are recorded per agent; a question over the
   6-hour or weekly cap is refused with `429` before anything is saved.
+- **Extensions:** the agent only gets tools of the extensions the user
+  switched on (`enabled_extensions`, validated as ids); adding one makes
+  mcp_server connect to any URL, so that is admin-only.
+- **Errors:** an unhandled exception answers a generic `500` and is written
+  to the error log with its traceback (under the account, when logged in).
 - **Summaries** (`services/summarization.py`, port of chat_app's): manual
   (Summarize) or automatic before a question once the chat's context is 60%
   full. Written only when a usable summary came back.
@@ -191,12 +209,13 @@ data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
-              UsageRecord
+              UsageRecord, LogEntry
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
               AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, TurnRegistry,
-              UsageService, summarization, McpServerInfo, LoginRateLimiter, McpPolicy, McpProxy,
-              permissions
-  routes/     auth, account, admin, chats, usage, mcp, server_info
+              UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
+              text_extraction, config_validation, LoginRateLimiter, McpPolicy, McpProxy, permissions
+  routes/     auth, account, admin, chats, usage, mcp, server_info, watchers, logs, attachments,
+              config_issues
   utils/      config_loader
 tests/
 ```
