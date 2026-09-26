@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from src.app import create_app
-from src.config import SecuritySettings, Settings
+from src.config import SecuritySettings, Settings, UsageSettings
+from src.services.agent_gateway import AgentCallError, Caller
 from src.services.email_service import EmailDeliveryError
 
 ADMIN_USERNAME = "root"
@@ -69,6 +72,81 @@ class FakeUpstream:
         )
 
 
+@dataclass
+class FakeAgent:
+    """Stands in for ai_agent behind ember_api's own MCP client (the
+    AgentGateway). By default ask() streams two tokens and answers "Hello!";
+    tests change `answer`, `events`, `fail`, or set `hold` to keep a turn
+    running until release() (or a cancel) lets it finish."""
+
+    answer: str = "Hello!"
+    events: list[dict] = field(
+        default_factory=lambda: [{"type": "token", "text": "Hel"}, {"type": "token", "text": "lo!"}]
+    )
+    result_extra: dict = field(default_factory=dict)
+    fail: str | None = None
+    hold: bool = False
+    summary: str = "SUMMARY"
+    asks: list[dict] = field(default_factory=list)
+    interprets: list[str] = field(default_factory=list)
+    cancels: list[str] = field(default_factory=list)
+    gate: Any = None
+
+    loop: Any = None
+
+    def release(self) -> None:
+        """Safe from the test thread: the gate lives on the app's loop."""
+        if self.gate is not None:
+            self.loop.call_soon_threadsafe(self.gate.set)
+
+    async def ask(self, url, caller: Caller, *, question, history, request_id, caveman, on_event):
+        self.asks.append(
+            {
+                "url": url,
+                "caller": caller,
+                "question": question,
+                "history": history,
+                "request_id": request_id,
+                "caveman": caveman,
+            }
+        )
+        for event in self.events:
+            await on_event(event)
+        if self.hold:
+            self.loop = asyncio.get_running_loop()
+            self.gate = asyncio.Event()
+            await self.gate.wait()
+        if self.fail:
+            raise AgentCallError(self.fail)
+        cancelled = request_id in self.cancels
+        return {
+            "response": "Cancelled." if cancelled else self.answer,
+            "cancelled": cancelled,
+            "provider_id": "claude",
+            "model": "claude-test",
+            "total_tokens": 100,
+            "input_tokens": 70,
+            "output_tokens": 30,
+            "context_tokens": 1000,
+            "context_window": 200000,
+            "agent_usage": [
+                {"provider_id": "claude", "model": "claude-test", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100}
+            ],
+            **self.result_extra,
+        }
+
+    async def interpret(self, url, caller, text):
+        self.interprets.append(text)
+        if self.fail:
+            raise AgentCallError(self.fail)
+        return {"response": self.summary, "provider_id": "claude", "model": "claude-test", "total_tokens": 10}
+
+    async def cancel(self, url, caller, request_id):
+        self.cancels.append(request_id)
+        self.release()
+        return True
+
+
 def make_settings(
     tmp_path: Path,
     *,
@@ -76,6 +154,7 @@ def make_settings(
     session_hours: int = 12,
     internal_token: str = "",
     security: SecuritySettings | None = None,
+    usage: UsageSettings | None = None,
 ) -> Settings:
     secrets_dir = tmp_path / "secrets"
     secrets_dir.mkdir(exist_ok=True)
@@ -99,6 +178,7 @@ def make_settings(
         agents_registry_path=registry,
         mcp_server_url=MCP_SERVER_URL,
         security=security or SecuritySettings(),
+        usage=usage or UsageSettings(),
     )
 
 
@@ -113,8 +193,13 @@ def upstream() -> FakeUpstream:
 
 
 @pytest.fixture
+def agent() -> FakeAgent:
+    return FakeAgent()
+
+
+@pytest.fixture
 def client_factory(
-    tmp_path: Path, email: FakeEmailSender, upstream: FakeUpstream
+    tmp_path: Path, email: FakeEmailSender, upstream: FakeUpstream, agent: FakeAgent
 ) -> Iterator[Callable[..., TestClient]]:
     """Builds a started app (lifespan run) per call; all are closed at the end."""
     opened: list[TestClient] = []
@@ -127,6 +212,7 @@ def client_factory(
                 make_settings(tmp_path, **kwargs),
                 email_sender=email,
                 upstream_transport=httpx.MockTransport(upstream),
+                agent_gateway=agent,
             ),
             client=(address, 50000),
         )

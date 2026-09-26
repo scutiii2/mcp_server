@@ -14,13 +14,15 @@ from src.db import Database
 from src.body_limit import BodyLimitMiddleware
 from src.json_only import JsonOnlyMiddleware
 from src.security import SecurityMiddleware
-from src.routes import account, admin, auth, chats, mcp
+from src.routes import account, admin, auth, chats, mcp, server_info, usage
+from src.services.agent_gateway import AgentGateway, McpAgentGateway
 from src.services.auth_service import AuthService
 from src.services.chat_service import MAX_CHAT_BYTES
 from src.services.email_service import EmailSender, SmtpEmailSender
 from src.services.mcp_proxy import McpProxy
 from src.services.otp_service import OtpService
 from src.services.session_service import SessionService
+from src.services.turns import TurnRegistry
 from src.utils.config_loader import load_env_secrets
 
 logger = logging.getLogger(__name__)
@@ -36,9 +38,11 @@ def create_app(
     settings: Settings,
     email_sender: EmailSender | None = None,
     upstream_transport: httpx.AsyncBaseTransport | None = None,
+    agent_gateway: AgentGateway | None = None,
 ) -> FastAPI:
-    """email_sender defaults to SMTP from secrets/secret_smtp.env and
-    upstream_transport to real HTTP; tests pass fakes for both."""
+    """email_sender defaults to SMTP from secrets/secret_smtp.env,
+    upstream_transport to real HTTP and agent_gateway to a real MCP client
+    for ai_agent; tests pass fakes for all three."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -61,10 +65,16 @@ def create_app(
         app.state.settings = settings
         app.state.database = database
         app.state.email_sender = email_sender or SmtpEmailSender(settings.secrets_dir)
+        app.state.upstream = upstream
+        app.state.internal_token = internal_token or None
         app.state.mcp_proxy = McpProxy(upstream, internal_token or None)
+        app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None)
+        app.state.turns = TurnRegistry(database, app.state.agent_gateway, settings.usage)
         try:
             yield
         finally:
+            # Before the database closes: running turns save what they have.
+            await app.state.turns.shutdown()
             await upstream.aclose()
             await database.dispose()
 
@@ -79,7 +89,9 @@ def create_app(
     app.include_router(account.router)
     app.include_router(admin.router)
     app.include_router(chats.router)
+    app.include_router(usage.router)
     app.include_router(mcp.router)
+    app.include_router(server_info.router)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

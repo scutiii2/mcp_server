@@ -1,12 +1,48 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+import type { CommandInfo } from "../api/CommandsClient";
 
-// busy: a turn is running - Send becomes Stop.
-const props = defineProps<{ busy: boolean }>();
+// busy: a turn is running - Send becomes Stop. commands: slash commands to
+// suggest while "/..." is being typed (empty without tools.use).
+const props = withDefaults(defineProps<{ busy: boolean; commands?: CommandInfo[] }>(), { commands: () => [] });
 const emit = defineEmits<{ send: [question: string]; stop: [] }>();
 
 const draft = ref("");
 const textarea = ref<HTMLTextAreaElement | null>(null);
+
+const MAX_SUGGESTIONS = 8;
+
+interface Suggestion {
+  text: string;
+  description: string;
+}
+
+/** Commands matching what's typed, while still on "/<capability> <command>"
+ * (suggestions stop once parameters are being typed). */
+const suggestions = computed<Suggestion[]>(() => {
+  const typed = draft.value;
+  if (!props.commands.length || !/^\/\S*( \S*)?$/.test(typed)) return [];
+  const needle = typed.toLowerCase();
+  const all: Suggestion[] = [
+    { text: "/help", description: "Every capability and its commands" },
+    ...[...new Set(props.commands.map((c) => c.capability))].map((cap) => ({
+      text: `/${cap} help`,
+      description: `How to use ${cap}`,
+    })),
+    ...props.commands.map((c) => ({ text: `/${c.capability} ${c.name}`, description: c.description })),
+  ];
+  return all.filter((s) => s.text.toLowerCase().startsWith(needle) && s.text !== typed).slice(0, MAX_SUGGESTIONS);
+});
+const highlighted = ref(0);
+watch(suggestions, () => (highlighted.value = 0));
+
+function complete(suggestion: Suggestion): void {
+  draft.value = `${suggestion.text} `;
+  void nextTick(() => {
+    textarea.value?.focus();
+    autoGrow();
+  });
+}
 
 /** Grow with the content; CSS max-height caps it, then it scrolls. */
 function autoGrow(): void {
@@ -27,6 +63,18 @@ function submit(): void {
 /** Enter sends, Shift+Enter is a newline. isComposing: never send while an
  * IME (Japanese/Chinese input) is still composing a character. */
 function onKeydown(event: KeyboardEvent): void {
+  const open = suggestions.value.length > 0;
+  if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    event.preventDefault();
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    highlighted.value = (highlighted.value + step + suggestions.value.length) % suggestions.value.length;
+    return;
+  }
+  if (open && event.key === "Tab") {
+    event.preventDefault();
+    complete(suggestions.value[highlighted.value]!);
+    return;
+  }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     submit();
@@ -36,12 +84,26 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <form class="composer" @submit.prevent="submit">
+    <ul v-if="suggestions.length" class="suggestions" role="listbox" aria-label="Commands">
+      <li
+        v-for="(s, i) in suggestions"
+        :key="s.text"
+        role="option"
+        :aria-selected="i === highlighted"
+        :class="{ active: i === highlighted }"
+        @mousedown.prevent="complete(s)"
+      >
+        <code>{{ s.text }}</code>
+        <span>{{ s.description }}</span>
+      </li>
+      <li class="hint" aria-hidden="true">Tab completes · Enter runs</li>
+    </ul>
     <div class="box">
       <textarea
         ref="textarea"
         v-model="draft"
         rows="1"
-        placeholder="Ask something"
+        :placeholder="commands.length ? 'Ask something, or / for commands' : 'Ask something'"
         @input="autoGrow"
         @keydown="onKeydown"
       />
@@ -68,10 +130,50 @@ function onKeydown(event: KeyboardEvent): void {
 
 <style scoped>
 .composer {
+  position: relative;
   max-width: 820px;
   width: 100%;
   margin: 0 auto;
   padding: 8px 16px 16px;
+}
+.suggestions {
+  position: absolute;
+  right: 16px;
+  bottom: calc(100% - 4px);
+  left: 16px;
+  z-index: 10;
+  max-height: 280px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+.suggestions li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.suggestions li.active {
+  background: var(--bg);
+}
+.suggestions code {
+  font-family: var(--mono);
+}
+.suggestions span {
+  color: var(--muted);
+}
+.suggestions .hint {
+  cursor: default;
+  font-size: 0.75em;
+  color: var(--muted);
 }
 .box {
   display: flex;

@@ -86,6 +86,18 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `PATCH` | `/api/chats/{id}` | `chat.use` | `{title}` renames. |
 | `DELETE` | `/api/chats/{id}`, `/api/chats` | `chat.use` | `204`; one chat, or all of this account's. |
 | `POST` | `/api/chats/import` | `chat.use` | `{chats: [{id, title, agent_id, messages, created_at, updated_at}]}` (times in ms) -> `{imported, skipped}`. Existing ids are skipped, never replaced. |
+| `POST` | `/api/chats/{id}/turns` | `chat.use` | `{question, agent_id, caveman?, title?}` -> `202 {chat, sequence}`. Saves the question (creating the chat) and starts the answer **in ember_api**: it finishes, is saved and counts toward the usage limits even if the browser leaves. `404` unknown agent, `409` already answering, `429` usage limit or 3 answers already running. |
+| `GET` | `/api/chats/{id}/events?after=N` | `chat.use` | Server-Sent Events of the chat's running (or just finished) answer: a `snapshot` of the text so far when joining late, then `token` / `step_*` / `summarizing` events, last `final` `{message, cancelled}` or `error`. `404` when there's nothing to watch. |
+| `POST` | `/api/chats/{id}/cancel` | `chat.use` | `{cancelled}`; ai_agent stops at its next round, keeping what streamed. |
+| `POST` | `/api/chats/{id}/summarize` | `chat.use` | `{agent_id?}` -> the chat, its history replaced by a `summary` message plus a `log_attachment` (raw messages, never sent to the agent again). `502` if the agent couldn't; nothing changes then. |
+| `POST` | `/api/chats/{id}/clear` | `chat.use` | -> the chat, restarted: everything kept as one `log_attachment`. |
+| `POST` | `/api/chats/{id}/messages` | `chat.use` | `{title, messages}` appends (slash-command calls and results), creating the chat if needed. |
+| `GET` | `/api/usage?days=30` | `chat.use` | `{six_hour, weekly: {used, limit, reset_at}, report: {total_tokens, turns, chats, summary_tokens, by_agent, daily, ...}}` |
+| `GET` | `/api/admin/usage?days=30` | `admin.manage` | Every account's tokens and answers in the period. |
+| `GET` | `/api/commands` | `tools.use` | mcp_server's slash commands: `[{capability, name, description, tool_name}]`. |
+| `GET` | `/api/commands/help`, `/api/commands/help/{capability}?target=&command=` | `tools.use` | mcp_server's capability help (what `/help` shows). |
+| `GET` | `/api/capabilities` | `tools.use` | mcp_server's built-in capabilities: `[{name, label, enabled, tools, resources}]`. |
+| `PATCH` | `/api/capabilities/{name}` | `admin.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
 | `GET` | `/api/agents` | `chat.use` | Registered ai_agent instances as `[{id, label}]` - no URLs. |
 | `GET` `POST` `DELETE` | `/api/mcp/agents/{agent_id}` | `chat.use` | MCP Streamable HTTP proxy to that agent. `404` if the id isn't in ai_agent's registry. |
 | `GET` `POST` `DELETE` | `/api/mcp/server` | `tools.use` | MCP Streamable HTTP proxy to mcp_server. |
@@ -127,9 +139,10 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   closes when the browser disconnects.
 - **What may pass** (`src/services/mcp_policy.py`, bodies up to 1 MB): the
   MCP handshake (`initialize`, `ping`, a few notifications) for everyone;
-  on agents only `tools/call` of `ask` / `cancel` / `status`, with `ask`
-  limited to `question`, `history`, `request_id`, `enabled_extensions`,
-  `caveman` (no `depth`); on mcp_server `tools/list` and any `tools/call`.
+  on agents only `tools/call` of `status` - chat turns run inside ember_api
+  (`/api/chats/{id}/turns`), so the browser can't bypass the usage limits or
+  skip saving an answer; on mcp_server `tools/list`, any `tools/call` and
+  `resources/list` / `resources/templates/list` / `resources/read`.
   Anything else gets a JSON-RPC error (`403`) and never reaches the server.
 
 **Important:** ai_agent and mcp_server don't check any token on `/mcp`
@@ -137,6 +150,18 @@ today, so this only protects them while their ports aren't reachable except
 from this machine (keep them on `127.0.0.1`). Also, ai_agent doesn't pass the
 user's identity on to the mcp_server tools it calls itself.
 
+- **Chat turns** (`services/turns.py`, `services/agent_gateway.py`):
+  ember_api calls ai_agent's `ask` itself over MCP (the `mcp` SDK), with the
+  account's identity headers, and saves the answer. Watchers only subscribe;
+  the event buffer stays small because streamed text is kept as one string
+  and late joiners get it as a snapshot. At most 3 running answers per
+  account. On shutdown a running answer is saved as interrupted.
+- **Usage limits** (`services/usage_service.py`, config `usage`): tokens of
+  every answer and summary are recorded per agent; a question over the
+  6-hour or weekly cap is refused with `429` before anything is saved.
+- **Summaries** (`services/summarization.py`, port of chat_app's): manual
+  (Summarize) or automatic before a question once the chat's context is 60%
+  full. Written only when a usable summary came back.
 - **Chat history:** every query is filtered by the logged-in account, and
   chat ids are unique per account, so another user's chat looks exactly like
   a missing one (`404`). Limits: 2 MB per chat, 1000 chats per account.
@@ -165,11 +190,13 @@ secrets/   secret_bootstrap_admin.env, secret_smtp.env, secret_internal_api.env 
 data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
-  models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat
+  models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
+              UsageRecord
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AccountService, AdminService, AgentDirectory, ChatService, LoginRateLimiter, McpPolicy, McpProxy,
+              AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, TurnRegistry,
+              UsageService, summarization, McpServerInfo, LoginRateLimiter, McpPolicy, McpProxy,
               permissions
-  routes/     auth, account, admin, chats, mcp
+  routes/     auth, account, admin, chats, usage, mcp, server_info
   utils/      config_loader
 tests/
 ```

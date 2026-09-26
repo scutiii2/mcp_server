@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ToolInfo, ToolRunResult } from "../api/types";
 import ToolResultPanel from "../components/ToolResultPanel.vue";
@@ -10,7 +11,9 @@ const server = new McpServerClient();
 const tools = ref<ToolInfo[]>([]);
 const loading = ref(true);
 const loadError = ref("");
-const query = ref("");
+// ?q= prefills the filter (the Capabilities page links here that way).
+const initialQuery = useRoute().query.q;
+const query = ref(typeof initialQuery === "string" ? initialQuery : "");
 
 // One card open at a time; its last result stays until re-run or closed.
 const openName = ref<string | null>(null);

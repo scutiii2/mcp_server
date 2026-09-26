@@ -1,19 +1,24 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
-import type { AiAgentClient } from "../api/AiAgentClient";
 import { chatsClient } from "../api/ChatsClient";
-import type { AgentEvent, ChatMessage, Conversation } from "../api/types";
+import type { CommandInfo } from "../api/CommandsClient";
+import type { ChatMessage, Conversation, TurnEvent } from "../api/types";
 import {
   LegacyLocalChats,
   ServerConversationStorage,
   type ConversationStorage,
 } from "../services/ConversationStorage";
+import { SlashCommandRunner } from "../services/slashCommands";
+import { watchTurn } from "../services/turnStream";
 import { errorMessage } from "../utils/errors";
 import { toolTitle } from "../utils/toolTitles";
 import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 
 const TITLE_MAX_CHARS = 60;
+// While a chat other than the open one is still being answered, the list is
+// re-read this often so its spinner clears when it finishes.
+const BACKGROUND_POLL_MS = 5000;
 
 function titleFrom(question: string): string {
   const oneLine = question.replace(/\s+/g, " ").trim();
@@ -43,50 +48,74 @@ function writePreference(key: string, value: string): void {
 
 type SaveOp = () => Promise<void>;
 
-/** The account's chats (kept in ember_api) plus the one live turn. Which
- * ai_agent answers comes from the agents store.
+/** The account's chats and the live view of the open chat's answer.
  *
- * The screen changes first and the server is told afterwards: every write
- * goes through one queue, so writes reach ember_api in the order they
- * happened. A failed write stops the queue and shows `saveError`; retrySave()
- * resends it and everything queued behind it - nothing is dropped silently. */
+ * ember_api runs every turn itself: sending a question starts it there, and
+ * this store only watches its events. So an answer keeps going, is saved and
+ * counts toward the usage limits even if this page closes; reopening the chat
+ * picks the stream back up.
+ *
+ * Renames and deletes change the screen first and are sent through one
+ * queue, in order. A failed one stops the queue and shows `saveError`;
+ * retrySave() resends it and everything behind it. */
 export const useChatStore = defineStore("chat", () => {
   const agents = useAgentsStore();
   const auth = useAuthStore();
   const storage: ConversationStorage = new ServerConversationStorage();
 
   const conversations = ref<Conversation[]>([]);
-  // null = a fresh, not-yet-saved chat; it's only created on its first send,
-  // so clicking "New chat" repeatedly never leaves empty entries behind.
+  // null = a fresh chat; it's created in ember_api by its first question.
   const activeId = ref<string | null>(null);
   const listLoading = ref(false);
   const loadError = ref("");
   const saveError = ref("");
+  const sendError = ref("");
   const chatLoading = ref(false);
+  // Summarize / clear in progress for the open chat.
+  const working = ref("");
 
-  const streaming = ref(""); // answer text arriving live
-  const activity = ref(""); // current tool step, if any
-  const busy = ref(false);
-  // The ask() in flight: its id and the agent answering it, so Stop cancels
-  // on that agent even if the picker changed since.
-  let inFlight: { requestId: string; client: AiAgentClient } | null = null;
+  const streaming = ref(""); // the open chat's answer, as it arrives
+  const activity = ref(""); // its current tool step, if any
+  const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
   const caveman = ref(false);
+  // Slash commands (tools.use): the runner caches the command list and tool
+  // schemas, so it's replaced per account.
+  let commandRunner = new SlashCommandRunner();
+  const commands = ref<CommandInfo[]>([]);
 
   // Bumped on every account change: results of loads and saves started for
   // the previous account are ignored when they arrive.
   let generation = 0;
   let pending: SaveOp[] = [];
   let saving = false;
+  // The one live event stream (the open chat's); aborted on switching away.
+  let watcher: AbortController | null = null;
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
   const active = computed(() => conversations.value.find((c) => c.id === activeId.value) ?? null);
   const messages = computed<ChatMessage[]>(() => active.value?.messages ?? []);
+  /** The open chat is being answered (or its question is on its way). */
+  const busy = computed(() => starting.value || active.value?.running === true);
   /** Newest activity first, for the sidebar. */
   const sortedConversations = computed(() =>
     [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt),
   );
+  /** How full the agent's context is, from the last answer that said so. */
+  const contextUsage = computed<{ tokens: number; window: number } | null>(() => {
+    for (let i = messages.value.length - 1; i >= 0; i -= 1) {
+      const m = messages.value[i]!;
+      if (m.kind === "summary" || m.kind === "log_attachment") return null;
+      if (m.context_tokens && m.context_window) return { tokens: m.context_tokens, window: m.context_window };
+    }
+    return null;
+  });
 
-  // --- saving ---------------------------------------------------------------
+  function find(id: string): Conversation | undefined {
+    return conversations.value.find((c) => c.id === id);
+  }
+
+  // --- saving renames / deletes ------------------------------------------------
 
   function enqueue(op: SaveOp): void {
     pending.push(op);
@@ -117,17 +146,6 @@ export const useChatStore = defineStore("chat", () => {
     void drain();
   }
 
-  /** Saves the chat as it is when the write actually runs, so a queued
-   * save never sends a stale transcript. */
-  function saveChat(id: string): void {
-    enqueue(async () => {
-      const conversation = conversations.value.find((c) => c.id === id);
-      if (conversation?.messagesLoaded !== false) {
-        if (conversation) await storage.put(conversation);
-      }
-    });
-  }
-
   // --- loading --------------------------------------------------------------
 
   /** Uploads chats this browser kept locally (before history moved to the
@@ -154,6 +172,9 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
+  /** Re-reads the list, keeping loaded transcripts of chats that didn't
+   * change. A chat whose answer finished in the background is re-fetched
+   * when next opened. */
   async function loadList(): Promise<void> {
     const started = generation;
     const accountId = auth.account?.id;
@@ -162,38 +183,79 @@ export const useChatStore = defineStore("chat", () => {
     loadError.value = "";
     try {
       await importLegacy(accountId);
-      const list = await storage.list();
-      if (started === generation) conversations.value = list;
+      const fresh = await storage.list();
+      if (started !== generation) return;
+      conversations.value = fresh.map((c) => {
+        const known = find(c.id);
+        const unchanged = known?.messagesLoaded && known.updatedAt === c.updatedAt && !known.running;
+        if (c.id === activeId.value && known) return { ...known, title: c.title, running: known.running };
+        return unchanged ? { ...known, title: c.title } : c;
+      });
     } catch (err) {
       if (started === generation) loadError.value = errorMessage(err);
     } finally {
       if (started === generation) listLoading.value = false;
+      scheduleBackgroundPoll();
+    }
+  }
+
+  function scheduleBackgroundPoll(): void {
+    if (pollTimer !== null) clearTimeout(pollTimer);
+    pollTimer = null;
+    const backgroundRunning = conversations.value.some((c) => c.running && c.id !== activeId.value);
+    if (backgroundRunning) pollTimer = setTimeout(() => void loadList(), BACKGROUND_POLL_MS);
+  }
+
+  /** Fetches a chat's transcript; watches its answer if one is running. */
+  async function loadChat(id: string): Promise<void> {
+    const started = generation;
+    chatLoading.value = true;
+    loadError.value = "";
+    try {
+      const detail = await storage.detail(id);
+      const conversation = find(id);
+      if (started !== generation || !conversation) return;
+      conversation.messages = detail.messages;
+      conversation.messagesLoaded = true;
+      conversation.running = detail.running;
+      if (detail.running && id === activeId.value) follow(id, 0);
+    } catch (err) {
+      if (started === generation) loadError.value = errorMessage(err);
+    } finally {
+      if (started === generation) chatLoading.value = false;
     }
   }
 
   // Load the account's chats once it may chat; on logout, a user switch or
-  // losing chat.use, drop them from memory. A turn still streaming for the
-  // old user is stopped, so its answer can't land in the new user's list.
+  // losing chat.use, drop them from memory and stop watching.
   watch(
     () => (auth.hasPermission("chat.use") ? (auth.account?.id ?? null) : null),
     (accountId) => {
-      void stop();
+      unfollow();
       generation += 1;
       pending = [];
       saveError.value = "";
       loadError.value = "";
+      sendError.value = "";
       activeId.value = null;
       conversations.value = [];
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
+      commandRunner = new SlashCommandRunner();
+      commands.value = [];
       if (accountId !== null) void loadList();
+      else if (pollTimer !== null) clearTimeout(pollTimer);
     },
     { immediate: true },
   );
 
-  // --- the live turn --------------------------------------------------------
+  // --- watching the open chat's answer ------------------------------------------
 
-  function onEvent(event: AgentEvent): void {
+  function onEvent(event: TurnEvent): void {
     switch (event.type) {
+      case "snapshot":
+        streaming.value = event.text;
+        activity.value = event.activity ? `${event.activity} ...` : "";
+        break;
       case "token":
         streaming.value += event.text;
         break;
@@ -204,116 +266,186 @@ export const useChatStore = defineStore("chat", () => {
         activity.value = `running ${event.label ?? toolTitle(event.tool)} ...`;
         break;
       case "step_end":
+      case "summarized":
         activity.value = "";
+        break;
+      case "summarizing":
+        activity.value = "summarizing earlier messages ...";
+        break;
+      case "cancelling":
+        activity.value = "stopping ...";
         break;
     }
   }
 
-  /** The active conversation, creating one if the current chat is fresh. */
-  function ensureActive(firstQuestion: string): Conversation {
-    if (active.value) return active.value;
-    const now = Date.now();
-    conversations.value.push({
-      id: crypto.randomUUID(),
-      title: titleFrom(firstQuestion),
-      messages: [],
-      messagesLoaded: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-    const created = conversations.value[conversations.value.length - 1]!; // the reactive copy
-    activeId.value = created.id;
-    return created;
+  function unfollow(): void {
+    watcher?.abort();
+    watcher = null;
+    streaming.value = "";
+    activity.value = "";
   }
 
-  /** Sends one question; history is snapshotted before it's appended,
-   * since ask() takes the question separately. The question is saved right
-   * away and the whole chat again once the answer is in. */
-  async function send(question: string): Promise<void> {
-    if (!question || busy.value || chatLoading.value) return;
-    // Its transcript failed to load: sending now would save over it.
-    if (active.value?.messagesLoaded === false) return;
-    // Held for the whole turn: switching chats is blocked while busy, but the
-    // answer must land in this conversation regardless.
-    const turnAgent = agents.current();
-    const conversation = ensureActive(question);
-    if (!turnAgent) {
-      conversation.messages.push({ role: "user", content: question });
-      conversation.messages.push({ role: "assistant", content: "error: no ai_agent is available" });
-      saveChat(conversation.id);
+  /** Streams chat `id`'s running answer into `streaming` until it ends,
+   * then reloads the chat (ember_api's saved copy is the real one). */
+  function follow(id: string, after: number): void {
+    unfollow();
+    const controller = new AbortController();
+    watcher = controller;
+    const started = generation;
+    void watchTurn(id, after, onEvent, controller.signal)
+      .then(async (end) => {
+        if (end === "aborted" || started !== generation) return;
+        const conversation = find(id);
+        if (conversation) conversation.running = false;
+        if (watcher === controller) unfollow();
+        await loadChat(id);
+      })
+      .catch((err: unknown) => {
+        if (started !== generation || controller.signal.aborted) return;
+        if (watcher === controller) unfollow();
+        loadError.value = `Lost the live answer: ${errorMessage(err)}. Reopen the chat to see it.`;
+      })
+      .finally(scheduleBackgroundPoll);
+  }
+
+  // --- sending --------------------------------------------------------------
+
+  /** For the input's suggestions; quietly empty without tools.use or when
+   * mcp_server is down (typing a command then shows the error). */
+  async function loadCommands(): Promise<void> {
+    if (!auth.hasPermission("tools.use")) return;
+    const started = generation;
+    try {
+      const list = await commandRunner.list();
+      if (started === generation) commands.value = list;
+    } catch {
+      if (started === generation) commands.value = [];
+    }
+  }
+
+  /** "/..." runs an mcp_server tool directly (no AI); the call and its
+   * result are added to the chat. */
+  async function runCommand(text: string): Promise<void> {
+    if (!auth.hasPermission("tools.use")) {
+      sendError.value = "Slash commands need the tools.use permission.";
       return;
     }
-    const { agent, client } = turnAgent;
-    conversation.agentId = agent.id;
-    const history = [...conversation.messages];
-    conversation.messages.push({ role: "user", content: question });
-    conversation.updatedAt = Date.now();
-    saveChat(conversation.id);
-    busy.value = true;
-    const requestId = crypto.randomUUID();
-    inFlight = { requestId, client };
+    working.value = "Running command ...";
+    const started = generation;
     try {
-      const result = await client.ask(question, history, requestId, onEvent, { caveman: caveman.value });
-      // On cancel, keep whatever had streamed in before ai_agent stopped.
-      const content =
-        result.cancelled && streaming.value
-          ? `${streaming.value}\n\n${result.response}`
-          : result.response;
-      conversation.messages.push({ role: "assistant", content });
-    } catch (err) {
-      conversation.messages.push({ role: "assistant", content: `error: ${err}` });
+      const result = await commandRunner.run(text);
+      if (started !== generation) return;
+      await appendMessages(
+        [
+          { role: "user", kind: "command", content: text },
+          { role: "assistant", kind: "command", content: result },
+        ],
+        text,
+      );
     } finally {
-      inFlight = null;
-      streaming.value = "";
-      activity.value = "";
-      busy.value = false;
-      conversation.updatedAt = Date.now();
-      saveChat(conversation.id); // once per finished turn, not per streamed token
+      if (started === generation) working.value = "";
     }
   }
 
-  /** Stops the turn in flight; send()'s own result handling finishes up. */
+  /** Asks the selected agent. ember_api saves the question and runs the
+   * turn; this page shows it arriving. A leading "/" runs a command instead. */
+  async function send(question: string): Promise<void> {
+    if (!question || busy.value || chatLoading.value || working.value) return;
+    // Its transcript failed to load: what's shown isn't the chat.
+    if (active.value?.messagesLoaded === false) return;
+    sendError.value = "";
+    if (question.startsWith("/")) return runCommand(question);
+    const agent = agents.selected;
+    if (!agent) {
+      sendError.value = "No ai_agent is available.";
+      return;
+    }
+
+    let conversation = active.value;
+    const isNew = conversation === null;
+    if (!conversation) {
+      const now = Date.now();
+      conversations.value.push({
+        id: crypto.randomUUID(),
+        title: titleFrom(question),
+        messages: [],
+        messagesLoaded: true,
+        agentId: agent.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+      conversation = conversations.value[conversations.value.length - 1]!; // the reactive copy
+      activeId.value = conversation.id;
+    }
+    const id = conversation.id;
+    conversation.messages.push({ role: "user", content: question });
+    conversation.agentId = agent.id;
+    starting.value = true;
+    const started = generation;
+    try {
+      const turn = await chatsClient.startTurn(id, {
+        question,
+        agent_id: agent.id,
+        caveman: caveman.value,
+        title: conversation.title,
+      });
+      if (started !== generation) return;
+      conversation.running = true;
+      conversation.updatedAt = Date.parse(`${turn.chat.updated_at}Z`);
+      if (activeId.value === id) follow(id, turn.sequence);
+    } catch (err) {
+      if (started !== generation) return;
+      // Not saved (limit reached, agent gone ...): take the question back.
+      conversation.messages.pop();
+      if (isNew) {
+        conversations.value = conversations.value.filter((c) => c.id !== id);
+        if (activeId.value === id) activeId.value = null;
+      }
+      sendError.value = errorMessage(err);
+    } finally {
+      starting.value = false;
+    }
+  }
+
+  /** Asks ember_api to stop the open chat's answer; the stream then ends
+   * with whatever had arrived. */
   async function stop(): Promise<void> {
-    if (!inFlight) return;
-    activity.value = "stopping ...";
-    await inFlight.client.cancel(inFlight.requestId);
+    const conversation = active.value;
+    if (!conversation?.running) return;
+    try {
+      await chatsClient.cancel(conversation.id);
+    } catch (err) {
+      sendError.value = errorMessage(err);
+    }
   }
 
   // --- chat list actions ----------------------------------------------------
 
   function newChat(): void {
-    if (busy.value) return;
+    unfollow();
+    sendError.value = "";
     activeId.value = null;
+    scheduleBackgroundPoll();
   }
 
   async function selectChat(id: string): Promise<void> {
-    if (busy.value) return;
-    const conversation = conversations.value.find((c) => c.id === id);
-    if (!conversation) return;
+    const conversation = find(id);
+    if (!conversation || id === activeId.value) return;
+    unfollow();
+    sendError.value = "";
     activeId.value = id;
     // Reopening a chat switches back to the agent it was last talking to.
     if (conversation.agentId) agents.select(conversation.agentId);
-    if (conversation.messagesLoaded !== false) return;
-
-    const started = generation;
-    chatLoading.value = true;
-    loadError.value = "";
-    try {
-      const loaded = await storage.messages(id);
-      if (started !== generation) return;
-      conversation.messages = loaded;
-      conversation.messagesLoaded = true;
-    } catch (err) {
-      if (started === generation) loadError.value = errorMessage(err);
-    } finally {
-      if (started === generation) chatLoading.value = false;
-    }
+    scheduleBackgroundPoll();
+    if (conversation.messagesLoaded === false || conversation.running) await loadChat(id);
   }
 
   function deleteChat(id: string): void {
-    if (busy.value && id === activeId.value) return; // its answer is still arriving
+    if (id === activeId.value) {
+      unfollow();
+      activeId.value = null;
+    }
     conversations.value = conversations.value.filter((c) => c.id !== id);
-    if (activeId.value === id) activeId.value = null;
     enqueue(() => storage.remove(id));
   }
 
@@ -325,29 +457,73 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Blank titles are ignored; the chat keeps its old one. */
   function renameChat(id: string, title: string): void {
-    const conversation = conversations.value.find((c) => c.id === id);
+    const conversation = find(id);
     const trimmed = title.replace(/\s+/g, " ").trim().slice(0, 120);
     if (!conversation || !trimmed || trimmed === conversation.title) return;
     conversation.title = trimmed;
     enqueue(() => storage.rename(id, trimmed));
   }
 
-  /** Empties a chat's messages but keeps the chat (title, agent). */
-  function clearChat(id: string): void {
-    if (busy.value && id === activeId.value) return;
-    const conversation = conversations.value.find((c) => c.id === id);
-    if (!conversation || conversation.messages.length === 0) return;
-    conversation.messages = [];
-    conversation.messagesLoaded = true;
-    conversation.updatedAt = Date.now();
-    saveChat(id);
-  }
-
   function deleteAllChats(): void {
-    if (busy.value) return; // the active chat's answer is still arriving
+    unfollow();
     conversations.value = [];
     activeId.value = null;
     enqueue(() => storage.removeAll());
+  }
+
+  /** Runs summarize or clear on the open chat; both replace its messages
+   * with what ember_api returns. */
+  async function rewrite(label: string, call: (id: string) => Promise<{ messages: ChatMessage[] }>): Promise<void> {
+    const conversation = active.value;
+    if (!conversation || busy.value || working.value) return;
+    sendError.value = "";
+    working.value = label;
+    const started = generation;
+    try {
+      const chat = await call(conversation.id);
+      if (started !== generation) return;
+      conversation.messages = chat.messages;
+      conversation.messagesLoaded = true;
+      conversation.updatedAt = Date.now();
+    } catch (err) {
+      if (started === generation) sendError.value = errorMessage(err);
+    } finally {
+      if (started === generation) working.value = "";
+    }
+  }
+
+  /** Condenses the history into a summary the agent keeps as its memory. */
+  function summarizeChat(): Promise<void> {
+    return rewrite("Summarizing ...", (id) => chatsClient.summarize(id, agents.selected?.id ?? null));
+  }
+
+  /** Starts the conversation afresh; old messages stay as a collapsed log. */
+  function clearChat(): Promise<void> {
+    return rewrite("Clearing ...", (id) => chatsClient.clear(id));
+  }
+
+  /** Adds messages ember_api didn't produce itself (slash commands). */
+  async function appendMessages(extra: ChatMessage[], titleSeed: string): Promise<void> {
+    let conversation = active.value;
+    if (!conversation) {
+      const now = Date.now();
+      conversations.value.push({
+        id: crypto.randomUUID(),
+        title: titleFrom(titleSeed),
+        messages: [],
+        messagesLoaded: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      conversation = conversations.value[conversations.value.length - 1]!;
+      activeId.value = conversation.id;
+    }
+    conversation.messages.push(...extra);
+    conversation.updatedAt = Date.now();
+    const { id, title } = conversation;
+    enqueue(async () => {
+      await chatsClient.append(id, title, extra);
+    });
   }
 
   return {
@@ -358,10 +534,13 @@ export const useChatStore = defineStore("chat", () => {
     streaming,
     activity,
     busy,
+    working,
+    contextUsage,
     listLoading,
     chatLoading,
     loadError,
     saveError,
+    sendError,
     send,
     stop,
     newChat,
@@ -371,7 +550,11 @@ export const useChatStore = defineStore("chat", () => {
     caveman,
     setCaveman,
     clearChat,
+    summarizeChat,
     deleteAllChats,
+    appendMessages,
+    commands,
+    loadCommands,
     retrySave,
     reload: loadList,
   };

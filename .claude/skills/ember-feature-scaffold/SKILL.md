@@ -125,20 +125,26 @@ proxy, which drops browser-supplied identity/token headers and adds
 `X-Requester-Username` / `X-Requester-Email` (+ `X-Internal-Token` if
 configured) itself.
 
-- **mcp_server tools**: already allowed for `tools.use` (`SERVER_POLICY`:
-  `tools/list` + any `tools/call`). Call them from ember_web with
-  `McpServerClient` (`api/McpServerClient.ts`).
-- **A new ai_agent tool** for the browser: add it to `AGENT_POLICY.tools`
-  in `ember_api/src/services/mcp_policy.py` with the exact argument names
-  allowed (`None` = any - avoid). Arguments meant for server-to-server use
-  only (like `ask`'s `depth`) stay out of the list. Add a test in
-  `tests/test_mcp_proxy.py` that the tool passes and that an extra
-  argument is refused. Then add a typed method on `AiAgentClient`.
+- **mcp_server tools and resources**: already allowed for `tools.use`
+  (`SERVER_POLICY`: `tools/list`, any `tools/call`, `resources/*`). Call them
+  from ember_web with `McpServerClient` (`api/McpServerClient.ts`).
+  mcp_server's plain HTTP routes (`/commands`, `/capabilities`, ...) go
+  through `services/mcp_server_info.py` + `routes/server_info.py`.
+- **Chat with ai_agent** runs inside ember_api, never through the proxy:
+  `services/turns.py` (TurnRegistry) calls the agent through
+  `services/agent_gateway.py` (the `mcp` SDK), saves the answer and records
+  usage; the browser starts a turn (`POST /api/chats/{id}/turns`) and
+  watches `/events` (SSE, `services/turnStream.ts`). The proxy allows only
+  `status` on agents - adding `ask` there would let the browser bypass the
+  usage limits. A new agent tool the server needs goes on `AgentGateway`
+  (and `FakeAgent` in `tests/conftest.py`); one the browser may call
+  directly goes in `AGENT_POLICY.tools` with its exact argument names.
 - Agent discovery is ember_api's `GET /api/agents` (reads ai_agent's
   `configs/config_agents.json`); don't add a tool for it.
-- Streaming: FastMCP progress notifications arrive through the proxy
-  unbuffered; use `onprogress` + `resetTimeoutOnProgress: true` on long
-  calls (see `AiAgentClient.ask`).
+- Tests: route tests use `FakeAgent` (the `agent` fixture; `hold=True` keeps
+  a turn running until `agent.release()`); `tests/test_agent_gateway.py`
+  runs the real gateway against a real FastMCP server. Starlette's
+  TestClient only returns a streamed body once it's complete.
 
 ## 5. Before reporting done
 

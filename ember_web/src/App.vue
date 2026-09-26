@@ -27,6 +27,8 @@ async function logout(): Promise<void> {
     <nav v-if="account?.email_verified">
       <RouterLink v-if="auth.hasPermission('chat.use')" to="/">Chat</RouterLink>
       <RouterLink v-if="auth.hasPermission('tools.use')" to="/tools">Tools</RouterLink>
+      <RouterLink v-if="auth.hasPermission('tools.use')" to="/capabilities">Capabilities</RouterLink>
+      <RouterLink v-if="auth.hasPermission('chat.use')" to="/usage">Usage</RouterLink>
       <RouterLink v-if="auth.hasPermission('admin.manage')" to="/admin">Admin</RouterLink>
     </nav>
     <div v-if="account" class="user">

@@ -63,6 +63,32 @@ class SecuritySettings:
 
 
 @dataclass(frozen=True)
+class UsageSettings:
+    """config_app.json's "usage" block (port of chat_app's
+    config_usage_limits.json). A limit of 0 means unlimited."""
+
+    six_hour_token_limit: int = 1_000_000
+    weekly_token_limit: int = 5_000_000
+    # Soft cap on one chat's context, whatever the model allows: at
+    # auto_summarize_ratio of it (or of the model's window, if smaller) the
+    # chat is summarized before the next question is sent.
+    max_context_tokens_per_chat: int = 150_000
+    auto_summarize_ratio: float = 0.6
+
+    @classmethod
+    def from_config(cls, raw: dict) -> UsageSettings:
+        ratio = float(raw.get("auto_summarize_ratio", 0.6))
+        if not 0 < ratio <= 1:
+            raise ValueError("usage.auto_summarize_ratio must be above 0 and at most 1")
+        return cls(
+            six_hour_token_limit=max(0, int(raw.get("six_hour_token_limit", 1_000_000))),
+            weekly_token_limit=max(0, int(raw.get("weekly_token_limit", 5_000_000))),
+            max_context_tokens_per_chat=max(0, int(raw.get("max_context_tokens_per_chat", 150_000))),
+            auto_summarize_ratio=ratio,
+        )
+
+
+@dataclass(frozen=True)
 class Settings:
     host: str
     port: int
@@ -75,6 +101,7 @@ class Settings:
     agents_registry_path: Path = PROJECT_DIR.parent / "ai_agent" / "configs" / "config_agents.json"
     mcp_server_url: str = "http://127.0.0.1:8010/mcp"
     security: SecuritySettings = field(default_factory=SecuritySettings)
+    usage: UsageSettings = field(default_factory=UsageSettings)
 
     @property
     def database_url(self) -> str:
@@ -101,6 +128,7 @@ def load_settings() -> Settings:
         ),
         mcp_server_url=raw.get("mcp_server_url") or "http://127.0.0.1:8010/mcp",
         security=SecuritySettings.from_config(raw.get("security", {})),
+        usage=UsageSettings.from_config(raw.get("usage", {})),
     )
 
 

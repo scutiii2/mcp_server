@@ -1,30 +1,41 @@
-/** One chat turn as ai_agent's ask() expects it in `history`. */
+/** One message of a chat, as ember_api stores it. */
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** summary: what the agent remembers of earlier messages; log_attachment:
+   * the raw messages a summary or clear replaced (never sent to the agent);
+   * command: a slash command and its result. */
+  kind?: "summary" | "log_attachment" | "command";
+  model?: string;
+  total_tokens?: number;
+  /** How full the agent's context was after this answer. */
+  context_tokens?: number;
+  context_window?: number;
 }
 
-/** Live events ai_agent relays as MCP progress messages during ask(). */
-export type AgentEvent =
+/** Events of a turn ember_api runs, as its /events stream sends them. The
+ * token/step ones are ai_agent's own, relayed. */
+export type TurnEvent = { sequence: number } & (
+  | { type: "snapshot"; text: string; activity: string }
   | { type: "token"; text: string }
   | { type: "token_reset" }
-  | {
-      type: "step_start";
-      id: string;
-      tool: string;
-      label?: string;
-      arguments: unknown;
-    }
+  | { type: "step_start"; id: string; tool: string; label?: string; arguments: unknown }
   | { type: "step_progress"; id: string; message: string }
   | { type: "step_end"; id: string; ok: boolean; result: string }
-  | { type: "usage"; total_tokens: number; estimated: boolean };
+  | { type: "usage"; total_tokens: number; estimated: boolean }
+  | { type: "summarizing" }
+  | { type: "summarized" }
+  | { type: "cancelling" }
+  | { type: "final"; message: ChatMessage; cancelled: boolean }
+  | { type: "error"; message: string }
+);
 
-/** ask()'s final result (only the fields ember_web uses so far). */
-export interface AskResult {
-  response: string;
-  tools_used: string[];
-  total_tokens: number | null;
-  cancelled: boolean;
+/** One mcp_server resource, or a URI template (with {placeholders}). */
+export interface ResourceInfo {
+  uri: string;
+  name: string;
+  description: string;
+  template: boolean;
 }
 
 /** One mcp_server tool as the Tools page lists it. */
@@ -71,6 +82,8 @@ export interface Conversation {
   messagesLoaded?: boolean;
   /** From the server's list, for chats whose messages aren't loaded yet. */
   messageCount?: number;
+  /** ember_api is writing an answer for it right now. */
+  running?: boolean;
   createdAt: number;
   updatedAt: number;
 }

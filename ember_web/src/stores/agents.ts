@@ -57,13 +57,6 @@ export const useAgentsStore = defineStore("agents", () => {
     writeSelected(id);
   }
 
-  /** The selected agent plus its client, captured together for one turn;
-   * null when no agent is registered. */
-  function current(): { agent: AgentInfo; client: AiAgentClient } | null {
-    const agent = selected.value;
-    return agent ? { agent, client: clientFor(agent.id) } : null;
-  }
-
   async function checkStatus(agent: AgentInfo): Promise<void> {
     let ok = false;
     try {
@@ -104,5 +97,5 @@ export const useAgentsStore = defineStore("agents", () => {
     },
   );
 
-  return { agents, available, selected, loading, loadError, select, current, refresh };
+  return { agents, available, selected, loading, loadError, select, refresh };
 });

@@ -79,15 +79,14 @@ class McpPolicy:
             raise PolicyViolation(f"Arguments not allowed for {name}: {', '.join(extra)}")
 
 
-# ai_agent: chat only. `depth` is deliberately not allowed on ask - it's set
-# by a delegating agent, and a browser setting it could skew delegation.
-AGENT_POLICY = McpPolicy(
-    tools={
-        "ask": frozenset({"question", "history", "request_id", "enabled_extensions", "caveman"}),
-        "cancel": frozenset({"request_id"}),
-        "status": frozenset(),
-    },
-)
+# ai_agent: only the availability check. Chat turns (ask/cancel) run in
+# ember_api itself (/api/chats/{id}/turns), which is what makes the usage
+# limits and saved answers impossible to bypass from the browser.
+AGENT_POLICY = McpPolicy(tools={"status": frozenset()})
 
-# mcp_server: list and call any tool it exposes (tools.use covers that).
-SERVER_POLICY = McpPolicy(extra_methods=frozenset({"tools/list"}), tools=None)
+# mcp_server: list and call any tool it exposes, and browse/read its
+# resources (the Capabilities page) - tools.use covers all of it.
+SERVER_POLICY = McpPolicy(
+    extra_methods=frozenset({"tools/list", "resources/list", "resources/templates/list", "resources/read"}),
+    tools=None,
+)

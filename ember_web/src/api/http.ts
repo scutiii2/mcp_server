@@ -19,6 +19,11 @@ export function onUnauthorized(handler: () => void): void {
   unauthorizedHandler = handler;
 }
 
+/** For requests made outside apiRequest (the turn event stream). */
+export function reportUnauthorized(): void {
+  unauthorizedHandler?.();
+}
+
 /** FastAPI errors: `detail` is a string, or a list of field errors (422). */
 function messageOf(data: unknown, fallback: string): string {
   const detail = (data as { detail?: unknown } | null)?.detail;

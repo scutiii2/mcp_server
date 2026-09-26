@@ -1,6 +1,6 @@
 import { McpClientBase } from "./McpClientBase";
 import { toolTitle } from "../utils/toolTitles";
-import type { JsonSchema, ToolInfo, ToolRunResult } from "./types";
+import type { JsonSchema, ResourceInfo, ToolInfo, ToolRunResult } from "./types";
 
 /** mcp_server's MCP surface as ember_web uses it, via ember_api's
  * /api/mcp/server proxy. Holds no secrets: ember_api adds identity and the
@@ -28,6 +28,37 @@ export class McpServerClient extends McpClientBase {
       cursor = page.nextCursor;
     } while (cursor);
     return tools;
+  }
+
+  /** Fixed-URI resources plus URI templates, following pagination. */
+  async listResources(): Promise<ResourceInfo[]> {
+    const client = await this.session();
+    const found: ResourceInfo[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await client.listResources(cursor ? { cursor } : undefined);
+      for (const r of page.resources) {
+        found.push({ uri: r.uri, name: r.name, description: r.description ?? "", template: false });
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    do {
+      const page = await client.listResourceTemplates(cursor ? { cursor } : undefined);
+      for (const t of page.resourceTemplates) {
+        found.push({ uri: t.uriTemplate, name: t.name, description: t.description ?? "", template: true });
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    return found;
+  }
+
+  /** A resource's text parts, joined (binary parts are only named). */
+  async readResource(uri: string): Promise<string> {
+    const client = await this.session();
+    const result = await client.readResource({ uri });
+    return result.contents
+      .map((c) => ("text" in c && typeof c.text === "string" ? c.text : `[binary ${c.mimeType ?? "content"}]`))
+      .join("\n\n");
   }
 
   /** Runs one tool. A tool-side failure comes back as isError: true; only

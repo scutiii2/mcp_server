@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import AgentPicker from "../components/AgentPicker.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
@@ -24,7 +24,12 @@ const {
   chatLoading,
   loadError,
   saveError,
+  sendError,
+  working,
+  contextUsage,
+  commands,
 } = storeToRefs(chat);
+onMounted(() => void chat.loadCommands());
 const agentsStore = useAgentsStore();
 
 // Narrow screens only: the sidebar is a drawer toggled by the menu button.
@@ -49,8 +54,23 @@ function exportActive(): void {
 function clearActive(): void {
   const conversation = active.value;
   if (!conversation) return;
-  if (confirm(`Clear all messages in "${conversation.title}"? The chat itself stays.`)) chat.clearChat(conversation.id);
+  const question = `Start "${conversation.title}" afresh? The agent forgets the earlier messages; they stay readable as a collapsed log.`;
+  if (confirm(question)) void chat.clearChat();
 }
+
+function summarizeActive(): void {
+  const conversation = active.value;
+  if (!conversation) return;
+  const question = "Condense the earlier messages into a summary? The agent keeps only the summary from now on; the messages stay readable as a collapsed log.";
+  if (confirm(question)) void chat.summarizeChat();
+}
+
+// Share of the agent's context the last answer used; worth watching past
+// about half, since ember_api summarizes automatically at 60%.
+const contextPercent = computed(() => {
+  const usage = contextUsage.value;
+  return usage ? Math.min(100, Math.round((usage.tokens / usage.window) * 100)) : null;
+});
 
 function onSelect(id: string): void {
   chat.selectChat(id);
@@ -64,7 +84,7 @@ function onSelect(id: string): void {
       :class="['sidebar', { open: drawerOpen }]"
       :conversations="sortedConversations"
       :active-id="activeId"
-      :locked="busy"
+      :locked="false"
       :loading="listLoading"
       @new="onNew"
       @select="onSelect"
@@ -90,6 +110,10 @@ function onSelect(id: string): void {
           <button type="button" @click="chat.reload()">Retry</button>
         </template>
       </div>
+      <div v-if="sendError" class="banner" role="alert">
+        {{ sendError }}
+        <button type="button" @click="sendError = ''">Dismiss</button>
+      </div>
       <p v-if="chatLoading" class="loading">Loading chat …</p>
       <MessageList
         v-else
@@ -110,14 +134,30 @@ function onSelect(id: string): void {
             />
             Terse replies
           </label>
+          <span
+            v-if="contextPercent !== null"
+            :class="['context', { high: contextPercent >= 50 }]"
+            title="How full the agent's memory of this chat is. At 60% the chat is summarized automatically."
+          >
+            Context {{ contextPercent }}%
+          </span>
+          <span v-if="working" class="working">{{ working }}</span>
           <div v-if="active && messages.length" class="chat-actions">
             <button type="button" title="Download this chat as Markdown" @click="exportActive">Export</button>
-            <button type="button" title="Remove all messages from this chat" :disabled="busy" @click="clearActive">
+            <button
+              type="button"
+              title="Condense the earlier messages into a summary the agent keeps"
+              :disabled="busy || !!working"
+              @click="summarizeActive"
+            >
+              Summarize
+            </button>
+            <button type="button" title="Start afresh; earlier messages stay as a log" :disabled="busy || !!working" @click="clearActive">
               Clear
             </button>
           </div>
         </div>
-        <ChatInput :busy="busy" @send="chat.send" @stop="chat.stop" />
+        <ChatInput :busy="busy" :commands="commands" @send="chat.send" @stop="chat.stop" />
       </div>
     </div>
   </section>
@@ -190,6 +230,14 @@ function onSelect(id: string): void {
   font-size: 0.85em;
   color: var(--muted);
   cursor: pointer;
+}
+.context,
+.working {
+  font-size: 0.8em;
+  color: var(--muted);
+}
+.context.high {
+  color: var(--danger);
 }
 .chat-actions {
   display: flex;

@@ -10,9 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.db import Database
 from src.models import Account
+from src.services.agent_gateway import AgentGateway
 from src.services.email_service import EmailSender
 from src.services.otp_service import OtpService
 from src.services.session_service import SessionService
+from src.services.turns import TurnRegistry
 
 
 def get_settings(request: Request) -> Settings:
@@ -38,6 +40,14 @@ def get_otp_service(session: AsyncSession = Depends(get_db_session)) -> OtpServi
 
 def get_email_sender(request: Request) -> EmailSender:
     return request.app.state.email_sender
+
+
+def get_agent_gateway(request: Request) -> AgentGateway:
+    return request.app.state.agent_gateway
+
+
+def get_turns(request: Request) -> TurnRegistry:
+    return request.app.state.turns
 
 
 async def current_account(

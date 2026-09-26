@@ -101,13 +101,13 @@ def test_event_stream_response_is_relayed(client: TestClient, upstream: FakeUpst
     as_admin(client)
 
     with client.stream(
-        "POST", AGENT_PATH, json=call_tool("ask", {"question": "hi", "request_id": "r1"}), headers=MCP_HEADERS
+        "POST", AGENT_PATH, json=call_tool("status", {}), headers=MCP_HEADERS
     ) as response:
         body = b"".join(response.iter_bytes())
 
     assert response.headers["content-type"].startswith("text/event-stream")
     assert body == b"".join(events)
-    assert json.loads(upstream.requests[-1].content)["params"]["name"] == "ask"
+    assert json.loads(upstream.requests[-1].content)["params"]["name"] == "status"
 
 
 def test_session_delete_without_content_type_is_forwarded(client: TestClient, upstream: FakeUpstream) -> None:
@@ -146,22 +146,20 @@ def test_agent_tool_outside_the_allow_list_is_refused(client: TestClient, upstre
     assert upstream.requests == []
 
 
-def test_ask_depth_argument_is_refused(client: TestClient, upstream: FakeUpstream) -> None:
+def test_ask_and_cancel_are_refused_turns_run_server_side(client: TestClient, upstream: FakeUpstream) -> None:
     as_admin(client)
 
-    response = post(client, AGENT_PATH, call_tool("ask", {"question": "hi", "depth": 3}))
-
-    assert response.status_code == 403
-    assert "depth" in response.json()["error"]["message"]
+    for tool, arguments in (("ask", {"question": "hi"}), ("cancel", {"request_id": "x"})):
+        response = post(client, AGENT_PATH, call_tool(tool, arguments))
+        assert response.status_code == 403
+        assert response.json()["error"]["message"] == f"Tool not allowed: {tool}"
     assert upstream.requests == []
 
 
-def test_ask_with_caveman_is_forwarded(client: TestClient, upstream: FakeUpstream) -> None:
+def test_status_is_forwarded(client: TestClient, upstream: FakeUpstream) -> None:
     as_admin(client)
 
-    response = post(client, AGENT_PATH, call_tool("ask", {"question": "hi", "caveman": True}))
-
-    assert response.status_code == 200
+    assert post(client, AGENT_PATH, call_tool("status", {})).status_code == 200
     assert len(upstream.requests) == 1
 
 
@@ -174,14 +172,16 @@ def test_batch_with_one_bad_message_is_refused_whole(client: TestClient, upstrea
     assert upstream.requests == []
 
 
-def test_server_allows_listing_and_any_tool_but_not_resources(client: TestClient, upstream: FakeUpstream) -> None:
+def test_server_allows_tools_and_resources_but_not_prompts(client: TestClient, upstream: FakeUpstream) -> None:
     as_admin(client)
 
     assert post(client, SERVER_PATH, rpc("tools/list")).status_code == 200
     assert post(client, SERVER_PATH, call_tool("disk_usage", {"path": "/"})).status_code == 200
-    assert post(client, SERVER_PATH, rpc("resources/read", {"uri": "x"})).status_code == 403
+    assert post(client, SERVER_PATH, rpc("resources/list")).status_code == 200
+    assert post(client, SERVER_PATH, rpc("resources/read", {"uri": "x"})).status_code == 200
+    assert post(client, SERVER_PATH, rpc("prompts/list")).status_code == 403
     assert {str(r.url) for r in upstream.requests} == {MCP_SERVER_URL}
-    assert len(upstream.requests) == 2
+    assert len(upstream.requests) == 4
 
 
 def test_malformed_json_is_a_parse_error(client: TestClient) -> None:
@@ -198,7 +198,7 @@ def test_malformed_json_is_a_parse_error(client: TestClient) -> None:
 def test_oversized_body_is_413(client: TestClient, upstream: FakeUpstream) -> None:
     as_admin(client)
 
-    response = post(client, AGENT_PATH, call_tool("ask", {"question": "x" * 1_100_000}))
+    response = post(client, AGENT_PATH, call_tool("status", {"pad": "x" * 1_100_000}))
 
     assert response.status_code == 413
     assert upstream.requests == []

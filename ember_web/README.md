@@ -11,9 +11,17 @@ URL, token or key.
 - Log in, register with an invite code, verify your email (ember_api
   accounts - separate from chat_app's).
 - Chat with any registered `ai_agent` instance (Agent dropdown), with live
-  token streaming and tool-step indicators (the MCP progress notifications
-  `ask()` sends).
-- Stop button (`ai_agent`'s `cancel` tool; takes effect at the next round).
+  token streaming and tool-step indicators. ember_api runs each answer: it
+  keeps going and is saved even if the page closes; reopening the chat picks
+  the live answer back up. Chats still being answered show a pulsing dot.
+- Stop button (takes effect at the agent's next round).
+- Slash commands: `/<capability> <command> key=value ...` runs an mcp_server
+  tool directly (no AI), `/help` and `/<capability> help` show help; the input
+  suggests commands as you type (needs `tools.use`).
+- Summarize (condense the history into a summary the agent keeps) and Clear
+  (start afresh); earlier messages stay readable as a collapsed log. A chat
+  is also summarized automatically once its context is 60% full. A
+  "Context n%" chip shows how full it is.
 - Markdown rendering, sanitized with DOMPurify.
 - Several conversations, saved per account in ember_api (they follow you to
   any browser; chats from the old browser-only storage are uploaded once):
@@ -23,6 +31,10 @@ URL, token or key.
   and JSON results render as fields and tables, with the raw JSON a click away.
 - "Terse replies" toggle next to the Agent picker (ai_agent's `caveman`
   option), remembered per account.
+- Usage page: your 6-hour and weekly token limits, totals, tokens per day and
+  per agent; admins also see every account.
+- Capabilities page: mcp_server's capabilities with their tools and
+  resources, reading resources, and (admins) switching capabilities on/off.
 - Account page (click your username): profile, change email (re-verify),
   change password (logs out other devices). Reachable while unverified.
 - Admin page, three tabs: Accounts (edit, enable/disable, add/remove roles,
@@ -69,19 +81,24 @@ Other scripts: `npm run build` (type-check + production build into `dist/`),
 Vite forwards every `/api/...` request to ember_api (`vite.config.ts`), so
 the browser only ever sees one origin: ember_api's `HttpOnly`,
 `SameSite=Strict` session cookie rides along automatically and no CORS is
-involved. The MCP clients (`@modelcontextprotocol/sdk`, Streamable HTTP)
-point at ember_api's proxy routes - `/api/mcp/agents/{id}` and
-`/api/mcp/server` - and streamed responses come through unbuffered.
+involved. Chat answers are started with `POST /api/chats/{id}/turns` and
+watched through `/api/chats/{id}/events` (Server-Sent Events, read with
+`fetch` so it can resume after a dropped connection). The MCP clients
+(`@modelcontextprotocol/sdk`, Streamable HTTP) point at ember_api's proxy
+routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
+(tools and resources) - and stream through unbuffered.
 
 ## Layout
 
 ```
 src/
-  api/          http + AuthClient / AdminClient (ember_api REST),
+  api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient
+                (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
-  services/     ConversationStorage (ember_api chat history; one-time import of old local chats)
+  services/     ConversationStorage (chat history; one-time import of old local chats),
+                turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat
-  views/        pages: Chat, Tools, Admin, Account, Login, Register, VerifyEmail, NoAccess
+  views/        pages: Chat, Tools, Capabilities, Usage, Admin, Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ChatInput, MarkdownContent,
                 ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
@@ -94,10 +111,11 @@ src/
 
 - Access checks in the router only decide what the UI shows; ember_api
   enforces every permission itself.
-- Chats are stored in ember_api's database. The browser saves the question
-  when it's sent and the whole chat when the answer is in; closing the tab
-  mid-answer loses that answer (a server-run turn is a later step). A failed
-  save shows a banner with Retry instead of being dropped.
+- Chats are stored in ember_api's database, and ember_api writes the
+  answers itself. Renames and deletes are sent in order; a failed one shows
+  a banner with Retry instead of being dropped.
+- The browser can't call ai_agent's `ask` directly (ember_api's proxy allows
+  only `status`), so usage limits can't be bypassed.
 - `ai_agent` and `mcp_server` must stay unreachable from outside this
   machine (bound to `127.0.0.1`): they don't check tokens on `/mcp`
   themselves - ember_api is the gate.

@@ -7,6 +7,7 @@ from src.models.chat import Chat
 from src.models.login_attempt import LoginAttempt
 from src.models.otp import EmailVerificationCode, InviteCode
 from src.models.role import Permission, Role
+from src.models.usage import UsageRecord
 
 __all__ = [
     "Account",
@@ -17,4 +18,5 @@ __all__ = [
     "LoginAttempt",
     "Permission",
     "Role",
+    "UsageRecord",
 ]

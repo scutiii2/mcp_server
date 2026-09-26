@@ -3,13 +3,13 @@ import { ApiError } from "../api/http";
 import type { ChatMessage, Conversation } from "../api/types";
 
 /** Where conversations are kept. The chat store depends only on this. One
- * call per change, since the store only ever changes one chat at a time. */
+ * call per change, since the store only ever changes one chat at a time.
+ * (New messages arrive through ember_api's turns, not through here.) */
 export interface ConversationStorage {
   /** Every chat, newest first, with `messages` not loaded yet. */
   list(): Promise<Conversation[]>;
-  messages(id: string): Promise<ChatMessage[]>;
-  /** Creates or replaces the chat whole. */
-  put(conversation: Conversation): Promise<void>;
+  /** A chat's transcript, and whether an answer is being written for it. */
+  detail(id: string): Promise<{ messages: ChatMessage[]; running: boolean }>;
   rename(id: string, title: string): Promise<void>;
   remove(id: string): Promise<void>;
   removeAll(): Promise<void>;
@@ -21,12 +21,9 @@ export class ServerConversationStorage implements ConversationStorage {
     return (await chatsClient.list()).map(fromSummary);
   }
 
-  async messages(id: string): Promise<ChatMessage[]> {
-    return (await chatsClient.get(id)).messages;
-  }
-
-  async put(c: Conversation): Promise<void> {
-    await chatsClient.put(c.id, { title: c.title, agent_id: c.agentId ?? null, messages: c.messages });
+  async detail(id: string): Promise<{ messages: ChatMessage[]; running: boolean }> {
+    const chat = await chatsClient.get(id);
+    return { messages: chat.messages, running: chat.running };
   }
 
   async rename(id: string, title: string): Promise<void> {
@@ -59,6 +56,7 @@ function fromSummary(s: ChatSummary): Conversation {
     messages: [],
     messagesLoaded: false,
     messageCount: s.message_count,
+    running: s.running,
     agentId: s.agent_id ?? undefined,
     createdAt: Date.parse(`${s.created_at}Z`),
     updatedAt: Date.parse(`${s.updated_at}Z`),

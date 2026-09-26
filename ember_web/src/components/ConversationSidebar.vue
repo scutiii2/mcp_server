@@ -78,6 +78,7 @@ function confirmDeleteAll(): void {
           @blur="finishRename(true)"
         />
         <template v-else>
+          <span v-if="c.running" class="running" title="An answer is being written" />
           <span class="title" @dblclick.stop="startRename(c)">{{ c.title }}</span>
           <button type="button" class="icon" title="Rename chat" @click.stop="startRename(c)">
             <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -219,6 +220,19 @@ function confirmDeleteAll(): void {
 .icon:disabled {
   cursor: default;
   opacity: 0;
+}
+.running {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
 }
 .rename {
   flex: 1;

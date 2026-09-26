@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,10 +31,10 @@ class ChatLimitError(Exception):
     """A chat too large, or too many chats (maps to 413)."""
 
 
-@dataclass(frozen=True)
-class ChatMessage:
-    role: str  # "user" | "assistant"
-    content: str
+# {"role": "user" | "assistant", "content": str} plus optional "kind"
+# ("summary", "log_attachment", "command"), "model", "total_tokens",
+# "context_tokens", "context_window" - validated by the route.
+ChatMessage = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -47,13 +48,13 @@ class ImportedChat:
 
 
 def _encode(messages: list[ChatMessage]) -> str:
-    text = json.dumps([{"role": m.role, "content": m.content} for m in messages], ensure_ascii=False)
+    text = json.dumps(messages, ensure_ascii=False)
     if len(text.encode("utf-8")) > MAX_CHAT_BYTES:
         raise ChatLimitError(f"Chat is larger than {MAX_CHAT_BYTES // (1024 * 1024)} MB")
     return text
 
 
-def decode_messages(chat: Chat) -> list[dict]:
+def decode_messages(chat: Chat) -> list[ChatMessage]:
     return json.loads(chat.messages)
 
 
@@ -94,6 +95,18 @@ class ChatService:
         chat.messages = encoded
         chat.message_count = len(messages)
         chat.updated_at = now
+        await self._session.commit()
+        return chat
+
+    async def replace_messages(self, chat_id: str, messages: list[ChatMessage], agent_id: str | None = None) -> Chat:
+        """New transcript for an existing chat, keeping its title (and its
+        agent unless one is given). Used by server-run turns."""
+        chat = await self.get(chat_id)
+        chat.messages = _encode(messages)
+        chat.message_count = len(messages)
+        if agent_id is not None:
+            chat.agent_id = agent_id
+        chat.updated_at = utcnow()
         await self._session.commit()
         return chat
 
