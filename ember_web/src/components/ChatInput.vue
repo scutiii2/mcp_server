@@ -2,18 +2,39 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
+import type { PromptTemplate } from "../api/TemplatesClient";
 import { withAttachments } from "../utils/attachments";
 import { errorMessage } from "../utils/errors";
+import { appendToDraft, filterTemplates, preview, templateQuery } from "../utils/templates";
+import TemplatePicker from "./TemplatePicker.vue";
 
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
 // suggest while "/..." is being typed (empty without tools.use).
 // lastPrompt: the text of the latest question, recalled by ↑ in an empty box.
-const props = withDefaults(defineProps<{ busy: boolean; commands?: CommandInfo[]; lastPrompt?: string }>(), {
-  commands: () => [],
-  lastPrompt: "",
-});
+// templates: the account's saved prompts, for the picker button and for
+// "#..." suggestions; the parent loads them when asked (templatesNeeded).
+const props = withDefaults(
+  defineProps<{
+    busy: boolean;
+    commands?: CommandInfo[];
+    lastPrompt?: string;
+    templates?: PromptTemplate[];
+    templatesLoading?: boolean;
+    templatesError?: string;
+  }>(),
+  { commands: () => [], lastPrompt: "", templates: () => [], templatesLoading: false, templatesError: "" },
+);
 // form: a command was picked from the suggestions; the chat may open its form.
-const emit = defineEmits<{ send: [question: string]; stop: []; form: [command: CommandInfo] }>();
+// templatesNeeded: the picker or a "#" wants the saved prompts.
+// manageTemplates: open the templates dialog; `draft` is the typed text to
+// save as a new prompt ("" for none).
+const emit = defineEmits<{
+  send: [question: string];
+  stop: [];
+  form: [command: CommandInfo];
+  templatesNeeded: [];
+  manageTemplates: [draft: string];
+}>();
 
 const draft = ref("");
 const textarea = ref<HTMLTextAreaElement | null>(null);
@@ -117,12 +138,26 @@ interface Suggestion {
   description: string;
   /** Set for a runnable command (not help): picking it offers its form. */
   command?: CommandInfo;
+  /** Set for a saved prompt: picking it puts its text in the box. */
+  template?: PromptTemplate;
 }
+
+/** Typing "#..." looks up saved prompts by name. */
+const lookingUpTemplate = computed(() => templateQuery(draft.value) !== null);
+watch(lookingUpTemplate, (on) => {
+  if (on) emit("templatesNeeded");
+});
 
 /** Commands matching what's typed, while still on "/<capability> <command>"
  * (suggestions stop once parameters are being typed). */
 const suggestions = computed<Suggestion[]>(() => {
   const typed = draft.value;
+  const query = templateQuery(typed);
+  if (query !== null) {
+    return filterTemplates(props.templates, query)
+      .slice(0, MAX_SUGGESTIONS)
+      .map((t) => ({ text: t.name, description: preview(t.body, 60), template: t }));
+  }
   if (!props.commands.length || !/^\/\S*( \S*)?$/.test(typed)) return [];
   const needle = typed.toLowerCase();
   const all: Suggestion[] = [
@@ -139,6 +174,10 @@ const highlighted = ref(0);
 watch(suggestions, () => (highlighted.value = 0));
 
 function complete(suggestion: Suggestion): void {
+  if (suggestion.template) {
+    setDraft(suggestion.template.body);
+    return;
+  }
   draft.value = `${suggestion.text} `;
   void nextTick(() => {
     textarea.value?.focus();
@@ -160,7 +199,12 @@ function focus(): void {
   textarea.value?.focus();
 }
 
-defineExpose({ setDraft, focus });
+/** Adds text to the box: alone in an empty one, else on a new line. */
+function insertText(text: string): void {
+  setDraft(appendToDraft(draft.value, text));
+}
+
+defineExpose({ setDraft, focus, insertText });
 
 /** Grow with the content; CSS max-height caps it, then it scrolls. */
 function autoGrow(): void {
@@ -196,6 +240,12 @@ function onKeydown(event: KeyboardEvent): void {
     complete(suggestions.value[highlighted.value]!);
     return;
   }
+  // A saved prompt is not something to send as typed: Enter inserts it.
+  if (open && lookingUpTemplate.value && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    complete(suggestions.value[highlighted.value]!);
+    return;
+  }
   // ↑ in an empty box brings back the last question, ready to edit and resend.
   if (event.key === "ArrowUp" && !event.isComposing && draft.value === "" && props.lastPrompt) {
     event.preventDefault();
@@ -223,7 +273,8 @@ function onKeydown(event: KeyboardEvent): void {
         <code>{{ s.text }}</code>
         <span>{{ s.description }}</span>
       </li>
-      <li class="hint" aria-hidden="true">Tab picks (a command opens its form) · Enter runs</li>
+      <li v-if="lookingUpTemplate" class="hint" aria-hidden="true">Tab or Enter inserts the prompt</li>
+      <li v-else class="hint" aria-hidden="true">Tab picks (a command opens its form) · Enter runs</li>
     </ul>
     <ul v-if="attachments.length" class="attachments">
       <li v-for="a in attachments" :key="a.id" :class="a.state" :title="a.error || a.filename">
@@ -248,11 +299,21 @@ function onKeydown(event: KeyboardEvent): void {
           />
         </svg>
       </button>
+      <TemplatePicker
+        :templates="templates"
+        :loading="templatesLoading"
+        :error="templatesError"
+        :can-save="draft.trim() !== ''"
+        @open="emit('templatesNeeded')"
+        @pick="(template) => insertText(template.body)"
+        @manage="emit('manageTemplates', '')"
+        @save="emit('manageTemplates', draft.trim())"
+      />
       <textarea
         ref="textarea"
         v-model="draft"
         rows="1"
-        :placeholder="commands.length ? 'Ask something, or / for commands' : 'Ask something'"
+        :placeholder="commands.length ? 'Ask something, / for commands, # for saved prompts' : 'Ask something, # for saved prompts'"
         @input="autoGrow"
         @keydown="onKeydown"
         @paste="onPaste"

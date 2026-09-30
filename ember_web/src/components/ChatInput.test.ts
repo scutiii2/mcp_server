@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { attachmentsClient } from "../api/AttachmentsClient";
+import type { PromptTemplate } from "../api/TemplatesClient";
 import ChatInput from "./ChatInput.vue";
 
 vi.mock("../api/AttachmentsClient", () => ({ attachmentsClient: { text: vi.fn() } }));
@@ -203,5 +204,166 @@ describe("the rest of the composer", () => {
     (wrapper.vm as unknown as { focus: () => void }).focus();
 
     expect(document.activeElement).toBe(wrapper.find("textarea").element);
+  });
+});
+
+describe("saved prompts", () => {
+  const tpl = (id: number, name: string, body: string): PromptTemplate => ({
+    id,
+    name,
+    body,
+    created_at: "2026-01-01T00:00:00",
+    updated_at: "2026-01-01T00:00:00",
+  });
+  const TEMPLATES = [tpl(1, "Summarize", "Summarize this:"), tpl(2, "Code review", "Review this code:\n"), tpl(3, "Review notes", "Turn my notes into a review")];
+  const valueOf = (wrapper: ReturnType<typeof mountInput>) => (wrapper.find("textarea").element as HTMLTextAreaElement).value;
+  const rows = (wrapper: ReturnType<typeof mountInput>) => wrapper.findAll(".suggestions li[role=option] code").map((c) => c.text());
+
+  it("typing # lists the prompts, filtering by name as you continue", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+
+    await wrapper.find("textarea").setValue("#");
+    expect(rows(wrapper)).toEqual(["Summarize", "Code review", "Review notes"]);
+
+    await wrapper.find("textarea").setValue("#review");
+    expect(rows(wrapper)).toEqual(["Review notes", "Code review"]);
+    expect(wrapper.find(".hint").text()).toBe("Tab or Enter inserts the prompt");
+  });
+
+  it("asks the parent to load the prompts when # is typed, once per lookup", async () => {
+    const wrapper = mountInput();
+
+    await wrapper.find("textarea").setValue("hello");
+    expect(wrapper.emitted("templatesNeeded")).toBeUndefined();
+
+    await wrapper.find("textarea").setValue("#");
+    await wrapper.find("textarea").setValue("#r");
+    expect(wrapper.emitted("templatesNeeded")).toHaveLength(1);
+
+    await wrapper.find("textarea").setValue("");
+    await wrapper.find("textarea").setValue("#");
+    expect(wrapper.emitted("templatesNeeded")).toHaveLength(2);
+  });
+
+  it("Tab puts the highlighted prompt's text in the box", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+    await wrapper.find("textarea").setValue("#sum");
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+
+    expect(valueOf(wrapper)).toBe("Summarize this:");
+    expect(wrapper.find(".suggestions").exists()).toBe(false);
+    expect(wrapper.emitted("send")).toBeUndefined();
+  });
+
+  it("Enter inserts the prompt instead of sending '#sum'", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+    await wrapper.find("textarea").setValue("#sum");
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Enter" });
+
+    expect(valueOf(wrapper)).toBe("Summarize this:");
+    expect(wrapper.emitted("send")).toBeUndefined();
+  });
+
+  it("arrow keys move the highlight before Enter", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+    await wrapper.find("textarea").setValue("#");
+
+    await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" });
+    await wrapper.find("textarea").trigger("keydown", { key: "Enter" });
+
+    expect(valueOf(wrapper)).toBe("Review this code:\n");
+  });
+
+  it("a click on a suggestion inserts it", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+    await wrapper.find("textarea").setValue("#");
+
+    await wrapper.findAll(".suggestions li[role=option]")[2]!.trigger("mousedown");
+
+    expect(valueOf(wrapper)).toBe("Turn my notes into a review");
+  });
+
+  it("with no match, # is just text and Enter sends it", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+    await wrapper.find("textarea").setValue("#1 thing to fix");
+
+    expect(wrapper.find(".suggestions").exists()).toBe(false);
+    await wrapper.find("textarea").trigger("keydown", { key: "Enter" });
+
+    expect(wrapper.emitted("send")).toEqual([["#1 thing to fix"]]);
+  });
+
+  it("# in the middle of a message does nothing", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+
+    await wrapper.find("textarea").setValue("see issue #12");
+
+    expect(wrapper.find(".suggestions").exists()).toBe(false);
+  });
+
+  it("slash commands keep their own suggestions and hint", async () => {
+    const wrapper = mountInput({
+      templates: TEMPLATES,
+      commands: [{ capability: "apps", name: "start", description: "Start an app", tool_name: "t" }],
+    });
+
+    await wrapper.find("textarea").setValue("/apps");
+
+    expect(rows(wrapper)).toEqual(["/apps help", "/apps start"]);
+    expect(wrapper.find(".hint").text()).toContain("Enter runs");
+  });
+
+  it("the picker button inserts a prompt into an empty box, or after typed text on a new line", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+
+    await wrapper.find("button.trigger").trigger("click");
+    await wrapper.findAll(".picker .item")[0]!.trigger("click");
+    expect(valueOf(wrapper)).toBe("Summarize this:");
+
+    await wrapper.find("textarea").setValue("Here is my text");
+    await wrapper.find("button.trigger").trigger("click");
+    await wrapper.findAll(".picker .item")[0]!.trigger("click");
+    expect(valueOf(wrapper)).toBe("Here is my text\nSummarize this:");
+  });
+
+  it("opening the picker asks the parent to load the prompts", async () => {
+    const wrapper = mountInput();
+
+    await wrapper.find("button.trigger").trigger("click");
+
+    expect(wrapper.emitted("templatesNeeded")).toHaveLength(1);
+  });
+
+  it("Manage opens the dialog with no draft; Save current text offers what is typed", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+
+    await wrapper.find("button.trigger").trigger("click");
+    await wrapper.findAll(".picker .foot button")[1]!.trigger("click"); // Manage
+    expect(wrapper.emitted("manageTemplates")).toEqual([[""]]);
+
+    await wrapper.find("textarea").setValue("  a prompt I keep retyping  ");
+    await wrapper.find("button.trigger").trigger("click");
+    await wrapper.findAll(".picker .foot button")[0]!.trigger("click"); // Save current text
+    expect(wrapper.emitted("manageTemplates")![1]).toEqual(["a prompt I keep retyping"]);
+  });
+
+  it("Save current text is off while the box is empty", async () => {
+    const wrapper = mountInput({ templates: TEMPLATES });
+
+    await wrapper.find("button.trigger").trigger("click");
+
+    expect(wrapper.findAll(".picker .foot button")[0]!.attributes("disabled")).toBeDefined();
+  });
+
+  it("insertText() is what the parent can call to add text", async () => {
+    const wrapper = mountInput();
+    await wrapper.find("textarea").setValue("first");
+
+    (wrapper.vm as unknown as { insertText: (text: string) => void }).insertText("second");
+    await flushPromises();
+
+    expect(valueOf(wrapper)).toBe("first\nsecond");
   });
 });

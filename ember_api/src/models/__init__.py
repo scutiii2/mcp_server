@@ -8,6 +8,7 @@ from src.models.known_device import KnownDevice
 from src.models.log_entry import LogEntry
 from src.models.login_attempt import LoginAttempt
 from src.models.otp import EmailVerificationCode, InviteCode
+from src.models.prompt_template import PromptTemplate
 from src.models.role import Permission, Role
 from src.models.usage import UsageRecord
 
@@ -21,6 +22,7 @@ __all__ = [
     "LogEntry",
     "LoginAttempt",
     "Permission",
+    "PromptTemplate",
     "Role",
     "UsageRecord",
 ]

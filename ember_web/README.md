@@ -43,6 +43,14 @@ URL, token or key.
   (start afresh); earlier messages stay readable as a collapsed log. A chat
   is also summarized automatically once its context is 60% full. A
   "Context n%" chip shows how full it is.
+- Saved prompts, kept per account in ember_api (they follow you to any
+  browser): the bookmark button next to the paperclip lists them with a
+  filter, and typing `#` at the start of the input looks them up by name
+  (Tab or Enter inserts). A prompt goes into an empty input as it is, or on a
+  new line after what you typed. "Manage" creates, edits and deletes them;
+  "Save current text" starts a new one from what is typed. Names are unique
+  per account (ignoring case), up to 60 characters; texts up to 10,000; 100
+  prompts per account.
 - Markdown rendering, sanitized with DOMPurify.
 - Several conversations, saved per account in ember_api (they follow you to
   any browser; chats from the old browser-only storage are uploaded once):
@@ -124,9 +132,10 @@ Vitest with jsdom, `@vue/test-utils` for components. Test files sit beside
 their source as `*.test.ts` and are type-checked by `vue-tsc -b` (so
 `npm run build` covers them) but never bundled. They need no running server:
 ember_api calls are mocked. Covered so far: the chat store (regenerate, edit
-and resend, search, jump to a result), the message list, usage chip, copy
-button, chat input (paste, drop, Up recall), sidebar search, the shortcut and
-theme composables, clipboard, markdown code blocks and usage formatting.
+and resend, search, jump to a result), the templates store, the message list,
+usage chip, copy button, chat input (paste, drop, Up recall, `#` prompts),
+prompt picker and dialog, sidebar search, the shortcut and theme composables,
+clipboard, markdown code blocks, usage formatting and the prompt helpers.
 
 Other scripts: `npm run build` (type-check + production build into `dist/`),
 `npm run preview` (serves `dist/`, with the same `/api` forwarding).
@@ -149,21 +158,21 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 src/
   api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
                 ExtensionsClient / WatchersClient / LogsClient / AttachmentsClient /
-                ConfigIssuesClient (ember_api REST),
+                ConfigIssuesClient / TemplatesClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
-  stores/       Pinia: auth, agents, chat
+  stores/       Pinia: auth, agents, chat, templates
   composables/  useChatShortcuts (window-level chat keys), useTheme (system / light / dark)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, UsageChip, TemplatePicker, TemplatesModal, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, tool-schema forms, error/time formatting, chat export,
-                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting
+                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, saved-prompt helpers
 ```
 
 ## Security notes

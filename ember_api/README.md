@@ -95,6 +95,10 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/chats/{id}/summarize` | `chat.use` | `{agent_id?}` -> the chat, its history replaced by a `summary` message plus a `log_attachment` (raw messages, never sent to the agent again). `502` if the agent couldn't; nothing changes then. |
 | `POST` | `/api/chats/{id}/clear` | `chat.use` | -> the chat, restarted: everything kept as one `log_attachment`. |
 | `POST` | `/api/chats/{id}/messages` | `chat.use` | `{title, messages}` appends (slash-command calls and results), creating the chat if needed. |
+| `GET` | `/api/templates` | `chat.use` | This account's saved prompts, most recently edited first: `[{id, name, body, created_at, updated_at}]`. |
+| `POST` | `/api/templates` | `chat.use` | `{name, body}` -> `201` the template. Name up to 60 characters (trimmed), body up to 10,000, at most 100 per account. `409` for a name the account already has (ignoring case) or the limit, `422` for a blank or too-long field. |
+| `PUT` | `/api/templates/{id}` | `chat.use` | `{name, body}` replaces one. `404` if missing or another account's, `409` name taken. |
+| `DELETE` | `/api/templates/{id}` | `chat.use` | `204`; `404` if missing or another account's. |
 | `GET` | `/api/usage?days=30` | `chat.use` | `{six_hour, weekly: {used, limit, reset_at}, report: {total_tokens, turns, chats, summary_tokens, by_agent, daily, ...}}` |
 | `GET` | `/api/admin/usage?days=30` | `admin.manage` | Every account's tokens and answers in the period. |
 | `GET` | `/api/commands` | `tools.use` | mcp_server's slash commands: `[{capability, name, description, tool_name}]`. |
@@ -228,14 +232,14 @@ data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
-              UsageRecord, LogEntry, KnownDevice
+              UsageRecord, LogEntry, KnownDevice, PromptTemplate
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TurnRegistry,
+              AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
               permissions
-  routes/     auth, account, admin, chats, usage, mcp, server_info, watchers, logs, attachments,
-              config_issues
+  routes/     auth, account, admin, chats, templates, usage, mcp, server_info, watchers, logs,
+              attachments, config_issues
   utils/      config_loader
 tests/
 ```

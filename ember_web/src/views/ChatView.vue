@@ -7,8 +7,10 @@ import ChatInput from "../components/ChatInput.vue";
 import CommandFormModal from "../components/CommandFormModal.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import MessageList from "../components/MessageList.vue";
+import TemplatesModal from "../components/TemplatesModal.vue";
 import { useAgentsStore } from "../stores/agents";
 import { useChatStore } from "../stores/chat";
+import { useTemplatesStore } from "../stores/templates";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { JsonSchema } from "../api/types";
 import { useChatShortcuts } from "../composables/useChatShortcuts";
@@ -44,6 +46,16 @@ const {
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
 const agentsStore = useAgentsStore();
+const templates = useTemplatesStore();
+
+// The saved-prompts dialog; `templatesDraft` is typed text offered as a new prompt.
+const templatesOpen = ref(false);
+const templatesDraft = ref("");
+
+function openTemplates(draft: string): void {
+  templatesDraft.value = draft;
+  templatesOpen.value = true;
+}
 
 // The command form: opened when a command with parameters is picked from
 // the input's suggestions. Submitting runs the command it builds.
@@ -241,11 +253,17 @@ useChatShortcuts({
           :busy="busy"
           :commands="commands"
           :last-prompt="lastPrompt"
+          :templates="templates.templates"
+          :templates-loading="templates.loading"
+          :templates-error="templates.loadError"
+          @templates-needed="templates.ensureLoaded()"
+          @manage-templates="openTemplates"
           @send="chat.send"
           @stop="chat.stop"
           @form="openCommandForm"
         />
         <CommandFormModal :command="formCommand" :schema="formSchema" @submit="runCommandForm" @close="closeCommandForm" />
+        <TemplatesModal :open="templatesOpen" :draft="templatesDraft" @close="templatesOpen = false" />
       </div>
     </div>
   </section>
