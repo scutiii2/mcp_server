@@ -219,3 +219,116 @@ def test_chats_go_with_their_account(client: TestClient, email: FakeEmailSender)
             return await session.scalar(select(func.count()).select_from(Chat))
 
     assert client.portal.call(remaining) == 0
+
+
+# --- search -------------------------------------------------------------------
+
+
+def search(client: TestClient, q: str):
+    return client.get("/api/chats/search", params={"q": q})
+
+
+def test_search_needs_login_and_a_query(client: TestClient) -> None:
+    assert search(client, "hello").status_code == 401
+    as_admin(client)
+
+    assert client.get("/api/chats/search").status_code == 422
+    assert search(client, "a").status_code == 422
+    assert search(client, "x" * 101).status_code == 422
+    assert search(client, "   ").json() == []
+
+
+def test_search_finds_titles_and_messages_case_insensitively(client: TestClient) -> None:
+    as_admin(client)
+    by_title, by_message, neither = new_id(), new_id(), new_id()
+    put(client, by_title, title="Docker Compose notes", messages=[{"role": "user", "content": "unrelated"}])
+    put(
+        client,
+        by_message,
+        title="Deploy",
+        messages=[
+            {"role": "user", "content": "how do I restart the service?"},
+            {"role": "assistant", "content": "Use systemctl to RESTART it, then restart the timer."},
+        ],
+    )
+    put(client, neither, title="Other", messages=[{"role": "user", "content": "nothing here"}])
+
+    hits = {h["id"]: h for h in search(client, "restart").json()}
+    title_hits = {h["id"]: h for h in search(client, "docker").json()}
+
+    assert set(hits) == {by_message}
+    hit = hits[by_message]
+    assert (hit["message_index"], hit["message_matches"], hit["title_match"]) == (0, 2, None)
+    text = hit["snippet"]["text"]
+    assert text[hit["snippet"]["start"] : hit["snippet"]["start"] + hit["snippet"]["length"]] == "restart"
+    assert set(title_hits) == {by_title}
+    assert title_hits[by_title]["title_match"] == {"start": 0, "length": 6}
+    assert title_hits[by_title]["snippet"] is None
+
+
+def test_search_snippet_is_one_line_with_ellipses(client: TestClient) -> None:
+    as_admin(client)
+    long = ("word " * 30) + "NEEDLE\nnext line " + ("tail " * 40)
+    put(client, new_id(), messages=[{"role": "user", "content": long}])
+
+    snippet = search(client, "needle").json()[0]["snippet"]
+
+    assert snippet["text"].startswith("…") and snippet["text"].endswith("…")
+    assert "\n" not in snippet["text"]
+    assert snippet["text"][snippet["start"] : snippet["start"] + snippet["length"]] == "NEEDLE"
+
+
+def test_search_is_literal_and_handles_non_ascii_and_quotes(client: TestClient) -> None:
+    as_admin(client)
+    percent, ascii_only, german, quoted = new_id(), new_id(), new_id(), new_id()
+    put(client, percent, messages=[{"role": "user", "content": "discount 50% today"}])
+    put(client, ascii_only, messages=[{"role": "user", "content": "about 500 things a_b"}])
+    put(client, german, messages=[{"role": "user", "content": "Das war ein großer ÄRGER"}])
+    put(client, quoted, messages=[{"role": "user", "content": 'she said "hi there"\nand left'}])
+
+    assert [h["id"] for h in search(client, "50%").json()] == [percent]
+    assert [h["id"] for h in search(client, "a_b").json()] == [ascii_only]
+    assert [h["id"] for h in search(client, "ärger").json()] == [german]
+    assert [h["id"] for h in search(client, '"hi there"').json()] == [quoted]
+    assert [h["id"] for h in search(client, "hi there").json()] == [quoted]
+
+
+def test_search_skips_attachment_bodies_and_matches_the_typed_text(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    content = (
+        "please summarize\n\n"
+        '[[ATTACHMENT filename="report.txt" chars="9" truncated="false"]]\nsecretword\n[[/ATTACHMENT]]'
+    )
+    put(client, chat_id, messages=[{"role": "user", "content": content}])
+
+    assert search(client, "secretword").json() == []
+    assert [h["id"] for h in search(client, "summarize").json()] == [chat_id]
+
+
+def test_search_is_private_per_account(client_factory, email: FakeEmailSender) -> None:
+    alice = client_factory()
+    make_member(alice, email)
+    make_member(alice, email, "bob")
+    login(alice, "alice")
+    put(alice, new_id(), title="Alice's plan", messages=[{"role": "user", "content": "private plan"}])
+    bob = client_factory()
+    login(bob, "bob")
+
+    assert len(search(alice, "plan").json()) == 1
+    assert search(bob, "plan").json() == []
+
+
+def test_search_is_newest_first_and_capped(client: TestClient) -> None:
+    as_admin(client)
+    first = new_id()
+    put(client, first, title="match 0")
+    ids = [first]
+    for i in range(1, 52):
+        ids.append(new_id())
+        put(client, ids[-1], title=f"match {i}")
+
+    hits = search(client, "match").json()
+
+    assert len(hits) == 50
+    assert hits[0]["id"] == ids[-1]

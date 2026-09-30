@@ -36,6 +36,11 @@ const {
   contextUsage,
   commands,
   enabledExtensions,
+  searchQuery,
+  searchActive,
+  searchHits,
+  searching,
+  searchError,
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
 const agentsStore = useAgentsStore();
@@ -140,6 +145,12 @@ useChatShortcuts({
       :active-id="activeId"
       :locked="false"
       :loading="listLoading"
+      :query="searchQuery"
+      :search-active="searchActive"
+      :hits="searchHits"
+      :searching="searching"
+      :search-error="searchError"
+      @search="chat.setSearch"
       @new="onNew"
       @select="onSelect"
       @delete="chat.deleteChat"

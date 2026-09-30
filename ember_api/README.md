@@ -83,6 +83,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `admin.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last `admin.manage`. |
 | `GET` | `/api/admin/permissions` | `admin.manage` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |
 | `GET` | `/api/chats` | `chat.use` | This account's chats, newest first: `[{id, title, agent_id, message_count, created_at, updated_at}]` (no messages). |
+| `GET` | `/api/chats/search?q=` | `chat.use` | `q` 2-100 characters. Chats whose title or message text contains `q` (case-insensitive, literal; attached files' text is not searched), newest first, at most 50: `[{id, title, updated_at, title_match: {start, length}\|null, snippet: {text, start, length}\|null, message_index, message_matches}]`. The snippet is one line around the first matching message. |
 | `GET` | `/api/chats/{id}` | `chat.use` | One chat with `messages`. `404` if missing or another account's. |
 | `PUT` | `/api/chats/{id}` | `chat.use` | `{title, agent_id, messages: [{role, content}]}` creates or replaces the chat. `413` over 2 MB or 1000 chats. |
 | `PATCH` | `/api/chats/{id}` | `chat.use` | `{title}` renames. |

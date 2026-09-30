@@ -49,12 +49,33 @@ export interface TurnStarted {
   sequence: number;
 }
 
+/** Where the query sits in a piece of text, in characters. */
+export interface MatchSpan {
+  start: number;
+  length: number;
+}
+
+/** A chat found by search: its title and/or the first matching message. */
+export interface ChatSearchHit {
+  id: string;
+  title: string;
+  updated_at: string;
+  title_match: MatchSpan | null;
+  snippet: (MatchSpan & { text: string }) | null;
+  message_index: number | null;
+  /** How many messages contain the query. */
+  message_matches: number;
+}
+
 const path = (id: string) => `/api/chats/${encodeURIComponent(id)}`;
 
 /** ember_api's /api/chats routes (chat.use): this account's chat history
  * and the chat turns ember_api runs. */
 export const chatsClient = {
   list: () => apiRequest<ChatSummary[]>("GET", "/api/chats"),
+  /** Titles and message text; needs at least 2 characters. */
+  search: (query: string) =>
+    apiRequest<ChatSearchHit[]>("GET", `/api/chats/search?q=${encodeURIComponent(query)}`),
   get: (id: string) => apiRequest<ChatDetail>("GET", path(id)),
   put: (id: string, chat: ChatWrite) => apiRequest<ChatSummary>("PUT", path(id), chat),
   rename: (id: string, title: string) => apiRequest<ChatSummary>("PATCH", path(id), { title }),

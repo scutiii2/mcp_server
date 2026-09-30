@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
-import { chatsClient } from "../api/ChatsClient";
+import { chatsClient, type ChatSearchHit } from "../api/ChatsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { ChatMessage, Conversation, JsonSchema, ToolStep, TurnEvent } from "../api/types";
 import {
@@ -20,6 +20,9 @@ const TITLE_MAX_CHARS = 60;
 // While a chat other than the open one is still being answered, the list is
 // re-read this often so its spinner clears when it finishes.
 const BACKGROUND_POLL_MS = 5000;
+// Search waits for a pause in typing; ember_api refuses shorter queries.
+const SEARCH_DEBOUNCE_MS = 250;
+const SEARCH_MIN_CHARS = 2;
 
 function titleFrom(question: string): string {
   // What was typed, not the attached files' text.
@@ -109,6 +112,15 @@ export const useChatStore = defineStore("chat", () => {
   // schemas, so it's replaced per account.
   let commandRunner = new SlashCommandRunner();
   const commands = ref<CommandInfo[]>([]);
+
+  // Sidebar search: the query typed, and what ember_api found for it.
+  const searchQuery = ref("");
+  const searchHits = ref<ChatSearchHit[]>([]);
+  const searching = ref(false);
+  const searchError = ref("");
+  const searchActive = computed(() => searchQuery.value.trim().length >= SEARCH_MIN_CHARS);
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  let searchSeq = 0;
 
   // Bumped on every account change: results of loads and saves started for
   // the previous account are ignored when they arrive.
@@ -265,6 +277,7 @@ export const useChatStore = defineStore("chat", () => {
       sendError.value = "";
       activeId.value = null;
       conversations.value = [];
+      setSearch("");
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
       enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
       commandRunner = new SlashCommandRunner();
@@ -522,6 +535,45 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
+  // --- searching ------------------------------------------------------------
+
+  /** Typing filters the sidebar to chats whose title or messages match; the
+   * request waits for a pause in typing, and an answer that arrives after a
+   * newer query was typed is dropped. */
+  function setSearch(query: string): void {
+    searchQuery.value = query;
+    searchSeq += 1;
+    if (searchTimer !== null) clearTimeout(searchTimer);
+    searchTimer = null;
+    searchError.value = "";
+    const needle = query.trim();
+    if (needle.length < SEARCH_MIN_CHARS) {
+      searchHits.value = [];
+      searching.value = false;
+      return;
+    }
+    searching.value = true;
+    const seq = searchSeq;
+    const started = generation;
+    searchTimer = setTimeout(async () => {
+      try {
+        const hits = await chatsClient.search(needle);
+        if (seq === searchSeq && started === generation) searchHits.value = hits;
+      } catch (err) {
+        if (seq === searchSeq && started === generation) {
+          searchHits.value = [];
+          searchError.value = errorMessage(err);
+        }
+      } finally {
+        if (seq === searchSeq && started === generation) searching.value = false;
+      }
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  function clearSearch(): void {
+    setSearch("");
+  }
+
   // --- chat list actions ----------------------------------------------------
 
   function newChat(): void {
@@ -549,6 +601,7 @@ export const useChatStore = defineStore("chat", () => {
       activeId.value = null;
     }
     conversations.value = conversations.value.filter((c) => c.id !== id);
+    searchHits.value = searchHits.value.filter((h) => h.id !== id);
     enqueue(() => storage.remove(id));
   }
 
@@ -581,12 +634,15 @@ export const useChatStore = defineStore("chat", () => {
     const trimmed = title.replace(/\s+/g, " ").trim().slice(0, 120);
     if (!conversation || !trimmed || trimmed === conversation.title) return;
     conversation.title = trimmed;
+    // A result shows the new title; where the query sat in the old one is gone.
+    searchHits.value = searchHits.value.map((h) => (h.id === id ? { ...h, title: trimmed, title_match: null } : h));
     enqueue(() => storage.rename(id, trimmed));
   }
 
   function deleteAllChats(): void {
     unfollow();
     conversations.value = [];
+    searchHits.value = [];
     activeId.value = null;
     enqueue(() => storage.removeAll());
   }
@@ -672,6 +728,13 @@ export const useChatStore = defineStore("chat", () => {
     selectChat,
     deleteChat,
     renameChat,
+    searchQuery,
+    searchActive,
+    searchHits,
+    searching,
+    searchError,
+    setSearch,
+    clearSearch,
     caveman,
     setCaveman,
     enabledExtensions,

@@ -23,6 +23,7 @@ from src.routes.server_info import EXTENSION_ID_PATTERN
 from src.services import summarization
 from src.services.agent_directory import AgentDirectory
 from src.services.agent_gateway import AgentGateway, Caller
+from src.services.chat_search import MAX_QUERY_CHARS, MIN_QUERY_CHARS, ChatSearch, SearchHit
 from src.services.chat_service import (
     MAX_CHATS_PER_ACCOUNT,
     ChatLimitError,
@@ -61,6 +62,13 @@ def get_chat_service(
     session: AsyncSession = Depends(get_db_session),
 ) -> ChatService:
     return ChatService(session, account.id)
+
+
+def get_chat_search(
+    account: Account = Depends(require_chat),
+    session: AsyncSession = Depends(get_db_session),
+) -> ChatSearch:
+    return ChatSearch(session, account.id)
 
 
 # --- models ------------------------------------------------------------------
@@ -191,6 +199,47 @@ class ChatOut(ChatSummaryOut):
         return cls(**ChatSummaryOut.of(chat, running).model_dump(), messages=decode_messages(chat))
 
 
+class SpanOut(BaseModel):
+    start: int
+    length: int
+
+
+class SnippetOut(BaseModel):
+    text: str
+    start: int
+    length: int
+
+
+class SearchHitOut(BaseModel):
+    id: str
+    title: str
+    updated_at: datetime
+    # Where the query sits in the title, if it does.
+    title_match: SpanOut | None
+    # The text around the first message containing it, and which message.
+    snippet: SnippetOut | None
+    message_index: int | None
+    message_matches: int
+
+    @classmethod
+    def of(cls, hit: SearchHit) -> SearchHitOut:
+        title = SpanOut(start=hit.title_match.start, length=hit.title_match.length) if hit.title_match else None
+        snippet = (
+            SnippetOut(text=hit.snippet.text, start=hit.snippet.match.start, length=hit.snippet.match.length)
+            if hit.snippet
+            else None
+        )
+        return cls(
+            id=hit.chat.chat_id,
+            title=hit.chat.title,
+            updated_at=hit.chat.updated_at,
+            title_match=title,
+            snippet=snippet,
+            message_index=hit.message_index,
+            message_matches=hit.message_matches,
+        )
+
+
 class ImportOut(BaseModel):
     imported: int
     skipped: int
@@ -289,6 +338,17 @@ async def import_chats(body: ImportRequest, chats: ChatService = Depends(get_cha
     except ChatLimitError as error:
         raise _too_large(error) from error
     return ImportOut(imported=imported, skipped=skipped)
+
+
+@router.get("/search")
+async def search_chats(
+    q: str = Query(min_length=MIN_QUERY_CHARS, max_length=MAX_QUERY_CHARS),
+    search: ChatSearch = Depends(get_chat_search),
+) -> list[SearchHitOut]:
+    """Chats whose title or messages contain `q` (case-insensitive, literal),
+    newest first, at most 50, each with a snippet around the first message
+    match. Declared before /{chat_id}, which would otherwise take "search"."""
+    return [SearchHitOut.of(hit) for hit in await search.search(q)]
 
 
 @router.get("/{chat_id}")

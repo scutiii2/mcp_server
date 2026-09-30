@@ -1,22 +1,44 @@
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
+import type { ChatSearchHit, MatchSpan } from "../api/ChatsClient";
 import type { Conversation } from "../api/types";
 
 // locked: a turn is running - switching or starting chats is blocked.
-const props = defineProps<{
-  conversations: Conversation[];
-  activeId: string | null;
-  locked: boolean;
-  /** The chat list is still being fetched. */
-  loading?: boolean;
-}>();
+// query / searchActive / hits: the search box and, once it holds enough
+// characters, the results that replace the chat list.
+const props = withDefaults(
+  defineProps<{
+    conversations: Conversation[];
+    activeId: string | null;
+    locked: boolean;
+    /** The chat list is still being fetched. */
+    loading?: boolean;
+    query?: string;
+    searchActive?: boolean;
+    hits?: ChatSearchHit[];
+    searching?: boolean;
+    searchError?: string;
+  }>(),
+  { query: "", searchActive: false, hits: () => [], searching: false, searchError: "" },
+);
 const emit = defineEmits<{
   new: [];
   select: [id: string];
   delete: [id: string];
   rename: [id: string, title: string];
   deleteAll: [];
+  search: [query: string];
 }>();
+
+/** `text` split around the match, for a <mark>; no match: all one part. */
+function parts(text: string, span: MatchSpan | null): { before: string; match: string; after: string } {
+  if (!span) return { before: text, match: "", after: "" };
+  return {
+    before: text.slice(0, span.start),
+    match: text.slice(span.start, span.start + span.length),
+    after: text.slice(span.start + span.length),
+  };
+}
 
 // The row being renamed, and its draft title.
 const renamingId = ref<string | null>(null);
@@ -56,7 +78,42 @@ function confirmDeleteAll(): void {
       New chat
     </button>
 
-    <p v-if="conversations.length === 0" class="empty">{{ loading ? "Loading chats …" : "No saved chats yet." }}</p>
+    <div v-if="conversations.length > 0 || query" class="search">
+      <input
+        type="search"
+        :value="query"
+        placeholder="Search chats"
+        aria-label="Search chats"
+        maxlength="100"
+        @input="emit('search', ($event.target as HTMLInputElement).value)"
+        @keydown.esc.prevent="emit('search', '')"
+      />
+    </div>
+
+    <template v-if="searchActive">
+      <p v-if="searchError" class="empty error" role="alert">Search failed: {{ searchError }}</p>
+      <p v-else-if="searching && hits.length === 0" class="empty">Searching …</p>
+      <p v-else-if="hits.length === 0" class="empty">No chats match "{{ query.trim() }}".</p>
+      <ul v-else class="list" :aria-busy="searching">
+        <li
+          v-for="h in hits"
+          :key="h.id"
+          :class="['row', 'hit', { active: h.id === activeId, locked }]"
+          @click="emit('select', h.id)"
+        >
+          <div class="hit-body">
+            <span class="title">
+              {{ parts(h.title, h.title_match).before }}<mark v-if="h.title_match">{{ parts(h.title, h.title_match).match }}</mark>{{ parts(h.title, h.title_match).after }}
+            </span>
+            <span v-if="h.snippet" class="snippet">
+              {{ parts(h.snippet.text, h.snippet).before }}<mark>{{ parts(h.snippet.text, h.snippet).match }}</mark>{{ parts(h.snippet.text, h.snippet).after }}
+            </span>
+            <span v-if="h.message_matches > 1" class="count">{{ h.message_matches }} messages match</span>
+          </div>
+        </li>
+      </ul>
+    </template>
+    <p v-else-if="conversations.length === 0" class="empty">{{ loading ? "Loading chats …" : "No saved chats yet." }}</p>
     <ul v-else class="list">
       <li
         v-for="c in conversations"
@@ -107,7 +164,7 @@ function confirmDeleteAll(): void {
     </ul>
 
     <button
-      v-if="conversations.length > 1"
+      v-if="conversations.length > 1 && !searchActive"
       type="button"
       class="delete-all"
       :disabled="locked"
@@ -151,6 +208,52 @@ function confirmDeleteAll(): void {
   padding: 0 8px;
   font-size: 0.9em;
   color: var(--muted);
+}
+.empty.error {
+  color: var(--danger);
+}
+.search input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+  font-size: 0.9em;
+}
+.search input:focus {
+  border-color: var(--accent);
+}
+.hit {
+  align-items: flex-start;
+}
+.hit-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.snippet {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 0.8em;
+  overflow-wrap: anywhere;
+}
+.count {
+  font-size: 0.75em;
+  opacity: 0.8;
+}
+mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  color: inherit;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .list {
   display: flex;
