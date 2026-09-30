@@ -17,6 +17,9 @@ URL, token or key.
   the live answer back up. Chats still being answered show a pulsing dot.
 - Stop button (takes effect at the agent's next round).
 - Copy button on every answer, on your messages and on each code block.
+- A usage chip under each answer (`model · 12.4k tokens · 4.2 s · 3 tools`);
+  click it for input/output tokens, time, tools run and context use. Answers
+  saved before ember_api stored the split and the time show less.
 - Regenerate the last answer, or edit one of your questions and resend it
   (its attached files stay; the messages after it are dropped, with a
   confirm when that discards later exchanges). ember_api does the cut
@@ -140,12 +143,12 @@ src/
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, UsageChip, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, tool-schema forms, error/time formatting, chat export,
-                tool titles, tool-result formatting, attachment blocks in questions, clipboard
+                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting
 ```
 
 ## Security notes

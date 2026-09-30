@@ -5,6 +5,7 @@ import { splitAttachments } from "../utils/attachments";
 import CopyButton from "./CopyButton.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import ToolSteps from "./ToolSteps.vue";
+import UsageChip from "./UsageChip.vue";
 
 const props = defineProps<{
   messages: ChatMessage[];
@@ -190,9 +191,7 @@ watch(
                 />
               </svg>
             </button>
-            <span v-if="m.model || m.total_tokens" class="meta">
-              {{ [m.model, m.total_tokens ? `${m.total_tokens.toLocaleString()} tokens` : ""].filter(Boolean).join(" · ") }}
-            </span>
+            <UsageChip :message="m" />
           </div>
         </div>
       </template>
@@ -233,6 +232,7 @@ watch(
 }
 .actions {
   display: flex;
+  flex-wrap: wrap; /* the usage panel wraps onto its own line */
   align-items: center;
   gap: 8px;
   margin-top: 4px;
@@ -346,11 +346,6 @@ watch(
 }
 .saved-steps {
   margin-bottom: 6px;
-}
-.meta {
-  margin: 0;
-  font-size: 0.75em;
-  color: var(--muted);
 }
 .command {
   font-family: var(--mono);

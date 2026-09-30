@@ -33,7 +33,8 @@ class ChatLimitError(Exception):
 
 # {"role": "user" | "assistant", "content": str} plus optional "kind"
 # ("summary", "log_attachment", "command"), "model", "total_tokens",
-# "context_tokens", "context_window" - validated by the route.
+# "input_tokens", "output_tokens", "duration_s", "context_tokens",
+# "context_window" - validated by the route.
 ChatMessage = dict[str, Any]
 
 

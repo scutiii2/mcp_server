@@ -92,6 +92,10 @@ class MessageIn(BaseModel):
     kind: Literal["summary", "log_attachment", "command"] | None = None
     model: str | None = Field(default=None, max_length=120)
     total_tokens: int | None = Field(default=None, ge=0)
+    # The split of total_tokens, and how long the whole turn took (seconds).
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    duration_s: float | None = Field(default=None, ge=0)
     context_tokens: int | None = Field(default=None, ge=0)
     context_window: int | None = Field(default=None, ge=0)
     # The tool steps of an answer (saved by ember_api's turn; a browser

@@ -332,3 +332,32 @@ def test_search_is_newest_first_and_capped(client: TestClient) -> None:
 
     assert len(hits) == 50
     assert hits[0]["id"] == ids[-1]
+
+
+# --- usage fields on saved answers --------------------------------------------
+
+
+def test_put_keeps_the_usage_fields_of_an_answer(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    answer = {
+        "role": "assistant",
+        "content": "ok",
+        "model": "m",
+        "total_tokens": 10,
+        "input_tokens": 7,
+        "output_tokens": 3,
+        "duration_s": 1.5,
+    }
+
+    assert put(client, chat_id, messages=[{"role": "user", "content": "q"}, answer]).status_code == 200
+
+    assert client.get(f"/api/chats/{chat_id}").json()["messages"][1] == answer
+
+
+def test_put_refuses_negative_usage_fields(client: TestClient) -> None:
+    as_admin(client)
+    bad = {"role": "assistant", "content": "x", "duration_s": -1}
+
+    assert put(client, new_id(), messages=[bad]).status_code == 422
+    assert put(client, new_id(), messages=[{**bad, "duration_s": 1, "input_tokens": -5}]).status_code == 422

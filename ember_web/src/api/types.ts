@@ -20,6 +20,11 @@ export interface ChatMessage {
   kind?: "summary" | "log_attachment" | "command";
   model?: string;
   total_tokens?: number;
+  /** The split of total_tokens (answers from before these were saved lack them). */
+  input_tokens?: number;
+  output_tokens?: number;
+  /** How long the whole turn took, in seconds. */
+  duration_s?: number;
   /** How full the agent's context was after this answer. */
   context_tokens?: number;
   context_window?: number;

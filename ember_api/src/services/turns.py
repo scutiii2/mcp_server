@@ -351,7 +351,13 @@ class TurnRegistry:
         message = {
             "role": "assistant",
             "content": content,
-            **{k: result[k] for k in ("model", "total_tokens", "context_tokens", "context_window") if result.get(k) is not None},
+            **{
+                k: result[k]
+                for k in ("model", "total_tokens", "input_tokens", "output_tokens", "context_tokens", "context_window")
+                if result.get(k) is not None
+            },
+            # The whole turn (auto-summary and tool calls included), as in the chat-turn log line.
+            "duration_s": round(monotonic() - turn.started_at, 1),
         }
         await self._record_usage(turn, "chat", result)
         await self._finish(turn, message, status="cancelled" if cancelled else "completed", error=None, cancelled=cancelled)

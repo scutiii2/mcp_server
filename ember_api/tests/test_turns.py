@@ -66,6 +66,9 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
     saved = chat(client, chat_id)
     assert saved["running"] is False
     assert saved["agent_id"] == AGENT_ID
+    answer = saved["messages"][1]
+    duration = answer.pop("duration_s")
+    assert isinstance(duration, float) and 0 <= duration < 60
     assert saved["messages"] == [
         {"role": "user", "content": "What is up?"},
         {
@@ -73,6 +76,8 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
             "content": "Hello!",
             "model": "claude-test",
             "total_tokens": 100,
+            "input_tokens": 70,
+            "output_tokens": 30,
             "context_tokens": 1000,
             "context_window": 200000,
         },
@@ -82,6 +87,33 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
     assert asked["enabled_extensions"] == []
     assert asked["url"] == AGENTS[0]["url"]
     assert asked["caller"].username == "root"
+
+
+def test_final_event_and_saved_answer_carry_the_usage_split_and_duration(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+
+    final = events(client, chat_id)[-1]["message"]
+    saved = chat(client, chat_id)["messages"][-1]
+
+    for message in (final, saved):
+        assert (message["input_tokens"], message["output_tokens"]) == (70, 30)
+        assert message["duration_s"] >= 0
+    assert final["duration_s"] == saved["duration_s"]
+
+
+def test_answer_without_a_token_split_still_saves(client: TestClient, agent: FakeAgent) -> None:
+    agent.result_extra = {"input_tokens": None, "output_tokens": None}
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+    events(client, chat_id)
+
+    answer = chat(client, chat_id)["messages"][-1]
+
+    assert "input_tokens" not in answer and "output_tokens" not in answer
+    assert answer["total_tokens"] == 100 and "duration_s" in answer
 
 
 def test_second_turn_sends_history_without_raw_logs(client: TestClient, agent: FakeAgent) -> None:
