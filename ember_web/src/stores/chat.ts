@@ -113,6 +113,9 @@ export const useChatStore = defineStore("chat", () => {
   let commandRunner = new SlashCommandRunner();
   const commands = ref<CommandInfo[]>([]);
 
+  // A message of the open chat to scroll to (set by opening a search result,
+  // cleared by the message list once it has scrolled there).
+  const jumpIndex = ref<number | null>(null);
   // Sidebar search: the query typed, and what ember_api found for it.
   const searchQuery = ref("");
   const searchHits = ref<ChatSearchHit[]>([]);
@@ -276,6 +279,7 @@ export const useChatStore = defineStore("chat", () => {
       loadError.value = "";
       sendError.value = "";
       activeId.value = null;
+      jumpIndex.value = null;
       conversations.value = [];
       setSearch("");
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
@@ -579,13 +583,18 @@ export const useChatStore = defineStore("chat", () => {
   function newChat(): void {
     unfollow();
     sendError.value = "";
+    jumpIndex.value = null;
     activeId.value = null;
     scheduleBackgroundPoll();
   }
 
-  async function selectChat(id: string): Promise<void> {
+  /** Opens chat `id`; `messageIndex` (a search result) asks the message list
+   * to scroll to that message once the transcript is there. */
+  async function selectChat(id: string, options: { messageIndex?: number } = {}): Promise<void> {
     const conversation = find(id);
-    if (!conversation || id === activeId.value) return;
+    if (!conversation) return;
+    jumpIndex.value = options.messageIndex ?? null;
+    if (id === activeId.value) return;
     unfollow();
     sendError.value = "";
     activeId.value = id;
@@ -595,9 +604,14 @@ export const useChatStore = defineStore("chat", () => {
     if (conversation.messagesLoaded === false || conversation.running) await loadChat(id);
   }
 
+  function clearJump(): void {
+    jumpIndex.value = null;
+  }
+
   function deleteChat(id: string): void {
     if (id === activeId.value) {
       unfollow();
+      jumpIndex.value = null;
       activeId.value = null;
     }
     conversations.value = conversations.value.filter((c) => c.id !== id);
@@ -726,6 +740,8 @@ export const useChatStore = defineStore("chat", () => {
     stop,
     newChat,
     selectChat,
+    jumpIndex,
+    clearJump,
     deleteChat,
     renameChat,
     searchQuery,

@@ -23,7 +23,8 @@ const props = withDefaults(
 );
 const emit = defineEmits<{
   new: [];
-  select: [id: string];
+  /** messageIndex: a search result's first matching message. */
+  select: [id: string, messageIndex?: number];
   delete: [id: string];
   rename: [id: string, title: string];
   deleteAll: [];
@@ -99,7 +100,7 @@ function confirmDeleteAll(): void {
           v-for="h in hits"
           :key="h.id"
           :class="['row', 'hit', { active: h.id === activeId, locked }]"
-          @click="emit('select', h.id)"
+          @click="emit('select', h.id, h.message_index ?? undefined)"
         >
           <div class="hit-body">
             <span class="title">

@@ -114,8 +114,8 @@ const contextPercent = computed(() => {
   return usage ? Math.min(100, Math.round((usage.tokens / usage.window) * 100)) : null;
 });
 
-function onSelect(id: string): void {
-  chat.selectChat(id);
+function onSelect(id: string, messageIndex?: number): void {
+  void chat.selectChat(id, { messageIndex });
   drawerOpen.value = false;
 }
 
@@ -190,6 +190,8 @@ useChatShortcuts({
         :busy="busy"
         :can-change="!busy && !working"
         :regenerate-index="chat.regenerateIndex"
+        :jump-index="chat.jumpIndex"
+        @jumped="chat.clearJump"
         @regenerate="chat.regenerate"
         @edit="chat.editAndResend"
       />

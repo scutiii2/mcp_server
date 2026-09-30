@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { ChatMessage, ToolStep } from "../api/types";
 import { splitAttachments } from "../utils/attachments";
 import CopyButton from "./CopyButton.vue";
@@ -18,8 +18,10 @@ const props = defineProps<{
   canChange?: boolean;
   /** Index of the question whose answer Regenerate redoes; -1 for none. */
   regenerateIndex?: number;
+  /** A message to scroll to and flash (a search result); null for none. */
+  jumpIndex?: number | null;
 }>();
-const emit = defineEmits<{ regenerate: []; edit: [index: number, text: string] }>();
+const emit = defineEmits<{ regenerate: []; edit: [index: number, text: string]; jumped: [] }>();
 
 // The question being edited (its index) and its draft text.
 const editingIndex = ref<number | null>(null);
@@ -103,6 +105,39 @@ watch(
   () => [props.streaming, props.activity, props.steps.length],
   () => void scrollToBottomIfSticking(),
 );
+
+const FLASH_MS = 1600;
+// The message a search result pointed at, highlighted for a moment.
+const flashIndex = ref<number | null>(null);
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Scrolls to the requested message once it is rendered (immediate: this list
+// only mounts after the chat's transcript has loaded). A target past the end
+// of the chat is dropped.
+watch(
+  () => [props.jumpIndex, props.messages.length] as const,
+  async ([index, count]) => {
+    if (index === null || index === undefined) return;
+    if (index >= count) {
+      emit("jumped");
+      return;
+    }
+    await nextTick();
+    const target = scroller.value?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    if (!target) return;
+    stickToBottom.value = false; // reading history: don't follow new content
+    target.scrollIntoView({ block: "center" });
+    flashIndex.value = index;
+    if (flashTimer !== null) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => (flashIndex.value = null), FLASH_MS);
+    emit("jumped");
+  },
+  { immediate: true, flush: "post" },
+);
+
+onBeforeUnmount(() => {
+  if (flashTimer !== null) clearTimeout(flashTimer);
+});
 </script>
 
 <template>
@@ -110,7 +145,7 @@ watch(
     <div class="column">
       <p v-if="messages.length === 0 && !busy" class="empty">Ask ember anything</p>
 
-      <template v-for="(m, i) in messages" :key="i">
+      <div v-for="(m, i) in messages" :key="i" :class="['msg', { flash: flashIndex === i }]" :data-index="i">
         <!-- Raw messages a summary or clear replaced: kept for reading, never
              sent to the agent again. -->
         <details v-if="m.kind === 'log_attachment'" class="log">
@@ -194,7 +229,7 @@ watch(
             <UsageChip :message="m" />
           </div>
         </div>
-      </template>
+      </div>
 
       <div v-if="busy" class="assistant live">
         <ToolSteps v-if="steps.length" :steps="steps" live />
@@ -223,6 +258,25 @@ watch(
   text-align: center;
   font-size: 1.4em;
   color: var(--muted);
+}
+/* One wrapper per message (the scroll-to target); a column so children keep
+   their own alignment (align-self on the command bubble, .user-row). */
+.msg {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+}
+.msg.flash {
+  animation: flash 1.6s ease-out;
+}
+@keyframes flash {
+  0%,
+  40% {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+}
+.user-bubble.command {
+  align-self: flex-end;
 }
 .user-row {
   display: flex;

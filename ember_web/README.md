@@ -48,7 +48,8 @@ URL, token or key.
   any browser; chats from the old browser-only storage are uploaded once):
   rename (double-click or pencil), export to Markdown, clear, delete, delete all.
   The sidebar search (2+ characters) looks through titles and message text
-  (not attached files) and highlights the match.
+  (not attached files) and highlights the match; opening a result scrolls to
+  the first matching message and flashes it.
 - Tools page: list and run `mcp_server` tools from forms generated from their
   JSON Schema (the same form as the command form). Tools show readable titles (`tool_srv_startApp` -> "Start App")
   and JSON results render as fields and tables, with the raw JSON a click away.
