@@ -139,6 +139,9 @@ class TurnRequest(BaseModel):
         return ids
     # Used only when this turn creates the chat.
     title: str | None = Field(default=None, max_length=TITLE_MAX)
+    # Regenerate / edit: index of the user question this one replaces. It and
+    # everything after it are dropped before the new question is added.
+    truncate_to: int | None = Field(default=None, ge=0)
 
 
 class AppendRequest(BaseModel):
@@ -227,6 +230,15 @@ def _limit_reached(block: LimitBlock) -> HTTPException:
         f"You've reached your {block.reason}. It frees up in about {wait}.",
         headers={"Retry-After": str(minutes * 60)},
     )
+
+
+def _replaced_from(existing: list[ChatMessage], index: int) -> list[ChatMessage]:
+    """`existing` up to (not including) `index`, which must be a question the
+    user typed - never a summary, a raw log or a slash command."""
+    target = existing[index] if index < len(existing) else None
+    if target is None or target.get("role") != "user" or target.get("kind"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Only a question you typed can be regenerated or edited")
+    return existing[:index]
 
 
 def _caller(account: Account) -> Caller:
@@ -396,8 +408,12 @@ async def start_turn(
     try:
         try:
             existing = decode_messages(await chats.get(chat_id))
+            if body.truncate_to is not None:
+                existing = _replaced_from(existing, body.truncate_to)
             chat = await chats.replace_messages(chat_id, [*existing, question], agent_id=agent.id)
         except ChatNotFound:
+            if body.truncate_to is not None:
+                raise _not_found() from None
             title = _clean_title(body.title or body.question[:60])
             chat = await chats.put(chat_id, title, agent.id, [question])
     except ChatLimitError as error:

@@ -13,7 +13,56 @@ const props = defineProps<{
   /** The tools the answer being written ran so far. */
   steps: ToolStep[];
   busy: boolean;
+  /** Messages may be edited or the last answer redone (nothing is running). */
+  canChange?: boolean;
+  /** Index of the question whose answer Regenerate redoes; -1 for none. */
+  regenerateIndex?: number;
 }>();
+const emit = defineEmits<{ regenerate: []; edit: [index: number, text: string] }>();
+
+// The question being edited (its index) and its draft text.
+const editingIndex = ref<number | null>(null);
+const editDraft = ref("");
+const editArea = ref<HTMLTextAreaElement[]>([]);
+
+async function startEdit(index: number): Promise<void> {
+  editingIndex.value = index;
+  editDraft.value = userParts.value[index]?.text ?? "";
+  await nextTick();
+  const area = editArea.value[0];
+  if (area) {
+    autoGrow(area);
+    area.focus();
+    area.setSelectionRange(area.value.length, area.value.length);
+  }
+}
+
+function autoGrow(area: HTMLTextAreaElement): void {
+  area.style.height = "auto";
+  area.style.height = `${area.scrollHeight}px`;
+}
+
+function cancelEdit(): void {
+  editingIndex.value = null;
+}
+
+function saveEdit(): void {
+  const index = editingIndex.value;
+  if (index === null) return;
+  const hasFiles = (userParts.value[index]?.attachments.length ?? 0) > 0;
+  if (!editDraft.value.trim() && !hasFiles) return;
+  // Everything after this question goes: ask before dropping later exchanges.
+  const later = props.messages.slice(index + 1).some((m) => m.role === "user" && !m.kind);
+  if (later && !confirm("Editing this question discards the messages after it. Continue?")) return;
+  editingIndex.value = null;
+  emit("edit", index, editDraft.value);
+}
+
+// A running answer or a switched chat closes an open edit.
+watch(
+  () => [props.busy, props.canChange === false],
+  () => (editingIndex.value = null),
+);
 
 // A question's attached files, shown collapsed under what was typed.
 const userParts = computed(() =>
@@ -74,6 +123,25 @@ watch(
         <div v-else-if="m.kind === 'command' && m.role === 'user'" class="user-bubble command">{{ m.content }}</div>
         <MarkdownContent v-else-if="m.kind === 'command'" class="assistant command-result" :text="m.content" />
         <!-- Only model output is rendered as markdown; the user's own text stays literal. -->
+        <div v-else-if="m.role === 'user' && editingIndex === i" class="user-row editing">
+          <textarea
+            ref="editArea"
+            v-model="editDraft"
+            class="edit-area"
+            rows="2"
+            aria-label="Edit your question"
+            @input="autoGrow($event.target as HTMLTextAreaElement)"
+            @keydown.esc.prevent="cancelEdit"
+            @keydown.enter.exact.prevent="saveEdit"
+          />
+          <p v-if="userParts[i]?.attachments.length" class="edit-note">
+            Attached files stay with the question ({{ userParts[i]?.attachments.length }}).
+          </p>
+          <div class="actions">
+            <button type="button" class="ghost" @click="cancelEdit">Cancel</button>
+            <button type="button" class="primary" @click="saveEdit">Save &amp; resend</button>
+          </div>
+        </div>
         <div v-else-if="m.role === 'user'" class="user-row">
           <div class="user-bubble">
             <template v-if="userParts[i]?.text">{{ userParts[i]?.text }}</template>
@@ -84,6 +152,18 @@ watch(
           </div>
           <div class="actions user-actions">
             <CopyButton :text="userParts[i]?.text || m.content" label="Copy message" />
+            <button v-if="canChange" type="button" class="action" title="Edit and resend" aria-label="Edit and resend" @click="startEdit(i)">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
         </div>
         <div v-else class="assistant">
@@ -91,6 +171,25 @@ watch(
           <MarkdownContent :text="m.content" />
           <div class="actions">
             <CopyButton :text="m.content" label="Copy answer" />
+            <button
+              v-if="canChange && i === messages.length - 1 && regenerateIndex !== undefined && regenerateIndex >= 0"
+              type="button"
+              class="action"
+              title="Regenerate answer"
+              aria-label="Regenerate answer"
+              @click="emit('regenerate')"
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
             <span v-if="m.model || m.total_tokens" class="meta">
               {{ [m.model, m.total_tokens ? `${m.total_tokens.toLocaleString()} tokens` : ""].filter(Boolean).join(" · ") }}
             </span>
@@ -141,23 +240,80 @@ watch(
 .user-actions {
   margin-top: 0;
 }
+.action {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  background: transparent;
+}
+.action:hover {
+  color: var(--text);
+  background: var(--surface);
+}
 /* Shown on hover or keyboard focus; always on touch screens. */
 .user-actions,
-.assistant .actions :deep(.copy) {
+.assistant .actions :deep(.copy),
+.assistant .actions .action {
   opacity: 0;
   transition: opacity 0.1s;
 }
 .user-row:hover .user-actions,
 .assistant:hover .actions :deep(.copy),
+.assistant:hover .actions .action,
 .actions:focus-within :deep(.copy),
+.actions:focus-within .action,
 .user-actions:focus-within {
   opacity: 1;
 }
 @media (hover: none) {
   .user-actions,
-  .assistant .actions :deep(.copy) {
+  .assistant .actions :deep(.copy),
+  .assistant .actions .action {
     opacity: 1;
   }
+}
+.editing {
+  width: min(100%, 560px);
+  align-self: flex-end;
+}
+.edit-area {
+  width: 100%;
+  max-height: calc(1.55em * 10);
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  outline: none;
+  resize: none;
+  background: var(--surface);
+}
+.edit-note {
+  margin: 0;
+  font-size: 0.75em;
+  color: var(--muted);
+}
+.editing .actions {
+  margin-top: 0;
+}
+.ghost,
+.primary {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.ghost {
+  color: var(--muted);
+  background: transparent;
+}
+.primary {
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  background: var(--accent);
 }
 .user-bubble {
   max-width: 80%;

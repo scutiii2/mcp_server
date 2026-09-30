@@ -177,6 +177,10 @@ useChatShortcuts({
         :activity="activity"
         :steps="liveSteps"
         :busy="busy"
+        :can-change="!busy && !working"
+        :regenerate-index="chat.regenerateIndex"
+        @regenerate="chat.regenerate"
+        @edit="chat.editAndResend"
       />
       <div class="composer-area">
         <div class="toolbar">

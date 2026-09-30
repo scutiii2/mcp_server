@@ -10,7 +10,7 @@ import {
 } from "../services/ConversationStorage";
 import { SlashCommandRunner } from "../services/slashCommands";
 import { watchTurn } from "../services/turnStream";
-import { splitAttachments } from "../utils/attachments";
+import { splitAttachments, withAttachments } from "../utils/attachments";
 import { errorMessage } from "../utils/errors";
 import { toolTitle } from "../utils/toolTitles";
 import { useAgentsStore } from "./agents";
@@ -402,13 +402,19 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   /** Asks the selected agent. ember_api saves the question and runs the
-   * turn; this page shows it arriving. A leading "/" runs a command instead. */
-  async function send(question: string): Promise<void> {
+   * turn; this page shows it arriving. A leading "/" runs a command instead.
+   *
+   * `truncateTo` (regenerate / edit): the index of the open chat's question
+   * this one replaces. That message and everything after it are dropped; if
+   * the question isn't accepted they come back. */
+  async function send(question: string, options: { truncateTo?: number } = {}): Promise<void> {
     if (!question || busy.value || chatLoading.value || working.value) return;
     // Its transcript failed to load: what's shown isn't the chat.
     if (active.value?.messagesLoaded === false) return;
+    const truncateTo = options.truncateTo;
+    if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return;
     sendError.value = "";
-    if (question.startsWith("/")) return runCommand(question);
+    if (truncateTo === undefined && question.startsWith("/")) return runCommand(question);
     const agent = agents.selected;
     if (!agent) {
       sendError.value = "No ai_agent is available.";
@@ -432,7 +438,9 @@ export const useChatStore = defineStore("chat", () => {
       activeId.value = conversation.id;
     }
     const id = conversation.id;
-    conversation.messages.push({ role: "user", content: question });
+    const previous = conversation.messages;
+    conversation.messages =
+      truncateTo === undefined ? [...previous, { role: "user", content: question }] : [...previous.slice(0, truncateTo), { role: "user", content: question }];
     conversation.agentId = agent.id;
     starting.value = true;
     const started = generation;
@@ -443,6 +451,7 @@ export const useChatStore = defineStore("chat", () => {
         caveman: caveman.value,
         enabled_extensions: enabledExtensions.value,
         title: conversation.title,
+        ...(truncateTo === undefined ? {} : { truncate_to: truncateTo }),
       });
       if (started !== generation) return;
       conversation.running = true;
@@ -451,7 +460,7 @@ export const useChatStore = defineStore("chat", () => {
     } catch (err) {
       if (started !== generation) return;
       // Not saved (limit reached, agent gone ...): take the question back.
-      conversation.messages.pop();
+      conversation.messages = previous;
       if (isNew) {
         conversations.value = conversations.value.filter((c) => c.id !== id);
         if (activeId.value === id) activeId.value = null;
@@ -460,6 +469,45 @@ export const useChatStore = defineStore("chat", () => {
     } finally {
       starting.value = false;
     }
+  }
+
+  /** Index of the open chat's last typed question when the chat ends with
+   * its answer (or its error) - the one Regenerate redoes. -1: none. */
+  const regenerateIndex = computed(() => {
+    const list = messages.value;
+    const last = list[list.length - 1];
+    if (!last || last.role !== "assistant" || last.kind) return -1;
+    for (let i = list.length - 2; i >= 0; i -= 1) {
+      const m = list[i]!;
+      if (m.role === "user" && !m.kind) return i;
+      if (m.kind !== "command") return -1; // a summary or log: nothing typed to redo
+    }
+    return -1;
+  });
+  /** A typed question of the open chat, as opposed to a summary, a raw log
+   * or a slash command - the only messages that can be replaced. */
+  function canReplaceFrom(index: number): boolean {
+    const m = messages.value[index];
+    return m !== undefined && m.role === "user" && !m.kind;
+  }
+
+  /** Asks the last question again: the answer to it is dropped and rewritten. */
+  function regenerate(): Promise<void> {
+    const index = regenerateIndex.value;
+    const question = messages.value[index]?.content;
+    if (index < 0 || !question) return Promise.resolve();
+    return send(question, { truncateTo: index });
+  }
+
+  /** Replaces question `index` with `text` (its attached files stay) and
+   * drops everything after it; the agent answers the new text. */
+  function editAndResend(index: number, text: string): Promise<void> {
+    const original = messages.value[index];
+    if (!original || !canReplaceFrom(index)) return Promise.resolve();
+    const { attachments } = splitAttachments(original.content);
+    const typed = text.trim();
+    if (!typed && attachments.length === 0) return Promise.resolve();
+    return send(withAttachments(typed, attachments), { truncateTo: index });
   }
 
   /** Asks ember_api to stop the open chat's answer; the stream then ends
@@ -616,6 +664,9 @@ export const useChatStore = defineStore("chat", () => {
     saveError,
     sendError,
     send,
+    regenerateIndex,
+    regenerate,
+    editAndResend,
     stop,
     newChat,
     selectChat,

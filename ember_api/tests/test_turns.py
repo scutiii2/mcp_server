@@ -111,6 +111,92 @@ def test_second_turn_sends_history_without_raw_logs(client: TestClient, agent: F
     assert chat(client, chat_id)["message_count"] == 6
 
 
+def _two_exchanges(client: TestClient, chat_id: str, agent: FakeAgent) -> None:
+    start(client, chat_id, "q1")
+    events(client, chat_id)
+    start(client, chat_id, "q2")
+    events(client, chat_id)
+    agent.asks.clear()
+
+
+def test_truncate_to_replaces_a_question_and_what_followed(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    _two_exchanges(client, chat_id, agent)
+
+    response = start(client, chat_id, "q2 edited", truncate_to=2)
+
+    assert response.status_code == 202
+    events(client, chat_id)
+    saved = chat(client, chat_id)["messages"]
+    assert [m["content"] for m in saved] == ["q1", "Hello!", "q2 edited", "Hello!"]
+    assert [m["content"] for m in agent.asks[0]["history"]] == ["q1", "Hello!"]
+
+
+def test_truncate_to_zero_restarts_the_conversation(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    _two_exchanges(client, chat_id, agent)
+
+    assert start(client, chat_id, "fresh", truncate_to=0).status_code == 202
+
+    events(client, chat_id)
+    assert [m["content"] for m in chat(client, chat_id)["messages"]] == ["fresh", "Hello!"]
+    assert agent.asks[0]["history"] == []
+
+
+@pytest.mark.parametrize("index", [1, 4, 99])
+def test_truncate_to_must_point_at_a_typed_question(client: TestClient, agent: FakeAgent, index: int) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    _two_exchanges(client, chat_id, agent)
+
+    response = start(client, chat_id, "x", truncate_to=index)
+
+    assert response.status_code == 422
+    assert [m["content"] for m in chat(client, chat_id)["messages"]] == ["q1", "Hello!", "q2", "Hello!"]
+    assert agent.asks == []
+
+
+def test_truncate_to_refuses_summaries_and_commands(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    client.put(
+        f"/api/chats/{chat_id}",
+        json={
+            "title": "t",
+            "messages": [
+                {"role": "assistant", "kind": "summary", "content": "S"},
+                {"role": "user", "kind": "command", "content": "/x y"},
+                {"role": "user", "content": "q"},
+            ],
+        },
+    )
+
+    assert start(client, chat_id, "x", truncate_to=0).status_code == 422
+    assert start(client, chat_id, "x", truncate_to=1).status_code == 422
+    assert start(client, chat_id, "x", truncate_to=2).status_code == 202
+
+
+def test_truncate_to_on_an_unknown_chat_is_404(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+
+    assert start(client, new_id(), "x", truncate_to=0).status_code == 404
+
+
+def test_truncate_to_is_refused_while_answering(client: TestClient, agent: FakeAgent) -> None:
+    agent.hold = True
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id, "q1")
+
+    try:
+        assert start(client, chat_id, "again", truncate_to=0).status_code == 409
+    finally:
+        agent.release()
+    events(client, chat_id)
+
+
 def test_turn_needs_chat_use_and_a_known_agent(client: TestClient, email: FakeEmailSender) -> None:
     assert start(client, new_id()).status_code == 401
     as_admin(client)

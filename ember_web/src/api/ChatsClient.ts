@@ -38,6 +38,9 @@ export interface TurnStart {
   enabled_extensions: string[];
   /** Used only when this turn creates the chat. */
   title?: string;
+  /** Regenerate / edit: index of the question this one replaces; it and
+   * everything after it are dropped first. */
+  truncate_to?: number;
 }
 
 export interface TurnStarted {
