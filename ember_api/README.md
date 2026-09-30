@@ -175,6 +175,12 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   the event buffer stays small because streamed text is kept as one string
   and late joiners get it as a snapshot. At most 3 running answers per
   account. On shutdown a running answer is saved as interrupted.
+- **Regenerate / edit** (`truncate_to` on `POST /api/chats/{id}/turns`): the
+  server cuts the history before a typed question and asks again, so the
+  browser never rewrites saved history itself.
+- **Chat search** (`services/chat_search.py`, `GET /api/chats/search`): a
+  literal, case-insensitive scan of the account's titles and messages,
+  streamed and stopped at 50 hits; ASCII queries are pre-filtered in SQL.
 - **Usage limits** (`services/usage_service.py`, config `usage`): tokens of
   every answer and summary are recorded per agent; a question over the
   6-hour or weekly cap is refused with `429` before anything is saved.
@@ -224,7 +230,7 @@ src/
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
               UsageRecord, LogEntry, KnownDevice
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, TurnRegistry,
+              AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
               permissions

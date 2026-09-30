@@ -16,6 +16,14 @@ URL, token or key.
   keeps going and is saved even if the page closes; reopening the chat picks
   the live answer back up. Chats still being answered show a pulsing dot.
 - Stop button (takes effect at the agent's next round).
+- Copy button on every answer, on your messages and on each code block.
+- Regenerate the last answer, or edit one of your questions and resend it
+  (its attached files stay; the messages after it are dropped, with a
+  confirm when that discards later exchanges). ember_api does the cut
+  (`truncate_to`).
+- Keyboard: `Esc` stops the running answer, `Ctrl/Cmd+K` focuses the input,
+  `Ctrl/Cmd+Shift+O` starts a new chat, `Up` in an empty input recalls your
+  last question.
 - Slash commands: `/<capability> <command> key=value ...` runs an mcp_server
   tool directly (no AI), `/help` and `/<capability> help` show help; the input
   suggests commands as you type (needs `tools.use`). Tools of the extensions
@@ -24,8 +32,8 @@ URL, token or key.
   filled from mcp_server, dependent selects, and file fields that upload
   the file and fill in its path on mcp_server. Close the form to type
   `key=value` instead.
-- Attach files to a question (paperclip or drag and drop): text and code
-  files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
+- Attach files to a question (paperclip, paste, or drag and drop anywhere on
+  the input area): text and code files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
   characters each), which goes into the question; the chat shows each file
   collapsed under what you typed.
 - Summarize (condense the history into a summary the agent keeps) and Clear
@@ -36,6 +44,8 @@ URL, token or key.
 - Several conversations, saved per account in ember_api (they follow you to
   any browser; chats from the old browser-only storage are uploaded once):
   rename (double-click or pencil), export to Markdown, clear, delete, delete all.
+  The sidebar search (2+ characters) looks through titles and message text
+  (not attached files) and highlights the match.
 - Tools page: list and run `mcp_server` tools from forms generated from their
   JSON Schema (the same form as the command form). Tools show readable titles (`tool_srv_startApp` -> "Start App")
   and JSON results render as fields and tables, with the raw JSON a click away.
@@ -123,15 +133,16 @@ src/
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat
+  composables/  useChatShortcuts (window-level chat keys)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, tool-schema forms, error/time formatting, chat export,
-                tool titles, tool-result formatting, attachment blocks in questions
+                tool titles, tool-result formatting, attachment blocks in questions, clipboard
 ```
 
 ## Security notes
