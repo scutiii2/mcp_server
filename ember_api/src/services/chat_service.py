@@ -8,6 +8,7 @@ else's chats.
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -21,6 +22,7 @@ from src.models import Chat
 
 MAX_CHAT_BYTES = 2 * 1024 * 1024
 MAX_CHATS_PER_ACCOUNT = 1000
+TITLE_MAX = 120  # the chats.title column
 
 
 class ChatNotFound(Exception):
@@ -29,6 +31,11 @@ class ChatNotFound(Exception):
 
 class ChatLimitError(Exception):
     """A chat too large, or too many chats (maps to 413)."""
+
+
+class NotABranchPoint(Exception):
+    """The message a branch should end on is missing, or is not a plain
+    answer (a question, summary, raw log or command result)."""
 
 
 # {"role": "user" | "assistant", "content": str} plus optional "kind"
@@ -98,6 +105,21 @@ class ChatService:
         chat.updated_at = now
         await self._session.commit()
         return chat
+
+    async def branch(self, source_id: str, upto: int) -> Chat:
+        """A new chat holding the source's messages up to and including
+        message `upto`, which must be one of the assistant's answers. The
+        source is not touched; the copy shares nothing with it. It keeps the
+        source's agent and is titled "Branch of <title>"."""
+        source = await self.get(source_id)
+        messages = decode_messages(source)
+        target = messages[upto] if 0 <= upto < len(messages) else None
+        if target is None or target.get("role") != "assistant" or target.get("kind"):
+            raise NotABranchPoint(upto)
+        title = f"Branch of {source.title}"
+        if len(title) > TITLE_MAX:
+            title = title[: TITLE_MAX - 1] + "…"
+        return await self.put(str(uuid.uuid4()), title, source.agent_id, messages[: upto + 1])
 
     async def replace_messages(self, chat_id: str, messages: list[ChatMessage], agent_id: str | None = None) -> Chat:
         """New transcript for an existing chat, keeping its title (and its

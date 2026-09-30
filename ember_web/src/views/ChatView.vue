@@ -205,6 +205,7 @@ useChatShortcuts({
         :jump-index="chat.jumpIndex"
         @jumped="chat.clearJump"
         @regenerate="chat.regenerate"
+        @branch="chat.branchFrom"
         @edit="chat.editAndResend"
       />
       <div class="composer-area">

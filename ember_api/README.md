@@ -94,6 +94,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/chats/{id}/cancel` | `chat.use` | `{cancelled}`; ai_agent stops at its next round, keeping what streamed. |
 | `POST` | `/api/chats/{id}/summarize` | `chat.use` | `{agent_id?}` -> the chat, its history replaced by a `summary` message plus a `log_attachment` (raw messages, never sent to the agent again). `502` if the agent couldn't; nothing changes then. |
 | `POST` | `/api/chats/{id}/clear` | `chat.use` | -> the chat, restarted: everything kept as one `log_attachment`. |
+| `POST` | `/api/chats/{id}/branch` | `chat.use` | `{upto}` -> `201` a new chat (server-made id, title `Branch of <title>`, same agent) holding the messages up to and including message `upto`, which must be one of the assistant's answers (`422` for a question, summary, raw log or command result, or an index past the end). The original is untouched and may still be answering. `404` unknown chat, `413` at the chat limit. |
 | `POST` | `/api/chats/{id}/messages` | `chat.use` | `{title, messages}` appends (slash-command calls and results), creating the chat if needed. |
 | `GET` | `/api/templates` | `chat.use` | This account's saved prompts, most recently edited first: `[{id, name, body, created_at, updated_at}]`. |
 | `POST` | `/api/templates` | `chat.use` | `{name, body}` -> `201` the template. Name up to 60 characters (trimmed), body up to 10,000, at most 100 per account. `409` for a name the account already has (ignoring case) or the limit, `422` for a blank or too-long field. |
@@ -182,6 +183,10 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
 - **Regenerate / edit** (`truncate_to` on `POST /api/chats/{id}/turns`): the
   server cuts the history before a typed question and asks again, so the
   browser never rewrites saved history itself.
+- **Branching** (`ChatService.branch`, `POST /api/chats/{id}/branch`): a copy
+  of the saved messages up to one answer becomes a new chat with a
+  server-made id. Only saved messages are read, so a chat that is still
+  answering can be branched.
 - **Chat search** (`services/chat_search.py`, `GET /api/chats/search`): a
   literal, case-insensitive scan of the account's titles and messages,
   streamed and stopped at 50 hits; ASCII queries are pre-filtered in SQL.

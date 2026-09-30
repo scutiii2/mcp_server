@@ -26,11 +26,13 @@ from src.services.agent_gateway import AgentGateway, Caller
 from src.services.chat_search import MAX_QUERY_CHARS, MIN_QUERY_CHARS, ChatSearch, SearchHit
 from src.services.chat_service import (
     MAX_CHATS_PER_ACCOUNT,
+    TITLE_MAX,
     ChatLimitError,
     ChatMessage,
     ChatNotFound,
     ChatService,
     ImportedChat,
+    NotABranchPoint,
     decode_messages,
 )
 from src.services.permissions import CHAT_USE
@@ -52,7 +54,6 @@ require_chat = require_permission(CHAT_USE)
 _CHAT_ID_PATTERN = r"^[A-Za-z0-9-]{8,64}$"
 # Browser-made UUIDs; anything else is refused before touching the database.
 ChatId = Path(pattern=_CHAT_ID_PATTERN)
-TITLE_MAX = 120
 # Room for a question plus a few attached files' text (20k characters each).
 QUESTION_MAX = 200_000
 
@@ -154,6 +155,11 @@ class TurnRequest(BaseModel):
     # Regenerate / edit: index of the user question this one replaces. It and
     # everything after it are dropped before the new question is added.
     truncate_to: int | None = Field(default=None, ge=0)
+
+
+class BranchRequest(BaseModel):
+    # Index of the answer the new chat ends on.
+    upto: int = Field(ge=0)
 
 
 class AppendRequest(BaseModel):
@@ -416,6 +422,28 @@ async def delete_chat(
     await turns.discard(account.id, chat_id)
     await chats.delete(chat_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{chat_id}/branch", status_code=status.HTTP_201_CREATED)
+async def branch_chat(
+    body: BranchRequest,
+    chat_id: str = ChatId,
+    chats: ChatService = Depends(get_chat_service),
+) -> ChatOut:
+    """Copies the chat up to and including the answer at `upto` into a new
+    chat (new id, "Branch of <title>", same agent) and returns it. The
+    original is unchanged, and may even be answering meanwhile: only saved
+    messages are copied."""
+    try:
+        return ChatOut.of(await chats.branch(chat_id, body.upto))
+    except ChatNotFound as error:
+        raise _not_found() from error
+    except NotABranchPoint as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "A branch can only end on one of the assistant's answers"
+        ) from error
+    except ChatLimitError as error:
+        raise _too_large(error) from error
 
 
 @router.post("/{chat_id}/messages")

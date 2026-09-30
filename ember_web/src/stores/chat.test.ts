@@ -21,6 +21,7 @@ vi.mock("../api/ChatsClient", () => ({
     rename: vi.fn(),
     importChats: vi.fn(),
     append: vi.fn(),
+    branch: vi.fn(),
   },
 }));
 // The live answer stream is not under test: a watch that ends at once.
@@ -460,5 +461,155 @@ describe("jumpIndex (opening a search result)", () => {
 
     expect(chat.jumpIndex).toBe(1);
     expect(chat.activeId).toBe("c1");
+  });
+});
+
+describe("branchFrom (fork a chat at an answer)", () => {
+  const branchOf = (id: string, messages: ChatMessage[], extra: Partial<ChatSummary> = {}) => ({
+    ...summary(id, messages.length),
+    title: "Branch of Chat c1",
+    created_at: "2026-01-02T00:00:00",
+    updated_at: "2026-01-02T00:00:00",
+    messages,
+    ...extra,
+  });
+
+  it("opens a new chat holding the copied messages, and leaves the original alone", async () => {
+    client.branch.mockResolvedValue(branchOf("b1", FOUR.slice(0, 2)));
+    const chat = await openChat(FOUR);
+
+    await chat.branchFrom(1);
+
+    expect(client.branch).toHaveBeenCalledExactlyOnceWith("c1", 1);
+    expect(chat.activeId).toBe("b1");
+    expect(chat.active?.title).toBe("Branch of Chat c1");
+    expect(contents(chat.messages)).toEqual(["q1", "a1"]);
+    expect(chat.working).toBe("");
+    expect(chat.sendError).toBe("");
+    // The original is still in the list, complete, and the branch is listed first.
+    const original = chat.sortedConversations.find((c) => c.id === "c1")!;
+    expect(contents(original.messages)).toEqual(["q1", "a1", "q2", "a2"]);
+    expect(chat.sortedConversations.map((c) => c.id)).toEqual(["b1", "c1"]);
+  });
+
+  it("the branch is ready to talk in: loaded, not running, and remembers the agent", async () => {
+    client.branch.mockResolvedValue(branchOf("b1", FOUR.slice(0, 2)));
+    const chat = await openChat(FOUR);
+
+    await chat.branchFrom(1);
+    await chat.send("something else");
+
+    expect(client.startTurn).toHaveBeenCalledWith("b1", expect.objectContaining({ question: "something else", agent_id: "a1" }));
+    expect(contents(chat.messages)).toEqual(["q1", "a1", "something else"]);
+    expect(client.get).toHaveBeenCalledTimes(1); // only the original was ever fetched
+  });
+
+  it("can branch a branch", async () => {
+    client.branch.mockResolvedValueOnce(branchOf("b1", FOUR.slice(0, 4))).mockResolvedValueOnce(branchOf("b2", FOUR.slice(0, 2)));
+    const chat = await openChat(FOUR);
+
+    await chat.branchFrom(3);
+    await chat.branchFrom(1);
+
+    expect(client.branch.mock.calls).toEqual([
+      ["c1", 3],
+      ["b1", 1],
+    ]);
+    expect(chat.activeId).toBe("b2");
+  });
+
+  it.each([
+    ["a question", 0],
+    ["another question", 2],
+    ["an index past the end", 9],
+    ["a negative index", -1],
+  ])("does nothing for %s", async (_name, index) => {
+    const chat = await openChat(FOUR);
+
+    await chat.branchFrom(index);
+
+    expect(client.branch).not.toHaveBeenCalled();
+    expect(chat.activeId).toBe("c1");
+  });
+
+  it("does nothing for a summary or a slash command's result", async () => {
+    const chat = await openChat([assistant("S", { kind: "summary" }), user("/x y"), assistant("result"), ...FOUR]);
+    chat.messages[1]!.kind = "command";
+    chat.messages[2]!.kind = "command";
+
+    for (const index of [0, 1, 2]) await chat.branchFrom(index);
+
+    expect(client.branch).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without an open chat", async () => {
+    const chat = await storeWith({ c1: FOUR });
+
+    await chat.branchFrom(1);
+
+    expect(client.branch).not.toHaveBeenCalled();
+  });
+
+  it("does nothing while an answer is being written", async () => {
+    const chat = await openChat(FOUR);
+    await chat.send("q3"); // the turn starts and stays running
+
+    await chat.branchFrom(1);
+
+    expect(client.branch).not.toHaveBeenCalled();
+  });
+
+  it("waits for unsent changes rather than counting messages ember_api does not have yet", async () => {
+    client.rename.mockReturnValue(new Promise(() => {})); // a save that never lands
+    const chat = await openChat(FOUR);
+    chat.renameChat("c1", "Renamed");
+
+    await chat.branchFrom(1);
+
+    expect(client.branch).not.toHaveBeenCalled();
+    expect(chat.sendError).toContain("Still saving");
+  });
+
+  it("shows ember_api's message and stays on the original when it fails", async () => {
+    client.branch.mockRejectedValue(new ApiError(413, "At most 1000 chats per account - delete some first"));
+    const chat = await openChat(FOUR);
+
+    await chat.branchFrom(1);
+
+    expect(chat.sendError).toBe("At most 1000 chats per account - delete some first");
+    expect(chat.activeId).toBe("c1");
+    expect(chat.sortedConversations).toHaveLength(1);
+    expect(chat.working).toBe("");
+  });
+
+  it("shows the working state while the request is out", async () => {
+    let finish!: (value: ReturnType<typeof branchOf>) => void;
+    client.branch.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const chat = await openChat(FOUR);
+
+    const pending = chat.branchFrom(1);
+    expect(chat.working).toBe("Branching ...");
+    // Nothing else can start meanwhile.
+    await chat.send("q3");
+    expect(client.startTurn).not.toHaveBeenCalled();
+
+    finish(branchOf("b1", FOUR.slice(0, 2)));
+    await pending;
+    expect(chat.working).toBe("");
+  });
+
+  it("ignores an answer that arrives after the account changed", async () => {
+    let finish!: (value: ReturnType<typeof branchOf>) => void;
+    client.branch.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const chat = await openChat(FOUR);
+    const pending = chat.branchFrom(1);
+
+    useAuthStore().account = { ...ACCOUNT, id: 2 };
+    await flushPromises();
+    finish(branchOf("b1", FOUR.slice(0, 2)));
+    await pending;
+
+    expect(chat.sortedConversations.map((c) => c.id)).not.toContain("b1");
+    expect(chat.activeId).toBeNull();
   });
 });

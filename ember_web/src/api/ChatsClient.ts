@@ -89,6 +89,8 @@ export const chatsClient = {
   /** Replaces the history with a summary plus the raw log (asks an agent). */
   summarize: (id: string, agentId: string | null) =>
     apiRequest<ChatDetail>("POST", `${path(id)}/summarize`, { agent_id: agentId }),
+  /** A new chat holding the messages up to and including answer `upto`. */
+  branch: (id: string, upto: number) => apiRequest<ChatDetail>("POST", `${path(id)}/branch`, { upto }),
   /** Starts afresh, keeping the old messages as one raw log. */
   clear: (id: string) => apiRequest<ChatDetail>("POST", `${path(id)}/clear`),
   /** Appends messages (slash-command results), creating the chat if needed. */

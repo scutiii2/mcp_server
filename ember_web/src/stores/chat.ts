@@ -527,6 +527,48 @@ export const useChatStore = defineStore("chat", () => {
     return send(withAttachments(typed, attachments), { truncateTo: index });
   }
 
+  /** Copies the open chat up to and including answer `index` into a new
+   * chat and opens it; the original stays as it is. */
+  async function branchFrom(index: number): Promise<void> {
+    const source = active.value;
+    const answer = messages.value[index];
+    if (!source || !answer || answer.role !== "assistant" || answer.kind) return;
+    if (busy.value || working.value || chatLoading.value) return;
+    // The index counts messages ember_api has: wait for unsent changes (a
+    // slash command's result) to land first.
+    if (pending.length > 0 || saving) {
+      sendError.value = "Still saving your chats - try again in a moment.";
+      return;
+    }
+    sendError.value = "";
+    working.value = "Branching ...";
+    const started = generation;
+    try {
+      const chat = await chatsClient.branch(source.id, index);
+      if (started !== generation) return;
+      conversations.value.push({
+        id: chat.id,
+        title: chat.title,
+        messages: chat.messages,
+        messagesLoaded: true,
+        messageCount: chat.message_count,
+        running: false,
+        agentId: chat.agent_id ?? undefined,
+        createdAt: Date.parse(`${chat.created_at}Z`),
+        updatedAt: Date.parse(`${chat.updated_at}Z`),
+      });
+      unfollow();
+      jumpIndex.value = null;
+      activeId.value = chat.id;
+      if (chat.agent_id) agents.select(chat.agent_id);
+      scheduleBackgroundPoll();
+    } catch (err) {
+      if (started === generation) sendError.value = errorMessage(err);
+    } finally {
+      if (started === generation) working.value = "";
+    }
+  }
+
   /** Asks ember_api to stop the open chat's answer; the stream then ends
    * with whatever had arrived. */
   async function stop(): Promise<void> {
@@ -737,6 +779,7 @@ export const useChatStore = defineStore("chat", () => {
     regenerateIndex,
     regenerate,
     editAndResend,
+    branchFrom,
     stop,
     newChat,
     selectChat,

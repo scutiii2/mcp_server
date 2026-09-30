@@ -24,6 +24,11 @@ URL, token or key.
   (its attached files stay; the messages after it are dropped, with a
   confirm when that discards later exchanges). ember_api does the cut
   (`truncate_to`).
+- Branch from any answer: the branch icon copies the chat up to and
+  including that answer into a new chat ("Branch of <title>", same agent)
+  and opens it, leaving the original as it is. Use it to try a different
+  follow-up without losing the first one. The copy keeps tool steps and
+  usage data; it does not record where it came from.
 - Keyboard: `Esc` stops the running answer, `Ctrl/Cmd+K` focuses the input,
   `Ctrl/Cmd+Shift+O` starts a new chat, `Up` in an empty input recalls your
   last question.

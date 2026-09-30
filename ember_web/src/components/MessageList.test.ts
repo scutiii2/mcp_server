@@ -232,3 +232,49 @@ describe("copy buttons", () => {
     expect(wrapper.find(".user-bubble").text()).toContain("look at this");
   });
 });
+
+describe("branch button", () => {
+  const branchButtons = (wrapper: ReturnType<typeof mountList>) => wrapper.findAll('button[aria-label="Branch from this answer"]');
+
+  it("is on every answer, not on questions, and emits the answer's index", async () => {
+    const wrapper = mountList();
+    const buttons = branchButtons(wrapper);
+
+    expect(buttons).toHaveLength(2);
+    expect(wrapper.findAll(".msg")[0]!.find('button[aria-label="Branch from this answer"]').exists()).toBe(false);
+
+    await buttons[0]!.trigger("click");
+    await buttons[1]!.trigger("click");
+    expect(wrapper.emitted("branch")).toEqual([[1], [3]]);
+  });
+
+  it("is hidden while an answer is running or another change is under way", () => {
+    expect(branchButtons(mountList({ canChange: false }))).toHaveLength(0);
+  });
+
+  it("is not on summaries, raw logs or command results", () => {
+    const wrapper = mountList({
+      messages: [
+        assistant("S", { kind: "summary" }),
+        assistant("raw", { kind: "log_attachment" }),
+        { role: "user", content: "/x y", kind: "command" },
+        assistant("result", { kind: "command" }),
+        user("q"),
+        assistant("a"),
+      ],
+      regenerateIndex: 4,
+    });
+
+    expect(branchButtons(wrapper)).toHaveLength(1);
+    expect(wrapper.findAll(".msg")[5]!.find('button[aria-label="Branch from this answer"]').exists()).toBe(true);
+  });
+
+  it("sits beside the regenerate button on the last answer", () => {
+    const wrapper = mountList();
+
+    const labels = wrapper.findAll(".msg")[3]!.findAll(".actions button").map((b) => b.attributes("aria-label"));
+
+    expect(labels).toContain("Regenerate answer");
+    expect(labels).toContain("Branch from this answer");
+  });
+});

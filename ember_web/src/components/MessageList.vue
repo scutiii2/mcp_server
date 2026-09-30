@@ -21,7 +21,7 @@ const props = defineProps<{
   /** A message to scroll to and flash (a search result); null for none. */
   jumpIndex?: number | null;
 }>();
-const emit = defineEmits<{ regenerate: []; edit: [index: number, text: string]; jumped: [] }>();
+const emit = defineEmits<{ regenerate: []; edit: [index: number, text: string]; branch: [index: number]; jumped: [] }>();
 
 // The question being edited (its index) and its draft text.
 const editingIndex = ref<number | null>(null);
@@ -223,6 +223,27 @@ onBeforeUnmount(() => {
                   stroke-width="1.8"
                   stroke-linecap="round"
                   stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              v-if="canChange"
+              type="button"
+              class="action"
+              title="Branch: continue from here in a new chat"
+              aria-label="Branch from this answer"
+              @click="emit('branch', i)"
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <circle cx="7" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <circle cx="7" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <circle cx="17" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <path
+                  d="M7 8v8M17 10c0 4-10 2-10 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
                 />
               </svg>
             </button>
