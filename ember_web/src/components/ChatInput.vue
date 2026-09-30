@@ -72,9 +72,38 @@ function onPick(event: Event): void {
   input.value = ""; // picking the same file again still fires change
 }
 
+function hasFiles(event: DragEvent): boolean {
+  return event.dataTransfer?.types.includes("Files") ?? false;
+}
+
+// The whole composer is the drop target (suggestions and chips included),
+// but dragged text or links are left to the browser.
+function onDragOver(event: DragEvent): void {
+  if (!hasFiles(event)) return;
+  event.preventDefault();
+  dragging.value = true;
+}
+
+function onDragLeave(event: DragEvent): void {
+  // Moving over a child element also fires dragleave on the form.
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) dragging.value = false;
+}
+
 function onDrop(event: DragEvent): void {
   dragging.value = false;
+  if (!hasFiles(event)) return;
+  event.preventDefault();
   void addFiles(event.dataTransfer?.files);
+}
+
+/** Pasted files (a screenshot, a file copied in the explorer) become
+ * attachments. Pasted text - even with an accompanying image, as copying
+ * spreadsheet cells does - pastes as usual. */
+function onPaste(event: ClipboardEvent): void {
+  const data = event.clipboardData;
+  if (!data?.files.length || data.getData("text/plain")) return;
+  event.preventDefault();
+  void addFiles(data.files);
 }
 
 const MAX_SUGGESTIONS = 8;
@@ -167,7 +196,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form class="composer" @submit.prevent="submit">
+  <form class="composer" @submit.prevent="submit" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <ul v-if="suggestions.length" class="suggestions" role="listbox" aria-label="Commands">
       <li
         v-for="(s, i) in suggestions"
@@ -191,12 +220,7 @@ function onKeydown(event: KeyboardEvent): void {
         <button type="button" :aria-label="`Remove ${a.filename}`" @click="removeAttachment(a.id)">×</button>
       </li>
     </ul>
-    <div
-      :class="['box', { dragging }]"
-      @dragover.prevent="dragging = true"
-      @dragleave="dragging = false"
-      @drop.prevent="onDrop"
-    >
+    <div :class="['box', { dragging }]">
       <input ref="fileInput" type="file" multiple hidden @change="onPick" />
       <button type="button" class="attach" title="Attach files (text, code, PDF, Word, Excel)" @click="fileInput?.click()">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -217,6 +241,7 @@ function onKeydown(event: KeyboardEvent): void {
         :placeholder="commands.length ? 'Ask something, or / for commands' : 'Ask something'"
         @input="autoGrow"
         @keydown="onKeydown"
+        @paste="onPaste"
       />
       <button v-if="busy" type="button" class="round stop" title="Stop" @click="emit('stop')">
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
