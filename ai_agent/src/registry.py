@@ -93,18 +93,28 @@ class McpClientRegistry:
         self._last_known_tools: dict[str, list[types.Tool]] = {}
         self._statuses: list[ServerStatus] = []
         self._configs: dict[str, ServerConfig] = {}
+        # Sent on every HTTP server's session on top of its own auth block
+        # (the shared internal token - see mcp_upstream.connect()).
+        self._extra_headers: dict[str, str] = {}
 
     @catalog
     def statuses(self) -> list[ServerStatus]:
         return list(self._statuses)
 
     @catalog
-    async def connect_all(self, config_path: Path, url_overrides: dict[str, str] | None = None) -> list[ServerStatus]:
+    async def connect_all(
+        self,
+        config_path: Path,
+        url_overrides: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> list[ServerStatus]:
         """Connect to every server in `config_path`, isolated - one bad
         entry is recorded as an error status and never stops a sibling
         from connecting. `url_overrides` is forwarded to
-        load_servers_config() - see its docstring."""
+        load_servers_config() - see its docstring. `extra_headers` go on
+        every HTTP server's session, reconnects included."""
         self._configs = load_servers_config(config_path, url_overrides)
+        self._extra_headers = dict(extra_headers or {})
         for server_id, config in self._configs.items():
             await self._connect_one(server_id, config)
         return self.statuses()
@@ -126,7 +136,7 @@ class McpClientRegistry:
     async def _connect_one(self, server_id: str, config: ServerConfig) -> ServerStatus:
         local_stack = AsyncExitStack()
         try:
-            session = await open_session(local_stack, config, CONNECT_TIMEOUT_SECONDS)
+            session = await open_session(local_stack, config, CONNECT_TIMEOUT_SECONDS, self._extra_headers)
             listed = await session.list_tools()
         except Exception as error:  # noqa: BLE001 - one bad server must not block the others
             try:
@@ -181,7 +191,11 @@ class McpClientRegistry:
 
     @catalog
     async def call_tool(
-        self, name: str, arguments: dict[str, Any], on_progress: Callable[[str], None] | None = None
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        on_progress: Callable[[str], None] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> types.CallToolResult:
         """Route `name` (as returned by list_tools(), e.g. "main__ping")
         to whichever server owns it. Raises KeyError for a name that
@@ -190,7 +204,8 @@ class McpClientRegistry:
 
         `on_progress` receives each message the tool reports while it runs
         (an MCP progress notification with a message); it is called on this
-        registry's own event-loop thread."""
+        registry's own event-loop thread. `meta` becomes the request's
+        `_meta` (the asking user - see internal_auth.py)."""
         server_id, separator, upstream_name = name.partition(NAMESPACE_SEPARATOR)
         session = self._sessions.get(server_id) if separator else None
         if session is None:
@@ -204,6 +219,8 @@ class McpClientRegistry:
                     on_progress(message)
 
             extra["progress_callback"] = progress_callback
+        if meta is not None:
+            extra["meta"] = meta
 
         try:
             return await session.call_tool(

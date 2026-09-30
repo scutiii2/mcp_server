@@ -74,6 +74,7 @@ complexity without buying anything real.
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -93,6 +94,9 @@ from src.services.app_config import (
     load_extensions_config,
     save_extension_config,
 )
+from src.services.identity_context import current_email, current_username
+
+logger = logging.getLogger(__name__)
 
 # "__" rather than "_": a tool name registered elsewhere in this codebase
 # (e.g. get_role_definition_tool) already uses single underscores as
@@ -483,6 +487,9 @@ class ExtensionRegistry:
         call_tool() decorator normalizes either way.
         """
         assert self._mcp is not None, "install() must run before merged_call_tool()"
+        # Who asked, when the caller said (identity headers, or ai_agent's
+        # per-call _meta - see identity_context.py); "-" otherwise.
+        logger.info("tool call %s by %s", name, current_username() or current_email() or "-")
         if self.is_proxied(name):
             return await self.call(name, arguments)
         return await self._mcp.call_tool(name, arguments)

@@ -35,6 +35,19 @@ Both loaded once at boot by `src/run.py`:
 - **`configs/*.json`** - structure, mostly committed. See
   [`configs/README.md`](configs/README.md).
 
+## Security
+
+- **`/mcp` needs the internal token** once `INTERNAL_API_TOKEN` is set in
+  `.secrets/secret_internal_api.env` (`X-Internal-Token`, compared in
+  constant time; `401` otherwise). Every caller is another server in this
+  repo - chat_app, ai_agent, ember_api - and all of them send it. The
+  startup banner says whether it's on.
+- **Who is asking**: tools read the user from `X-Requester-Username` /
+  `X-Requester-Email` (chat_app, ember_api), or from the tool call's
+  `_meta.requester` (ai_agent, whose one session serves every user) - see
+  `src/services/identity_context.py`. Each tool call is logged with it
+  (`tool call <name> by <user>` in `server.log`).
+
 ## Code layout
 
 See [`src/README.md`](src/README.md) for the full map - what lives

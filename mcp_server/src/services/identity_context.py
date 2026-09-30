@@ -16,6 +16,14 @@ IdentityContextMiddleware sets the contextvars for the lifetime of each
 HTTP request; a domain function anywhere downstream reads them with
 current_username()/current_email() instead of accepting the identity as an
 argument.
+
+ai_agent calls this server over ONE long-lived MCP session shared by every
+user, so it can't use per-session headers. It puts the asking user in each
+tools/call request's `_meta` instead (`{"requester": {"username", "email"}}`),
+set by ai_agent's own code, never by the model. The getters fall back to
+that when no header was sent. Both paths are only as trustworthy as the
+caller, which is why /mcp requires the internal token once one is
+configured (see internal_token.py).
 """
 
 from __future__ import annotations
@@ -29,12 +37,28 @@ _username: ContextVar[str] = ContextVar("requester_username", default="")
 _email: ContextVar[str] = ContextVar("requester_email", default="")
 
 
+REQUESTER_META_KEY = "requester"
+
+
+def _from_request_meta(field: str) -> str:
+    """`field` of the current MCP request's `_meta.requester`, or ""."""
+    from mcp.server.lowlevel.server import request_ctx
+
+    try:
+        meta = request_ctx.get().meta
+    except LookupError:
+        return ""
+    requester = (meta.model_extra or {}).get(REQUESTER_META_KEY) if meta is not None else None
+    value = requester.get(field) if isinstance(requester, dict) else None
+    return value if isinstance(value, str) else ""
+
+
 def current_username() -> str:
-    return _username.get()
+    return _username.get() or _from_request_meta("username")
 
 
 def current_email() -> str:
-    return _email.get()
+    return _email.get() or _from_request_meta("email")
 
 
 class IdentityContextMiddleware:

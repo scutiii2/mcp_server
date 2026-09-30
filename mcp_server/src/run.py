@@ -33,6 +33,7 @@ from src.config import settings  # noqa: E402
 from src.services import capability_registry  # noqa: E402
 from src.services.app_config import capability_enabled, load_capabilities_config  # noqa: E402
 from src.services.identity_context import IdentityContextMiddleware  # noqa: E402
+from src.services.internal_token import InternalTokenMiddleware  # noqa: E402
 from src.utils.logging_setup import configure_logging  # noqa: E402
 from src.server import mcp  # noqa: E402
 
@@ -146,7 +147,12 @@ async def _serve() -> None:
             f"  Resources: {resource_count}",
             f"  Extensions: {', '.join(f'{s.id} ({s.status})' for s in extension_statuses) or 'none'}",
         ]
-        if settings.host not in {"127.0.0.1", "localhost", "::1"}:
+        banner.append(
+            "  /mcp auth : X-Internal-Token required"
+            if settings.internal_api_token
+            else "  /mcp auth : none (set INTERNAL_API_TOKEN in .secrets/secret_internal_api.env)"
+        )
+        if settings.host not in {"127.0.0.1", "localhost", "::1"} and not settings.internal_api_token:
             # Worth shouting about: there is no authentication on this
             # server, so a non-loopback bind means anything that can
             # route to this port can call every tool above with arguments
@@ -172,6 +178,10 @@ async def _serve() -> None:
         # instead of taking the caller's identity as a tool argument -
         # see services/identity_context.py's module docstring for why.
         app.add_middleware(IdentityContextMiddleware)
+        # Added last, so it runs first: a request to /mcp without the
+        # shared internal token never reaches the transport (only when a
+        # token is configured). See services/internal_token.py.
+        app.add_middleware(InternalTokenMiddleware, token=settings.internal_api_token)
         # Where a human (or chat_app's sidebar) checks what's connected -
         # also a plain HTTP route, same reasoning: nothing here is
         # something a model needs to call. See extension_routes.py.

@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from src import tool_progress
+from src import internal_auth, tool_progress
 from src.sync_wrapper import SyncMcpClient
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "config_servers.json"
@@ -55,7 +55,9 @@ def connect() -> None:
     # connection to mcp_server, so one variable controls both.
     override = os.getenv("MCP_SERVER_URL")
     url_overrides = {_SERVER_ID: override} if override else None
-    client.connect_all(_CONFIG_PATH, url_overrides)
+    # mcp_server requires the shared internal token on /mcp once it's configured.
+    extra_headers = {internal_auth.INTERNAL_TOKEN_HEADER: internal_auth.TOKEN} if internal_auth.TOKEN else None
+    client.connect_all(_CONFIG_PATH, url_overrides, extra_headers)
 
 
 def _tool_is_enabled(name: str, enabled: set[str]) -> bool:
@@ -88,9 +90,16 @@ def list_tools(enabled_extensions: list[str] | None = None) -> list[Any]:
 
 def call_tool(name: str, arguments: dict[str, Any]) -> str:
     on_progress = tool_progress.current()
-    # Only passed when a provider is streaming, so the no-progress call
-    # keeps its original shape.
-    result = client.call_tool(name, arguments, **({"on_progress": on_progress} if on_progress else {}))
+    # The asking user rides in the call's _meta: the session is shared by
+    # every user, so it can't go in a header (see internal_auth.py).
+    meta = internal_auth.requester_meta()
+    # Each only passed when set, so the plain call keeps its original shape.
+    extra: dict[str, Any] = {}
+    if on_progress:
+        extra["on_progress"] = on_progress
+    if meta:
+        extra["meta"] = meta
+    result = client.call_tool(name, arguments, **extra)
     parts = [getattr(block, "text", str(block)) for block in result.content]
     return "\n".join(parts) if parts else "(no output)"
 

@@ -28,7 +28,7 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from src import agent_registry
+from src import agent_registry, internal_auth
 
 TOOL_NAME = "delegate_to_agent"
 
@@ -84,7 +84,9 @@ async def _call_tool(url: str, name: str, arguments: dict[str, Any]) -> dict[str
     # gets wrapped in a BaseExceptionGroup by anyio on unwind, which the
     # caller's plain `except Exception` would then fail to stringify
     # usefully.
-    async with streamablehttp_client(url) as (read, write, _):
+    # The shared token (peers require it) and the asking user, so the
+    # delegate's own mcp_server calls carry them on too.
+    async with streamablehttp_client(url, headers=internal_auth.outbound_headers() or None) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(name, arguments)

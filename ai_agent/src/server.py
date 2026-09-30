@@ -66,7 +66,7 @@ from mcp.server.fastmcp import Context, FastMCP
 # Anything else (a real bug, ImportError...) still propagates untouched.
 _CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError"}
 try:
-    from src import agent_config, agent_registry, mcp_upstream
+    from src import agent_config, agent_registry, internal_auth, mcp_upstream
     from src.llm.base_provider import ChatCancelled
 except Exception as _exc:
     if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
@@ -94,6 +94,18 @@ mcp = FastMCP(
     host=HOST,
     port=PORT,
 )
+
+
+def _request_headers(ctx: Context | None) -> Any:
+    """The HTTP headers of the request this tool call arrived on, or None
+    (no ctx, or a transport without HTTP requests)."""
+    if ctx is None:
+        return None
+    try:
+        request = ctx.request_context.request
+    except ValueError:
+        return None
+    return getattr(request, "headers", None)
 
 
 def _cancelled_result() -> dict[str, Any]:
@@ -148,6 +160,9 @@ async def ask(
         if ctx is not None:
             await ctx.report_progress(0, None, json.dumps(event))
 
+    # The asking user, from ember_api's / chat_app's identity headers; every
+    # mcp_server tool this turn calls carries it on (see internal_auth.py).
+    requester_token = internal_auth.bind_requester(internal_auth.Requester.from_headers(_request_headers(ctx)))
     try:
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
@@ -155,6 +170,8 @@ async def ask(
         )
     except ChatCancelled:
         return _cancelled_result()
+    finally:
+        internal_auth.reset_requester(requester_token)
     return {
         "response": result.response,
         "tools_used": result.tools_used,
@@ -222,8 +239,12 @@ def main() -> None:
         # Same app, host, port and log level mcp.run(transport="streamable-http")
         # would use, built explicitly so middleware can be added here. No CORS:
         # only servers call this agent (chat_app directly, ember_web's browser
-        # via ember_api's proxy), never a browser.
+        # via ember_api's proxy), never a browser - which is also why /mcp
+        # can require the shared internal token (once one is configured).
         app = mcp.streamable_http_app()
+        app.add_middleware(internal_auth.InternalTokenMiddleware, token=internal_auth.TOKEN)
+        if not internal_auth.TOKEN:
+            print("ai_agent: /mcp has no auth - set INTERNAL_API_TOKEN in secrets/secret_internal_api.env", flush=True)
         uvicorn.run(app, host=HOST, port=PORT, log_level=mcp.settings.log_level.lower())
     finally:
         agent_registry.deregister(_AGENT_ID)

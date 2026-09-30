@@ -87,6 +87,10 @@ def create_app(config: dict | None = None) -> Flask:
     for key, value in mcp_secrets.items():
         if value:
             os.environ.setdefault(key, value)
+    # services/internal_auth.py puts it on every MCP session to mcp_server
+    # and ai_agent, which require it on /mcp once they have one configured.
+    if internal_api_secrets.get("INTERNAL_API_TOKEN"):
+        os.environ.setdefault("INTERNAL_API_TOKEN", internal_api_secrets["INTERNAL_API_TOKEN"])
     # DATA_DIR-resolved, not CWD-relative - same reasoning as
     # _resolve_sqlite_uri below for app.db. A real CHATS_DB_PATH env var
     # (including one already set via secret_llm.env above) still wins -

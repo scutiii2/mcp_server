@@ -21,9 +21,10 @@ since `services/llm/settings.py` reads plain env vars).
   per-provider API keys, and Ollama support have all moved to the
   standalone `ai_agent/` project's own `secrets/secret_llm.env` - see
   `ai_agent/README.md`.
-- **`secret_internal_api.env`** - `INTERNAL_API_TOKEN`, shared with
-  mcp_server's own `secret_internal_api.env` (same value both sides).
-  Authenticates chat_app -> mcp_server's `POST /upload` (see
+- **`secret_internal_api.env`** - `INTERNAL_API_TOKEN`, the same value as
+  mcp_server's, ai_agent's and ember_api's. Sent as `X-Internal-Token` on
+  every MCP session to mcp_server and ai_agent (`src/services/internal_auth.py`),
+  which require it once they have one, and on `POST /upload` (see
   `src/services/mcp_client.py`'s `upload_file()`).
 
 ## Adding a new secret file

@@ -17,6 +17,8 @@ from typing import Any, AsyncIterator
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from src.services.internal_auth import mcp_headers
+
 
 class AgentToolError(Exception):
     """Raised when the agent itself reports a tool-call error (isError on
@@ -34,7 +36,7 @@ async def _call_tool(url: str, name: str, arguments: dict[str, Any]) -> dict[str
     # what actually propagated was an ExceptionGroup wrapping it). Both
     # blocks must exit cleanly first; only then is the isError check - and
     # any raise - performed, on a already-closed connection.
-    async with streamablehttp_client(url) as (read, write, _):
+    async with streamablehttp_client(url, headers=mcp_headers()) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(name, arguments)
@@ -93,7 +95,7 @@ async def ask_stream(
 
     async def run() -> None:
         try:
-            async with streamablehttp_client(url) as (read, write, _):
+            async with streamablehttp_client(url, headers=mcp_headers()) as (read, write, _):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     result = await session.call_tool(

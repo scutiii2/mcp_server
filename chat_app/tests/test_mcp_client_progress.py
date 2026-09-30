@@ -51,3 +51,20 @@ def test_call_tool_without_on_progress_passes_no_callback():
         mcp_client, "ClientSession", _FakeSession
     ):
         assert mcp_client.call_tool("t", {}) == "result"
+
+
+def test_mcp_sessions_carry_the_internal_token(monkeypatch):
+    seen: list = []
+
+    @asynccontextmanager
+    async def recording_transport(url, headers=None):
+        seen.append(headers)
+        yield (None, None, None)
+
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "shared-secret")
+    with patch.object(mcp_client, "streamablehttp_client", recording_transport), patch.object(
+        mcp_client, "ClientSession", _FakeSession
+    ):
+        mcp_client.call_tool("t", {}, headers={"X-Requester-Email": "a@example.com"})
+
+    assert seen == [{"X-Requester-Email": "a@example.com", "X-Internal-Token": "shared-secret"}]

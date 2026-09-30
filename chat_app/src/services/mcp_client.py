@@ -19,11 +19,12 @@ from flask import current_app
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from src.services.internal_auth import mcp_headers
 from src.services.llm.settings import settings
 
 
 async def _list_tools_async() -> list[Any]:
-    async with streamablehttp_client(settings.mcp_server_url) as (read, write, _):
+    async with streamablehttp_client(settings.mcp_server_url, headers=mcp_headers()) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.list_tools()
@@ -40,7 +41,7 @@ async def _call_tool_async(
         if message:
             on_progress(message)
 
-    async with streamablehttp_client(settings.mcp_server_url, headers=headers) as (read, write, _):
+    async with streamablehttp_client(settings.mcp_server_url, headers=mcp_headers(headers)) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(
@@ -95,7 +96,7 @@ def call_tool(
 
 
 async def _list_resource_templates_async() -> list[Any]:
-    async with streamablehttp_client(settings.mcp_server_url) as (read, write, _):
+    async with streamablehttp_client(settings.mcp_server_url, headers=mcp_headers()) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.list_resource_templates()
@@ -108,7 +109,7 @@ async def _list_resource_templates_async() -> list[Any]:
 
 
 async def _read_resource_async(uri: str) -> str:
-    async with streamablehttp_client(settings.mcp_server_url) as (read, write, _):
+    async with streamablehttp_client(settings.mcp_server_url, headers=mcp_headers()) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.read_resource(uri)

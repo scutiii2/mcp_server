@@ -32,18 +32,30 @@ class SyncMcpClient:
     def _run(self, coro: Any) -> Any:
         return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
 
-    def connect_all(self, config_path: Path, url_overrides: dict[str, str] | None = None) -> list[ServerStatus]:
-        return self._run(self._registry.connect_all(config_path, url_overrides))
+    def connect_all(
+        self,
+        config_path: Path,
+        url_overrides: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> list[ServerStatus]:
+        return self._run(self._registry.connect_all(config_path, url_overrides, extra_headers))
 
     def list_tools(self) -> list[types.Tool]:
         return self._run(self._registry.list_tools())
 
     def call_tool(
-        self, name: str, arguments: dict[str, Any], on_progress: Callable[[str], None] | None = None
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        on_progress: Callable[[str], None] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> types.CallToolResult:
-        if on_progress is None:
-            return self._run(self._registry.call_tool(name, arguments))
-        return self._run(self._registry.call_tool(name, arguments, on_progress=on_progress))
+        extra: dict[str, Any] = {}
+        if on_progress is not None:
+            extra["on_progress"] = on_progress
+        if meta is not None:
+            extra["meta"] = meta
+        return self._run(self._registry.call_tool(name, arguments, **extra))
 
     def close(self) -> None:
         """Close every connection and stop the background loop/thread.

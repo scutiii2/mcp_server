@@ -117,6 +117,20 @@ roles across providers (e.g. `anthropic` as `ops_specialist`, `openai` as
 `generic`) is unaffected. Fixing this properly (role-aware agent ids) would
 touch `chat_app`'s persisted turn data and is left for a separate plan.
 
+## Security
+
+- **`/mcp` needs the internal token** once `INTERNAL_API_TOKEN` is set in
+  `secrets/secret_internal_api.env` (created from its `.example` on first
+  run; same value as mcp_server's, chat_app's and ember_api's). Without it
+  a request gets `401`. The agent sends the same token on its own calls to
+  mcp_server and to peer agents (`src/internal_auth.py`).
+- **The asking user travels on**: `ask()` reads `X-Requester-Username` /
+  `X-Requester-Email` from the request (ember_api and chat_app set them),
+  and every mcp_server tool it calls during that turn gets the user in the
+  call's `_meta.requester` - the agent's one mcp_server session is shared by
+  every user, so a header can't carry it. A delegated agent gets it as
+  headers. The model never sets either.
+
 ## Project layout
 
 - **`configs/*.json`** - structured settings, mostly gitignored. See

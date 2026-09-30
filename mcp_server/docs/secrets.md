@@ -14,10 +14,12 @@ values.
   `"password"`.
 - **`secret_ssh.env`** - `SSH_HOST_KEY_POLICY`, `SSH_KNOWN_HOSTS`. Applies
   to every SSH connection this server makes (`services/ssh.py`).
-- **`secret_internal_api.env`** - `INTERNAL_API_TOKEN`, shared with
-  chat_app's own `secret_internal_api.env` (same value both sides). Checked
-  by this server's own `POST /upload` (`upload_routes.py`) against calls
-  coming from chat_app.
+- **`secret_internal_api.env`** - `INTERNAL_API_TOKEN`, the same value as
+  chat_app's, ai_agent's and ember_api's `secret_internal_api.env`. When
+  set, every request to `/mcp` must carry it as `X-Internal-Token`
+  (`services/internal_token.py`, else `401`), and `POST /upload`
+  (`upload_routes.py`) always requires it. Blank leaves `/mcp` open, which
+  is only safe while the port stays on `127.0.0.1`.
 
 All of them are loaded by `run.py` before anything else (every `.env` file
 in this folder, not a fixed list of names - a future capability that
