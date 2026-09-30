@@ -11,6 +11,8 @@ import { useAgentsStore } from "../stores/agents";
 import { useChatStore } from "../stores/chat";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { JsonSchema } from "../api/types";
+import { useChatShortcuts } from "../composables/useChatShortcuts";
+import { splitAttachments } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
 const chat = useChatStore();
@@ -111,6 +113,23 @@ function onSelect(id: string): void {
   chat.selectChat(id);
   drawerOpen.value = false;
 }
+
+// What ↑ in the empty input brings back: the last typed question (its
+// attached files aren't part of it).
+const lastPrompt = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i -= 1) {
+    const m = messages.value[i]!;
+    if (m.role === "user" && !m.kind) return splitAttachments(m.content).text;
+  }
+  return "";
+});
+
+useChatShortcuts({
+  canStop: () => busy.value,
+  stop: () => void chat.stop(),
+  focusInput: () => input.value?.focus(),
+  newChat: onNew,
+});
 </script>
 
 <template>
@@ -204,6 +223,7 @@ function onSelect(id: string): void {
           ref="input"
           :busy="busy"
           :commands="commands"
+          :last-prompt="lastPrompt"
           @send="chat.send"
           @stop="chat.stop"
           @form="openCommandForm"

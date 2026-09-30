@@ -7,7 +7,11 @@ import { errorMessage } from "../utils/errors";
 
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
 // suggest while "/..." is being typed (empty without tools.use).
-const props = withDefaults(defineProps<{ busy: boolean; commands?: CommandInfo[] }>(), { commands: () => [] });
+// lastPrompt: the text of the latest question, recalled by ↑ in an empty box.
+const props = withDefaults(defineProps<{ busy: boolean; commands?: CommandInfo[]; lastPrompt?: string }>(), {
+  commands: () => [],
+  lastPrompt: "",
+});
 // form: a command was picked from the suggestions; the chat may open its form.
 const emit = defineEmits<{ send: [question: string]; stop: []; form: [command: CommandInfo] }>();
 
@@ -152,7 +156,11 @@ function setDraft(text: string): void {
   });
 }
 
-defineExpose({ setDraft });
+function focus(): void {
+  textarea.value?.focus();
+}
+
+defineExpose({ setDraft, focus });
 
 /** Grow with the content; CSS max-height caps it, then it scrolls. */
 function autoGrow(): void {
@@ -186,6 +194,12 @@ function onKeydown(event: KeyboardEvent): void {
   if (open && event.key === "Tab") {
     event.preventDefault();
     complete(suggestions.value[highlighted.value]!);
+    return;
+  }
+  // ↑ in an empty box brings back the last question, ready to edit and resend.
+  if (event.key === "ArrowUp" && !event.isComposing && draft.value === "" && props.lastPrompt) {
+    event.preventDefault();
+    setDraft(props.lastPrompt);
     return;
   }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -243,7 +257,7 @@ function onKeydown(event: KeyboardEvent): void {
         @keydown="onKeydown"
         @paste="onPaste"
       />
-      <button v-if="busy" type="button" class="round stop" title="Stop" @click="emit('stop')">
+      <button v-if="busy" type="button" class="round stop" title="Stop (Esc)" @click="emit('stop')">
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
           <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
         </svg>
