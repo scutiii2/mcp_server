@@ -14,6 +14,7 @@ from src.services.agent_gateway import AgentGateway
 from src.services.email_service import EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
+from src.services.public_rate_limiter import PublicReadLimiter
 from src.services.server_tools import ServerTools
 from src.services.session_service import SessionService
 from src.services.turns import TurnRegistry
@@ -58,6 +59,10 @@ def get_server_tools(request: Request) -> ServerTools:
 
 def get_log_writer(request: Request) -> LogWriter:
     return request.app.state.logs
+
+
+def get_share_limiter(request: Request) -> PublicReadLimiter:
+    return request.app.state.share_limiter
 
 
 async def current_account(

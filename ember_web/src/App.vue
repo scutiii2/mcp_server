@@ -17,7 +17,7 @@ const router = useRouter();
 // The session can end mid-page (expired, or logged out elsewhere): any 401
 // clears the account, and this sends the user back to the login page.
 watch(account, (now) => {
-  if (!now && !route.meta.guestOnly) void router.replace({ name: "login" });
+  if (!now && !route.meta.guestOnly && !route.meta.public) void router.replace({ name: "login" });
 });
 
 const pages = computed(() => visiblePages((p) => auth.hasPermission(p)));

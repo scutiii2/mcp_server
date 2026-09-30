@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from src.db import utcnow
-from src.models import Chat
+from src.models import Chat, SharedChat
 
 MAX_CHAT_BYTES = 2 * 1024 * 1024
 MAX_CHATS_PER_ACCOUNT = 1000
@@ -140,11 +140,16 @@ class ChatService:
         return chat
 
     async def delete(self, chat_id: str) -> None:
+        """Deletes the chat and revokes every share link made from it."""
         chat = await self.get(chat_id)
+        await self._session.execute(
+            delete(SharedChat).where(SharedChat.account_id == self._account_id, SharedChat.chat_id == chat_id)
+        )
         await self._session.delete(chat)
         await self._session.commit()
 
     async def delete_all(self) -> int:
+        await self._session.execute(delete(SharedChat).where(SharedChat.account_id == self._account_id))
         result = await self._session.execute(delete(Chat).where(Chat.account_id == self._account_id))
         await self._session.commit()
         return result.rowcount or 0

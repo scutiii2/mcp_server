@@ -7,6 +7,8 @@ declare module "vue-router" {
   interface RouteMeta {
     /** Reachable without logging in (login, register). */
     guestOnly?: boolean;
+    /** Open to everyone, logged in or not, and left as it is: a shared chat. */
+    public?: boolean;
     /** The ember_api permission the page needs; a list = any one of them. */
     permission?: string | string[];
     /** Open to any logged-in account, verified or not (the Account page,
@@ -91,6 +93,12 @@ export const router = createRouter({
     },
     { path: "/verify-email", name: "verify-email", component: () => import("../views/VerifyEmailView.vue") },
     { path: "/no-access", name: "no-access", component: () => import("../views/NoAccessView.vue") },
+    {
+      path: "/shared/:token",
+      name: "shared",
+      component: () => import("../views/SharedChatView.vue"),
+      meta: { public: true },
+    },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });
@@ -98,6 +106,9 @@ export const router = createRouter({
 // Access rules. ember_api enforces every one of these itself; the guard only
 // keeps the UI from showing pages whose calls would be refused.
 router.beforeEach(async (to): Promise<true | RouteLocationRaw> => {
+  // A shared chat is read by anyone holding the link: no login, and no
+  // redirect for someone who is logged in either.
+  if (to.meta.public) return true;
   const auth = useAuthStore();
   await auth.ensureLoaded();
   const account = auth.account;

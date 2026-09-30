@@ -7,6 +7,7 @@ import ChatInput from "../components/ChatInput.vue";
 import CommandFormModal from "../components/CommandFormModal.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import MessageList from "../components/MessageList.vue";
+import ShareDialog from "../components/ShareDialog.vue";
 import TemplatesModal from "../components/TemplatesModal.vue";
 import { useAgentsStore } from "../stores/agents";
 import { useChatStore } from "../stores/chat";
@@ -51,6 +52,9 @@ const templates = useTemplatesStore();
 // The saved-prompts dialog; `templatesDraft` is typed text offered as a new prompt.
 const templatesOpen = ref(false);
 const templatesDraft = ref("");
+
+// The share-link dialog for the open chat.
+const shareOpen = ref(false);
 
 function openTemplates(draft: string): void {
   templatesDraft.value = draft;
@@ -236,6 +240,7 @@ useChatShortcuts({
           <span v-if="working" class="working">{{ working }}</span>
           <div v-if="active && messages.length" class="chat-actions">
             <button type="button" title="Download this chat as Markdown" @click="exportActive">Export</button>
+            <button type="button" title="Make a read-only link to this chat" @click="shareOpen = true">Share</button>
             <button
               type="button"
               title="Condense the earlier messages into a summary the agent keeps"
@@ -265,6 +270,7 @@ useChatShortcuts({
         />
         <CommandFormModal :command="formCommand" :schema="formSchema" @submit="runCommandForm" @close="closeCommandForm" />
         <TemplatesModal :open="templatesOpen" :draft="templatesDraft" @close="templatesOpen = false" />
+        <ShareDialog :open="shareOpen" :chat-id="activeId" @close="shareOpen = false" />
       </div>
     </div>
   </section>

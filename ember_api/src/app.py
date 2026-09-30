@@ -26,6 +26,7 @@ from src.routes import (
     logs,
     mcp,
     server_info,
+    shares,
     templates,
     usage,
     watchers,
@@ -37,6 +38,8 @@ from src.services.email_service import EmailSender, SmtpEmailSender
 from src.services.log_service import LogWriter
 from src.services.mcp_proxy import McpProxy
 from src.services.otp_service import OtpService
+from src.services.public_rate_limiter import PublicReadLimiter
+from src.services.share_service import purge_expired_shares
 from src.services.server_tools import McpServerTools, ServerTools
 from src.services.session_service import SessionService
 from src.services.turns import TurnRegistry
@@ -73,6 +76,7 @@ def create_app(
             await auth_service.ensure_default_role(settings.default_role)
             await SessionService(session, settings.session_hours).purge_expired()
             await OtpService(session).purge_stale()
+            await purge_expired_shares(session)
         log_writer = LogWriter(database)
         await log_writer.purge_old()
         if generated:
@@ -91,6 +95,7 @@ def create_app(
         app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None)
         app.state.server_tools = server_tools or McpServerTools(settings.mcp_server_url, internal_token or None)
         app.state.logs = log_writer
+        app.state.share_limiter = PublicReadLimiter()
         app.state.turns = TurnRegistry(database, app.state.agent_gateway, settings.usage, log_writer)
         try:
             yield
@@ -112,6 +117,8 @@ def create_app(
     app.include_router(admin.router)
     app.include_router(chats.router)
     app.include_router(templates.router)
+    app.include_router(shares.router)
+    app.include_router(shares.public_router)
     app.include_router(usage.router)
     app.include_router(mcp.router)
     app.include_router(server_info.router)

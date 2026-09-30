@@ -10,6 +10,7 @@ from src.models.login_attempt import LoginAttempt
 from src.models.otp import EmailVerificationCode, InviteCode
 from src.models.prompt_template import PromptTemplate
 from src.models.role import Permission, Role
+from src.models.shared_chat import SharedChat
 from src.models.usage import UsageRecord
 
 __all__ = [
@@ -24,5 +25,6 @@ __all__ = [
     "Permission",
     "PromptTemplate",
     "Role",
+    "SharedChat",
     "UsageRecord",
 ]

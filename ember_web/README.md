@@ -48,6 +48,12 @@ URL, token or key.
   (start afresh); earlier messages stay readable as a collapsed log. A chat
   is also summarized automatically once its context is 60% full. A
   "Context n%" chip shows how full it is.
+- Share a chat: the Share button makes a read-only link
+  (`/shared/<token>`) that anyone can open without logging in. It is a frozen
+  copy of your questions and the answers (tool output, summaries and attached
+  files' text are left out); pick 1, 7 or 30 days or never. The link is shown
+  once when created (copy it then); the dialog lists a chat's links and turns
+  them off, and deleting the chat turns them off too.
 - Saved prompts, kept per account in ember_api (they follow you to any
   browser): the bookmark button next to the paperclip lists them with a
   filter, and typing `#` at the start of the input looks them up by name
@@ -163,16 +169,16 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 src/
   api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
                 ExtensionsClient / WatchersClient / LogsClient / AttachmentsClient /
-                ConfigIssuesClient / TemplatesClient (ember_api REST),
+                ConfigIssuesClient / TemplatesClient / SharesClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat, templates
   composables/  useChatShortcuts (window-level chat keys), useTheme (system / light / dark)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
-                Admin, Account, Login, Register, VerifyEmail, NoAccess
+                Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, TemplatePicker, TemplatesModal, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, UsageChip, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
@@ -183,7 +189,12 @@ src/
 ## Security notes
 
 - Access checks in the router only decide what the UI shows; ember_api
-  enforces every permission itself.
+  enforces every permission itself. The one public page is `/shared/:token`
+  (`meta.public`): the guard lets anyone in without loading an account, and
+  it shows only what `GET /api/shared/{token}` returns. The page and the app
+  carry `<meta name="robots" content="noindex">`.
+- A share link's token is kept only in the share dialog's memory while it
+  is shown: never in a store, `localStorage` or the link list.
 - Chats are stored in ember_api's database, and ember_api writes the
   answers itself. Renames and deletes are sent in order; a failed one shows
   a banner with Retry instead of being dropped.

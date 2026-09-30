@@ -100,6 +100,10 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/templates` | `chat.use` | `{name, body}` -> `201` the template. Name up to 60 characters (trimmed), body up to 10,000, at most 100 per account. `409` for a name the account already has (ignoring case) or the limit, `422` for a blank or too-long field. |
 | `PUT` | `/api/templates/{id}` | `chat.use` | `{name, body}` replaces one. `404` if missing or another account's, `409` name taken. |
 | `DELETE` | `/api/templates/{id}` | `chat.use` | `204`; `404` if missing or another account's. |
+| `POST` | `/api/chats/{id}/shares` | `chat.use` | `{expires_in_days: 1 \| 7 \| 30 \| null}` (default 7; null: never) -> `201 {id, chat_id, title, message_count, created_at, expires_at, token}`. Freezes a sanitized copy of the chat behind a new link; **`token` is in this response only** (ember_api stores its SHA-256). `404` unknown chat, `409` at 50 active links, `422` bad expiry or nothing shareable. Logged as `share.create`. |
+| `GET` | `/api/shares?chat_id=` | `chat.use` | This account's active links, newest first: `[{id, chat_id, title, message_count, created_at, expires_at}]`. Never a token. |
+| `DELETE` | `/api/shares/{id}` | `chat.use` | `204`, the link stops working at once; `404` if missing or another account's. Logged as `share.revoke`. |
+| `GET` | `/api/shared/{token}` | **none** | `{title, messages: [{role, content}], created_at, expires_at}` - the read-only snapshot. Unknown, malformed, revoked and expired tokens all get the same `404`. `429` past 60 requests a minute from one address. `Cache-Control: no-store`, `X-Robots-Tag: noindex`. |
 | `GET` | `/api/usage?days=30` | `chat.use` | `{six_hour, weekly: {used, limit, reset_at}, report: {total_tokens, turns, chats, summary_tokens, by_agent, daily, ...}}` |
 | `GET` | `/api/admin/usage?days=30` | `admin.manage` | Every account's tokens and answers in the period. |
 | `GET` | `/api/commands` | `tools.use` | mcp_server's slash commands: `[{capability, name, description, tool_name}]`. |
@@ -187,6 +191,18 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   of the saved messages up to one answer becomes a new chat with a
   server-made id. Only saved messages are read, so a chat that is still
   answering can be branched.
+- **Share links** (`services/share_service.py`, `routes/shares.py`): the one
+  feature that lets someone read a chat without logging in, so its rules live
+  on the server. A link's token is 256 random bits and only its SHA-256 is
+  stored (shown once, at creation). What is shared is a frozen copy taken
+  then, cut to the questions the user typed and the assistant's plain
+  answers: tool steps and results, usage data, summaries, raw logs,
+  slash-command results, error texts, download markers and the text of
+  attached files are left out. Links expire (1, 7 or 30 days, or never; expired
+  ones are purged at startup), can be revoked, and die with their chat
+  (deleting one chat or all of them) or account. Unknown, revoked and expired
+  links answer alike, and `GET /api/shared/{token}` is limited per address
+  (`PublicReadLimiter`, in memory).
 - **Chat search** (`services/chat_search.py`, `GET /api/chats/search`): a
   literal, case-insensitive scan of the account's titles and messages,
   streamed and stopped at 50 hits; ASCII queries are pre-filtered in SQL.
@@ -237,13 +253,13 @@ data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
-              UsageRecord, LogEntry, KnownDevice, PromptTemplate
+              UsageRecord, LogEntry, KnownDevice, PromptTemplate, SharedChat
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
-              AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, TurnRegistry,
+              AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, ShareService, PublicReadLimiter, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
               permissions
-  routes/     auth, account, admin, chats, templates, usage, mcp, server_info, watchers, logs,
+  routes/     auth, account, admin, chats, templates, shares, usage, mcp, server_info, watchers, logs,
               attachments, config_issues
   utils/      config_loader
 tests/
