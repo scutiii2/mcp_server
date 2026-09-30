@@ -114,6 +114,20 @@ bootstrap admin - see ember_api's README).
 | `EMBER_WEB_PORT` | `5173` | Vite's port. Vite fails instead of silently switching ports (`strictPort`). |
 | `EMBER_API_PORT` | `8030` | Where Vite forwards `/api` (ember_api). |
 
+## Tests
+
+```bash
+npm test
+```
+
+Vitest with jsdom, `@vue/test-utils` for components. Test files sit beside
+their source as `*.test.ts` and are type-checked by `vue-tsc -b` (so
+`npm run build` covers them) but never bundled. They need no running server:
+ember_api calls are mocked. Covered so far: the chat store (regenerate, edit
+and resend, search, jump to a result), the message list, usage chip, copy
+button, chat input (paste, drop, Up recall), sidebar search, the shortcut and
+theme composables, clipboard, markdown code blocks and usage formatting.
+
 Other scripts: `npm run build` (type-check + production build into `dist/`),
 `npm run preview` (serves `dist/`, with the same `/api` forwarding).
 

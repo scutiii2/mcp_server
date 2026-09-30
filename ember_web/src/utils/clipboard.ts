@@ -18,7 +18,10 @@ function legacyCopy(text: string): boolean {
   area.setAttribute("readonly", "");
   area.style.position = "fixed";
   area.style.opacity = "0";
+  const previous = document.activeElement;
   document.body.appendChild(area);
+  // Focused as well as selected: some browsers only copy from the focused element.
+  area.focus();
   area.select();
   try {
     return document.execCommand("copy");
@@ -26,5 +29,6 @@ function legacyCopy(text: string): boolean {
     return false;
   } finally {
     area.remove();
+    if (previous instanceof HTMLElement) previous.focus();
   }
 }

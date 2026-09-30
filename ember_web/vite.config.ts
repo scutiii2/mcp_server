@@ -1,5 +1,5 @@
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 // Everything under /api goes to ember_api, so the browser sees one origin:
 // the session cookie just works and no CORS is involved. ember_api then
@@ -33,6 +33,13 @@ export default defineConfig({
     // color-scheme). Below these versions the CSS minifier rewrites them into
     // a prefers-color-scheme query, which the toggle can't override.
     cssTarget: ['chrome123', 'firefox120', 'safari17.5'],
+  },
+  // `npm test`: unit tests sit beside their source as *.test.ts. jsdom gives
+  // the stores and components a browser-like document and localStorage.
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts'],
+    restoreMocks: true,
   },
   server: {
     // Set by run.bat / server_launcher. strictPort: fail instead of silently
