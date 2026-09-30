@@ -39,7 +39,7 @@ from typing import Any
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI, RateLimitError
 
-from src import delegation
+from src import approvals, delegation
 from src.llm import cancellation, cooldown, llm_config, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
@@ -352,12 +352,20 @@ async def run_chat(
                     await on_event(step_event(
                         "step_start", id=step_id, tool=call.name, label=labels.get(call.name), arguments=arguments,
                     ))
-                try:
-                    result_text = await dispatch_with_progress(_dispatch, on_event, step_id, call.name, arguments, depth)
-                    ok = True
-                except Exception as error:
-                    result_text = f"Tool '{call.name}' failed: {error}"
-                    ok = False
+                # With approvals on, the user answers before anything runs; a
+                # refusal is handed to the model as this step's result.
+                declined = await approvals.review(
+                    request_id, step_id, call.name, labels.get(call.name), arguments, on_event
+                )
+                if declined is not None:
+                    result_text, ok = declined, False
+                else:
+                    try:
+                        result_text = await dispatch_with_progress(_dispatch, on_event, step_id, call.name, arguments, depth)
+                        ok = True
+                    except Exception as error:
+                        result_text = f"Tool '{call.name}' failed: {error}"
+                        ok = False
                 if on_event:
                     await on_event(step_event("step_end", id=step_id, ok=ok, result=result_text))
                 tool_calls.append(ToolCallRecord(name=call.name, arguments=arguments, result=result_text))

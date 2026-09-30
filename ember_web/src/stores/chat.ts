@@ -2,7 +2,16 @@ import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import { chatsClient, type ChatSearchHit } from "../api/ChatsClient";
 import type { CommandInfo } from "../api/CommandsClient";
-import type { ChatMessage, Conversation, JsonSchema, ToolStep, TurnEvent } from "../api/types";
+import { ApiError } from "../api/http";
+import type {
+  ApprovalDecision,
+  ChatMessage,
+  Conversation,
+  JsonSchema,
+  PendingApproval,
+  ToolStep,
+  TurnEvent,
+} from "../api/types";
 import {
   LegacyLocalChats,
   ServerConversationStorage,
@@ -37,6 +46,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function cavemanKey(accountId: number): string {
   return `ember_web.caveman.${accountId}`;
+}
+
+function askBeforeToolsKey(accountId: number): string {
+  return `ember_web.askBeforeTools.${accountId}`;
+}
+
+function allowedToolsKey(accountId: number): string {
+  return `ember_web.allowedTools.${accountId}`;
+}
+
+// ember_api accepts at most this many allowed tools with a question.
+const MAX_ALLOWED_TOOLS = 200;
+
+/** The tools allowed for each chat ("Allow for this chat"), from storage.
+ * Anything malformed is dropped rather than trusted. */
+function readAllowedTools(accountId: number): Record<string, string[]> {
+  try {
+    const parsed: unknown = JSON.parse(readPreference(allowedToolsKey(accountId)) ?? "{}");
+    if (!isRecord(parsed)) return {};
+    const result: Record<string, string[]> = {};
+    for (const [chatId, tools] of Object.entries(parsed)) {
+      if (Array.isArray(tools)) {
+        const names = tools.filter((t): t is string => typeof t === "string").slice(0, MAX_ALLOWED_TOOLS);
+        if (names.length) result[chatId] = names;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
 }
 
 function extensionsKey(accountId: number): string {
@@ -104,6 +143,16 @@ export const useChatStore = defineStore("chat", () => {
   const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
   const caveman = ref(false);
+  // "Ask before running tools": each tool the agent wants to run waits for the
+  // user's answer. Off by default; remembered per account.
+  const askBeforeTools = ref(false);
+  // Tools the user chose "Allow for this chat" for, by chat id: they run
+  // without asking again. Remembered per account (in this browser).
+  const allowedTools = ref<Record<string, string[]>>({});
+  // The open chat's tool runs that wait for an answer, and the ones whose
+  // answer was sent but not yet confirmed by the agent.
+  const pendingApprovals = ref<PendingApproval[]>([]);
+  const deciding = ref<string[]>([]);
   // mcp_server extensions whose tools the agent (and slash commands) may use.
   // None by default: a newly added extension is never in scope unasked.
   // Remembered per account.
@@ -283,6 +332,8 @@ export const useChatStore = defineStore("chat", () => {
       conversations.value = [];
       setSearch("");
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
+      askBeforeTools.value = accountId !== null && readPreference(askBeforeToolsKey(accountId)) === "1";
+      allowedTools.value = accountId !== null ? readAllowedTools(accountId) : {};
       enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
       commandRunner = new SlashCommandRunner();
       commands.value = [];
@@ -302,6 +353,7 @@ export const useChatStore = defineStore("chat", () => {
         // Steps have no ids here; later step_end events for them are ignored.
         liveSteps.value = event.steps ?? [];
         liveStepIndex.clear();
+        pendingApprovals.value = event.approvals ?? [];
         break;
       case "token":
         streaming.value += event.text;
@@ -320,8 +372,24 @@ export const useChatStore = defineStore("chat", () => {
           result: "",
         });
         break;
+      case "approval_request":
+        activity.value = "waiting for your approval ...";
+        if (!pendingApprovals.value.some((a) => a.id === event.id)) {
+          pendingApprovals.value.push({
+            id: event.id,
+            tool: event.tool,
+            label: event.label ?? "",
+            arguments: isRecord(event.arguments) ? event.arguments : {},
+          });
+        }
+        break;
+      case "approval_resolved":
+        activity.value = "";
+        dropApproval(event.id);
+        break;
       case "step_end": {
         activity.value = "";
+        dropApproval(event.id);
         const index = liveStepIndex.get(event.id);
         const step = index === undefined ? undefined : liveSteps.value[index];
         if (step) {
@@ -342,6 +410,11 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
+  function dropApproval(id: string): void {
+    pendingApprovals.value = pendingApprovals.value.filter((a) => a.id !== id);
+    deciding.value = deciding.value.filter((d) => d !== id);
+  }
+
   function unfollow(): void {
     watcher?.abort();
     watcher = null;
@@ -349,6 +422,8 @@ export const useChatStore = defineStore("chat", () => {
     activity.value = "";
     liveSteps.value = [];
     liveStepIndex.clear();
+    pendingApprovals.value = [];
+    deciding.value = [];
   }
 
   /** Streams chat `id`'s running answer into `streaming` until it ends,
@@ -469,6 +544,7 @@ export const useChatStore = defineStore("chat", () => {
         enabled_extensions: enabledExtensions.value,
         title: conversation.title,
         ...(truncateTo === undefined ? {} : { truncate_to: truncateTo }),
+        ...(askBeforeTools.value ? { ask_before_tools: true, allowed_tools: allowedTools.value[id] ?? [] } : {}),
       });
       if (started !== generation) return;
       conversation.running = true;
@@ -658,7 +734,61 @@ export const useChatStore = defineStore("chat", () => {
     }
     conversations.value = conversations.value.filter((c) => c.id !== id);
     searchHits.value = searchHits.value.filter((h) => h.id !== id);
+    clearAllowedTools(id);
     enqueue(() => storage.remove(id));
+  }
+
+  function setAskBeforeTools(on: boolean): void {
+    askBeforeTools.value = on;
+    const accountId = auth.account?.id;
+    if (accountId !== undefined) writePreference(askBeforeToolsKey(accountId), on ? "1" : "0");
+  }
+
+  function persistAllowedTools(): void {
+    const accountId = auth.account?.id;
+    if (accountId !== undefined) writePreference(allowedToolsKey(accountId), JSON.stringify(allowedTools.value));
+  }
+
+  /** Stops asking about `tool` in chat `chatId`. */
+  function allowTool(chatId: string, tool: string): void {
+    const list = allowedTools.value[chatId] ?? [];
+    if (list.includes(tool) || list.length >= MAX_ALLOWED_TOOLS) return;
+    allowedTools.value = { ...allowedTools.value, [chatId]: [...list, tool] };
+    persistAllowedTools();
+  }
+
+  /** Asks about every tool of chat `chatId` again (default: the open chat). */
+  function clearAllowedTools(chatId: string | null = activeId.value): void {
+    if (chatId === null || !(chatId in allowedTools.value)) return;
+    const { [chatId]: _dropped, ...rest } = allowedTools.value;
+    allowedTools.value = rest;
+    persistAllowedTools();
+  }
+
+  /** Answers a tool the running answer waits to run. The card stays (its
+   * buttons off) until the agent confirms with an approval_resolved event. */
+  async function decideApproval(stepId: string, decision: ApprovalDecision): Promise<void> {
+    const conversation = active.value;
+    const approval = pendingApprovals.value.find((a) => a.id === stepId);
+    if (!conversation || !approval || deciding.value.includes(stepId)) return;
+    const chatId = conversation.id;
+    const started = generation;
+    deciding.value = [...deciding.value, stepId];
+    sendError.value = "";
+    try {
+      await chatsClient.decide(chatId, stepId, decision);
+      // Only once ember_api accepted the answer does "always" become a rule.
+      if (decision === "always") allowTool(chatId, approval.tool);
+    } catch (err) {
+      if (started !== generation) return;
+      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+        // Already answered, or the answer ended: nothing is waiting any more.
+        dropApproval(stepId);
+      } else {
+        deciding.value = deciding.value.filter((d) => d !== stepId);
+        sendError.value = errorMessage(err);
+      }
+    }
   }
 
   function setCaveman(on: boolean): void {
@@ -700,6 +830,8 @@ export const useChatStore = defineStore("chat", () => {
     conversations.value = [];
     searchHits.value = [];
     activeId.value = null;
+    allowedTools.value = {};
+    persistAllowedTools();
     enqueue(() => storage.removeAll());
   }
 
@@ -796,6 +928,13 @@ export const useChatStore = defineStore("chat", () => {
     clearSearch,
     caveman,
     setCaveman,
+    askBeforeTools,
+    setAskBeforeTools,
+    allowedTools,
+    clearAllowedTools,
+    pendingApprovals,
+    deciding,
+    decideApproval,
     enabledExtensions,
     setExtensionEnabled,
     refreshCommands,

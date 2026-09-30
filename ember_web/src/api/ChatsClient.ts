@@ -1,5 +1,5 @@
 import { apiRequest } from "./http";
-import type { ChatMessage } from "./types";
+import type { ApprovalDecision, ChatMessage } from "./types";
 
 /** A chat as ember_api lists it: no transcript. Times are naive UTC. */
 export interface ChatSummary {
@@ -41,6 +41,10 @@ export interface TurnStart {
   /** Regenerate / edit: index of the question this one replaces; it and
    * everything after it are dropped first. */
   truncate_to?: number;
+  /** Ask before each tool runs (answers go to `decide`). */
+  ask_before_tools?: boolean;
+  /** Tools the user already allowed for this chat: they run without asking. */
+  allowed_tools?: string[];
 }
 
 export interface TurnStarted {
@@ -85,6 +89,9 @@ export const chatsClient = {
     apiRequest<{ imported: number; skipped: number }>("POST", "/api/chats/import", { chats }),
   /** Saves the question and starts the answer in ember_api. */
   startTurn: (id: string, turn: TurnStart) => apiRequest<TurnStarted>("POST", `${path(id)}/turns`, turn),
+  /** Answers a tool the running answer waits to run (an approval_request's id). */
+  decide: (id: string, stepId: string, decision: ApprovalDecision) =>
+    apiRequest<{ decided: boolean }>("POST", `${path(id)}/approvals`, { step_id: stepId, decision }),
   cancel: (id: string) => apiRequest<{ cancelled: boolean }>("POST", `${path(id)}/cancel`),
   /** Replaces the history with a summary plus the raw log (asks an agent). */
   summarize: (id: string, agentId: string | null) =>

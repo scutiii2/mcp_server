@@ -92,6 +92,15 @@ class FakeAgent:
     interprets: list[str] = field(default_factory=list)
     cancels: list[str] = field(default_factory=list)
     gate: Any = None
+    # Tools this fake "wants to run" during a turn. With approval_mode "ask"
+    # it raises an approval_request for each (unless allowed already), waits
+    # for decide(), and runs or refuses it, like the real agent.
+    tool_calls: list[str] = field(default_factory=list)
+    decisions: list[tuple[str, str, str]] = field(default_factory=list)
+    decide_result: bool | None = None  # force decide()'s answer
+    decide_error: str | None = None
+    ran: list[str] = field(default_factory=list)  # tools that actually ran
+    _waiting: dict = field(default_factory=dict)
 
     loop: Any = None
 
@@ -100,7 +109,20 @@ class FakeAgent:
         if self.gate is not None:
             self.loop.call_soon_threadsafe(self.gate.set)
 
-    async def ask(self, url, caller: Caller, *, question, history, request_id, caveman, enabled_extensions, on_event):
+    async def ask(
+        self,
+        url,
+        caller: Caller,
+        *,
+        question,
+        history,
+        request_id,
+        caveman,
+        enabled_extensions,
+        on_event,
+        approval_mode="off",
+        allowed_tools=None,
+    ):
         self.asks.append(
             {
                 "url": url,
@@ -110,10 +132,14 @@ class FakeAgent:
                 "request_id": request_id,
                 "caveman": caveman,
                 "enabled_extensions": enabled_extensions,
+                "approval_mode": approval_mode,
+                "allowed_tools": allowed_tools,
             }
         )
         for event in self.events:
             await on_event(event)
+        for index, tool in enumerate(self.tool_calls):
+            await self._run_tool(f"step{index}", tool, request_id, approval_mode, allowed_tools or [], on_event)
         if self.hold:
             self.loop = asyncio.get_running_loop()
             self.gate = asyncio.Event()
@@ -137,6 +163,38 @@ class FakeAgent:
             **self.result_extra,
         }
 
+    async def _run_tool(self, step_id, tool, request_id, approval_mode, allowed_tools, on_event):
+        await on_event({"type": "step_start", "id": step_id, "tool": tool, "label": tool.upper(), "arguments": {"a": 1}})
+        approved = True
+        if approval_mode == "ask" and tool not in allowed_tools:
+            waiting = asyncio.get_running_loop().create_future()
+            self._waiting[(request_id, step_id)] = waiting
+            await on_event(
+                {"type": "approval_request", "id": step_id, "tool": tool, "label": tool.upper(), "arguments": {"a": 1}}
+            )
+            decision = await waiting
+            del self._waiting[(request_id, step_id)]
+            await on_event({"type": "approval_resolved", "id": step_id, "outcome": decision})
+            approved = decision in ("allow", "always")
+        if approved:
+            self.ran.append(tool)
+        await on_event(
+            {"type": "step_end", "id": step_id, "ok": approved, "result": "done" if approved else "The user declined."}
+        )
+
+    async def decide(self, url, caller, request_id, step_id, decision):
+        if self.decide_error:
+            raise AgentCallError(self.decide_error)
+        self.decisions.append((request_id, step_id, decision))
+        waiting = self._waiting.get((request_id, step_id))
+        if self.decide_result is not None:
+            answered = self.decide_result
+        else:
+            answered = waiting is not None and not waiting.done()
+        if answered and waiting is not None and not waiting.done():
+            waiting.set_result(decision)
+        return answered
+
     async def interpret(self, url, caller, text):
         self.interprets.append(text)
         if self.fail:
@@ -146,6 +204,10 @@ class FakeAgent:
     async def cancel(self, url, caller, request_id):
         self.cancels.append(request_id)
         self.release()
+        # A tool waiting for the user's answer ends as it does in the real agent.
+        for (waiting_request, _step), waiting in list(self._waiting.items()):
+            if waiting_request == request_id and not waiting.done():
+                waiting.set_result("cancelled")
         return True
 
 

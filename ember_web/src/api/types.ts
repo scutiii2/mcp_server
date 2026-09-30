@@ -32,15 +32,30 @@ export interface ChatMessage {
   steps?: ToolStep[];
 }
 
+/** A tool run that waits for the user's answer before it starts. */
+export interface PendingApproval {
+  /** The step's id: what an answer names. */
+  id: string;
+  tool: string;
+  label: string;
+  arguments: Record<string, unknown>;
+}
+
+/** The user's answer to a PendingApproval: run it this once, run it and stop
+ * asking about this tool in this chat, or don't run it. */
+export type ApprovalDecision = "allow" | "always" | "deny";
+
 /** Events of a turn ember_api runs, as its /events stream sends them. The
  * token/step ones are ai_agent's own, relayed. */
 export type TurnEvent = { sequence: number } & (
-  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[] }
+  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[]; approvals?: PendingApproval[] }
   | { type: "token"; text: string }
   | { type: "token_reset" }
   | { type: "step_start"; id: string; tool: string; label?: string; arguments: unknown }
   | { type: "step_progress"; id: string; message: string }
   | { type: "step_end"; id: string; ok: boolean; result: string }
+  | { type: "approval_request"; id: string; tool: string; label?: string; arguments: unknown }
+  | { type: "approval_resolved"; id: string; outcome: string }
   | { type: "usage"; total_tokens: number; estimated: boolean }
   | { type: "summarizing" }
   | { type: "summarized" }

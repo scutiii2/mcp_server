@@ -39,6 +39,10 @@ const {
   contextUsage,
   commands,
   enabledExtensions,
+  askBeforeTools,
+  allowedTools,
+  pendingApprovals,
+  deciding,
   searchQuery,
   searchActive,
   searchHits,
@@ -135,6 +139,9 @@ function onSelect(id: string, messageIndex?: number): void {
   drawerOpen.value = false;
 }
 
+// Tools the user allowed for the open chat ("Allow for this chat").
+const allowedCount = computed(() => (activeId.value ? (allowedTools.value[activeId.value]?.length ?? 0) : 0));
+
 // What ↑ in the empty input brings back: the last typed question (its
 // attached files aren't part of it).
 const lastPrompt = computed(() => {
@@ -205,6 +212,9 @@ useChatShortcuts({
         :steps="liveSteps"
         :busy="busy"
         :can-change="!busy && !working"
+        :approvals="pendingApprovals"
+        :deciding="deciding"
+        @decide="chat.decideApproval"
         :regenerate-index="chat.regenerateIndex"
         :jump-index="chat.jumpIndex"
         @jumped="chat.clearJump"
@@ -223,6 +233,23 @@ useChatShortcuts({
             />
             Terse replies
           </label>
+          <label class="terse" title="Ask you before the agent runs each tool">
+            <input
+              type="checkbox"
+              :checked="askBeforeTools"
+              @change="chat.setAskBeforeTools(($event.target as HTMLInputElement).checked)"
+            />
+            Ask before tools
+          </label>
+          <button
+            v-if="askBeforeTools && allowedCount"
+            type="button"
+            class="allowed"
+            title="Ask again about the tools you allowed for this chat"
+            @click="chat.clearAllowedTools()"
+          >
+            {{ allowedCount }} tool{{ allowedCount === 1 ? "" : "s" }} allowed - reset
+          </button>
           <RouterLink
             to="/extensions"
             class="extensions"
@@ -343,6 +370,19 @@ useChatShortcuts({
   font-size: 0.85em;
   color: var(--muted);
   cursor: pointer;
+}
+.allowed {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.75em;
+  color: var(--muted);
+  background: transparent;
+}
+.allowed:hover {
+  color: var(--text);
+  border-color: var(--accent);
 }
 .extensions {
   max-width: 220px;

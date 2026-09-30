@@ -1,4 +1,4 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type DOMWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "../api/types";
 import { withAttachments } from "../utils/attachments";
@@ -276,5 +276,95 @@ describe("branch button", () => {
 
     expect(labels).toContain("Regenerate answer");
     expect(labels).toContain("Branch from this answer");
+  });
+});
+
+describe("tool approval cards", () => {
+  const STOP_APP = { id: "step0", tool: "tool_srv_stopApp", label: "", arguments: { app: "web", force: true } };
+  const cards = (wrapper: ReturnType<typeof mountList>) => wrapper.findAll(".approval");
+  const buttons = (card: DOMWrapper<Element>) => card.findAll(".buttons button");
+
+  it("shows nothing when no tool is waiting", () => {
+    expect(cards(mountList({ busy: true, approvals: [] })).length).toBe(0);
+    expect(cards(mountList({ busy: true })).length).toBe(0);
+  });
+
+  it("shows a card for each waiting tool while the answer is being written", () => {
+    const wrapper = mountList({ busy: true, approvals: [STOP_APP, { ...STOP_APP, id: "step1", tool: "tool_srv_startApp" }] });
+
+    expect(cards(wrapper)).toHaveLength(2);
+    expect(cards(wrapper)[0]!.find("header strong").text()).toBe("Stop App");
+    expect(cards(wrapper)[1]!.find("header strong").text()).toBe("Start App");
+    expect(cards(wrapper)[0]!.find("header code").text()).toBe("tool_srv_stopApp");
+    expect(cards(wrapper)[0]!.text()).toContain("will not run until you allow it");
+    expect(cards(wrapper)[0]!.text()).toContain("counts as Deny");
+  });
+
+  it("uses the tool's own display label when it has one", () => {
+    const wrapper = mountList({ busy: true, approvals: [{ ...STOP_APP, label: "Stop an application" }] });
+
+    expect(cards(wrapper)[0]!.find("header strong").text()).toBe("Stop an application");
+  });
+
+  it("shows the real arguments, as text", () => {
+    const wrapper = mountList({
+      busy: true,
+      approvals: [{ ...STOP_APP, arguments: { app: "<img src=x onerror=alert(1)>", force: true } }],
+    });
+
+    const shown = cards(wrapper)[0]!.find("pre");
+    expect(shown.text()).toContain('"app": "<img src=x onerror=alert(1)>"');
+    expect(shown.text()).toContain('"force": true');
+    expect(cards(wrapper)[0]!.find("img").exists()).toBe(false);
+  });
+
+  it("opens short arguments, folds long ones, and says when there are none", () => {
+    const short = mountList({ busy: true, approvals: [STOP_APP] });
+    expect(cards(short)[0]!.find("details").attributes("open")).toBeDefined();
+
+    const long = mountList({ busy: true, approvals: [{ ...STOP_APP, arguments: { text: "x".repeat(600) } }] });
+    expect(cards(long)[0]!.find("details").attributes("open")).toBeUndefined();
+    expect(cards(long)[0]!.find("pre").text()).toContain("x".repeat(600)); // still all there to read
+
+    const none = mountList({ busy: true, approvals: [{ ...STOP_APP, arguments: {} }] });
+    expect(cards(none)[0]!.find("pre").text()).toBe("(no arguments)");
+  });
+
+  it("has three answers, each sent for its own step", async () => {
+    const wrapper = mountList({ busy: true, approvals: [STOP_APP, { ...STOP_APP, id: "step1" }] });
+    const [first, second] = cards(wrapper);
+
+    expect(buttons(first!).map((b) => b.text())).toEqual(["Allow once", "Allow for this chat", "Deny"]);
+    await buttons(first!)[0]!.trigger("click");
+    await buttons(first!)[1]!.trigger("click");
+    await buttons(second!)[2]!.trigger("click");
+
+    expect(wrapper.emitted("decide")).toEqual([
+      ["step0", "allow"],
+      ["step0", "always"],
+      ["step1", "deny"],
+    ]);
+  });
+
+  it("turns the buttons off for a step whose answer is on its way", () => {
+    const wrapper = mountList({ busy: true, approvals: [STOP_APP, { ...STOP_APP, id: "step1" }], deciding: ["step0"] });
+
+    expect(buttons(cards(wrapper)[0]!).every((b) => b.attributes("disabled") !== undefined)).toBe(true);
+    expect(buttons(cards(wrapper)[1]!).every((b) => b.attributes("disabled") === undefined)).toBe(true);
+  });
+
+  it("does not answer through a disabled button", async () => {
+    const wrapper = mountList({ busy: true, approvals: [STOP_APP], deciding: ["step0"] });
+
+    await buttons(cards(wrapper)[0]!)[0]!.trigger("click");
+
+    expect(wrapper.emitted("decide")).toBeUndefined();
+  });
+
+  it("is a labelled group a screen reader can find", () => {
+    const wrapper = mountList({ busy: true, approvals: [STOP_APP] });
+
+    expect(cards(wrapper)[0]!.attributes("role")).toBe("group");
+    expect(cards(wrapper)[0]!.attributes("aria-label")).toBe("Allow Stop App?");
   });
 });

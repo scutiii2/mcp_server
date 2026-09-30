@@ -72,6 +72,12 @@ URL, token or key.
 - Tools page: list and run `mcp_server` tools from forms generated from their
   JSON Schema (the same form as the command form). Tools show readable titles (`tool_srv_startApp` -> "Start App")
   and JSON results render as fields and tables, with the raw JSON a click away.
+- "Ask before tools" toggle (off by default, remembered per account): each
+  tool the agent wants to run waits for you. A card shows the tool's name and
+  arguments with Allow once, Allow for this chat and Deny; nothing runs until
+  you answer, and no answer within 4 minutes counts as Deny. "Allow for this
+  chat" is remembered in this browser per chat (a chip shows how many tools are
+  allowed and resets them). Slash commands you type yourself never ask.
 - "Terse replies" toggle next to the Agent picker (ai_agent's `caveman`
   option), remembered per account.
 - Usage page: your 6-hour and weekly token limits, totals, tokens per day and
@@ -188,6 +194,9 @@ src/
 
 ## Security notes
 
+- A tool approval is enforced by ai_agent and ember_api, not the browser:
+  the card only sends an answer, and an answer is accepted only from the
+  chat's own account for a step that is waiting.
 - Access checks in the router only decide what the UI shows; ember_api
   enforces every permission itself. The one public page is `/shared/:token`
   (`meta.public`): the guard lets anyone in without loading an account, and

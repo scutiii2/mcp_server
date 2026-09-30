@@ -88,6 +88,7 @@ def test_call_returns_the_sub_agents_response_on_success(monkeypatch):
         "enabled_extensions": [],
         "request_id": None,
         "depth": 1,
+        "approval_mode": "off",
     }
 
 

@@ -54,11 +54,15 @@ class AgentGateway(Protocol):
         caveman: bool,
         enabled_extensions: list[str],
         on_event: EventHandler,
+        approval_mode: str = "off",
+        allowed_tools: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     async def interpret(self, url: str, caller: Caller, text: str) -> dict[str, Any]: ...
 
     async def cancel(self, url: str, caller: Caller, request_id: str) -> bool: ...
+
+    async def decide(self, url: str, caller: Caller, request_id: str, step_id: str, decision: str) -> bool: ...
 
 
 class McpAgentGateway:
@@ -101,7 +105,20 @@ class McpAgentGateway:
             raise AgentCallError("\n".join(parts) if parts else f"{tool} failed")
         return result.structuredContent or {}
 
-    async def ask(self, url, caller, *, question, history, request_id, caveman, enabled_extensions, on_event):
+    async def ask(
+        self,
+        url,
+        caller,
+        *,
+        question,
+        history,
+        request_id,
+        caveman,
+        enabled_extensions,
+        on_event,
+        approval_mode="off",
+        allowed_tools=None,
+    ):
         arguments = {
             "question": question,
             "history": history,
@@ -110,6 +127,18 @@ class McpAgentGateway:
             # Which extensions' tools the agent may use; none by default.
             "enabled_extensions": enabled_extensions,
         }
+        if approval_mode != "off":
+            # Fail closed: an ai_agent that predates this option would ignore
+            # it and run every tool unasked, so it is checked before the turn
+            # starts, not discovered after tools have run.
+            status = await self._call(url, caller, "status", {})
+            if not status.get("tool_approval"):
+                raise AgentCallError(
+                    "This agent cannot ask before running tools (it needs updating and restarting). "
+                    "Turn off \"Ask before running tools\" or restart the agent."
+                )
+            arguments["approval_mode"] = approval_mode
+            arguments["allowed_tools"] = allowed_tools or []
         return await self._call(url, caller, "ask", arguments, on_event)
 
     async def interpret(self, url, caller, text):
@@ -118,4 +147,10 @@ class McpAgentGateway:
     async def cancel(self, url, caller, request_id):
         result = await self._call(url, caller, "cancel", {"request_id": request_id})
         return bool(result.get("cancelled"))
+
+    async def decide(self, url, caller, request_id, step_id, decision):
+        """Answers a tool-approval request the agent raised for this turn.
+        False when nothing was waiting (already answered, or the turn ended)."""
+        result = await self._call(url, caller, "decide", {"request_id": request_id, "step_id": step_id, "decision": decision})
+        return bool(result.get("decided"))
 

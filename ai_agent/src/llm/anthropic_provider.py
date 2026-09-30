@@ -42,7 +42,7 @@ from anthropic import (
     RateLimitError,
 )
 
-from src import delegation
+from src import approvals, delegation
 from src.llm import cancellation, cooldown, llm_config, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
@@ -340,12 +340,20 @@ async def run_chat(
                     await on_event(step_event(
                         "step_start", id=step_id, tool=block.name, label=labels.get(block.name), arguments=block.input,
                     ))
-                try:
-                    result_text = await dispatch_with_progress(_dispatch, on_event, step_id, block.name, block.input, depth)
-                    ok = True
-                except Exception as error:
-                    result_text = f"Tool '{block.name}' failed: {error}"
-                    ok = False
+                # With approvals on, the user answers before anything runs; a
+                # refusal is handed to the model as this step's result.
+                declined = await approvals.review(
+                    request_id, step_id, block.name, labels.get(block.name), block.input, on_event
+                )
+                if declined is not None:
+                    result_text, ok = declined, False
+                else:
+                    try:
+                        result_text = await dispatch_with_progress(_dispatch, on_event, step_id, block.name, block.input, depth)
+                        ok = True
+                    except Exception as error:
+                        result_text = f"Tool '{block.name}' failed: {error}"
+                        ok = False
                 if on_event:
                     await on_event(step_event("step_end", id=step_id, ok=ok, result=result_text))
                 tool_calls.append(ToolCallRecord(name=block.name, arguments=block.input, result=result_text))

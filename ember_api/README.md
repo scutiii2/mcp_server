@@ -89,8 +89,9 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `PATCH` | `/api/chats/{id}` | `chat.use` | `{title}` renames. |
 | `DELETE` | `/api/chats/{id}`, `/api/chats` | `chat.use` | `204`; one chat, or all of this account's. |
 | `POST` | `/api/chats/import` | `chat.use` | `{chats: [{id, title, agent_id, messages, created_at, updated_at}]}` (times in ms) -> `{imported, skipped}`. Existing ids are skipped, never replaced. |
-| `POST` | `/api/chats/{id}/turns` | `chat.use` | `{question, agent_id, caveman?, enabled_extensions?, title?, truncate_to?}` -> `202 {chat, sequence}`. `enabled_extensions`: extension ids whose tools the agent may use (none by default). `truncate_to` (regenerate / edit): index of the typed question this one replaces; it and everything after it are dropped first (`422` unless that message is a question the user typed, `404` for an unknown chat). Saves the question (creating the chat) and starts the answer **in ember_api**: it finishes, is saved and counts toward the usage limits even if the browser leaves. `404` unknown agent, `409` already answering, `429` usage limit or 3 answers already running. |
+| `POST` | `/api/chats/{id}/turns` | `chat.use` | `{question, agent_id, caveman?, enabled_extensions?, title?, truncate_to?, ask_before_tools?, allowed_tools?}` -> `202 {chat, sequence}`. `enabled_extensions`: extension ids whose tools the agent may use (none by default). `truncate_to` (regenerate / edit): index of the typed question this one replaces; it and everything after it are dropped first (`422` unless that message is a question the user typed, `404` for an unknown chat). `ask_before_tools`: the agent asks before each tool runs, except `allowed_tools` (names, at most 200; the tools the user allowed for this chat); see `/approvals` below. Saves the question (creating the chat) and starts the answer **in ember_api**: it finishes, is saved and counts toward the usage limits even if the browser leaves. `404` unknown agent, `409` already answering, `429` usage limit or 3 answers already running. |
 | `GET` | `/api/chats/{id}/events?after=N` | `chat.use` | Server-Sent Events of the chat's running (or just finished) answer: a `snapshot` of the text and tool steps so far when joining late, then `token` / `step_*` / `summarizing` events, last `final` `{message, cancelled}` or `error`. `404` when there's nothing to watch. The saved answer carries `model`, `total_tokens`, `input_tokens`, `output_tokens`, `duration_s` (the whole turn, seconds), `context_tokens` / `context_window` when ai_agent reported them, and `steps: [{tool, label, arguments, ok, result}]` (results cut to 4,000 characters, at most 50 steps). |
+| `POST` | `/api/chats/{id}/approvals` | `chat.use` | `{step_id, decision: allow \| always \| deny}` answers a tool the running answer waits to run (the `id` of an `approval_request` event) -> `{decided: true}`. `404` no answer running, `409` nothing waiting for that step (unknown or already answered), `502` agent unreachable. Only the chat's own account can; logged as `tool.approval`. |
 | `POST` | `/api/chats/{id}/cancel` | `chat.use` | `{cancelled}`; ai_agent stops at its next round, keeping what streamed. |
 | `POST` | `/api/chats/{id}/summarize` | `chat.use` | `{agent_id?}` -> the chat, its history replaced by a `summary` message plus a `log_attachment` (raw messages, never sent to the agent again). `502` if the agent couldn't; nothing changes then. |
 | `POST` | `/api/chats/{id}/clear` | `chat.use` | -> the chat, restarted: everything kept as one `log_attachment`. |
@@ -184,6 +185,15 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   the event buffer stays small because streamed text is kept as one string
   and late joiners get it as a snapshot. At most 3 running answers per
   account. On shutdown a running answer is saved as interrupted.
+- **Asking before tools** (`ask_before_tools`, `services/turns.py`,
+  `POST /api/chats/{id}/approvals`): the turn calls the agent's `ask` with
+  `approval_mode: "ask"`. The agent's `approval_request` / `approval_resolved`
+  events are relayed to watchers, and the requests still waiting are kept in
+  the turn and sent in the late-joiner snapshot (`approvals`), so a reloaded
+  page still shows the question. An answer goes to the agent's `decide` tool;
+  the agent's own `approval_resolved` event then clears it. It fails closed:
+  `AgentGateway.ask` checks the agent's `status` for `tool_approval` first and
+  refuses an agent that would ignore the option, so no tool can run unasked.
 - **Regenerate / edit** (`truncate_to` on `POST /api/chats/{id}/turns`): the
   server cuts the history before a typed question and asks again, so the
   browser never rewrites saved history itself.

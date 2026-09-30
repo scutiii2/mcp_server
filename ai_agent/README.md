@@ -4,11 +4,11 @@ A standalone MCP agent, hard-pinned to one LLM provider+model, sitting
 between `chat_app` and `mcp_server`:
 
 ```
-chat_app  --(MCP: ask/interpret/status/cancel)-->  ai_agent  --(MCP, persistent)-->  mcp_server
+chat_app  --(MCP: ask/interpret/status/cancel/decide)-->  ai_agent  --(MCP, persistent)-->  mcp_server
 ```
 
 It is both an MCP *server* (to `chat_app`, exposing
-`ask`/`interpret`/`status`/`cancel`)
+`ask`/`interpret`/`status`/`cancel`/`decide`)
 and an MCP *client* (to `mcp_server`, via a persistent connection - see
 `src/mcp_upstream.py`). Run two instances - one per provider - to back
 `chat_app`'s Claude Agent / OpenAI Agent dropdown entries.
@@ -58,6 +58,23 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
    ```
 
    Takes precedence over `AI_AGENT_GATEWAY`.
+
+## Asking before tools run
+
+`ask` takes `approval_mode` and `allowed_tools` (`src/approvals.py`):
+
+- `off` (default): tools run as before. chat_app never sets a mode.
+- `ask`: before each tool that is not in `allowed_tools`, the agent emits an
+  `approval_request` event (tool, label, arguments) and waits. The tool runs only
+  after the `decide(request_id, step_id, decision)` tool answers `allow` or
+  `always` (also stop asking about that tool for the rest of the turn). `deny`,
+  no answer within 4 minutes, or a Stop all mean it does not run, and the model
+  is told so in place of a result. `delegate_to_agent` asks like any tool.
+- `deny`: a tool that would need asking is refused at once. A delegated agent
+  gets this from a turn that asks, since it cannot reach the user.
+
+`status` reports `tool_approval: true`, so a caller that needs tools asked about
+(ember_api) can refuse an older agent that would ignore the option.
 
 ## Roles
 

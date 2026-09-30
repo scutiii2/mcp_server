@@ -65,7 +65,7 @@ def test_requester_from_headers_ignores_non_strings():
 def test_ask_binds_the_requester_from_the_request_headers():
     seen: list[Requester] = []
 
-    async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False):
+    async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False, approval_mode="off", allowed_tools=None):
         seen.append(internal_auth.current_requester())
         return ChatResult(response="done")
 

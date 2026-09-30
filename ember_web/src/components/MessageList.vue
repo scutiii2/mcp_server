@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import type { ChatMessage, ToolStep } from "../api/types";
+import type { ApprovalDecision, ChatMessage, PendingApproval, ToolStep } from "../api/types";
 import { splitAttachments } from "../utils/attachments";
+import { toolTitle } from "../utils/toolTitles";
 import CopyButton from "./CopyButton.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import ToolSteps from "./ToolSteps.vue";
@@ -20,8 +21,28 @@ const props = defineProps<{
   regenerateIndex?: number;
   /** A message to scroll to and flash (a search result); null for none. */
   jumpIndex?: number | null;
+  /** Tool runs waiting for the user's answer, and the ones already answered
+   * but not yet confirmed (their buttons are off). */
+  approvals?: PendingApproval[];
+  deciding?: string[];
 }>();
-const emit = defineEmits<{ regenerate: []; edit: [index: number, text: string]; branch: [index: number]; jumped: [] }>();
+const emit = defineEmits<{
+  regenerate: [];
+  edit: [index: number, text: string];
+  branch: [index: number];
+  jumped: [];
+  decide: [stepId: string, decision: ApprovalDecision];
+}>();
+
+const ARGS_OPEN_MAX_CHARS = 400;
+
+function formatArguments(args: Record<string, unknown>): string {
+  return Object.keys(args).length === 0 ? "(no arguments)" : JSON.stringify(args, null, 2);
+}
+
+function isDeciding(id: string): boolean {
+  return props.deciding?.includes(id) ?? false;
+}
 
 // The question being edited (its index) and its draft text.
 const editingIndex = ref<number | null>(null);
@@ -254,6 +275,38 @@ onBeforeUnmount(() => {
 
       <div v-if="busy" class="assistant live">
         <ToolSteps v-if="steps.length" :steps="steps" live />
+        <!-- A tool the agent wants to run waits here; nothing runs until the
+             user answers (or a few minutes pass, which counts as no). What is
+             shown is the tool's real name and arguments, not the model's words. -->
+        <section
+          v-for="a in approvals ?? []"
+          :key="a.id"
+          class="approval"
+          role="group"
+          :aria-label="`Allow ${toolTitle(a.tool)}?`"
+        >
+          <header>
+            <strong>{{ a.label || toolTitle(a.tool) }}</strong>
+            <code>{{ a.tool }}</code>
+          </header>
+          <p class="ask">The agent wants to run this tool. It will not run until you allow it.</p>
+          <details :open="formatArguments(a.arguments).length <= ARGS_OPEN_MAX_CHARS">
+            <summary>Arguments</summary>
+            <pre>{{ formatArguments(a.arguments) }}</pre>
+          </details>
+          <div class="buttons">
+            <button type="button" class="allow" :disabled="isDeciding(a.id)" @click="emit('decide', a.id, 'allow')">
+              Allow once
+            </button>
+            <button type="button" :disabled="isDeciding(a.id)" @click="emit('decide', a.id, 'always')">
+              Allow for this chat
+            </button>
+            <button type="button" class="deny" :disabled="isDeciding(a.id)" @click="emit('decide', a.id, 'deny')">
+              Deny
+            </button>
+          </div>
+          <p class="note">No answer within 4 minutes counts as Deny.</p>
+        </section>
         <span v-if="activity" class="activity"><span class="dot" />{{ activity }}</span>
         <MarkdownContent v-if="streaming" :text="streaming" />
         <span v-else-if="!activity" class="activity"><span class="dot" />thinking ...</span>
@@ -459,6 +512,82 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
   font-family: var(--mono);
   background: var(--code-bg);
+}
+.approval {
+  align-self: stretch;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.approval header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.approval code {
+  font-family: var(--mono);
+  font-size: 0.8em;
+  color: var(--muted);
+}
+.approval .ask {
+  margin: 4px 0;
+  font-size: 0.9em;
+}
+.approval details {
+  margin: 4px 0 8px;
+  font-size: 0.85em;
+}
+.approval summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.approval pre {
+  max-height: 220px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  background: var(--code-bg);
+}
+.approval .buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.approval .buttons button {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--text);
+  background: transparent;
+}
+.approval .buttons button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.approval .buttons .allow {
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.approval .buttons .deny:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.approval .buttons button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.approval .note {
+  margin: 8px 0 0;
+  font-size: 0.75em;
+  color: var(--muted);
 }
 .live {
   display: flex;

@@ -66,7 +66,7 @@ from mcp.server.fastmcp import Context, FastMCP
 # Anything else (a real bug, ImportError...) still propagates untouched.
 _CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError"}
 try:
-    from src import agent_config, agent_registry, internal_auth, mcp_upstream
+    from src import agent_config, agent_registry, approvals, internal_auth, mcp_upstream
     from src.llm.base_provider import ChatCancelled
 except Exception as _exc:
     if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
@@ -135,6 +135,8 @@ async def ask(
     request_id: str | None = None,
     depth: int = 0,
     caveman: bool = False,
+    approval_mode: str = "off",
+    allowed_tools: list[str] | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
@@ -145,6 +147,9 @@ async def ask(
     chat_app never sets it, so it defaults to 0 for every top-level call.
     caveman appends terse-reply instructions to the system prompt for this
     turn only.
+    approval_mode: "off" (default), "ask" (the user answers, through
+    decide(), before each tool not in allowed_tools runs) or "deny" (such
+    tools are refused; a delegating agent's sub-agent gets this).
     ctx, if the MCP client requested it, is FastMCP's injected Context -
     used below only to relay run_chat's live step/token events as MCP
     progress notifications; chat_app's own tool call never needs to pass
@@ -166,7 +171,7 @@ async def ask(
     try:
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
-            on_event=on_event, caveman=caveman,
+            on_event=on_event, caveman=caveman, approval_mode=approval_mode, allowed_tools=allowed_tools,
         )
     except ChatCancelled:
         return _cancelled_result()
@@ -220,8 +225,20 @@ def interpret(text: str) -> dict[str, Any]:
 
 @mcp.tool()
 def status() -> dict[str, Any]:
-    """Live availability of this agent's pinned provider."""
-    return agent_config.status()
+    """Live availability of this agent's pinned provider. `tool_approval`
+    says ask() understands approval_mode, so a caller that needs tools asked
+    about can refuse an agent that would ignore it."""
+    return {**agent_config.status(), "tool_approval": True}
+
+
+@mcp.tool()
+async def decide(request_id: str, step_id: str, decision: str) -> dict[str, Any]:
+    """Answers a tool-approval request an ask() call in "ask" mode raised
+    (an `approval_request` event): decision is "allow", "always" (allow, and
+    stop asking for this tool for the rest of the turn) or "deny". Returns
+    {"decided": False} when nothing is waiting for that request and step -
+    unknown, already answered, or the turn ended."""
+    return {"decided": approvals.BROKER.decide(request_id, step_id, decision)}
 
 
 @mcp.tool()

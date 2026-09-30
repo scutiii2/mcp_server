@@ -70,6 +70,10 @@ class TurnOptions:
     caveman: bool = False
     # Extensions whose tools the agent may use (none by default).
     enabled_extensions: tuple[str, ...] = ()
+    # Ask the user before each tool runs, except the tools they already
+    # allowed for this chat.
+    ask_before_tools: bool = False
+    allowed_tools: tuple[str, ...] = ()
 
 
 @dataclass(eq=False)
@@ -89,6 +93,8 @@ class Turn:
     # answer so a reload can still show "Ran N tools".
     steps: list[dict[str, Any]] = field(default_factory=list)
     step_index: dict[str, int] = field(default_factory=dict)
+    # Tool runs waiting for the user's answer, by step id: {id, tool, label, arguments}.
+    pending_approvals: dict[str, dict[str, Any]] = field(default_factory=dict)
     sequence: int = 0
     events: deque = field(default_factory=lambda: deque(maxlen=EVENT_BUFFER))
     condition: asyncio.Condition = field(default_factory=asyncio.Condition)
@@ -103,7 +109,21 @@ class Turn:
             "text": self.text,
             "activity": self.activity,
             "steps": [dict(s) for s in self.steps],
+            "approvals": [dict(a) for a in self.pending_approvals.values()],
             "sequence": self.sequence,
+        }
+
+    def record_approval(self, event: dict[str, Any]) -> None:
+        """Remembers a tool run that waits for the user, so a browser that
+        joins late (or reloads) still gets its question."""
+        step_id = str(event.get("id") or "")
+        if not step_id:
+            return
+        self.pending_approvals[step_id] = {
+            "id": step_id,
+            "tool": str(event.get("tool") or ""),
+            "label": str(event.get("label") or ""),
+            "arguments": event.get("arguments") if isinstance(event.get("arguments"), dict) else {},
         }
 
     def record_step(self, event: dict[str, Any]) -> None:
@@ -192,6 +212,23 @@ class TurnRegistry:
                 logger.warning("cancel of turn %s failed: %s", turn.request_id, error)
         return True
 
+    def pending_approval(self, account_id: int, chat_id: str, step_id: str) -> dict[str, Any] | None:
+        """The tool run of this step that is waiting for an answer, if any."""
+        turn = self.get(account_id, chat_id)
+        if turn is None or turn.status != "running":
+            return None
+        return turn.pending_approvals.get(step_id)
+
+    async def decide(self, account_id: int, chat_id: str, step_id: str, decision: str) -> bool:
+        """Answers a waiting tool approval of this account's running turn.
+        False when that step is not waiting (unknown, already answered, or the
+        turn moved on). The agent then reports the outcome as an
+        `approval_resolved` event, which clears it for every watcher."""
+        turn = self.get(account_id, chat_id)
+        if turn is None or turn.status != "running" or step_id not in turn.pending_approvals:
+            return False
+        return await self._gateway.decide(turn.agent.url, turn.caller, turn.request_id, step_id, decision)
+
     async def discard(self, account_id: int, chat_id: str) -> None:
         """The chat is being deleted: stop its turn and forget the replay.
         The task finds no chat to save into and ends quietly."""
@@ -266,6 +303,13 @@ class TurnRegistry:
             elif kind == "step_end":
                 turn.activity = ""
                 turn.record_step(event)
+                turn.pending_approvals.pop(str(event.get("id") or ""), None)
+            elif kind == "approval_request":
+                turn.activity = "waiting for your approval"
+                turn.record_approval(event)
+            elif kind == "approval_resolved":
+                turn.activity = ""
+                turn.pending_approvals.pop(str(event.get("id") or ""), None)
             elif kind == "summarized":
                 turn.activity = ""
             elif kind == "summarizing":
@@ -274,6 +318,7 @@ class TurnRegistry:
             if kind in TERMINAL:
                 turn.status = status or "failed"
                 turn.finished_at = monotonic()
+                turn.pending_approvals.clear()
             turn.condition.notify_all()
 
     def _expire_finished(self) -> None:
@@ -323,7 +368,10 @@ class TurnRegistry:
             return
 
         async def on_event(event: dict[str, Any]) -> None:
-            if event.get("type") in ("token", "token_reset", "step_start", "step_progress", "step_end", "usage"):
+            if event.get("type") in (
+            "token", "token_reset", "step_start", "step_progress", "step_end", "usage",
+            "approval_request", "approval_resolved",
+        ):
                 await self._publish(turn, event)
 
         turn.asking = True
@@ -337,6 +385,8 @@ class TurnRegistry:
                 caveman=turn.options.caveman,
                 enabled_extensions=list(turn.options.enabled_extensions),
                 on_event=on_event,
+                approval_mode="ask" if turn.options.ask_before_tools else "off",
+                allowed_tools=list(turn.options.allowed_tools),
             )
         except AgentCallError as error:
             await self._logs.error(turn.account_id, "chat.answer", f"{turn.agent.id}: {error}")

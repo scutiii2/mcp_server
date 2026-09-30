@@ -16,13 +16,14 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.deps import get_agent_gateway, get_db_session, get_settings, get_turns, require_permission
+from src.deps import get_agent_gateway, get_db_session, get_log_writer, get_settings, get_turns, require_permission
 from src.models import Account, Chat
 from src.routes.mcp import get_agent_directory
 from src.routes.server_info import EXTENSION_ID_PATTERN
 from src.services import summarization
 from src.services.agent_directory import AgentDirectory
-from src.services.agent_gateway import AgentGateway, Caller
+from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
+from src.services.log_service import LogWriter
 from src.services.chat_search import MAX_QUERY_CHARS, MIN_QUERY_CHARS, ChatSearch, SearchHit
 from src.services.chat_service import (
     MAX_CHATS_PER_ACCOUNT,
@@ -52,6 +53,10 @@ router = APIRouter(prefix="/api/chats", tags=["chats"])
 require_chat = require_permission(CHAT_USE)
 
 _CHAT_ID_PATTERN = r"^[A-Za-z0-9-]{8,64}$"
+# What the agent's tools are called (`tool_<capability>_<command>`, an
+# extension's `<id>__<tool>`, `delegate_to_agent`).
+_TOOL_NAME = re.compile(r"[A-Za-z0-9_.\-]{1,120}")
+MAX_ALLOWED_TOOLS = 200
 # Browser-made UUIDs; anything else is refused before touching the database.
 ChatId = Path(pattern=_CHAT_ID_PATTERN)
 # Room for a question plus a few attached files' text (20k characters each).
@@ -150,11 +155,33 @@ class TurnRequest(BaseModel):
         if bad:
             raise ValueError(f"not an extension id: {bad[0][:64]!r}")
         return ids
+    # Ask the user before each tool runs (they answer through
+    # POST /api/chats/{id}/approvals). allowed_tools: tools they already
+    # allowed for this chat, which run without asking.
+    ask_before_tools: bool = False
+    allowed_tools: list[str] = Field(default_factory=list, max_length=MAX_ALLOWED_TOOLS)
+
+    @field_validator("allowed_tools")
+    @classmethod
+    def tool_names(cls, names: list[str]) -> list[str]:
+        bad = [n for n in names if not _TOOL_NAME.fullmatch(n)]
+        if bad:
+            raise ValueError(f"not a tool name: {bad[0][:64]!r}")
+        return names
+
     # Used only when this turn creates the chat.
     title: str | None = Field(default=None, max_length=TITLE_MAX)
     # Regenerate / edit: index of the user question this one replaces. It and
     # everything after it are dropped before the new question is added.
     truncate_to: int | None = Field(default=None, ge=0)
+
+
+class ApprovalRequest(BaseModel):
+    # The tool run being answered: the `id` of an approval_request event.
+    step_id: str = Field(min_length=1, max_length=200)
+    # allow: run it this once. always: run it, and stop asking about this tool
+    # for the rest of the turn (the browser remembers it for the chat).
+    decision: Literal["allow", "always", "deny"]
 
 
 class BranchRequest(BaseModel):
@@ -512,7 +539,12 @@ async def start_turn(
         raise _too_large(error) from error
 
     try:
-        options = TurnOptions(caveman=body.caveman, enabled_extensions=tuple(dict.fromkeys(body.enabled_extensions)))
+        options = TurnOptions(
+            caveman=body.caveman,
+            enabled_extensions=tuple(dict.fromkeys(body.enabled_extensions)),
+            ask_before_tools=body.ask_before_tools,
+            allowed_tools=tuple(dict.fromkeys(body.allowed_tools)),
+        )
         turn = turns.start(account.id, chat_id, agent, _caller(account), options)
     except TurnConflict as error:
         raise _busy() from error
@@ -554,6 +586,32 @@ async def turn_events(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/{chat_id}/approvals")
+async def decide_approval(
+    body: ApprovalRequest,
+    chat_id: str = ChatId,
+    account: Account = Depends(require_chat),
+    turns: TurnRegistry = Depends(get_turns),
+    logs: LogWriter = Depends(get_log_writer),
+) -> dict[str, bool]:
+    """Answers a tool the running answer is waiting to run (the `id` of an
+    `approval_request` event). Only the chat's own account can; once a step is
+    answered nothing else can answer it. Recorded in the activity log."""
+    if not turns.is_running(account.id, chat_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No answer is being written for this chat")
+    pending = turns.pending_approval(account.id, chat_id, body.step_id)
+    if pending is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Nothing is waiting for that answer")
+    try:
+        decided = await turns.decide(account.id, chat_id, body.step_id, body.decision)
+    except AgentCallError as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
+    if not decided:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Nothing is waiting for that answer")
+    await logs.action(account, "tool.approval", f'{body.decision}: "{pending["tool"]}"')
+    return {"decided": True}
 
 
 @router.post("/{chat_id}/cancel")

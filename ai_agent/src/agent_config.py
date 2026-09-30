@@ -14,7 +14,7 @@ from typing import Any
 import anyio
 from dotenv import dotenv_values
 
-from src import delegation
+from src import approvals, delegation
 from src.seed import seed_from_example
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent / "secrets" / "secret_llm.env"
@@ -91,8 +91,14 @@ async def run_chat(
     depth: int = 0,
     on_event: Any = None,
     caveman: bool = False,
+    approval_mode: str = "off",
+    allowed_tools: list[str] | None = None,
 ) -> ChatResult:
     """Run a chat completion request through the configured provider.
+
+    approval_mode / allowed_tools: see approvals.py - with "ask" a tool runs
+    only after the user allows it (tools in allowed_tools were allowed
+    already); "deny" refuses any tool that would need asking.
 
     Both anthropic_provider and openai_provider's run_chat are async
     (support streaming, forwarding on_event for live step_start/step_end/
@@ -103,8 +109,11 @@ async def run_chat(
     requests this process is serving, with on_event dropped since a sync
     provider has nowhere to await it from.
     """
+    # Validated before anything is registered: a bad mode must not start a turn.
+    policy = approvals.ApprovalPolicy(approval_mode, set(allowed_tools or ()))
     cancellation.register(request_id)
     delegated_usage, usage_token = delegation.bind_usage()
+    approval_token = approvals.bind(policy)
     try:
         if cancellation.is_cancelled(request_id):
             raise ChatCancelled()
@@ -127,6 +136,7 @@ async def run_chat(
             )
         )
     finally:
+        approvals.reset(approval_token)
         delegation.reset_usage(usage_token)
         cancellation.clear(request_id)
 

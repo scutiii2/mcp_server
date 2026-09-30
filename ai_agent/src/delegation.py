@@ -28,7 +28,7 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from src import agent_registry, internal_auth
+from src import agent_registry, approvals, internal_auth
 
 TOOL_NAME = "delegate_to_agent"
 
@@ -110,6 +110,9 @@ def call(agent_id: str, question: str, depth: int) -> str:
         configured = ", ".join(agent_registry.list_agent_ids()) or "(none configured)"
         raise ValueError(f"unknown agent_id {agent_id!r} - configured agents: {configured}")
 
+    # A delegate has no way to ask the user, so when this turn asks before
+    # tools run, the delegate's tools that would need asking are refused.
+    approval_mode = "off" if approvals.current().mode == "off" else "deny"
     result = asyncio.run(
         _call_tool(
             agent["url"],
@@ -120,6 +123,7 @@ def call(agent_id: str, question: str, depth: int) -> str:
                 "enabled_extensions": [],
                 "request_id": None,
                 "depth": depth + 1,
+                "approval_mode": approval_mode,
             },
         )
     )
