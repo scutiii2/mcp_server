@@ -25,5 +25,39 @@
         "preset_name": "OpenRouter"
       }
     ]
+  },
+  "Ember": {
+    "members": [
+      {
+        "template_key": "ai_agent",
+        "port": 9100,
+        "extra_env": {
+          "AI_AGENT_PROVIDER": "anthropic"
+        },
+        "extra_args": "--gateway openrouter",
+        "preset_name": "OpenRouter"
+      },
+      {
+        "template_key": "ember_api",
+        "port": 8030,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "ember_web",
+        "port": 5173,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "mcp_server",
+        "port": 8010,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      }
+    ]
   }
 }

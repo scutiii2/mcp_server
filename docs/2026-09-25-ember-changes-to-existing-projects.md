@@ -135,15 +135,23 @@ Everything else on the branch in this range is ember_web / ember_api only.
 
 - **Ports:** mcp_server 8010, ai_agent 9100 (+ further instances, e.g.
   9102), chat_app 5000, ember_api 8030, ember_web 5173.
-- **Keep ai_agent and mcp_server on `127.0.0.1`.** Neither checks a token on
-  `/mcp`; today only network reachability protects them, and ember_api (like
-  chat_app) is the gate in front of them.
+- **Internal token on `/mcp`** (since 2026-09-26, see below): ai_agent and
+  mcp_server reject `/mcp` requests without `X-Internal-Token` once
+  `INTERNAL_API_TOKEN` is set. Use one value in all four
+  `secret_internal_api.env` files (mcp_server, ai_agent, chat_app,
+  ember_api). With it blank, keep both servers on `127.0.0.1`.
 - After pulling these changes, restart ai_agent and mcp_server once.
 
-## Open follow-ups
+## 2026-09-26: internal token and user identity
 
-1. Require `X-Internal-Token` on `/mcp` in ai_agent and mcp_server - ember_api
-   already sends it; chat_app would have to send it on its MCP calls too.
-2. ai_agent doesn't pass the user's identity on to the mcp_server tools it
-   calls during `ask`, so identity-gated tools only see the user when called
-   directly (chat_app commands, ember_web's Tools page).
+Both former open follow-ups are done.
+
+| Project | Change |
+|---|---|
+| mcp_server | `services/internal_token.py`: pure-ASGI middleware, `401` on `/mcp` without the right `X-Internal-Token` (constant-time) when `INTERNAL_API_TOKEN` is set; added in `run.py`, which also prints whether it's on. `identity_context.py`: `current_username()` / `current_email()` fall back to the tool call's `_meta.requester` when no identity header came. `extensions.py` logs `tool call <name> by <user>`. |
+| ai_agent | `src/internal_auth.py`: the token (from new `secrets/secret_internal_api.env`, seeded from its `.example`), the same middleware on `/mcp`, and the asking user. `ask()` reads `X-Requester-*` from the request and binds it for the turn; `mcp_upstream.call_tool` sends it as `_meta.requester` (the one upstream session serves every user); the upstream session and `delegate_to_agent` sessions carry the token (`registry` / `transports` gained `extra_headers`, `call_tool` gained `meta`). |
+| chat_app | `src/services/internal_auth.py`'s `mcp_headers()` adds the token to every MCP session to mcp_server and ai_agent (`mcp_client.py`, `ai_agent_client.py`); `run.py` copies the token into the environment. |
+| ember_api | nothing in code (it already sent the token); its `secret_internal_api.env` now needs the value. |
+
+Restart mcp_server, ai_agent, chat_app and ember_api after setting the
+token; a caller without it gets `401` from `/mcp`.

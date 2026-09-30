@@ -102,8 +102,9 @@ preference), `src/components/` (reusable pieces only), `src/router/`,
 3. **View** in `src/views/XxxView.vue`, lazy-loaded route in
    `src/router/index.ts` with `meta: { permission: "..." }` (or
    `guestOnly: true` for logged-out pages). If it can be a landing page,
-   add it to `HOME_PAGES`. Add the nav tab in `App.vue` behind
-   `auth.hasPermission(...)`. To keep its state across tab switches, add it
+   add it to `HOME_PAGES`. Add it to `NAV_PAGES` in `src/router/pages.ts`
+   (label, one-line description, permission): that list drives both the
+   top-bar tabs and the Overview tiles. To keep its state across tab switches, add it
    to the `KeepAlive include` list (cache is keyed per account already).
 4. **Styling**: theme tokens from `src/style.css` (`--bg`, `--surface`,
    `--text`, `--muted`, `--border`, `--accent`, `--accent-contrast`,
@@ -123,7 +124,9 @@ preference), `src/components/` (reusable pieces only), `src/router/`,
 The browser never gets their URLs; everything goes through ember_api's
 proxy, which drops browser-supplied identity/token headers and adds
 `X-Requester-Username` / `X-Requester-Email` (+ `X-Internal-Token` if
-configured) itself.
+configured) itself. ai_agent and mcp_server reject `/mcp` without that
+token once it's configured, so any new ember_api client of theirs must
+send it too (`identity_headers()` in `services/mcp_session.py` does).
 
 - **mcp_server tools and resources**: already allowed for `tools.use`
   (`SERVER_POLICY`: `tools/list`, any `tools/call`, `resources/*`). Call them
