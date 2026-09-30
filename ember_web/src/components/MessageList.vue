@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import type { ChatMessage, ToolStep } from "../api/types";
 import { splitAttachments } from "../utils/attachments";
+import CopyButton from "./CopyButton.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import ToolSteps from "./ToolSteps.vue";
 
@@ -73,19 +74,27 @@ watch(
         <div v-else-if="m.kind === 'command' && m.role === 'user'" class="user-bubble command">{{ m.content }}</div>
         <MarkdownContent v-else-if="m.kind === 'command'" class="assistant command-result" :text="m.content" />
         <!-- Only model output is rendered as markdown; the user's own text stays literal. -->
-        <div v-else-if="m.role === 'user'" class="user-bubble">
-          <template v-if="userParts[i]?.text">{{ userParts[i]?.text }}</template>
-          <details v-for="(a, j) in userParts[i]?.attachments ?? []" :key="j" class="attachment">
-            <summary>📎 {{ a.filename }} ({{ a.chars.toLocaleString() }} characters{{ a.truncated ? ", cut short" : "" }})</summary>
-            <pre>{{ a.text }}</pre>
-          </details>
+        <div v-else-if="m.role === 'user'" class="user-row">
+          <div class="user-bubble">
+            <template v-if="userParts[i]?.text">{{ userParts[i]?.text }}</template>
+            <details v-for="(a, j) in userParts[i]?.attachments ?? []" :key="j" class="attachment">
+              <summary>📎 {{ a.filename }} ({{ a.chars.toLocaleString() }} characters{{ a.truncated ? ", cut short" : "" }})</summary>
+              <pre>{{ a.text }}</pre>
+            </details>
+          </div>
+          <div class="actions user-actions">
+            <CopyButton :text="userParts[i]?.text || m.content" label="Copy message" />
+          </div>
         </div>
         <div v-else class="assistant">
           <ToolSteps v-if="m.steps?.length" :steps="m.steps" class="saved-steps" />
           <MarkdownContent :text="m.content" />
-          <p v-if="m.model || m.total_tokens" class="meta">
-            {{ [m.model, m.total_tokens ? `${m.total_tokens.toLocaleString()} tokens` : ""].filter(Boolean).join(" · ") }}
-          </p>
+          <div class="actions">
+            <CopyButton :text="m.content" label="Copy answer" />
+            <span v-if="m.model || m.total_tokens" class="meta">
+              {{ [m.model, m.total_tokens ? `${m.total_tokens.toLocaleString()} tokens` : ""].filter(Boolean).join(" · ") }}
+            </span>
+          </div>
         </div>
       </template>
 
@@ -117,8 +126,40 @@ watch(
   font-size: 1.4em;
   color: var(--muted);
 }
+.user-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.user-actions {
+  margin-top: 0;
+}
+/* Shown on hover or keyboard focus; always on touch screens. */
+.user-actions,
+.assistant .actions :deep(.copy) {
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.user-row:hover .user-actions,
+.assistant:hover .actions :deep(.copy),
+.actions:focus-within :deep(.copy),
+.user-actions:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .user-actions,
+  .assistant .actions :deep(.copy) {
+    opacity: 1;
+  }
+}
 .user-bubble {
-  align-self: flex-end;
   max-width: 80%;
   padding: 10px 14px;
   border-radius: 18px 18px 4px 18px;
@@ -151,7 +192,7 @@ watch(
   margin-bottom: 6px;
 }
 .meta {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 0.75em;
   color: var(--muted);
 }

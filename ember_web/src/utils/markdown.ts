@@ -13,6 +13,12 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   }
 });
 
+// Each fenced code block gets a Copy button; MarkdownContent.vue handles the
+// click. The button is plain markup so it survives DOMPurify and re-renders.
+const renderFence = md.renderer.rules.fence!;
+md.renderer.rules.fence = (tokens, idx, options, env, self) =>
+  `<div class="code-block"><button type="button" class="code-copy">Copy</button>${renderFence(tokens, idx, options, env, self)}</div>`;
+
 /** Markdown to sanitized HTML, safe to bind with v-html. */
 export function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(md.render(text), { ADD_ATTR: ["target"] });
