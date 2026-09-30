@@ -2,8 +2,12 @@
 import { storeToRefs } from "pinia";
 import { computed, watch } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
+import { useTheme } from "./composables/useTheme";
 import { visiblePages } from "./router/pages";
 import { useAuthStore } from "./stores/auth";
+
+const { theme, next, cycle } = useTheme();
+const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" } as const;
 
 const auth = useAuthStore();
 const { account } = storeToRefs(auth);
@@ -31,6 +35,37 @@ async function logout(): Promise<void> {
     <nav v-if="account?.email_verified">
       <RouterLink v-for="p in pages" :key="p.to" :to="p.to">{{ p.label }}</RouterLink>
     </nav>
+    <button
+      type="button"
+      class="theme"
+      :title="`Theme: ${THEME_LABELS[theme]} (click for ${THEME_LABELS[next()]})`"
+      :aria-label="`Theme: ${THEME_LABELS[theme]}. Switch to ${THEME_LABELS[next()]}`"
+      @click="cycle"
+    >
+      <svg v-if="theme === 'light'" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <path
+          d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </svg>
+      <svg v-else-if="theme === 'dark'" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <path
+          d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <path d="M8 20h8M12 16v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+    </button>
     <div v-if="account" class="user">
       <RouterLink to="/account" class="username" :title="`${account.email} - account settings`">
         {{ account.username }}
@@ -77,6 +112,24 @@ nav {
 }
 nav a {
   white-space: nowrap;
+}
+.theme {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  margin-left: 12px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--muted);
+  background: transparent;
+}
+.theme:hover {
+  color: var(--text);
+  background: var(--surface);
 }
 .user {
   display: flex;

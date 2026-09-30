@@ -1,16 +1,17 @@
-/* ember_web theme: tokens first, then a full-height app shell. Follows the
-   system light/dark setting. */
+/* ember_web theme: tokens first, then a full-height app shell. Each token is
+   light-dark(light, dark), resolved by the page's `color-scheme`: "light dark"
+   follows the system; useTheme.ts forces one by setting it on <html>. */
 :root {
-  --bg: #ffffff;
-  --surface: #f6f6f7;
-  --text: #1c1c1f;
-  --muted: #6b6b73;
-  --border: #e3e3e6;
-  --accent: #e8590c; /* ember orange */
-  --accent-contrast: #ffffff;
-  --user-bubble: #f1efe9;
-  --code-bg: #f3f3f4;
-  --danger: #d9480f;
+  --bg: light-dark(#ffffff, #17171a);
+  --surface: light-dark(#f6f6f7, #1f1f23);
+  --text: light-dark(#1c1c1f, #e8e8ea);
+  --muted: light-dark(#6b6b73, #9a9aa3);
+  --border: light-dark(#e3e3e6, #2f2f35);
+  --accent: light-dark(#e8590c, #ff7a33); /* ember orange */
+  --accent-contrast: light-dark(#ffffff, #17171a);
+  --user-bubble: light-dark(#f1efe9, #2a2a30);
+  --code-bg: light-dark(#f3f3f4, #232328);
+  --danger: light-dark(#d9480f, #ff8a4c);
 
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -20,21 +21,6 @@
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17171a;
-    --surface: #1f1f23;
-    --text: #e8e8ea;
-    --muted: #9a9aa3;
-    --border: #2f2f35;
-    --accent: #ff7a33;
-    --accent-contrast: #17171a;
-    --user-bubble: #2a2a30;
-    --code-bg: #232328;
-    --danger: #ff8a4c;
-  }
 }
 
 *,

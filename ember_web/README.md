@@ -76,7 +76,10 @@ URL, token or key.
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
   `admin.manage`, `watchers.view`, `logs.*`, `config.issues.view`);
   ember_api enforces the same rules on every call.
-- Light and dark theme following the system setting.
+- Light and dark theme: a top-bar button cycles System, Light and Dark
+  (remembered per browser, also on the login page). Colors are
+  `light-dark()` tokens in `style.css`, so browsers older than Chrome 123,
+  Firefox 120 or Safari 17.5 lose them.
 
 ## Requirements
 
@@ -133,7 +136,7 @@ src/
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat
-  composables/  useChatShortcuts (window-level chat keys)
+  composables/  useChatShortcuts (window-level chat keys), useTheme (system / light / dark)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,

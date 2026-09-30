@@ -28,6 +28,12 @@ const contentSecurityPolicy = [
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    // style.css colors are light-dark() tokens (the theme toggle sets
+    // color-scheme). Below these versions the CSS minifier rewrites them into
+    // a prefers-color-scheme query, which the toggle can't override.
+    cssTarget: ['chrome123', 'firefox120', 'safari17.5'],
+  },
   server: {
     // Set by run.bat / server_launcher. strictPort: fail instead of silently
     // moving to the next port, so the launcher's port is always the real one.
