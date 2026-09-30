@@ -66,6 +66,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/auth/verify-email/resend` | cookie | `{sent: true}`; `503` if SMTP failed, `409` if already verified. |
 | `POST` | `/api/account/email` | cookie | `{current_password, email}` -> `{account, verification_email_sent, email_error}`. The new email is unverified (permissions off) until its emailed code is entered. `400` wrong password, `409` email taken or bootstrap admin. |
 | `POST` | `/api/account/password` | cookie | `{current_password, new_password}` (8+ chars) -> the account. Logs out every other session. `400` wrong password, `409` bootstrap admin (change it in `secret_bootstrap_admin.env`). |
+| `GET` | `/api/account/devices` | cookie | Devices this account logged in from, most recent first: `[{id, label, user_agent, ip_subnet, first_seen_at, last_seen_at, current}]`. |
+| `DELETE` | `/api/account/devices/{id}` | cookie | `204`; its next login counts as a new device again. `404` unknown or another account's. |
 | `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
 | `GET` | `/api/admin/invites` | `admin.manage` | Open (unused, unexpired) invites, without codes. |
 | `DELETE` | `/api/admin/invites/{id}` | `admin.manage` | `204`; the code stops working. `409` if already used. |
@@ -87,7 +89,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `DELETE` | `/api/chats/{id}`, `/api/chats` | `chat.use` | `204`; one chat, or all of this account's. |
 | `POST` | `/api/chats/import` | `chat.use` | `{chats: [{id, title, agent_id, messages, created_at, updated_at}]}` (times in ms) -> `{imported, skipped}`. Existing ids are skipped, never replaced. |
 | `POST` | `/api/chats/{id}/turns` | `chat.use` | `{question, agent_id, caveman?, enabled_extensions?, title?}` -> `202 {chat, sequence}`. `enabled_extensions`: extension ids whose tools the agent may use (none by default). Saves the question (creating the chat) and starts the answer **in ember_api**: it finishes, is saved and counts toward the usage limits even if the browser leaves. `404` unknown agent, `409` already answering, `429` usage limit or 3 answers already running. |
-| `GET` | `/api/chats/{id}/events?after=N` | `chat.use` | Server-Sent Events of the chat's running (or just finished) answer: a `snapshot` of the text so far when joining late, then `token` / `step_*` / `summarizing` events, last `final` `{message, cancelled}` or `error`. `404` when there's nothing to watch. |
+| `GET` | `/api/chats/{id}/events?after=N` | `chat.use` | Server-Sent Events of the chat's running (or just finished) answer: a `snapshot` of the text and tool steps so far when joining late, then `token` / `step_*` / `summarizing` events, last `final` `{message, cancelled}` or `error`. `404` when there's nothing to watch. The saved answer carries `steps: [{tool, label, arguments, ok, result}]` (results cut to 4,000 characters, at most 50 steps). |
 | `POST` | `/api/chats/{id}/cancel` | `chat.use` | `{cancelled}`; ai_agent stops at its next round, keeping what streamed. |
 | `POST` | `/api/chats/{id}/summarize` | `chat.use` | `{agent_id?}` -> the chat, its history replaced by a `summary` message plus a `log_attachment` (raw messages, never sent to the agent again). `502` if the agent couldn't; nothing changes then. |
 | `POST` | `/api/chats/{id}/clear` | `chat.use` | -> the chat, restarted: everything kept as one `log_attachment`. |
@@ -96,6 +98,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/admin/usage?days=30` | `admin.manage` | Every account's tokens and answers in the period. |
 | `GET` | `/api/commands` | `tools.use` | mcp_server's slash commands: `[{capability, name, description, tool_name}]`. |
 | `GET` | `/api/commands/help`, `/api/commands/help/{capability}?target=&command=` | `tools.use` | mcp_server's capability help (what `/help` shows). |
+| `GET` | `/api/commands/options?template=...&arg.<name>=...` | `tools.use` | A command-form select's options: `[{value, label, extra}]` from the mcp_server path `template`, which must be an `options_url` some tool's schema declares (its `{name}` placeholders filled from `arg.<name>`). `400` undeclared template or missing arg, `502` mcp_server down. |
+| `POST` | `/api/uploads` | `tools.use` | `{filename, data}` (base64, up to 15 MB) -> `201 {path}`: stored by mcp_server's `/upload` (which picks the allowed file types) for a command's file-path parameter. `400` refused type. |
 | `GET` | `/api/capabilities` | `tools.use` | mcp_server's built-in capabilities: `[{name, label, enabled, tools, resources}]`. |
 | `PATCH` | `/api/capabilities/{name}` | `admin.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
 | `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools}]`. |
@@ -158,10 +162,11 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   `resources/list` / `resources/templates/list` / `resources/read`.
   Anything else gets a JSON-RPC error (`403`) and never reaches the server.
 
-**Important:** ai_agent and mcp_server don't check any token on `/mcp`
-today, so this only protects them while their ports aren't reachable except
-from this machine (keep them on `127.0.0.1`). Also, ai_agent doesn't pass the
-user's identity on to the mcp_server tools it calls itself.
+ai_agent and mcp_server require that token on `/mcp` once they have one
+configured (use the same value in all four `secret_internal_api.env`
+files); without a token they're protected only by listening on
+`127.0.0.1`. ai_agent passes the asking user on to the mcp_server tools it
+calls (in each call's `_meta`), so mcp_server sees who asked either way.
 
 - **Chat turns** (`services/turns.py`, `services/agent_gateway.py`):
   ember_api calls ai_agent's `ask` itself over MCP (the `mcp` SDK), with the
@@ -198,7 +203,14 @@ user's identity on to the mcp_server tools it calls itself.
   no-referrer`, `default-src 'none'` CSP on every response; HSTS when
   `hsts_max_age` is set. ember_web's `vite preview` sets its own CSP.
 
-Not yet: device fingerprinting (chat_app's `services/security/fingerprint.py`).
+- **Devices** (`services/device_service.py`, config `security.fingerprint`,
+  port of chat_app's fingerprinting): a hash of User-Agent, Accept-Language
+  and the /24 (IPv4) or /64 (IPv6) network. A login from one the account
+  never used is allowed and written to the activity log
+  (`auth.new_device`); users see and forget theirs on the Account page.
+- **Command form:** option lists come only from `options_url`s a tool
+  declares, as plain paths on mcp_server (never a host); uploads go through
+  mcp_server's own `/upload` checks.
 
 ## Layout
 
@@ -209,11 +221,12 @@ data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
-              UsageRecord, LogEntry
+              UsageRecord, LogEntry, KnownDevice
   services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
               AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
-              text_extraction, config_validation, LoginRateLimiter, McpPolicy, McpProxy, permissions
+              text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
+              permissions
   routes/     auth, account, admin, chats, usage, mcp, server_info, watchers, logs, attachments,
               config_issues
   utils/      config_loader

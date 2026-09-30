@@ -11,7 +11,7 @@ export interface AttachmentText {
 export const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
 /** The file's bytes as base64 (ember_api takes JSON only). */
-function toBase64(file: File): Promise<string> {
+export function toBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {

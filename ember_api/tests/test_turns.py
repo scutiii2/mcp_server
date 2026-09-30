@@ -180,6 +180,52 @@ def test_late_subscriber_gets_a_snapshot_then_the_rest(client: TestClient, agent
     assert not any(e["type"] == "token" for e in rest)
 
 
+def test_tool_steps_are_saved_on_the_answer(client: TestClient, agent: FakeAgent) -> None:
+    agent.events = [
+        {"type": "step_start", "id": "1", "tool": "tool_ping", "label": "Ping", "arguments": {"host": "a"}},
+        {"type": "step_end", "id": "1", "ok": True, "result": "x" * 5000},
+        {"type": "step_start", "id": "2", "tool": "tool_fail", "arguments": "not a dict"},
+        {"type": "step_end", "id": "2", "ok": False, "result": "boom"},
+        {"type": "step_end", "id": "unknown", "ok": True, "result": "ignored"},
+        {"type": "token", "text": "Done"},
+    ]
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+    stream = events(client, chat_id)
+
+    steps = chat(client, chat_id)["messages"][-1]["steps"]
+    assert steps == [
+        {"tool": "tool_ping", "label": "Ping", "arguments": {"host": "a"}, "ok": True, "result": "x" * 4000},
+        {"tool": "tool_fail", "label": "", "arguments": {}, "ok": False, "result": "boom"},
+    ]
+    assert stream[-1]["message"]["steps"] == steps
+    # A re-saved chat keeps them (the browser sends them back as they are).
+    saved = chat(client, chat_id)
+    response = client.put(
+        f"/api/chats/{chat_id}", json={"title": saved["title"], "agent_id": AGENT_ID, "messages": saved["messages"]}
+    )
+    assert response.status_code == 200, response.text
+    assert chat(client, chat_id)["messages"][-1]["steps"] == steps
+
+
+def test_snapshot_carries_the_steps_so_far(client: TestClient, agent: FakeAgent) -> None:
+    agent.hold = True
+    agent.events = [{"type": "step_start", "id": "1", "tool": "tool_ping", "arguments": {}}]
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+    wait_until(lambda: agent.gate is not None)
+
+    timer = threading.Timer(0.3, agent.release)
+    timer.start()
+    stream = events(client, chat_id)
+    timer.join()
+
+    assert stream[0]["type"] == "snapshot"
+    assert stream[0]["steps"] == [{"tool": "tool_ping", "label": "", "arguments": {}, "ok": None, "result": ""}]
+
+
 def test_cancel_keeps_what_streamed(client: TestClient, agent: FakeAgent) -> None:
     agent.hold = True
     as_admin(client)

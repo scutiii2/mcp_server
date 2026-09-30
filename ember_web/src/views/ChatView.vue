@@ -4,10 +4,13 @@ import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import AgentPicker from "../components/AgentPicker.vue";
 import ChatInput from "../components/ChatInput.vue";
+import CommandFormModal from "../components/CommandFormModal.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import MessageList from "../components/MessageList.vue";
 import { useAgentsStore } from "../stores/agents";
 import { useChatStore } from "../stores/chat";
+import type { CommandInfo } from "../api/CommandsClient";
+import type { JsonSchema } from "../api/types";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
 const chat = useChatStore();
@@ -19,6 +22,7 @@ const {
   messages,
   streaming,
   activity,
+  liveSteps,
   busy,
   caveman,
   listLoading,
@@ -33,6 +37,35 @@ const {
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
 const agentsStore = useAgentsStore();
+
+// The command form: opened when a command with parameters is picked from
+// the input's suggestions. Submitting runs the command it builds.
+const formCommand = ref<CommandInfo | null>(null);
+const formSchema = ref<JsonSchema | null>(null);
+const input = ref<InstanceType<typeof ChatInput> | null>(null);
+
+async function openCommandForm(command: CommandInfo): Promise<void> {
+  const schema = await chat.commandSchema(command);
+  if (!schema) return; // no parameters: the typed command runs as it is
+  formSchema.value = schema;
+  formCommand.value = command;
+}
+
+function closeCommandForm(): void {
+  formCommand.value = null;
+  formSchema.value = null;
+}
+
+function runCommandForm(text: string): void {
+  closeCommandForm();
+  // An answer is still being written: leave the command ready to send.
+  if (busy.value) {
+    input.value?.setDraft(text);
+    return;
+  }
+  input.value?.setDraft("");
+  void chat.send(text);
+}
 
 // Narrow screens only: the sidebar is a drawer toggled by the menu button.
 const drawerOpen = ref(false);
@@ -123,6 +156,7 @@ function onSelect(id: string): void {
         :messages="messages"
         :streaming="streaming"
         :activity="activity"
+        :steps="liveSteps"
         :busy="busy"
       />
       <div class="composer-area">
@@ -166,7 +200,15 @@ function onSelect(id: string): void {
             </button>
           </div>
         </div>
-        <ChatInput :busy="busy" :commands="commands" @send="chat.send" @stop="chat.stop" />
+        <ChatInput
+          ref="input"
+          :busy="busy"
+          :commands="commands"
+          @send="chat.send"
+          @stop="chat.stop"
+          @form="openCommandForm"
+        />
+        <CommandFormModal :command="formCommand" :schema="formSchema" @submit="runCommandForm" @close="closeCommandForm" />
       </div>
     </div>
   </section>

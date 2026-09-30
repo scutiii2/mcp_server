@@ -11,14 +11,19 @@ URL, token or key.
 - Log in, register with an invite code, verify your email (ember_api
   accounts - separate from chat_app's).
 - Chat with any registered `ai_agent` instance (Agent dropdown), with live
-  token streaming and tool-step indicators. ember_api runs each answer: it
+  token streaming and the tools it runs. Each answer keeps a collapsed
+  "Ran N tools" list (arguments and result per step), also after a reload. ember_api runs each answer: it
   keeps going and is saved even if the page closes; reopening the chat picks
   the live answer back up. Chats still being answered show a pulsing dot.
 - Stop button (takes effect at the agent's next round).
 - Slash commands: `/<capability> <command> key=value ...` runs an mcp_server
   tool directly (no AI), `/help` and `/<capability> help` show help; the input
   suggests commands as you type (needs `tools.use`). Tools of the extensions
-  you switched on are commands too: `/<extension> <tool>`.
+  you switched on are commands too: `/<extension> <tool>`. Picking a command
+  that takes parameters opens its form (chat_app's command form): selects
+  filled from mcp_server, dependent selects, and file fields that upload
+  the file and fill in its path on mcp_server. Close the form to type
+  `key=value` instead.
 - Attach files to a question (paperclip or drag and drop): text and code
   files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
   characters each), which goes into the question; the chat shows each file
@@ -32,7 +37,7 @@ URL, token or key.
   any browser; chats from the old browser-only storage are uploaded once):
   rename (double-click or pencil), export to Markdown, clear, delete, delete all.
 - Tools page: list and run `mcp_server` tools from forms generated from their
-  JSON Schema. Tools show readable titles (`tool_srv_startApp` -> "Start App")
+  JSON Schema (the same form as the command form). Tools show readable titles (`tool_srv_startApp` -> "Start App")
   and JSON results render as fields and tables, with the raw JSON a click away.
 - "Terse replies" toggle next to the Agent picker (ai_agent's `caveman`
   option), remembered per account.
@@ -51,7 +56,10 @@ URL, token or key.
 - Config page (`config.issues.view`): problems in ember_api's config and
   secret files.
 - Account page (click your username): profile, change email (re-verify),
-  change password (logs out other devices). Reachable while unverified.
+  change password (logs out other devices), and the devices you logged in
+  from (forget one to have its next login noted as new). Reachable while
+  unverified.
+- Overview (click "Ember"): every page you may open, as tiles.
 - Admin page, three tabs: Accounts (edit, enable/disable, add/remove roles,
   send verification, delete), Roles (create, edit, delete, permission
   checkboxes) and Invites (create, optionally email, list, revoke).
@@ -115,13 +123,13 @@ src/
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat
-  views/        pages: Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues, Admin,
-                Account, Login, Register, VerifyEmail, NoAccess
-  components/   reusable pieces: MessageList, ChatInput, MarkdownContent,
+  views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
+                Admin, Account, Login, Register, VerifyEmail, NoAccess
+  components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
                 ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
-  router/       routes + access guard, safe post-login redirect
+  router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, tool-schema forms, error/time formatting, chat export,
                 tool titles, tool-result formatting, attachment blocks in questions
 ```
@@ -135,6 +143,8 @@ src/
   a banner with Retry instead of being dropped.
 - The browser can't call ai_agent's `ask` directly (ember_api's proxy allows
   only `status`), so usage limits can't be bypassed.
-- `ai_agent` and `mcp_server` must stay unreachable from outside this
-  machine (bound to `127.0.0.1`): they don't check tokens on `/mcp`
-  themselves - ember_api is the gate.
+- `ai_agent` and `mcp_server` require the shared internal token on `/mcp`
+  once it's configured (ember_api sends it); without one they must stay on
+  `127.0.0.1`, with ember_api as the only gate.
+- The MCP SDK loads on the first MCP call, in its own chunk, so the first
+  page doesn't wait for it.

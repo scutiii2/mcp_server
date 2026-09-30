@@ -8,7 +8,8 @@ import { errorMessage } from "../utils/errors";
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
 // suggest while "/..." is being typed (empty without tools.use).
 const props = withDefaults(defineProps<{ busy: boolean; commands?: CommandInfo[] }>(), { commands: () => [] });
-const emit = defineEmits<{ send: [question: string]; stop: [] }>();
+// form: a command was picked from the suggestions; the chat may open its form.
+const emit = defineEmits<{ send: [question: string]; stop: []; form: [command: CommandInfo] }>();
 
 const draft = ref("");
 const textarea = ref<HTMLTextAreaElement | null>(null);
@@ -81,6 +82,8 @@ const MAX_SUGGESTIONS = 8;
 interface Suggestion {
   text: string;
   description: string;
+  /** Set for a runnable command (not help): picking it offers its form. */
+  command?: CommandInfo;
 }
 
 /** Commands matching what's typed, while still on "/<capability> <command>"
@@ -95,7 +98,7 @@ const suggestions = computed<Suggestion[]>(() => {
       text: `/${cap} help`,
       description: `How to use ${cap}`,
     })),
-    ...props.commands.map((c) => ({ text: `/${c.capability} ${c.name}`, description: c.description })),
+    ...props.commands.map((c) => ({ text: `/${c.capability} ${c.name}`, description: c.description, command: c })),
   ];
   return all.filter((s) => s.text.toLowerCase().startsWith(needle) && s.text !== typed).slice(0, MAX_SUGGESTIONS);
 });
@@ -108,7 +111,19 @@ function complete(suggestion: Suggestion): void {
     textarea.value?.focus();
     autoGrow();
   });
+  if (suggestion.command) emit("form", suggestion.command);
 }
+
+/** The command form was submitted or closed: its text replaces the draft. */
+function setDraft(text: string): void {
+  draft.value = text;
+  void nextTick(() => {
+    textarea.value?.focus();
+    autoGrow();
+  });
+}
+
+defineExpose({ setDraft });
 
 /** Grow with the content; CSS max-height caps it, then it scrolls. */
 function autoGrow(): void {
@@ -165,7 +180,7 @@ function onKeydown(event: KeyboardEvent): void {
         <code>{{ s.text }}</code>
         <span>{{ s.description }}</span>
       </li>
-      <li class="hint" aria-hidden="true">Tab completes · Enter runs</li>
+      <li class="hint" aria-hidden="true">Tab picks (a command opens its form) · Enter runs</li>
     </ul>
     <ul v-if="attachments.length" class="attachments">
       <li v-for="a in attachments" :key="a.id" :class="a.state" :title="a.error || a.filename">

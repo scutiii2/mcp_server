@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { watch } from "vue";
+import { computed, watch } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
-import { LOG_PERMISSIONS } from "./router";
+import { visiblePages } from "./router/pages";
 import { useAuthStore } from "./stores/auth";
 
 const auth = useAuthStore();
@@ -16,6 +16,8 @@ watch(account, (now) => {
   if (!now && !route.meta.guestOnly) void router.replace({ name: "login" });
 });
 
+const pages = computed(() => visiblePages((p) => auth.hasPermission(p)));
+
 async function logout(): Promise<void> {
   await auth.logout();
   await router.replace({ name: "login" });
@@ -24,17 +26,10 @@ async function logout(): Promise<void> {
 
 <template>
   <header class="topbar">
-    <span class="wordmark">Ember</span>
+    <RouterLink v-if="account?.email_verified" to="/overview" class="wordmark" title="Overview of every page">Ember</RouterLink>
+    <span v-else class="wordmark">Ember</span>
     <nav v-if="account?.email_verified">
-      <RouterLink v-if="auth.hasPermission('chat.use')" to="/">Chat</RouterLink>
-      <RouterLink v-if="auth.hasPermission('tools.use')" to="/tools">Tools</RouterLink>
-      <RouterLink v-if="auth.hasPermission('tools.use')" to="/capabilities">Capabilities</RouterLink>
-      <RouterLink v-if="auth.hasPermission('chat.use')" to="/extensions">Extensions</RouterLink>
-      <RouterLink v-if="auth.hasPermission('watchers.view')" to="/watchers">Watchers</RouterLink>
-      <RouterLink v-if="auth.hasPermission('chat.use')" to="/usage">Usage</RouterLink>
-      <RouterLink v-if="LOG_PERMISSIONS.some((p) => auth.hasPermission(p))" to="/logs">Logs</RouterLink>
-      <RouterLink v-if="auth.hasPermission('config.issues.view')" to="/config-issues">Config</RouterLink>
-      <RouterLink v-if="auth.hasPermission('admin.manage')" to="/admin">Admin</RouterLink>
+      <RouterLink v-for="p in pages" :key="p.to" :to="p.to">{{ p.label }}</RouterLink>
     </nav>
     <div v-if="account" class="user">
       <RouterLink to="/account" class="username" :title="`${account.email} - account settings`">
@@ -69,6 +64,8 @@ async function logout(): Promise<void> {
   margin-right: auto;
   font-weight: 700;
   letter-spacing: -0.01em;
+  color: var(--text);
+  text-decoration: none;
 }
 nav {
   display: flex;

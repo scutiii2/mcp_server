@@ -32,6 +32,19 @@ export interface EmailChangeResult {
   email_error: string | null;
 }
 
+/** A device the account logged in from (a fingerprint of browser and network). */
+export interface KnownDevice {
+  id: number;
+  /** "Firefox on Windows" */
+  label: string;
+  user_agent: string;
+  ip_subnet: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  /** The device this page runs on. */
+  current: boolean;
+}
+
 /** ember_api's /api/auth and /api/account routes. Stateless; the auth store holds the account. */
 export const authClient = {
   me: () => apiRequest<Account>("GET", "/api/auth/me"),
@@ -45,4 +58,6 @@ export const authClient = {
     apiRequest<EmailChangeResult>("POST", "/api/account/email", { current_password, email }),
   changePassword: (current_password: string, new_password: string) =>
     apiRequest<Account>("POST", "/api/account/password", { current_password, new_password }),
+  devices: () => apiRequest<KnownDevice[]>("GET", "/api/account/devices"),
+  forgetDevice: (id: number) => apiRequest<void>("DELETE", `/api/account/devices/${id}`),
 };

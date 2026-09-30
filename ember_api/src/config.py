@@ -39,15 +39,26 @@ class SecuritySettings:
     security_headers: bool = True
     # >0 adds Strict-Transport-Security; only once served over HTTPS.
     hsts_max_age: int = 0
+    # Device fingerprinting: a login from a device (these request signals)
+    # the account never used is written to the activity log.
+    fingerprint_enabled: bool = True
+    fingerprint_signals: tuple[str, ...] = ("user_agent", "accept_language", "ip_subnet")
 
     @classmethod
     def from_config(cls, raw: dict) -> SecuritySettings:
         rate = raw.get("rate_limit", {})
         ip_filter = raw.get("ip_filter", {})
         headers = raw.get("headers", {})
+        fingerprint = raw.get("fingerprint", {})
         scope = rate.get("scope", "both")
         if scope not in ("ip", "account", "both"):
             raise ValueError(f'security.rate_limit.scope must be "ip", "account" or "both", not {scope!r}')
+        signals = tuple(fingerprint.get("signals", ("user_agent", "accept_language", "ip_subnet")))
+        unknown = [s for s in signals if s not in ("user_agent", "accept_language", "ip_subnet")]
+        if unknown or not signals:
+            raise ValueError(
+                'security.fingerprint.signals must be a non-empty list of "user_agent", "accept_language", "ip_subnet"'
+            )
         return cls(
             rate_limit_enabled=bool(rate.get("enabled", True)),
             max_attempts=int(rate.get("max_attempts", 5)),
@@ -59,6 +70,8 @@ class SecuritySettings:
             ip_deny_list=tuple(ip_filter.get("deny_list", ())),
             security_headers=bool(headers.get("enabled", True)),
             hsts_max_age=int(headers.get("hsts_max_age", 0)),
+            fingerprint_enabled=bool(fingerprint.get("enabled", True)),
+            fingerprint_signals=signals,
         )
 
 

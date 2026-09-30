@@ -3,22 +3,32 @@ registry, capability help, capability switchboard and extensions, passed
 through. Reading needs tools.use (extensions: chat.use or tools.use, since
 the chat picks which ones the agent may use); switching a capability or
 adding/removing an extension changes mcp_server for everyone, so it needs
-admin.manage and is written to the activity log."""
+admin.manage and is written to the activity log.
+
+The command form (tools.use) also gets a select's options from a path a
+tool's schema declares (`options_url`, with {placeholders} filled from
+`arg.<param>`), and can store a dropped file on mcp_server for a file-path
+parameter (/api/uploads)."""
 
 from __future__ import annotations
 
+import base64
+import binascii
+import re
 from typing import Any, Literal
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from src.config import Settings
-from src.deps import get_log_writer, get_settings, require_any_permission, require_permission
+from src.deps import get_log_writer, get_server_tools, get_settings, require_any_permission, require_permission
 from src.models import Account
+from src.services.agent_gateway import Caller
 from src.services.log_service import LogWriter
-from src.services.mcp_server_info import McpServerInfo, McpServerRefused, McpServerUnavailable
+from src.services.mcp_server_info import McpServerInfo, McpServerRefused, McpServerUnavailable, is_server_path
 from src.services.permissions import ADMIN_MANAGE, CHAT_USE, TOOLS_USE
+from src.services.server_tools import ServerTools, ServerUnavailable
 
 router = APIRouter(prefix="/api", tags=["server-info"])
 
@@ -31,6 +41,11 @@ require_chat_or_tools = require_any_permission(CHAT_USE, TOOLS_USE)
 NAME_PATTERN = r"^[A-Za-z0-9_.-]{1,64}$"
 # Extension ids are mcp_server-made slugs of their label.
 EXTENSION_ID_PATTERN = r"^[a-z0-9_]{1,64}$"
+# A file for a command's file-path parameter (mcp_server's /upload decides
+# which types it takes).
+UPLOAD_MAX_BYTES = 15 * 1024 * 1024
+_UPLOAD_MAX_BASE64 = (UPLOAD_MAX_BYTES + 2) // 3 * 4
+_PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
 def get_server_info(request: Request, settings: Settings = Depends(get_settings)) -> McpServerInfo:
@@ -74,6 +89,23 @@ class ExtensionOut(BaseModel):
     status: str
     error: str | None = None
     tools: list[str] = []
+
+
+class OptionOut(BaseModel):
+    value: str
+    label: str
+    # Anything else the option carries, for a param's `sets` / `shows`.
+    extra: dict[str, str] = {}
+
+
+class UploadIn(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    data: str = Field(min_length=1, max_length=_UPLOAD_MAX_BASE64)
+
+
+class UploadOut(BaseModel):
+    # Where mcp_server stored it: the value for the file-path parameter.
+    path: str
 
 
 class ExtensionCreate(BaseModel):
@@ -120,6 +152,58 @@ async def capability_help(
 ) -> Any:
     """What /<capability> help shows."""
     return await _call(info.help(account, capability, target, command))
+
+
+@router.get("/commands/options")
+async def command_options(
+    request: Request,
+    template: str = Query(min_length=1, max_length=500),
+    account: Account = Depends(require_tools),
+    info: McpServerInfo = Depends(get_server_info),
+    tools: ServerTools = Depends(get_server_tools),
+) -> list[OptionOut]:
+    """Options for a command-form select. `template` must be an
+    `options_url` some tool declares, so this can't fetch arbitrary
+    mcp_server paths; each {name} in it comes from the `arg.<name>` query
+    parameter (a select that depends on another one)."""
+    try:
+        declared = await tools.options_templates(Caller(username=account.username, email=account.email))
+    except ServerUnavailable as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "mcp_server is unreachable") from error
+    if template not in declared or not is_server_path(template):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown options template")
+    path = template
+    for name in _PLACEHOLDER.findall(template):
+        value = request.query_params.get(f"arg.{name}", "")
+        if not value:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"arg.{name} is required")
+        path = path.replace("{" + name + "}", quote(value, safe=""))
+    options = await _call(info.options(account, path))
+    return [
+        OptionOut(value=o["value"], label=o["label"], extra={k: v for k, v in o.items() if k not in ("value", "label")})
+        for o in options
+    ]
+
+
+@router.post("/uploads", status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    body: UploadIn,
+    account: Account = Depends(require_tools),
+    info: McpServerInfo = Depends(get_server_info),
+    logs: LogWriter = Depends(get_log_writer),
+) -> UploadOut:
+    """Stores a file on mcp_server for a command's file-path parameter
+    (chat_app's command-form drop zone). Base64 in JSON, like attachments."""
+    try:
+        content = base64.b64decode(body.data, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "data must be base64") from error
+    if len(content) > UPLOAD_MAX_BYTES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "The file is larger than 15 MB")
+    filename = body.filename.replace("\\", "/").rsplit("/", 1)[-1]
+    path = await _call(info.upload(account, filename, content))
+    await logs.action(account, "mcp.upload", f"Uploaded '{filename}' ({len(content):,} bytes) for a command")
+    return UploadOut(path=path)
 
 
 @router.get("/capabilities")

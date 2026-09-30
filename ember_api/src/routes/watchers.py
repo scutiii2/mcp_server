@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from src.deps import require_permission
+from src.deps import get_server_tools, require_permission
 from src.models import Account
 from src.services.agent_gateway import Caller
 from src.services.permissions import WATCHERS_VIEW
@@ -19,10 +19,6 @@ from src.services.server_tools import ServerTools, ServerUnavailable
 router = APIRouter(prefix="/api/watchers", tags=["watchers"])
 
 require_watchers = require_permission(WATCHERS_VIEW)
-
-
-def get_server_tools(request: Request) -> ServerTools:
-    return request.app.state.server_tools
 
 
 class WatchersOut(BaseModel):

@@ -45,6 +45,10 @@ EVENT_BUFFER = 256
 HEARTBEAT_SECONDS = 15.0
 # How much of an answer the chat-turn log keeps.
 TRACE_RESPONSE_MAX = 4000
+# How much of each tool step's result is saved on the answer (chat_app's
+# _STEP_RESULT_MAX), and how many steps at most.
+STEP_RESULT_MAX = 4000
+MAX_STEPS = 50
 
 
 class TurnConflict(Exception):
@@ -81,6 +85,10 @@ class Turn:
     status: str = "running"  # running | completed | failed | cancelled
     text: str = ""  # answer streamed so far
     activity: str = ""  # current tool step label, if any
+    # Tool steps so far: {tool, label, arguments, ok, result}; saved on the
+    # answer so a reload can still show "Ran N tools".
+    steps: list[dict[str, Any]] = field(default_factory=list)
+    step_index: dict[str, int] = field(default_factory=dict)
     sequence: int = 0
     events: deque = field(default_factory=lambda: deque(maxlen=EVENT_BUFFER))
     condition: asyncio.Condition = field(default_factory=asyncio.Condition)
@@ -90,7 +98,32 @@ class Turn:
     finished_at: float | None = None
 
     def snapshot(self) -> dict[str, Any]:
-        return {"type": "snapshot", "text": self.text, "activity": self.activity, "sequence": self.sequence}
+        return {
+            "type": "snapshot",
+            "text": self.text,
+            "activity": self.activity,
+            "steps": [dict(s) for s in self.steps],
+            "sequence": self.sequence,
+        }
+
+    def record_step(self, event: dict[str, Any]) -> None:
+        """Folds a step_start / step_end event into `steps`."""
+        step_id = str(event.get("id") or "")
+        if event.get("type") == "step_start":
+            if len(self.steps) >= MAX_STEPS:
+                return
+            self.step_index[step_id] = len(self.steps)
+            self.steps.append({
+                "tool": str(event.get("tool") or ""),
+                "label": str(event.get("label") or ""),
+                "arguments": event.get("arguments") if isinstance(event.get("arguments"), dict) else {},
+                "ok": None,
+                "result": "",
+            })
+        elif step_id in self.step_index:
+            step = self.steps[self.step_index[step_id]]
+            step["ok"] = bool(event.get("ok"))
+            step["result"] = str(event.get("result") or "")[:STEP_RESULT_MAX]
 
 
 class TurnRegistry:
@@ -229,7 +262,11 @@ class TurnRegistry:
                 turn.text = ""
             elif kind == "step_start":
                 turn.activity = str(event.get("label") or event.get("tool") or "")
-            elif kind == "step_end" or kind == "summarized":
+                turn.record_step(event)
+            elif kind == "step_end":
+                turn.activity = ""
+                turn.record_step(event)
+            elif kind == "summarized":
                 turn.activity = ""
             elif kind == "summarizing":
                 turn.activity = "summarizing earlier messages"
@@ -363,6 +400,8 @@ class TurnRegistry:
         """Appends the answer to the chat as it is now (it may have been
         renamed, or deleted, meanwhile), then ends the turn for watchers."""
         message = answer if isinstance(answer, dict) else {"role": "assistant", "content": answer}
+        if turn.steps:
+            message = {**message, "steps": [dict(s) for s in turn.steps]}
         try:
             async with self._database.sessions() as session:
                 chats = ChatService(session, turn.account_id)

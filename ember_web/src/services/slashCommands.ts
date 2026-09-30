@@ -165,6 +165,17 @@ export class SlashCommandRunner {
     return (await this.toolMap()).get(name);
   }
 
+  /** The command's parameter schema, for its form; null when the tool
+   * takes no parameters or isn't available right now. */
+  async schemaFor(command: CommandInfo): Promise<JsonSchema | null> {
+    try {
+      const schema = (await this.tool(command.tool_name))?.inputSchema;
+      return schema && Object.keys(schema.properties ?? {}).length > 0 ? schema : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Built-in commands plus the tools of `enabledExtensions`; extensions are
    * left out (not failed) when the tool list can't be read. */
   async list(enabledExtensions: readonly string[] = []): Promise<CommandInfo[]> {

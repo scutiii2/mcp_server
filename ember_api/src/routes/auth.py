@@ -21,6 +21,7 @@ from src.deps import (
 from src.models import Account
 from src.security import client_ip
 from src.services.auth_service import AuthService
+from src.services.device_service import DeviceService, DeviceSignals, describe
 from src.services.email_service import EmailDeliveryError, EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
@@ -142,7 +143,22 @@ async def login(
 
     await _start_session(response, account, sessions, settings)
     await logs.action(account, "auth.login", f"Logged in from {ip_address}")
+    if settings.security.fingerprint_enabled:
+        device = device_signals(request)
+        if await DeviceService(db, settings.security.fingerprint_signals).record(account.id, device):
+            # chat_app's "log_only": noted, never blocked.
+            await logs.action(
+                account, "auth.new_device", f"First login from this device: {describe(device.user_agent)}, {device.subnet}"
+            )
     return AccountOut.of(account)
+
+
+def device_signals(request: Request) -> DeviceSignals:
+    return DeviceSignals(
+        user_agent=request.headers.get("user-agent", ""),
+        accept_language=request.headers.get("accept-language", ""),
+        ip_address=client_ip(request),
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

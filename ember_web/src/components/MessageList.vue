@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import type { ChatMessage } from "../api/types";
+import type { ChatMessage, ToolStep } from "../api/types";
 import { splitAttachments } from "../utils/attachments";
 import MarkdownContent from "./MarkdownContent.vue";
+import ToolSteps from "./ToolSteps.vue";
 
 const props = defineProps<{
   messages: ChatMessage[];
   streaming: string;
   activity: string;
+  /** The tools the answer being written ran so far. */
+  steps: ToolStep[];
   busy: boolean;
 }>();
 
@@ -46,7 +49,7 @@ watch(
   },
 );
 watch(
-  () => [props.streaming, props.activity],
+  () => [props.streaming, props.activity, props.steps.length],
   () => void scrollToBottomIfSticking(),
 );
 </script>
@@ -78,6 +81,7 @@ watch(
           </details>
         </div>
         <div v-else class="assistant">
+          <ToolSteps v-if="m.steps?.length" :steps="m.steps" class="saved-steps" />
           <MarkdownContent :text="m.content" />
           <p v-if="m.model || m.total_tokens" class="meta">
             {{ [m.model, m.total_tokens ? `${m.total_tokens.toLocaleString()} tokens` : ""].filter(Boolean).join(" · ") }}
@@ -86,6 +90,7 @@ watch(
       </template>
 
       <div v-if="busy" class="assistant live">
+        <ToolSteps v-if="steps.length" :steps="steps" live />
         <span v-if="activity" class="activity"><span class="dot" />{{ activity }}</span>
         <MarkdownContent v-if="streaming" :text="streaming" />
         <span v-else-if="!activity" class="activity"><span class="dot" />thinking ...</span>
@@ -141,6 +146,9 @@ watch(
   white-space: pre-wrap;
   font-family: var(--mono);
   background: var(--bg);
+}
+.saved-steps {
+  margin-bottom: 6px;
 }
 .meta {
   margin: 4px 0 0;

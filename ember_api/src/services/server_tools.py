@@ -43,6 +43,8 @@ class WatcherReport:
 class ServerTools(Protocol):
     async def watchers(self, caller: Caller) -> WatcherReport: ...
 
+    async def options_templates(self, caller: Caller) -> set[str]: ...
+
 
 class McpServerTools:
     def __init__(self, url: str, internal_token: str | None) -> None:
@@ -77,15 +79,39 @@ class McpServerTools:
         return report
 
 
-async def _tool_names(session) -> list[str]:
-    names: list[str] = []
+    async def options_templates(self, caller: Caller) -> set[str]:
+        """Every `options_url` a tool parameter declares (chat_app's command
+        form hint): the only paths /api/commands/options may fetch."""
+        headers = identity_headers(caller.username, caller.email, self._internal_token)
+        try:
+            async with mcp_session(self._url, headers, _TIMEOUT) as session:
+                tools = await _tools(session)
+        except Exception as error:  # noqa: BLE001 - any transport failure is one "unreachable" outcome
+            logger.warning("mcp_server tool list failed: %s", error)
+            raise ServerUnavailable(root_cause(error)) from error
+        templates: set[str] = set()
+        for tool in tools:
+            properties = (tool.inputSchema or {}).get("properties") or {}
+            for schema in properties.values():
+                url = schema.get("options_url") if isinstance(schema, dict) else None
+                if isinstance(url, str) and url:
+                    templates.add(url)
+        return templates
+
+
+async def _tools(session) -> list[Any]:
+    tools: list[Any] = []
     cursor: str | None = None
     while True:
         page = await session.list_tools(params=PaginatedRequestParams(cursor=cursor) if cursor else None)
-        names.extend(tool.name for tool in page.tools)
+        tools.extend(page.tools)
         cursor = page.nextCursor
         if not cursor:
-            return names
+            return tools
+
+
+async def _tool_names(session) -> list[str]:
+    return [tool.name for tool in await _tools(session)]
 
 
 def _watcher_rows(result: Any) -> tuple[list[dict[str, Any]], str | None]:

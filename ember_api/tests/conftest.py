@@ -156,12 +156,20 @@ class FakeServerTools:
     report: WatcherReport = field(default_factory=WatcherReport)
     unreachable: bool = False
     callers: list[Caller] = field(default_factory=list)
+    # options_url templates the fake's tools declare.
+    templates: set[str] = field(default_factory=set)
 
     async def watchers(self, caller: Caller) -> WatcherReport:
         self.callers.append(caller)
         if self.unreachable:
             raise ServerUnavailable("connection refused (fake)")
         return self.report
+
+    async def options_templates(self, caller: Caller) -> set[str]:
+        self.callers.append(caller)
+        if self.unreachable:
+            raise ServerUnavailable("connection refused (fake)")
+        return set(self.templates)
 
 
 def make_settings(

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { authClient, type KnownDevice } from "../api/AuthClient";
 import { useAuthStore } from "../stores/auth";
-import { errorMessage } from "../utils/errors";
+import { errorMessage, formatUtc } from "../utils/errors";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -34,6 +35,31 @@ async function changeEmail(): Promise<void> {
     emailForm.busy = false;
   }
 }
+
+// Devices this account logged in from; a login from a new one is noted in
+// the activity log. Forgetting one makes its next login "new" again.
+const devices = ref<KnownDevice[]>([]);
+const devicesError = ref("");
+
+async function loadDevices(): Promise<void> {
+  try {
+    devices.value = await authClient.devices();
+    devicesError.value = "";
+  } catch (err) {
+    devicesError.value = errorMessage(err);
+  }
+}
+
+async function forgetDevice(device: KnownDevice): Promise<void> {
+  try {
+    await authClient.forgetDevice(device.id);
+    devices.value = devices.value.filter((d) => d.id !== device.id);
+  } catch (err) {
+    devicesError.value = errorMessage(err);
+  }
+}
+
+onMounted(loadDevices);
 
 async function changePassword(): Promise<void> {
   passwordForm.error = "";
@@ -117,6 +143,27 @@ async function changePassword(): Promise<void> {
         <p v-else-if="passwordForm.done" class="notice">Password changed.</p>
         <button class="primary" :disabled="passwordForm.busy || passwordMismatch">Change password</button>
       </form>
+
+      <h3>Devices</h3>
+      <p class="muted hint">
+        Where you logged in from, told apart by browser and network. A login from a new one is noted in the activity log.
+      </p>
+      <p v-if="devicesError" class="error">{{ devicesError }}</p>
+      <p v-else-if="devices.length === 0" class="muted">None recorded yet.</p>
+      <ul v-else class="devices">
+        <li v-for="d in devices" :key="d.id">
+          <div class="device">
+            <strong>{{ d.label }}</strong>
+            <span v-if="d.current" class="badge">this device</span>
+            <span class="muted">{{ d.ip_subnet }}</span>
+          </div>
+          <div class="muted small">
+            last used {{ formatUtc(d.last_seen_at) }} · first {{ formatUtc(d.first_seen_at) }}
+          </div>
+          <div class="muted small ua" :title="d.user_agent">{{ d.user_agent || "(no browser name)" }}</div>
+          <button v-if="!d.current" type="button" class="forget" @click="forgetDevice(d)">Forget</button>
+        </li>
+      </ul>
     </div>
   </section>
 </template>
@@ -221,6 +268,45 @@ h3 {
 }
 .muted {
   color: var(--muted);
+}
+.devices {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.devices li {
+  position: relative;
+  padding: 10px 90px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.small {
+  font-size: 0.85em;
+}
+.ua {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.forget {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--bg);
 }
 .error {
   color: var(--danger);

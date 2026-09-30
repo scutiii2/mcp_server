@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteLocationRaw } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import ChatView from "../views/ChatView.vue";
+import { LOG_PERMISSIONS } from "./pages";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -14,9 +15,6 @@ declare module "vue-router" {
   }
 }
 
-// The Logs page shows whichever of its tabs these allow.
-export const LOG_PERMISSIONS = ["logs.view", "logs.errors.view", "logs.chat.view"];
-
 // Pages a logged-in, verified user may land on, in order of preference.
 const HOME_PAGES: { name: string; permission: string }[] = [
   { name: "chat", permission: "chat.use" },
@@ -29,6 +27,7 @@ export const router = createRouter({
   routes: [
     { path: "/", name: "chat", component: ChatView, meta: { permission: "chat.use" } },
     // Lazy: each of these loads its own chunk only when first opened.
+    { path: "/overview", name: "overview", component: () => import("../views/OverviewView.vue") },
     {
       path: "/tools",
       name: "tools",

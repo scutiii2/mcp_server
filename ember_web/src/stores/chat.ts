@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import { chatsClient } from "../api/ChatsClient";
 import type { CommandInfo } from "../api/CommandsClient";
-import type { ChatMessage, Conversation, TurnEvent } from "../api/types";
+import type { ChatMessage, Conversation, JsonSchema, ToolStep, TurnEvent } from "../api/types";
 import {
   LegacyLocalChats,
   ServerConversationStorage,
@@ -26,6 +26,10 @@ function titleFrom(question: string): string {
   const { text, attachments } = splitAttachments(question);
   const oneLine = (text || attachments[0]?.filename || question).replace(/\s+/g, " ").trim();
   return oneLine.length > TITLE_MAX_CHARS ? `${oneLine.slice(0, TITLE_MAX_CHARS - 1)}…` : oneLine;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function cavemanKey(accountId: number): string {
@@ -92,6 +96,8 @@ export const useChatStore = defineStore("chat", () => {
 
   const streaming = ref(""); // the open chat's answer, as it arrives
   const activity = ref(""); // its current tool step, if any
+  const liveSteps = ref<ToolStep[]>([]); // the tools it ran so far
+  const liveStepIndex = new Map<string, number>();
   const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
   const caveman = ref(false);
@@ -276,6 +282,9 @@ export const useChatStore = defineStore("chat", () => {
       case "snapshot":
         streaming.value = event.text;
         activity.value = event.activity ? `${event.activity} ...` : "";
+        // Steps have no ids here; later step_end events for them are ignored.
+        liveSteps.value = event.steps ?? [];
+        liveStepIndex.clear();
         break;
       case "token":
         streaming.value += event.text;
@@ -285,8 +294,25 @@ export const useChatStore = defineStore("chat", () => {
         break;
       case "step_start":
         activity.value = `running ${event.label ?? toolTitle(event.tool)} ...`;
+        liveStepIndex.set(event.id, liveSteps.value.length);
+        liveSteps.value.push({
+          tool: event.tool,
+          label: event.label ?? "",
+          arguments: isRecord(event.arguments) ? event.arguments : {},
+          ok: null,
+          result: "",
+        });
         break;
-      case "step_end":
+      case "step_end": {
+        activity.value = "";
+        const index = liveStepIndex.get(event.id);
+        const step = index === undefined ? undefined : liveSteps.value[index];
+        if (step) {
+          step.ok = event.ok;
+          step.result = event.result;
+        }
+        break;
+      }
       case "summarized":
         activity.value = "";
         break;
@@ -304,6 +330,8 @@ export const useChatStore = defineStore("chat", () => {
     watcher = null;
     streaming.value = "";
     activity.value = "";
+    liveSteps.value = [];
+    liveStepIndex.clear();
   }
 
   /** Streams chat `id`'s running answer into `streaming` until it ends,
@@ -330,6 +358,11 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   // --- sending --------------------------------------------------------------
+
+  /** The parameter schema for a command's form (null: no form needed). */
+  function commandSchema(command: CommandInfo): Promise<JsonSchema | null> {
+    return commandRunner.schemaFor(command);
+  }
 
   /** For the input's suggestions; quietly empty without tools.use or when
    * mcp_server is down (typing a command then shows the error). */
@@ -572,6 +605,8 @@ export const useChatStore = defineStore("chat", () => {
     messages,
     streaming,
     activity,
+    liveSteps,
+    commandSchema,
     busy,
     working,
     contextUsage,

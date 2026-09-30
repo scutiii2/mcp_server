@@ -1,3 +1,15 @@
+/** One tool an answer ran, as ember_api saves it on the answer. */
+export interface ToolStep {
+  tool: string;
+  /** Readable title from ai_agent, if it gave one. */
+  label: string;
+  arguments: Record<string, unknown>;
+  /** null: still running, or the answer stopped before it finished. */
+  ok: boolean | null;
+  /** The result text, cut to 4,000 characters. */
+  result: string;
+}
+
 /** One message of a chat, as ember_api stores it. */
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -11,12 +23,14 @@ export interface ChatMessage {
   /** How full the agent's context was after this answer. */
   context_tokens?: number;
   context_window?: number;
+  /** The tools this answer ran. */
+  steps?: ToolStep[];
 }
 
 /** Events of a turn ember_api runs, as its /events stream sends them. The
  * token/step ones are ai_agent's own, relayed. */
 export type TurnEvent = { sequence: number } & (
-  | { type: "snapshot"; text: string; activity: string }
+  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[] }
   | { type: "token"; text: string }
   | { type: "token_reset" }
   | { type: "step_start"; id: string; tool: string; label?: string; arguments: unknown }
@@ -60,6 +74,27 @@ export interface JsonSchema {
   items?: JsonSchema;
   anyOf?: JsonSchema[];
   oneOf?: JsonSchema[];
+  format?: string;
+  examples?: unknown[];
+  minimum?: number;
+  maximum?: number;
+  maxLength?: number;
+  pattern?: string;
+  // Form hints a tool adds with Field(json_schema_extra=...), as chat_app's
+  // command form reads them.
+  /** Widget: text, textarea, password, number, range, date, select, checkbox, file. */
+  input?: string;
+  /** A path on mcp_server listing a select's options. */
+  options_url?: string;
+  /** The param whose value fills options_url's {placeholder}. */
+  depends_on?: string;
+  /** {param: option field}: filled in when an option is chosen. */
+  sets?: Record<string, string>;
+  /** {label: option field}: shown when an option is chosen. */
+  shows?: Record<string, string>;
+  /** Prefilled text; "{timestamp}" becomes the current time. */
+  initial?: string;
+  step?: number;
 }
 
 /** One mcp_server tool call's outcome as the Tools page shows it. */

@@ -14,6 +14,7 @@ from src.services.agent_gateway import AgentGateway
 from src.services.email_service import EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
+from src.services.server_tools import ServerTools
 from src.services.session_service import SessionService
 from src.services.turns import TurnRegistry
 
@@ -49,6 +50,10 @@ def get_agent_gateway(request: Request) -> AgentGateway:
 
 def get_turns(request: Request) -> TurnRegistry:
     return request.app.state.turns
+
+
+def get_server_tools(request: Request) -> ServerTools:
+    return request.app.state.server_tools
 
 
 def get_log_writer(request: Request) -> LogWriter:

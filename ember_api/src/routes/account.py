@@ -1,4 +1,5 @@
-"""/api/account: the logged-in user changes their own email or password.
+"""/api/account: the logged-in user changes their own email or password,
+and sees (or forgets) the devices they logged in from.
 
 Any logged-in account may call these, verified or not - an unverified user
 who mistyped their email needs exactly this to fix it.
@@ -6,7 +7,9 @@ who mistyped their email needs exactly this to fix it.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,8 +24,9 @@ from src.deps import (
     get_settings,
 )
 from src.models import Account
-from src.routes.auth import AccountOut, send_verification_code
+from src.routes.auth import AccountOut, device_signals, send_verification_code
 from src.services.account_service import AccountChangeError, AccountService, WrongPasswordError
+from src.services.device_service import DeviceService, describe
 from src.services.email_service import EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
@@ -48,8 +52,26 @@ class EmailChangedOut(BaseModel):
     email_error: str | None = None
 
 
+class DeviceOut(BaseModel):
+    id: int
+    # "Firefox on Windows"
+    label: str
+    user_agent: str
+    ip_subnet: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+    # The device this request comes from.
+    current: bool
+
+
 def get_account_service(session: AsyncSession = Depends(get_db_session)) -> AccountService:
     return AccountService(session)
+
+
+def get_device_service(
+    session: AsyncSession = Depends(get_db_session), settings: Settings = Depends(get_settings)
+) -> DeviceService:
+    return DeviceService(session, settings.security.fingerprint_signals)
 
 
 def _http_error(error: Exception) -> HTTPException:
@@ -102,3 +124,39 @@ async def change_password(
     await sessions.revoke_others(account.id, request.cookies[settings.session_cookie_name])
     await logs.action(account, "account.password", "Changed password; other sessions logged out")
     return AccountOut.of(account)
+
+
+@router.get("/devices")
+async def list_devices(
+    request: Request,
+    account: Account = Depends(current_account),
+    devices: DeviceService = Depends(get_device_service),
+) -> list[DeviceOut]:
+    """Devices this account logged in from, most recently used first."""
+    current = devices.fingerprint(device_signals(request))
+    return [
+        DeviceOut(
+            id=d.id,
+            label=describe(d.user_agent),
+            user_agent=d.user_agent,
+            ip_subnet=d.ip_subnet,
+            first_seen_at=d.first_seen_at,
+            last_seen_at=d.last_seen_at,
+            current=d.fingerprint_hash == current,
+        )
+        for d in await devices.list(account.id)
+    ]
+
+
+@router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def forget_device(
+    device_id: int = Path(ge=1),
+    account: Account = Depends(current_account),
+    devices: DeviceService = Depends(get_device_service),
+    logs: LogWriter = Depends(get_log_writer),
+) -> Response:
+    """The next login from it counts as a new device again."""
+    if not await devices.forget(account.id, device_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    await logs.action(account, "account.device_forget", f"Forgot device {device_id}")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

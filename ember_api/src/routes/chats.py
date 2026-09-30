@@ -33,7 +33,15 @@ from src.services.chat_service import (
     decode_messages,
 )
 from src.services.permissions import CHAT_USE
-from src.services.turns import TooManyTurns, TurnConflict, TurnNotFound, TurnOptions, TurnRegistry
+from src.services.turns import (
+    MAX_STEPS,
+    STEP_RESULT_MAX,
+    TooManyTurns,
+    TurnConflict,
+    TurnNotFound,
+    TurnOptions,
+    TurnRegistry,
+)
 from src.services.usage_service import LimitBlock, UsageService
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
@@ -58,6 +66,16 @@ def get_chat_service(
 # --- models ------------------------------------------------------------------
 
 
+class StepIn(BaseModel):
+    """One tool step of an answer, as ember_api saved it."""
+
+    tool: str = Field(max_length=200)
+    label: str = Field(default="", max_length=300)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    ok: bool | None = None
+    result: str = Field(default="", max_length=STEP_RESULT_MAX)
+
+
 class MessageIn(BaseModel):
     role: Literal["user", "assistant"]
     content: str
@@ -68,6 +86,9 @@ class MessageIn(BaseModel):
     total_tokens: int | None = Field(default=None, ge=0)
     context_tokens: int | None = Field(default=None, ge=0)
     context_window: int | None = Field(default=None, ge=0)
+    # The tool steps of an answer (saved by ember_api's turn; a browser
+    # only sends them back when it re-saves or imports a chat).
+    steps: list[StepIn] | None = Field(default=None, max_length=MAX_STEPS)
 
 
 def _clean_title(title: str) -> str:

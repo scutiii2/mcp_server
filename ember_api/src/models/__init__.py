@@ -4,6 +4,7 @@ in ember_api's own database."""
 from src.models.account import Account
 from src.models.auth_session import AuthSession
 from src.models.chat import Chat
+from src.models.known_device import KnownDevice
 from src.models.log_entry import LogEntry
 from src.models.login_attempt import LoginAttempt
 from src.models.otp import EmailVerificationCode, InviteCode
@@ -16,6 +17,7 @@ __all__ = [
     "Chat",
     "EmailVerificationCode",
     "InviteCode",
+    "KnownDevice",
     "LogEntry",
     "LoginAttempt",
     "Permission",

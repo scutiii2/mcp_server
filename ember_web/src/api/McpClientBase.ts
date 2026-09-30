@@ -1,6 +1,7 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+// Types only: the SDK itself (with its schema validators, most of the app's
+// weight) is loaded on the first MCP call, in its own chunk.
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 /** What Client.callTool resolves to. */
 export type RawToolResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -32,6 +33,10 @@ export abstract class McpClientBase {
   }
 
   private async open(): Promise<Client> {
+    const [{ Client }, { StreamableHTTPClientTransport }] = await Promise.all([
+      import("@modelcontextprotocol/sdk/client/index.js"),
+      import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+    ]);
     const client = new Client({ name: "ember_web", version: "0.1.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(this.path, window.location.origin)));
     return client;

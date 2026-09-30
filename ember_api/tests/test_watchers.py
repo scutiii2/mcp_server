@@ -8,12 +8,13 @@ import socket
 import threading
 import time
 from collections.abc import Iterator
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from src.services.agent_gateway import Caller
 from src.services.server_tools import McpServerTools, ServerUnavailable, WatcherReport
@@ -75,7 +76,7 @@ def _build_server() -> FastMCP:
         raise ValueError("mailbox offline")
 
     @mcp.tool()
-    def tool_deploy_start() -> str:
+    def tool_deploy_start(app: Annotated[str, Field(json_schema_extra={"options_url": "/options/apps"})] = "") -> str:
         return "not a watcher list"
 
     return mcp
@@ -103,6 +104,11 @@ def test_real_client_collects_every_capabilitys_watchers(server_url: str) -> Non
     assert report.watchers == [{**ROW, "capability": "deploy"}]
     assert len(report.errors) == 1 and report.errors[0].startswith("mail: ")
     assert "mailbox offline" in report.errors[0]
+
+
+def test_real_client_finds_declared_options_templates(server_url: str) -> None:
+    templates = asyncio.run(McpServerTools(server_url, None).options_templates(Caller("alice", "a@example.com")))
+    assert templates == {"/options/apps"}
 
 
 def test_real_client_unreachable_server() -> None:

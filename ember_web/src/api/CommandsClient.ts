@@ -1,3 +1,4 @@
+import { MAX_ATTACHMENT_BYTES, toBase64 } from "./AttachmentsClient";
 import { apiRequest } from "./http";
 
 /** One slash command: "/<capability> <name>" runs tool `tool_name`. */
@@ -19,6 +20,14 @@ export interface CapabilityInfo {
 
 export type HelpTarget = "all" | "tools" | "commands" | "workflow";
 
+/** One choice of a select whose options come from mcp_server; `extra` holds
+ * the option's other fields (for a param's `sets` / `shows`). */
+export interface ParamOption {
+  value: string;
+  label: string;
+  extra: Record<string, string>;
+}
+
 const enc = encodeURIComponent;
 
 /** ember_api's pass-through to mcp_server's command registry, capability
@@ -34,4 +43,18 @@ export const commandsClient = {
   capabilities: () => apiRequest<CapabilityInfo[]>("GET", "/api/capabilities"),
   setCapability: (name: string, enabled: boolean) =>
     apiRequest<CapabilityInfo>("PATCH", `/api/capabilities/${enc(name)}`, { enabled }),
+  /** A select's options from a tool's `options_url`; `args` fill its {placeholders}. */
+  options: (template: string, args: Record<string, string> = {}) => {
+    const query = new URLSearchParams({ template });
+    for (const [name, value] of Object.entries(args)) query.set(`arg.${name}`, value);
+    return apiRequest<ParamOption[]>("GET", `/api/commands/options?${query.toString()}`);
+  },
+  /** Stores a file on mcp_server for a file-path parameter; returns its path there. */
+  async upload(file: File): Promise<string> {
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error(`Too large - the limit is ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB`);
+    }
+    const body = { filename: file.name, data: await toBase64(file) };
+    return (await apiRequest<{ path: string }>("POST", "/api/uploads", body)).path;
+  },
 };

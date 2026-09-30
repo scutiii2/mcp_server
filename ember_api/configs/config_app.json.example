@@ -27,6 +27,14 @@
     "headers": {
       "enabled": true,
       "hsts_max_age": 0
+    },
+    "fingerprint": {
+      "enabled": true,
+      "signals": [
+        "user_agent",
+        "accept_language",
+        "ip_subnet"
+      ]
     }
   },
   "usage": {
