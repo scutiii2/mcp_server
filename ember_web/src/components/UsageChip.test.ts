@@ -130,3 +130,53 @@ describe("UsageChip on a slash command's reply", () => {
     expect(rows(wrapper)["Run as"]).toBeUndefined();
   });
 });
+
+describe("UsageChip on an answer that ran several agents", () => {
+  const AGENTS = [
+    { agent: "claude", model: "opus", input_tokens: 70, output_tokens: 30, total_tokens: 100 },
+    { agent: "openai", total_tokens: 50 },
+  ];
+
+  it("lists each agent in the detail panel", async () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, agent_usage: AGENTS } } });
+
+    await wrapper.find("button").trigger("click");
+
+    const shown = rows(wrapper);
+    expect(shown["Agents"]).toBe("2 ran this answer");
+    expect(shown["claude"]).toBe("opus · 70 in · 30 out · 100 total");
+    expect(shown["openai"]).toBe("50 total");
+  });
+
+  it("keeps the one-line summary as it was", () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, agent_usage: AGENTS } } });
+
+    expect(wrapper.find("button").text()).toBe("claude-test · 12.4k tokens · 4.2 s · 3 tools");
+  });
+
+  it("lists the agents after the answer's own figures", async () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, agent_usage: AGENTS } } });
+
+    await wrapper.find("button").trigger("click");
+
+    const labels = wrapper.findAll("dt").map((d) => d.text());
+    expect(labels.indexOf("Context")).toBeLessThan(labels.indexOf("Agents"));
+    expect(labels.slice(-3)).toEqual(["Agents", "claude", "openai"]);
+  });
+
+  it("shows no agent rows for an answer without a breakdown", async () => {
+    const wrapper = mount(UsageChip, { props: { message: FULL } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(rows(wrapper)["Agents"]).toBeUndefined();
+  });
+
+  it("shows none for an empty breakdown", async () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, agent_usage: [] } } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(rows(wrapper)["Agents"]).toBeUndefined();
+  });
+});

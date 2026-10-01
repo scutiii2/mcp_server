@@ -8,7 +8,8 @@ can show history. All times are naive UTC; the browser shows local time.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+import math
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -38,6 +39,17 @@ class Window:
 
 def _int(value: Any) -> int | None:
     return int(value) if isinstance(value, (int, float)) and value >= 0 else None
+
+
+def period_start(days: int, since_date: date | None = None) -> tuple[datetime, int]:
+    """Where a report begins, and how many days it spans. A `since_date` (a UTC
+    day, from its midnight: "this month" is the 1st) replaces `days`."""
+    now = utcnow()
+    if since_date is not None:
+        start = datetime.combine(since_date, time.min)
+        return start, max(1, min(math.ceil((now - start) / timedelta(days=1)), MAX_REPORT_DAYS))
+    days = max(1, min(days, MAX_REPORT_DAYS))
+    return now - timedelta(days=days), days
 
 
 def usage_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -116,9 +128,8 @@ class UsageService:
                 return LimitBlock(reason=f"{label} token limit reached", reset_at=window.reset_at)
         return None
 
-    async def report(self, account_id: int, days: int) -> dict[str, Any]:
-        days = max(1, min(days, MAX_REPORT_DAYS))
-        since = utcnow() - timedelta(days=days)
+    async def report(self, account_id: int, days: int, since_date: date | None = None) -> dict[str, Any]:
+        since, days = period_start(days, since_date)
         rows = (
             await self._session.execute(
                 select(
@@ -138,6 +149,8 @@ class UsageService:
         ).all()
 
         daily: dict[str, int] = {}
+        # Tokens by UTC hour of day, for the busiest hour.
+        hourly = [0] * 24
         agents: dict[tuple[str, str], int] = {}
         turns: set[str] = set()
         chats: set[str] = set()
@@ -145,6 +158,7 @@ class UsageService:
         for created_at, turn_id, kind, chat_id, agent, model, input_tokens, output_tokens, tokens in rows:
             day = created_at.date().isoformat()
             daily[day] = daily.get(day, 0) + tokens
+            hourly[created_at.hour] += tokens
             key = (agent or "unknown", model or "")
             agents[key] = agents.get(key, 0) + tokens
             if kind == "summary":
@@ -171,11 +185,12 @@ class UsageService:
                 for (agent, model), tokens in sorted(agents.items(), key=lambda item: -item[1])
             ],
             "daily": [{"date": day, "tokens": tokens} for day, tokens in sorted(daily.items())],
+            "hourly": hourly,
         }
 
-    async def all_accounts(self, days: int) -> list[dict[str, Any]]:
+    async def all_accounts(self, days: int, since_date: date | None = None) -> list[dict[str, Any]]:
         """Per-account totals for admins, busiest first."""
-        since = utcnow() - timedelta(days=max(1, min(days, MAX_REPORT_DAYS)))
+        since, _ = period_start(days, since_date)
         rows = (
             await self._session.execute(
                 select(

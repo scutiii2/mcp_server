@@ -355,6 +355,52 @@ def test_put_keeps_the_usage_fields_of_an_answer(client: TestClient) -> None:
     assert client.get(f"/api/chats/{chat_id}").json()["messages"][1] == answer
 
 
+AGENTS_USED = [
+    {"agent": "claude", "model": "a", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100},
+    {"agent": "openai", "total_tokens": 50},
+]
+
+
+def test_put_keeps_who_used_the_tokens(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    answer = {"role": "assistant", "content": "ok", "total_tokens": 150, "agent_usage": AGENTS_USED}
+
+    assert put(client, chat_id, messages=[{"role": "user", "content": "q"}, answer]).status_code == 200
+
+    assert client.get(f"/api/chats/{chat_id}").json()["messages"][1]["agent_usage"] == AGENTS_USED
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [{"agent": "claude", "total_tokens": -1}],
+        [{"agent": "claude", "total_tokens": 5, "input_tokens": -1}],
+        [{"agent": "claude", "total_tokens": 5, "output_tokens": -1}],
+        [{"agent": "claude"}],  # no total
+        [{"total_tokens": 5}],  # no agent
+        [{"agent": "x" * 121, "total_tokens": 5}],
+        [{"agent": "claude", "model": "m" * 121, "total_tokens": 5}],
+    ],
+)
+def test_put_refuses_a_malformed_breakdown(client: TestClient, rows) -> None:
+    as_admin(client)
+    answer = {"role": "assistant", "content": "x", "agent_usage": rows}
+
+    assert put(client, new_id(), messages=[answer]).status_code == 422
+
+
+def test_put_takes_twenty_breakdown_rows_and_refuses_twenty_one(client: TestClient) -> None:
+    as_admin(client)
+    rows = [{"agent": f"a{i}", "total_tokens": 1} for i in range(21)]
+
+    ok = put(client, new_id(), messages=[{"role": "assistant", "content": "x", "agent_usage": rows[:20]}])
+    too_many = put(client, new_id(), messages=[{"role": "assistant", "content": "x", "agent_usage": rows}])
+
+    assert ok.status_code == 200
+    assert too_many.status_code == 422
+
+
 def test_put_refuses_negative_usage_fields(client: TestClient) -> None:
     as_admin(client)
     bad = {"role": "assistant", "content": "x", "duration_s": -1}

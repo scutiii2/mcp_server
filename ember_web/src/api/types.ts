@@ -30,6 +30,18 @@ export interface ChatMessage {
   context_window?: number;
   /** The tools this answer ran. */
   steps?: ToolStep[];
+  /** Who used the tokens, when the answer ran several agents (its own plus
+   * delegated ones); absent when only one did. */
+  agent_usage?: AgentUsage[];
+}
+
+/** One agent's share of an answer that ran several. */
+export interface AgentUsage {
+  agent: string;
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens: number;
 }
 
 /** A tool run that waits for the user's answer before it starts. */

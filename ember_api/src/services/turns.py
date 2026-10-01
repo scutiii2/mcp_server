@@ -34,7 +34,7 @@ from src.services.agent_directory import AgentEntry
 from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
 from src.services.chat_service import ChatNotFound, ChatService, decode_messages
 from src.services.log_service import LogWriter
-from src.services.usage_service import UsageService
+from src.services.usage_service import UsageService, usage_rows
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,8 @@ TRACE_RESPONSE_MAX = 4000
 # _STEP_RESULT_MAX), and how many steps at most.
 STEP_RESULT_MAX = 4000
 MAX_STEPS = 50
+# Most agents one answer's usage is split into (its own plus delegated ones).
+MAX_AGENT_USAGE_ROWS = 20
 
 
 class TurnConflict(Exception):
@@ -74,6 +76,19 @@ class TurnOptions:
     # allowed for this chat.
     ask_before_tools: bool = False
     allowed_tools: tuple[str, ...] = ()
+
+
+def _agent_usage(row: dict[str, Any]) -> dict[str, Any]:
+    """One saved `agent_usage` entry from a usage row: who, which model and the
+    token counts that are known."""
+    entry = {
+        "agent": row["agent"] or "unknown",
+        "model": row["model"],
+        "input_tokens": row["input_tokens"],
+        "output_tokens": row["output_tokens"],
+        "total_tokens": row["total_tokens"],
+    }
+    return {key: value for key, value in entry.items() if value is not None}
 
 
 @dataclass(eq=False)
@@ -409,6 +424,11 @@ class TurnRegistry:
             # The whole turn (auto-summary and tool calls included), as in the chat-turn log line.
             "duration_s": round(monotonic() - turn.started_at, 1),
         }
+        rows = usage_rows(result)
+        # Several agents ran (the answer's agent plus delegated ones): keep who used
+        # what. One agent only repeats the answer's own totals.
+        if len(rows) > 1:
+            message["agent_usage"] = [_agent_usage(row) for row in rows[:MAX_AGENT_USAGE_ROWS]]
         await self._record_usage(turn, "chat", result)
         await self._finish(turn, message, status="cancelled" if cancelled else "completed", error=None, cancelled=cancelled)
 

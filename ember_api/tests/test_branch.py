@@ -25,6 +25,10 @@ ANSWER = {
     "context_tokens": 1000,
     "context_window": 200000,
     "steps": [STEP],
+    "agent_usage": [
+        {"agent": "claude", "model": "claude-test", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100},
+        {"agent": "openai", "total_tokens": 20},
+    ],
 }
 
 CONVERSATION = [

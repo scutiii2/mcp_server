@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../api/types";
+import type { AgentUsage, ChatMessage } from "../api/types";
 import type { UsageWindow } from "../api/UsageClient";
 
 /** 950 -> "950", 12,400 -> "12.4k", 1,250,000 -> "1.3M": the short form for
@@ -20,6 +20,18 @@ export function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds - minutes * 60);
   return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+}
+
+/** One agent's line in the chip's panel: "claude-x · 70 in · 30 out · 100 total". */
+export function agentUsageText(a: AgentUsage): string {
+  return [
+    a.model,
+    a.input_tokens !== undefined ? `${a.input_tokens.toLocaleString()} in` : "",
+    a.output_tokens !== undefined ? `${a.output_tokens.toLocaleString()} out` : "",
+    `${a.total_tokens.toLocaleString()} total`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** A running clock: 12.4 s under a minute, then 1 min 03 s. */

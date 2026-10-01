@@ -1,20 +1,38 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { usageClient, type AccountUsage, type MyUsage } from "../api/UsageClient";
+import UsageHeatmap from "../components/UsageHeatmap.vue";
 import { useAuthStore } from "../stores/auth";
+import { downloadText, exportFileName } from "../utils/chatExport";
 import { errorMessage, formatUtc } from "../utils/errors";
+import { usageToMarkdown } from "../utils/usageExport";
 import { usagePercent as percent } from "../utils/usageFormat";
+import { favoriteAgent, hourLabel, monthStart, peakHour, utcDay } from "../utils/usageStats";
 
 const auth = useAuthStore();
 
+// "This month" runs from the 1st (UTC); the others are the last n days.
 const RANGES = [
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
-  { days: 365, label: "12 months" },
+  { key: "month", label: "This month" },
+  { key: "7d", label: "7 days", days: 7 },
+  { key: "30d", label: "30 days", days: 30 },
+  { key: "90d", label: "90 days", days: 90 },
+  { key: "12m", label: "12 months", days: 365 },
 ] as const;
+type RangeKey = (typeof RANGES)[number]["key"];
 
-const days = ref<number>(30);
+const range = ref<RangeKey>("30d");
+const currentRange = computed(() => RANGES.find((r) => r.key === range.value)!);
+
+/** What to ask ember_api for: `days`, or the 1st of this month as `since`. */
+function period(): { days: number; since?: string } {
+  const r = currentRange.value;
+  return "days" in r ? { days: r.days } : { days: 30, since: monthStart(new Date()) };
+}
+
+const today = utcDay(new Date());
+// The last 12 months for the heatmap, whatever period is chosen above.
+const year = ref<MyUsage | null>(null);
 const usage = ref<MyUsage | null>(null);
 const accounts = ref<AccountUsage[]>([]);
 const loading = ref(false);
@@ -26,9 +44,10 @@ async function load(): Promise<void> {
   loading.value = true;
   error.value = "";
   try {
+    const { days, since } = period();
     const [mine, all] = await Promise.all([
-      usageClient.mine(days.value),
-      isAdmin.value ? usageClient.allAccounts(days.value) : Promise.resolve([]),
+      usageClient.mine(days, since),
+      isAdmin.value ? usageClient.allAccounts(days, since) : Promise.resolve([]),
     ]);
     usage.value = mine;
     accounts.value = all;
@@ -49,8 +68,34 @@ function dayLabel(date: string): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
-watch(days, load);
-onMounted(load);
+async function loadYear(): Promise<void> {
+  try {
+    year.value = await usageClient.mine(366);
+  } catch {
+    year.value = null; // the heatmap is extra: the rest of the page still works
+  }
+}
+
+const peak = computed(() => (usage.value ? peakHour(usage.value.report.hourly) : null));
+const favorite = computed(() => (usage.value ? favoriteAgent(usage.value.report.by_agent) : null));
+
+function exportReport(): void {
+  const current = usage.value;
+  if (!current) return;
+  const now = new Date();
+  const text = usageToMarkdown(current.report, {
+    username: auth.account?.username ?? "me",
+    rangeLabel: currentRange.value.label,
+    generatedAt: now,
+  });
+  downloadText(exportFileName(`usage-${range.value}-${utcDay(now)}`, "md"), text, "text/markdown");
+}
+
+watch(range, load);
+onMounted(() => {
+  void load();
+  void loadYear();
+});
 </script>
 
 <template>
@@ -61,13 +106,16 @@ onMounted(load);
         <div class="ranges" role="group" aria-label="Period">
           <button
             v-for="r in RANGES"
-            :key="r.days"
+            :key="r.key"
             type="button"
-            :class="{ active: days === r.days }"
-            :aria-pressed="days === r.days"
-            @click="days = r.days"
+            :class="{ active: range === r.key }"
+            :aria-pressed="range === r.key"
+            @click="range = r.key"
           >
             {{ r.label }}
+          </button>
+          <button type="button" class="export" :disabled="!usage" title="Download this period as a Markdown file" @click="exportReport">
+            Export .md
           </button>
         </div>
       </div>
@@ -99,7 +147,16 @@ onMounted(load);
           <div class="stat"><strong>{{ tokens(usage.report.turns) }}</strong><span>answers</span></div>
           <div class="stat"><strong>{{ tokens(usage.report.chats) }}</strong><span>chats</span></div>
           <div class="stat"><strong>{{ tokens(usage.report.summary_tokens) }}</strong><span>on summaries</span></div>
+          <div v-if="peak !== null" class="stat"><strong>{{ hourLabel(peak) }}</strong><span>busiest hour (your time)</span></div>
+          <div v-if="favorite" class="stat"><strong class="text">{{ favorite }}</strong><span>favorite agent</span></div>
         </div>
+
+        <template v-if="year">
+          <h3>Last 12 months</h3>
+          <UsageHeatmap v-if="year.report.daily.length" :daily="year.report.daily" :today="today" />
+          <p v-else class="muted">No usage in the last 12 months.</p>
+          <p class="muted small">Days are UTC days.</p>
+        </template>
 
         <h3>Per day</h3>
         <p v-if="usage.report.daily.length === 0" class="muted">No usage in this period.</p>
@@ -191,6 +248,13 @@ h3 {
   color: var(--text);
   border-color: var(--accent);
 }
+.ranges .export {
+  margin-left: 8px;
+}
+.ranges button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
 .limits {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -244,6 +308,10 @@ h3 {
 }
 .stat strong {
   font-size: 1.3em;
+}
+.stat strong.text {
+  font-size: 1em;
+  overflow-wrap: anywhere;
 }
 .stat span {
   font-size: 0.8em;

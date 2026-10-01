@@ -3,10 +3,10 @@ and /api/admin/usage: every account's totals (admin.manage)."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +14,8 @@ from src.config import Settings
 from src.deps import get_db_session, get_settings, require_permission
 from src.models import Account
 from src.services.permissions import ADMIN_MANAGE, CHAT_USE
-from src.services.usage_service import UsageService, Window
+from src.db import utcnow
+from src.services.usage_service import MAX_REPORT_DAYS, UsageService, Window
 
 router = APIRouter(tags=["usage"])
 
@@ -26,6 +27,18 @@ def get_usage_service(
     session: AsyncSession = Depends(get_db_session), settings: Settings = Depends(get_settings)
 ) -> UsageService:
     return UsageService(session, settings.usage)
+
+
+def check_since(since: date | None) -> date | None:
+    """`since` (a UTC day) must not be in the future or older than the longest report."""
+    if since is None:
+        return None
+    today = utcnow().date()
+    if since > today:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "since must not be in the future")
+    if today - since > timedelta(days=MAX_REPORT_DAYS):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"since must be within the last {MAX_REPORT_DAYS} days")
+    return since
 
 
 class WindowOut(BaseModel):
@@ -57,6 +70,7 @@ class AccountUsageOut(BaseModel):
 @router.get("/api/usage")
 async def my_usage(
     days: int = Query(default=30, ge=1, le=366),
+    since: date | None = Query(default=None),
     account: Account = Depends(require_chat),
     usage: UsageService = Depends(get_usage_service),
 ) -> UsageOut:
@@ -64,14 +78,15 @@ async def my_usage(
     return UsageOut(
         six_hour=WindowOut.of(windows["six_hour"]),
         weekly=WindowOut.of(windows["weekly"]),
-        report=await usage.report(account.id, days),
+        report=await usage.report(account.id, days, check_since(since)),
     )
 
 
 @router.get("/api/admin/usage")
 async def all_usage(
     days: int = Query(default=30, ge=1, le=366),
+    since: date | None = Query(default=None),
     _admin: Account = Depends(require_admin),
     usage: UsageService = Depends(get_usage_service),
 ) -> list[AccountUsageOut]:
-    return [AccountUsageOut(**row) for row in await usage.all_accounts(days)]
+    return [AccountUsageOut(**row) for row in await usage.all_accounts(days, check_since(since))]

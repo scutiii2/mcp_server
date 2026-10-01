@@ -28,7 +28,9 @@ URL, token or key.
 - Copy button on every answer, on your messages and on each code block.
 - A usage chip under each answer (`model · 12.4k tokens · 4.2 s · 3 tools`);
   click it for input/output tokens, time, tools run and context use. Answers
-  saved before ember_api stored the split and the time show less.
+  saved before ember_api stored the split and the time show less. An answer
+  that delegated to other agents also lists each agent's model, input, output
+  and total tokens there (older answers have no such list).
 - Regenerate the last answer, or edit one of your questions and resend it
   (its attached files stay; the messages after it are dropped, with a
   confirm when that discards later exchanges). ember_api does the cut
@@ -105,7 +107,14 @@ URL, token or key.
 - "Terse replies" toggle next to the Agent picker (ai_agent's `caveman`
   option), remembered per account.
 - Usage page: your 6-hour and weekly token limits, totals, tokens per day and
-  per agent; admins also see every account.
+  per agent; admins also see every account. Periods: This month (from the 1st,
+  UTC), 7, 30 and 90 days, 12 months. Also a "busiest hour" and a "favorite
+  agent" tile, a 12-month heatmap (one square per UTC day, five shades
+  relative to the busiest day; its own request, so it ignores the period) and
+  "Export .md", a Markdown report of the chosen period built in the browser.
+  The busiest hour is shown in your time zone by shifting the UTC hours by your
+  current offset rounded to a whole hour, so a half-hour zone can be off by an
+  hour and a daylight-saving change inside the period is ignored.
 - Capabilities page: mcp_server's capabilities with their tools and
   resources, reading resources, and (admins) switching capabilities on/off.
 - Extensions page: mcp_server's extensions (other MCP servers) with their
@@ -175,10 +184,10 @@ their source as `*.test.ts` and are type-checked by `vue-tsc -b` (so
 ember_api calls are mocked. Covered so far: the chat store (regenerate, edit
 and resend, search, jump to a result, delete several, deep-link readiness),
 the templates store (including the chime and the clocks), the message list (welcome card, running clock,
-command replies), usage chip, usage gauges, elapsed clock, chime, copy button,
+command replies), usage chip (agent breakdown), usage gauges, usage heatmap and page, elapsed clock, chime, copy button,
 chat input (paste, drop, Up and Down recall, `#` prompts), prompt picker and
 dialog, sidebar search and select mode, the shortcut, theme and chat-address
-composables, clipboard, markdown code blocks, usage, welcome and attachment helpers and
+composables, clipboard, markdown code blocks, usage (stats, heatmap, export), welcome and attachment helpers and
 the prompt helpers.
 
 Other scripts: `npm run build` (type-check + production build into `dist/`),
@@ -212,7 +221,7 @@ src/
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, ElapsedTime, WelcomeCard, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)

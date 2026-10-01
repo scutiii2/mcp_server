@@ -1,0 +1,266 @@
+import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { usageClient, type MyUsage } from "../api/UsageClient";
+import { useAuthStore } from "../stores/auth";
+import { downloadText } from "../utils/chatExport";
+import UsageView from "./UsageView.vue";
+
+vi.mock("../api/UsageClient", () => ({ usageClient: { mine: vi.fn(), allAccounts: vi.fn() } }));
+vi.mock("../utils/chatExport", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/chatExport")>()),
+  downloadText: vi.fn(),
+}));
+
+const mine = vi.mocked(usageClient.mine);
+const allAccounts = vi.mocked(usageClient.allAccounts);
+const download = vi.mocked(downloadText);
+
+const hourly = (hour: number, tokens: number): number[] => {
+  const list = new Array<number>(24).fill(0);
+  list[hour] = tokens;
+  return list;
+};
+
+function usage(extra: Partial<MyUsage["report"]> = {}): MyUsage {
+  return {
+    six_hour: { used: 10, limit: 100, reset_at: null },
+    weekly: { used: 20, limit: 0, reset_at: null },
+    report: {
+      days: 30,
+      since: "2026-09-15T00:00:00",
+      total_tokens: 1500,
+      input_tokens: 1000,
+      output_tokens: 500,
+      summary_tokens: 0,
+      turns: 4,
+      chats: 2,
+      by_agent: [{ agent: "claude", model: "opus", tokens: 1500 }],
+      daily: [{ date: "2026-10-01", tokens: 1500 }],
+      hourly: hourly(14, 1500),
+      ...extra,
+    },
+  };
+}
+
+function account(permissions: string[]) {
+  return { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions };
+}
+
+async function mountView(permissions = ["chat.use"]) {
+  setActivePinia(createPinia());
+  useAuthStore().account = account(permissions);
+  const wrapper = mount(UsageView);
+  await flushPromises();
+  return wrapper;
+}
+
+const rangeButton = (wrapper: Awaited<ReturnType<typeof mountView>>, label: string) =>
+  wrapper.findAll(".ranges button").find((b) => b.text() === label)!;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-15T08:00:00Z"));
+  vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
+  mine.mockResolvedValue(usage());
+  allAccounts.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("the period buttons", () => {
+  it("offers This month first, then 7 days to 12 months, with 30 days chosen", async () => {
+    const wrapper = await mountView();
+
+    const buttons = wrapper.findAll(".ranges button").filter((b) => !b.classes().includes("export"));
+    expect(buttons.map((b) => b.text())).toEqual(["This month", "7 days", "30 days", "90 days", "12 months"]);
+    expect(buttons.map((b) => b.attributes("aria-pressed"))).toEqual(["false", "false", "true", "false", "false"]);
+  });
+
+  it("loads the last 30 days to begin with", async () => {
+    await mountView();
+
+    expect(mine).toHaveBeenCalledWith(30, undefined);
+  });
+
+  it("This month asks from the 1st", async () => {
+    const wrapper = await mountView();
+
+    await rangeButton(wrapper, "This month").trigger("click");
+    await flushPromises();
+
+    expect(mine).toHaveBeenLastCalledWith(30, "2026-10-01");
+    expect(rangeButton(wrapper, "This month").attributes("aria-pressed")).toBe("true");
+  });
+
+  it.each([
+    ["7 days", 7],
+    ["90 days", 90],
+    ["12 months", 365],
+  ])("%s asks for %d days", async (label, days) => {
+    const wrapper = await mountView();
+
+    await rangeButton(wrapper, label).trigger("click");
+    await flushPromises();
+
+    expect(mine).toHaveBeenLastCalledWith(days, undefined);
+  });
+
+  it("asks for every account's totals with the same period, for an admin", async () => {
+    const wrapper = await mountView(["chat.use", "admin.manage"]);
+    expect(allAccounts).toHaveBeenLastCalledWith(30, undefined);
+
+    await rangeButton(wrapper, "This month").trigger("click");
+    await flushPromises();
+
+    expect(allAccounts).toHaveBeenLastCalledWith(30, "2026-10-01");
+  });
+
+  it("does not ask for them without admin.manage", async () => {
+    await mountView(["chat.use"]);
+
+    expect(allAccounts).not.toHaveBeenCalled();
+  });
+});
+
+describe("the new figures", () => {
+  it("shows the busiest hour and the favorite agent", async () => {
+    const wrapper = await mountView();
+
+    const stats = wrapper.findAll(".stat").map((s) => s.text());
+    expect(stats).toContain("2 PMbusiest hour (your time)");
+    expect(stats).toContain("claude opusfavorite agent");
+  });
+
+  it("moves the busiest hour into the viewer's time zone", async () => {
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-120); // UTC+2
+
+    const wrapper = await mountView();
+
+    expect(wrapper.findAll(".stat").map((s) => s.text())).toContain("4 PMbusiest hour (your time)");
+  });
+
+  it("leaves both out when nothing was used in the period", async () => {
+    mine.mockResolvedValue(usage({ hourly: new Array<number>(24).fill(0), by_agent: [], daily: [], total_tokens: 0 }));
+
+    const wrapper = await mountView();
+
+    const text = wrapper.find(".stats").text();
+    expect(text).not.toContain("busiest hour");
+    expect(text).not.toContain("favorite agent");
+  });
+});
+
+describe("the 12-month heatmap", () => {
+  it("is drawn from its own request for the last 366 days, once", async () => {
+    const wrapper = await mountView();
+
+    expect(mine).toHaveBeenCalledWith(366);
+    expect(wrapper.find(".heatmap").exists()).toBe(true);
+    expect(wrapper.text()).toContain("Last 12 months");
+    expect(wrapper.text()).toContain("Days are UTC days.");
+
+    await rangeButton(wrapper, "7 days").trigger("click");
+    await flushPromises();
+
+    expect(mine.mock.calls.filter((call) => call[0] === 366)).toHaveLength(1);
+  });
+
+  it("does not follow the chosen period", async () => {
+    mine.mockImplementation(async (days) =>
+      days === 366 ? usage({ daily: [{ date: "2026-03-03", tokens: 9 }] }) : usage({ daily: [{ date: "2026-10-01", tokens: 1500 }] }),
+    );
+
+    const wrapper = await mountView();
+    await rangeButton(wrapper, "7 days").trigger("click");
+    await flushPromises();
+
+    const titles = wrapper.findAll(".heatmap .cell").map((c) => c.attributes("title") ?? "");
+    expect(titles.some((t) => t.startsWith("2026-03-03"))).toBe(true);
+  });
+
+  it("says so when nothing was used in the last year", async () => {
+    mine.mockImplementation(async (days) => (days === 366 ? usage({ daily: [] }) : usage()));
+
+    const wrapper = await mountView();
+
+    expect(wrapper.find(".heatmap").exists()).toBe(false);
+    expect(wrapper.text()).toContain("No usage in the last 12 months.");
+  });
+
+  it("is left out, and the rest of the page still works, when its request fails", async () => {
+    mine.mockImplementation(async (days) => {
+      if (days === 366) throw new Error("boom");
+      return usage();
+    });
+
+    const wrapper = await mountView();
+
+    expect(wrapper.text()).not.toContain("Last 12 months");
+    expect(wrapper.find(".heatmap").exists()).toBe(false);
+    expect(wrapper.find(".stats").exists()).toBe(true);
+    expect(wrapper.find(".error").exists()).toBe(false);
+  });
+});
+
+describe("Export .md", () => {
+  const exportButton = (wrapper: Awaited<ReturnType<typeof mountView>>) => wrapper.find(".ranges .export");
+
+  it("is off until the report has loaded", async () => {
+    mine.mockReturnValue(new Promise(() => {}));
+    setActivePinia(createPinia());
+    useAuthStore().account = account(["chat.use"]);
+
+    const wrapper = mount(UsageView);
+
+    expect(exportButton(wrapper).attributes("disabled")).toBeDefined();
+  });
+
+  it("downloads the period as a Markdown file named for it", async () => {
+    const wrapper = await mountView();
+
+    await exportButton(wrapper).trigger("click");
+
+    expect(download).toHaveBeenCalledOnce();
+    const [name, text, type] = download.mock.calls[0]!;
+    expect(name).toBe("usage-30d-2026-10-15.md");
+    expect(type).toBe("text/markdown");
+    expect(text).toContain("# Token usage - root");
+    expect(text).toContain("Range: 30 days (since 2026-09-15).");
+    expect(text).toContain("| Total tokens | 1,500 |");
+  });
+
+  it("labels the file and the range for This month", async () => {
+    const wrapper = await mountView();
+    await rangeButton(wrapper, "This month").trigger("click");
+    await flushPromises();
+
+    await exportButton(wrapper).trigger("click");
+
+    const [name, text] = download.mock.calls[0]!;
+    expect(name).toBe("usage-month-2026-10-15.md");
+    expect(text).toContain("Range: This month");
+  });
+
+  it("exports what is on the page, not the 12-month request", async () => {
+    mine.mockImplementation(async (days) => (days === 366 ? usage({ total_tokens: 999_999 }) : usage({ total_tokens: 1500 })));
+    const wrapper = await mountView();
+
+    await exportButton(wrapper).trigger("click");
+
+    expect(download.mock.calls[0]![1]).toContain("| Total tokens | 1,500 |");
+  });
+
+  it("does nothing when the report failed to load", async () => {
+    mine.mockRejectedValue(new Error("down"));
+
+    const wrapper = await mountView();
+
+    expect(wrapper.find(".error").text()).toContain("down");
+    expect(exportButton(wrapper).attributes("disabled")).toBeDefined();
+  });
+});

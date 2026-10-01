@@ -38,6 +38,7 @@ from src.services.chat_service import (
 )
 from src.services.permissions import CHAT_USE
 from src.services.turns import (
+    MAX_AGENT_USAGE_ROWS,
     MAX_STEPS,
     STEP_RESULT_MAX,
     TooManyTurns,
@@ -90,6 +91,16 @@ class StepIn(BaseModel):
     result: str = Field(default="", max_length=STEP_RESULT_MAX)
 
 
+class AgentUsageIn(BaseModel):
+    """One agent's share of an answer that delegated to others."""
+
+    agent: str = Field(max_length=120)
+    model: str | None = Field(default=None, max_length=120)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int = Field(ge=0)
+
+
 class MessageIn(BaseModel):
     role: Literal["user", "assistant"]
     content: str
@@ -107,6 +118,9 @@ class MessageIn(BaseModel):
     # The tool steps of an answer (saved by ember_api's turn; a browser
     # only sends them back when it re-saves or imports a chat).
     steps: list[StepIn] | None = Field(default=None, max_length=MAX_STEPS)
+    # Who used the tokens when the answer ran several agents (its own plus
+    # delegated ones); absent when only one did.
+    agent_usage: list[AgentUsageIn] | None = Field(default=None, max_length=MAX_AGENT_USAGE_ROWS)
 
 
 def _clean_title(title: str) -> str:

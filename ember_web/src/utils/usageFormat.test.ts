@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../api/types";
-import { compactNumber, formatClock, formatDuration, usagePercent, usageSummary } from "./usageFormat";
+import { agentUsageText, compactNumber, formatClock, formatDuration, usagePercent, usageSummary } from "./usageFormat";
 
 describe("compactNumber", () => {
   it.each([
@@ -127,5 +127,22 @@ describe("usageSummary for a slash command's reply", () => {
 
   it("leaves a model's answer as it was", () => {
     expect(usageSummary({ role: "assistant", content: "a", model: "m", duration_s: 4.2 })).toBe("m · 4.2 s");
+  });
+});
+
+describe("agentUsageText", () => {
+  it("lists the model, the split and the total", () => {
+    expect(agentUsageText({ agent: "claude", model: "opus", input_tokens: 1200, output_tokens: 300, total_tokens: 1500 })).toBe(
+      `opus · ${(1200).toLocaleString()} in · 300 out · ${(1500).toLocaleString()} total`,
+    );
+  });
+
+  it("leaves out what was not reported", () => {
+    expect(agentUsageText({ agent: "openai", total_tokens: 50 })).toBe("50 total");
+    expect(agentUsageText({ agent: "openai", model: "gpt", total_tokens: 50 })).toBe("gpt · 50 total");
+  });
+
+  it("keeps a reported 0 instead of treating it as missing", () => {
+    expect(agentUsageText({ agent: "a", input_tokens: 0, output_tokens: 0, total_tokens: 0 })).toBe("0 in · 0 out · 0 total");
   });
 });

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { ChatMessage } from "../api/types";
-import { formatDuration, usageSummary } from "../utils/usageFormat";
+import { agentUsageText, formatDuration, usageSummary } from "../utils/usageFormat";
 
 const props = defineProps<{ message: ChatMessage }>();
 
@@ -33,6 +33,10 @@ const rows = computed<Row[]>(() => {
       label: "Context",
       value: `${m.context_tokens.toLocaleString()} of ${m.context_window.toLocaleString()} (${percent}%)`,
     });
+  }
+  if (m.agent_usage?.length) {
+    list.push({ label: "Agents", value: `${m.agent_usage.length} ran this answer` });
+    for (const a of m.agent_usage) list.push({ label: a.agent, value: agentUsageText(a) });
   }
   return list;
 });

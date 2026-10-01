@@ -116,6 +116,82 @@ def test_answer_without_a_token_split_still_saves(client: TestClient, agent: Fak
     assert answer["total_tokens"] == 100 and "duration_s" in answer
 
 
+DELEGATED = [
+    {"provider_id": "claude", "model": "a", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100},
+    {"provider_id": "openai", "model": "b", "input_tokens": 40, "output_tokens": 10, "total_tokens": 50},
+]
+
+
+def test_an_answer_that_delegated_saves_who_used_the_tokens(client: TestClient, agent: FakeAgent) -> None:
+    agent.result_extra = {"agent_usage": DELEGATED}
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+
+    final = events(client, chat_id)[-1]["message"]
+    saved = chat(client, chat_id)["messages"][-1]
+
+    expected = [
+        {"agent": "claude", "model": "a", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100},
+        {"agent": "openai", "model": "b", "input_tokens": 40, "output_tokens": 10, "total_tokens": 50},
+    ]
+    assert final["agent_usage"] == expected
+    assert saved["agent_usage"] == expected
+
+
+def test_an_answer_from_one_agent_saves_no_breakdown(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+    events(client, chat_id)
+
+    answer = chat(client, chat_id)["messages"][-1]
+
+    assert answer["total_tokens"] == 100
+    assert "agent_usage" not in answer
+
+
+def test_a_delegate_that_spent_nothing_is_not_listed(client: TestClient, agent: FakeAgent) -> None:
+    agent.result_extra = {"agent_usage": [DELEGATED[0], {"provider_id": "openai", "model": "b", "total_tokens": 0}]}
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+    events(client, chat_id)
+
+    assert "agent_usage" not in chat(client, chat_id)["messages"][-1]
+
+
+def test_a_breakdown_row_keeps_only_what_is_known(client: TestClient, agent: FakeAgent) -> None:
+    agent.result_extra = {
+        "agent_usage": [DELEGATED[0], {"provider_id": None, "model": None, "total_tokens": 20}],
+    }
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+    events(client, chat_id)
+
+    rows = chat(client, chat_id)["messages"][-1]["agent_usage"]
+
+    assert rows[1] == {"agent": "unknown", "total_tokens": 20}
+
+
+def test_a_breakdown_is_cut_at_twenty_agents(client: TestClient, agent: FakeAgent) -> None:
+    agent.result_extra = {
+        "agent_usage": [{"provider_id": f"agent{i}", "model": "m", "total_tokens": 1} for i in range(25)]
+    }
+    as_admin(client)
+    chat_id = new_id()
+    start(client, chat_id)
+    events(client, chat_id)
+
+    rows = chat(client, chat_id)["messages"][-1]["agent_usage"]
+
+    assert len(rows) == 20
+    assert rows[0]["agent"] == "agent0" and rows[-1]["agent"] == "agent19"
+    # All 25 still count toward the usage report: only the saved breakdown is capped.
+    assert client.get("/api/usage").json()["report"]["total_tokens"] == 25
+
+
 def test_second_turn_sends_history_without_raw_logs(client: TestClient, agent: FakeAgent) -> None:
     as_admin(client)
     chat_id = new_id()
