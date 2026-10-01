@@ -3,8 +3,10 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { ApprovalDecision, ChatMessage, PendingApproval, ToolStep } from "../api/types";
 import type { CommandInfo } from "../api/CommandsClient";
 import { splitAttachments } from "../utils/attachments";
+import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
 import { toolTitle } from "../utils/toolTitles";
 import CopyButton from "./CopyButton.vue";
+import DownloadCards from "./DownloadCards.vue";
 import ElapsedTime from "./ElapsedTime.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import ToolSteps from "./ToolSteps.vue";
@@ -32,6 +34,8 @@ const props = defineProps<{
   since?: number | null;
   /** The slash commands the account may run, for the welcome card of an empty chat. */
   commands?: CommandInfo[];
+  /** Agent ids with the names to show for them, for the tag under each answer. */
+  agentLabels?: Record<string, string>;
 }>();
 const emit = defineEmits<{
   regenerate: [];
@@ -45,6 +49,11 @@ const ARGS_OPEN_MAX_CHARS = 400;
 
 function formatArguments(args: Record<string, unknown>): string {
   return Object.keys(args).length === 0 ? "(no arguments)" : JSON.stringify(args, null, 2);
+}
+
+function agentLabel(m: ChatMessage): string | undefined {
+  // Without a label the chip shows the saved id.
+  return m.agent ? props.agentLabels?.[m.agent] : undefined;
 }
 
 function isDeciding(id: string): boolean {
@@ -186,8 +195,9 @@ onBeforeUnmount(() => {
         </section>
         <div v-else-if="m.kind === 'command' && m.role === 'user'" class="user-bubble command">{{ m.content }}</div>
         <div v-else-if="m.kind === 'command'" class="assistant">
-          <MarkdownContent class="command-result" :text="m.content" />
-          <div class="actions"><UsageChip :message="m" /></div>
+          <MarkdownContent class="command-result" :text="parseDownloads(m.content).text" />
+          <DownloadCards :downloads="parseDownloads(m.content).downloads" />
+          <div class="actions"><UsageChip :message="m" :agent-label="agentLabel(m)" /></div>
         </div>
         <!-- Only model output is rendered as markdown; the user's own text stays literal. -->
         <div v-else-if="m.role === 'user' && editingIndex === i" class="user-row editing">
@@ -235,9 +245,10 @@ onBeforeUnmount(() => {
         </div>
         <div v-else class="assistant">
           <ToolSteps v-if="m.steps?.length" :steps="m.steps" class="saved-steps" />
-          <MarkdownContent :text="m.content" />
+          <MarkdownContent :text="parseDownloads(m.content).text" />
+          <DownloadCards :downloads="parseDownloads(m.content).downloads" />
           <div class="actions">
-            <CopyButton :text="m.content" label="Copy answer" />
+            <CopyButton :text="parseDownloads(m.content).text" label="Copy answer" />
             <button
               v-if="canChange && i === messages.length - 1 && regenerateIndex !== undefined && regenerateIndex >= 0"
               type="button"
@@ -278,7 +289,7 @@ onBeforeUnmount(() => {
                 />
               </svg>
             </button>
-            <UsageChip :message="m" />
+            <UsageChip :message="m" :agent-label="agentLabel(m)" />
           </div>
         </div>
       </div>
@@ -318,7 +329,7 @@ onBeforeUnmount(() => {
           <p class="note">No answer within 4 minutes counts as Deny.</p>
         </section>
         <span v-if="activity" class="activity"><span class="dot" />{{ activity }}</span>
-        <MarkdownContent v-if="streaming" :text="streaming" />
+        <MarkdownContent v-if="streaming" :text="hideDownloadMarkers(streaming)" />
         <span v-else-if="!activity" class="activity"><span class="dot" />thinking ...</span>
         <ElapsedTime v-if="since" :since="since" class="elapsed" />
       </div>

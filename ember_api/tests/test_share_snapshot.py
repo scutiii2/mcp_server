@@ -12,6 +12,7 @@ def test_keeps_plain_questions_and_answers_as_role_and_content_only() -> None:
             "role": "assistant",
             "content": "a1",
             "model": "claude",
+            "agent": "claude-agent",
             "total_tokens": 10,
             "input_tokens": 7,
             "duration_s": 1.0,

@@ -2,6 +2,7 @@ import { commandsClient, type CommandInfo, type HelpTarget } from "../api/Comman
 import { EXTENSION_SEPARATOR } from "../api/ExtensionsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { JsonSchema, ToolInfo } from "../api/types";
+import { downloadMarkersOf } from "../utils/downloads";
 import { formatToolResult } from "../utils/toolResultFormat";
 
 /** "/<capability> <command> key=value ..." runs an mcp_server tool directly,
@@ -227,7 +228,10 @@ export class SlashCommandRunner {
       if (!tool) throw new CommandError(`Tool ${command.tool_name} is not available right now`);
 
       const result = await this.server.runTool(tool.name, buildArguments(parsed, tool.inputSchema));
-      const shown = formatToolResult(result.text) ?? (result.text || "(no output)");
+      const body = formatToolResult(result.text) ?? (result.text || "(no output)");
+      // Files the tool offers come first, as download cards (the markers are shown as cards by the chat).
+      const markers = downloadMarkersOf(result.text);
+      const shown = markers.length ? `${markers.join("\n")}\n\n${body}` : body;
       return result.isError ? `❌ ${shown}` : shown;
     } catch (err) {
       return `❌ ${err instanceof Error ? err.message : String(err)}`;

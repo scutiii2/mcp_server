@@ -445,7 +445,7 @@ describe("a slash command's reply", () => {
   it("shows the usage chip with 'Direct tool call' and the time", () => {
     const wrapper = mountList({ messages: command({ duration_s: 0.8 }) });
 
-    expect(wrapper.find(".usage .chip").text()).toBe("Direct tool call · 0.8 s");
+    expect(wrapper.find(".usage .chip").text()).toBe("No AI used · direct tool call · 0.8 s");
   });
 
   it("keeps the result in its own box, above the chip", () => {
@@ -466,5 +466,92 @@ describe("a slash command's reply", () => {
     const wrapper = mountList({ messages: command() });
 
     expect(wrapper.findAll(".msg")[0]!.find(".chip").exists()).toBe(false);
+  });
+});
+
+describe("the agent tag under an answer", () => {
+  const tagged = (agent?: string): ChatMessage[] => [user("q"), assistant("a", { agent, model: "m", total_tokens: 10 })];
+
+  it("names the agent by its label", () => {
+    const wrapper = mountList({ messages: tagged("claude-agent"), agentLabels: { "claude-agent": "Claude Agent" } });
+
+    expect(wrapper.find(".usage .chip").text()).toBe("Claude Agent · m · 10 tokens");
+  });
+
+  it("shows the saved id when the agent is no longer listed", () => {
+    const wrapper = mountList({ messages: tagged("gone-agent"), agentLabels: { "claude-agent": "Claude Agent" } });
+
+    expect(wrapper.find(".usage .chip").text()).toBe("gone-agent · m · 10 tokens");
+  });
+
+  it("shows the saved id when no labels are given", () => {
+    const wrapper = mountList({ messages: tagged("claude-agent") });
+
+    expect(wrapper.find(".usage .chip").text()).toBe("claude-agent · m · 10 tokens");
+  });
+
+  it("shows no agent for an answer saved without one", () => {
+    const wrapper = mountList({ messages: tagged(), agentLabels: { "claude-agent": "Claude Agent" } });
+
+    expect(wrapper.find(".usage .chip").text()).toBe("m · 10 tokens");
+  });
+
+  it("tags each answer with its own agent", () => {
+    const messages = [user("q1"), assistant("a1", { agent: "a" }), user("q2"), assistant("a2", { agent: "b" })];
+    const wrapper = mountList({ messages, agentLabels: { a: "Alpha", b: "Beta" } });
+
+    expect(wrapper.findAll(".usage .chip").map((c) => c.text())).toEqual(["Alpha", "Beta"]);
+  });
+});
+
+describe("download cards", () => {
+  const MARKER = '[[DOWNLOAD filename="a.csv" bytes="2048" url="/server/download?path=x" label="EXPORT"]]';
+
+  it("turns a marker in an answer into a card and hides the marker text", () => {
+    const wrapper = mountList({ messages: [user("q"), assistant(`Here you go.\n\n${MARKER}`)] });
+
+    const link = wrapper.find(".downloads a.file");
+    expect(link.attributes("href")).toBe("/api/server/download?path=x");
+    expect(link.text()).toBe("⬇ Download a.csv (2 KB)");
+    expect(wrapper.find(".assistant").text()).not.toContain("[[DOWNLOAD");
+    expect(wrapper.find(".assistant").text()).toContain("Here you go.");
+  });
+
+  it("copies the answer without the marker", () => {
+    const wrapper = mountList({ messages: [user("q"), assistant(`Here you go.\n\n${MARKER}`)] });
+
+    expect(wrapper.find(".assistant").findComponent({ name: "CopyButton" }).props("text")).toBe("Here you go.");
+  });
+
+  it("shows a card in a command's result too", () => {
+    const messages = [
+      { role: "user", kind: "command", content: "/files export" } as ChatMessage,
+      assistant(`${MARKER}\n\nExported.`, { kind: "command" }),
+    ];
+    const wrapper = mountList({ messages });
+
+    expect(wrapper.find(".command-result").text()).toBe("Exported.");
+    expect(wrapper.find(".downloads a.file").exists()).toBe(true);
+  });
+
+  it("shows no cards for an answer without a marker", () => {
+    const wrapper = mountList();
+
+    expect(wrapper.find(".downloads").exists()).toBe(false);
+  });
+
+  it("hides a marker while the answer is still streaming", () => {
+    const wrapper = mountList({ messages: [user("q")], busy: true, streaming: 'Almost [[DOWNLOAD filename="a' });
+
+    expect(wrapper.text()).toContain("Almost");
+    expect(wrapper.text()).not.toContain("[[DOWNLOAD");
+  });
+
+  it("does not make a link out of an address that is not a download route", () => {
+    const bad = '[[DOWNLOAD filename="x.exe" bytes="1" url="https://evil.example/x.exe"]]';
+    const wrapper = mountList({ messages: [user("q"), assistant(bad)] });
+
+    expect(wrapper.find(".downloads a").exists()).toBe(false);
+    expect(wrapper.find(".downloads .unavailable").exists()).toBe(true);
   });
 });

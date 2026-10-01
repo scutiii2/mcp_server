@@ -74,6 +74,7 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
         {
             "role": "assistant",
             "content": "Hello!",
+            "agent": AGENT_ID,
             "model": "claude-test",
             "total_tokens": 100,
             "input_tokens": 70,
@@ -87,6 +88,42 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
     assert asked["enabled_extensions"] == []
     assert asked["url"] == AGENTS[0]["url"]
     assert asked["caller"].username == "root"
+
+
+def test_each_answer_saves_which_agent_wrote_it(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    other = AGENTS[1]["id"]
+
+    assert start(client, chat_id, "first").status_code == 202
+    events(client, chat_id)
+    assert client.post(f"/api/chats/{chat_id}/turns", json={"question": "second", "agent_id": other}).status_code == 202
+    events(client, chat_id)
+
+    answers = [m for m in chat(client, chat_id)["messages"] if m["role"] == "assistant"]
+    assert [m["agent"] for m in answers] == [AGENT_ID, other]
+
+
+def test_a_cancelled_answer_still_names_its_agent(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    agent.hold = True
+    assert start(client, chat_id).status_code == 202
+    wait_until(lambda: bool(agent.asks))
+    assert client.post(f"/api/chats/{chat_id}/cancel", json={}).json() == {"cancelled": True}
+    events(client, chat_id)
+
+    assert chat(client, chat_id)["messages"][-1]["agent"] == AGENT_ID
+
+
+def test_a_failed_answer_has_no_agent(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    agent.fail = "boom"
+    assert start(client, chat_id).status_code == 202
+    events(client, chat_id)
+
+    assert "agent" not in chat(client, chat_id)["messages"][-1]
 
 
 def test_final_event_and_saved_answer_carry_the_usage_split_and_duration(client: TestClient, agent: FakeAgent) -> None:

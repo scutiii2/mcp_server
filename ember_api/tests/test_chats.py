@@ -355,6 +355,17 @@ def test_put_keeps_the_usage_fields_of_an_answer(client: TestClient) -> None:
     assert client.get(f"/api/chats/{chat_id}").json()["messages"][1] == answer
 
 
+def test_put_keeps_the_agent_of_an_answer_and_refuses_a_long_one(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    answer = {"role": "assistant", "content": "ok", "agent": "claude-agent"}
+
+    assert put(client, chat_id, messages=[answer]).status_code == 200
+    assert client.get(f"/api/chats/{chat_id}").json()["messages"][0]["agent"] == "claude-agent"
+    assert put(client, new_id(), messages=[{**answer, "agent": "x" * 121}]).status_code == 422
+    assert put(client, new_id(), messages=[{**answer, "agent": "x" * 120}]).status_code == 200
+
+
 AGENTS_USED = [
     {"agent": "claude", "model": "a", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100},
     {"agent": "openai", "total_tokens": 50},

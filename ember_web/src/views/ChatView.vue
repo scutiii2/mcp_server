@@ -56,6 +56,7 @@ const {
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
 const agentsStore = useAgentsStore();
+const agentLabels = computed(() => Object.fromEntries(agentsStore.agents.map((a) => [a.id, a.label])));
 const templates = useTemplatesStore();
 
 // The saved-prompts dialog; `templatesDraft` is typed text offered as a new prompt.
@@ -243,6 +244,7 @@ useChatShortcuts({
         :approvals="pendingApprovals"
         :since="clockStart"
         :commands="commands"
+        :agent-labels="agentLabels"
         :deciding="deciding"
         @decide="chat.decideApproval"
         :regenerate-index="chat.regenerateIndex"

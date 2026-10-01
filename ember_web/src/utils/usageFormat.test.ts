@@ -34,6 +34,24 @@ describe("formatDuration", () => {
 describe("usageSummary", () => {
   const answer = (extra: Partial<ChatMessage>): ChatMessage => ({ role: "assistant", content: "x", ...extra });
 
+  it("starts with the agent's name when it is known", () => {
+    expect(usageSummary(answer({ agent: "claude-agent", model: "m", total_tokens: 100 }), "Claude Agent")).toBe(
+      "Claude Agent · m · 100 tokens",
+    );
+  });
+
+  it("falls back to the saved agent id when the agent has no name here", () => {
+    expect(usageSummary(answer({ agent: "gone-agent", model: "m" }))).toBe("gone-agent · m");
+  });
+
+  it("shows no agent for an answer saved before the agent was kept", () => {
+    expect(usageSummary(answer({ model: "m" }))).toBe("m");
+  });
+
+  it("shows the agent alone when nothing else was saved", () => {
+    expect(usageSummary(answer({ agent: "claude-agent" }), "Claude Agent")).toBe("Claude Agent");
+  });
+
   it("joins model, tokens, time and tools", () => {
     const summary = usageSummary(
       answer({
@@ -110,15 +128,19 @@ describe("usageSummary for a slash command's reply", () => {
   const reply = (extra: Partial<ChatMessage> = {}): ChatMessage => ({ role: "assistant", kind: "command", content: "ok", ...extra });
 
   it("says it was a direct tool call, with how long it took", () => {
-    expect(usageSummary(reply({ duration_s: 0.8 }))).toBe("Direct tool call · 0.8 s");
+    expect(usageSummary(reply({ duration_s: 0.8 }))).toBe("No AI used · direct tool call · 0.8 s");
   });
 
   it("says only that, for an older reply without a time", () => {
-    expect(usageSummary(reply())).toBe("Direct tool call");
+    expect(usageSummary(reply())).toBe("No AI used · direct tool call");
   });
 
   it("does not show model or tokens even when some were saved", () => {
-    expect(usageSummary(reply({ model: "m", total_tokens: 5, duration_s: 1 }))).toBe("Direct tool call · 1 s");
+    expect(usageSummary(reply({ model: "m", total_tokens: 5, duration_s: 1 }))).toBe("No AI used · direct tool call · 1 s");
+  });
+
+  it("does not name an agent on a command reply", () => {
+    expect(usageSummary(reply({ agent: "claude-agent" }), "Claude")).toBe("No AI used · direct tool call");
   });
 
   it("is not used for the command the user typed", () => {

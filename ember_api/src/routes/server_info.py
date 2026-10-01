@@ -15,10 +15,12 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+from collections.abc import AsyncIterator
 from typing import Any, Literal
 from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from src.config import Settings
@@ -46,6 +48,8 @@ EXTENSION_ID_PATTERN = r"^[a-z0-9_]{1,64}$"
 UPLOAD_MAX_BYTES = 15 * 1024 * 1024
 _UPLOAD_MAX_BASE64 = (UPLOAD_MAX_BYTES + 2) // 3 * 4
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
+# The `path` of a download marker: whatever mcp_server named, without control characters.
+DOWNLOAD_PATH_PATTERN = r"^[^\x00-\x1f\x7f]{1,1000}$"
 
 
 def get_server_info(request: Request, settings: Settings = Depends(get_settings)) -> McpServerInfo:
@@ -204,6 +208,35 @@ async def upload_file(
     path = await _call(info.upload(account, filename, content))
     await logs.action(account, "mcp.upload", f"Uploaded '{filename}' ({len(content):,} bytes) for a command")
     return UploadOut(path=path)
+
+
+@router.get("/server/download")
+async def download_file(
+    path: str = Query(pattern=DOWNLOAD_PATH_PATTERN),
+    account: Account = Depends(require_tools),
+    info: McpServerInfo = Depends(get_server_info),
+) -> StreamingResponse:
+    """A file a tool offered with a `[[DOWNLOAD ...]]` marker, streamed from
+    mcp_server. Always an attachment of an opaque type, whatever mcp_server says
+    it is, so a file can never run as a page on ember's own origin."""
+    upstream = await _call(info.download(account, path))
+    name = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or "download"
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name, safe='')}", "Cache-Control": "no-store"}
+    # The length is only trustworthy as long as nothing was decoded on the way.
+    length = upstream.headers.get("content-length")
+    if length and "content-encoding" not in upstream.headers:
+        headers["Content-Length"] = length
+
+    async def relay() -> AsyncIterator[bytes]:
+        # try/finally rather than a background task: when the browser leaves
+        # the generator is closed, and the upstream request still ends.
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+
+    return StreamingResponse(relay(), media_type="application/octet-stream", headers=headers)
 
 
 @router.get("/capabilities")

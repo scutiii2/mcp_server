@@ -32,6 +32,37 @@ describe("UsageChip", () => {
     expect(wrapper.find("dl").exists()).toBe(false);
   });
 
+  it("starts the summary with the agent's name", () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, agent: "claude-agent" }, agentLabel: "Claude Agent" } });
+
+    expect(wrapper.find("button").text()).toBe("Claude Agent · claude-test · 12.4k tokens · 4.2 s · 3 tools");
+  });
+
+  it("lists the agent first in the detail panel, by its name", async () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, agent: "claude-agent" }, agentLabel: "Claude Agent" } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(wrapper.findAll("dt")[0]!.text()).toBe("Agent");
+    expect(rows(wrapper).Agent).toBe("Claude Agent");
+  });
+
+  it("shows the saved id when no name is given", async () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, agent: "old-agent" } } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(rows(wrapper).Agent).toBe("old-agent");
+  });
+
+  it("has no Agent row for an answer saved without one", async () => {
+    const wrapper = mount(UsageChip, { props: { message: FULL } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(rows(wrapper).Agent).toBeUndefined();
+  });
+
   it("opens a detail panel on click and closes it on a second click", async () => {
     const wrapper = mount(UsageChip, { props: { message: FULL } });
     const chip = wrapper.find("button");
@@ -97,13 +128,13 @@ describe("UsageChip on a slash command's reply", () => {
   it("says it was a direct tool call and how long it took", () => {
     const wrapper = mount(UsageChip, { props: { message: reply({ duration_s: 0.8 }) } });
 
-    expect(wrapper.find("button").text()).toBe("Direct tool call · 0.8 s");
+    expect(wrapper.find("button").text()).toBe("No AI used · direct tool call · 0.8 s");
   });
 
   it("says only that for an older reply with no time", () => {
     const wrapper = mount(UsageChip, { props: { message: reply() } });
 
-    expect(wrapper.find("button").text()).toBe("Direct tool call");
+    expect(wrapper.find("button").text()).toBe("No AI used · direct tool call");
   });
 
   it("explains in the detail panel that no AI was used", async () => {

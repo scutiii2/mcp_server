@@ -42,14 +42,19 @@ export function formatClock(ms: number): string {
   return `${minutes} min ${String(Math.floor(seconds - minutes * 60)).padStart(2, "0")} s`;
 }
 
-/** The chip's one line for an answer: model, tokens, time and tools. Empty
- * when the message carries none of them (old chats, errors). A slash
- * command's reply was no model's answer: it says so, with how long the call took. */
-export function usageSummary(m: ChatMessage): string {
+/** The chip's one line for an answer: the agent that wrote it, model, tokens,
+ * time and tools. Empty when the message carries none of them (old chats,
+ * errors). `agentLabel` is the agent's name for display; without it the saved
+ * agent id is shown. A slash command's reply was no model's answer: it says so,
+ * with how long the call took. */
+export function usageSummary(m: ChatMessage, agentLabel?: string): string {
   if (m.kind === "command" && m.role === "assistant") {
-    return ["Direct tool call", m.duration_s !== undefined ? formatDuration(m.duration_s) : ""].filter(Boolean).join(" · ");
+    return ["No AI used", "direct tool call", m.duration_s !== undefined ? formatDuration(m.duration_s) : ""]
+      .filter(Boolean)
+      .join(" · ");
   }
   return [
+    agentLabel ?? m.agent,
     m.model,
     m.total_tokens ? `${compactNumber(m.total_tokens)} tokens` : "",
     m.duration_s !== undefined ? formatDuration(m.duration_s) : "",

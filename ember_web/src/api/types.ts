@@ -18,6 +18,8 @@ export interface ChatMessage {
    * the raw messages a summary or clear replaced (never sent to the agent);
    * command: a slash command and its result. */
   kind?: "summary" | "log_attachment" | "command";
+  /** Id of the ember agent that wrote this answer (answers from before this was saved lack it). */
+  agent?: string;
   model?: string;
   total_tokens?: number;
   /** The split of total_tokens (answers from before these were saved lack them). */

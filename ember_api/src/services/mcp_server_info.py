@@ -138,6 +138,26 @@ class McpServerInfo:
             raise McpServerUnavailable("mcp_server's upload answered without a path")
         return path
 
+    async def download(self, account: Account, path: str) -> httpx.Response:
+        """Opens mcp_server's /download for a file a tool offered (the
+        `[[DOWNLOAD ...]]` marker's `path`). The body is not read: the caller
+        streams it and must close the response. `path` goes as a query value,
+        never as part of the URL."""
+        request = self._client.build_request(
+            "GET", f"{self._base}/download", params={"path": path}, headers=self._headers(account), timeout=30.0
+        )
+        try:
+            response = await self._client.send(request, stream=True)
+        except httpx.HTTPError as error:
+            logger.warning("mcp_server download unreachable: %s", error)
+            raise McpServerUnavailable(str(error)) from error
+        if response.status_code == 200:
+            return response
+        await response.aclose()
+        if 400 <= response.status_code < 500:
+            raise McpServerRefused(response.status_code, f"mcp_server answered {response.status_code}")
+        raise McpServerUnavailable(f"mcp_server answered {response.status_code}")
+
 
 def is_server_path(path: str) -> bool:
     """A plain path on mcp_server itself: a schema must never name a host."""

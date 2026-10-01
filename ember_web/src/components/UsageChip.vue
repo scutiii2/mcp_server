@@ -3,10 +3,11 @@ import { computed, ref } from "vue";
 import type { ChatMessage } from "../api/types";
 import { agentUsageText, formatDuration, usageSummary } from "../utils/usageFormat";
 
-const props = defineProps<{ message: ChatMessage }>();
+// agentLabel: the name of the agent that wrote the answer, when the page knows it.
+const props = defineProps<{ message: ChatMessage; agentLabel?: string }>();
 
 const open = ref(false);
-const summary = computed(() => usageSummary(props.message));
+const summary = computed(() => usageSummary(props.message, props.agentLabel));
 
 interface Row {
   label: string;
@@ -18,6 +19,8 @@ const rows = computed<Row[]>(() => {
   const m = props.message;
   const list: Row[] = [];
   if (m.kind === "command") list.push({ label: "Run as", value: "Direct tool call, no AI" });
+  const agent = props.agentLabel ?? m.agent;
+  if (agent) list.push({ label: "Agent", value: agent });
   if (m.model) list.push({ label: "Model", value: m.model });
   if (m.input_tokens !== undefined) list.push({ label: "Input tokens", value: m.input_tokens.toLocaleString() });
   if (m.output_tokens !== undefined) list.push({ label: "Output tokens", value: m.output_tokens.toLocaleString() });

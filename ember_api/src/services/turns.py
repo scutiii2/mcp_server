@@ -416,6 +416,8 @@ class TurnRegistry:
         message = {
             "role": "assistant",
             "content": content,
+            # Which of ember's agents answered (the chat's own agent can change later).
+            "agent": turn.agent.id,
             **{
                 k: result[k]
                 for k in ("model", "total_tokens", "input_tokens", "output_tokens", "context_tokens", "context_window")

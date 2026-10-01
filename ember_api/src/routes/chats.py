@@ -108,6 +108,8 @@ class MessageIn(BaseModel):
     # slash command's call and its result, shown but never asked about.
     kind: Literal["summary", "log_attachment", "command"] | None = None
     model: str | None = Field(default=None, max_length=120)
+    # The ember agent id that wrote an answer (saved by the turn).
+    agent: str | None = Field(default=None, max_length=120)
     total_tokens: int | None = Field(default=None, ge=0)
     # The split of total_tokens, and how long the whole turn took (seconds).
     input_tokens: int | None = Field(default=None, ge=0)
