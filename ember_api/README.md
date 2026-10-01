@@ -49,6 +49,41 @@ Tests:
 .venv_ember_api\Scripts\python -m pytest
 ```
 
+## Moving from chat_app
+
+`scripts/import_chat_app.py` copies chat_app's accounts, chats and token usage
+into ember_api, so chat_app can be retired. Run it from `ember_api/` with
+ember_api stopped:
+
+```bash
+.venv_ember_api\Scripts\python -m scripts.import_chat_app --chat-app ..\chat_app
+.venv_ember_api\Scripts\python -m scripts.import_chat_app --chat-app ..\chat_app --apply
+```
+
+The first command is a dry run: it prints what would happen and writes nothing.
+`--apply` first copies ember_api's database to `<name>.bak-<timestamp>`.
+chat_app's files (`data/app.db`, `chats.db`, `usage.db`) are only read. A file
+that is missing leaves that part out and is named in the report.
+
+- **Accounts:** username, email, password hash, active and verified flags and
+  creation time are kept, so people log in with the password they had. Roles are
+  matched by name; a role ember_api lacks is created with no permissions (the
+  report lists them: give them some in the Admin page, since chat_app's
+  permission names differ from ember_api's). The protected flag is not copied.
+  An account whose username or email is already used by a different account is
+  skipped, and so are its chats and usage rows.
+- **Chats:** every chat of an imported account, with its text, title and times.
+  Characters ember_api's routes refuse in an id (chat_app ids may hold `_`) become
+  `-`. The chat's agent is the one in its latest usage row, else none. A chat that
+  is broken, over 2 MB or beyond the 1000-per-account cap is reported and left
+  out; the rest still import.
+- **Usage:** every row with tokens, with its agent, model, input/output split and
+  chat, so the 6-hour and weekly limits and the Usage page carry on from the old
+  history. Rows chat_app wrote at the same moment stay one turn.
+- **Safe to repeat:** an account already imported (same username, email and
+  password hash) is recognised, and only chats and usage rows not yet there are
+  added. Nothing already in ember_api is changed.
+
 ## API
 
 Every `POST` must send `Content-Type: application/json` (anything else gets
@@ -264,7 +299,7 @@ src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
               UsageRecord, LogEntry, KnownDevice, PromptTemplate, SharedChat
-  services/   AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
+  services/   ChatAppImporter (chat_app_import), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
               AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, ShareService, PublicReadLimiter, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
@@ -272,5 +307,6 @@ src/
   routes/     auth, account, admin, chats, templates, shares, usage, mcp, server_info, watchers, logs,
               attachments, config_issues
   utils/      config_loader
+scripts/   import_chat_app.py                   one-off move of chat_app's data (see "Moving from chat_app")
 tests/
 ```
