@@ -33,7 +33,9 @@ async function logout(): Promise<void> {
     <RouterLink v-if="account?.email_verified" to="/overview" class="wordmark" title="Overview of every page">Ember</RouterLink>
     <span v-else class="wordmark">Ember</span>
     <nav v-if="account?.email_verified">
-      <RouterLink v-for="p in pages" :key="p.to" :to="p.to">{{ p.label }}</RouterLink>
+      <RouterLink v-for="p in pages" :key="p.to" :to="p.to" :class="{ current: p.to === '/' && route.name === 'chat-id' }">{{
+        p.label
+      }}</RouterLink>
     </nav>
     <button
       type="button"
@@ -165,7 +167,8 @@ nav a {
 nav a:hover {
   color: var(--text);
 }
-nav a.router-link-exact-active {
+nav a.router-link-exact-active,
+nav a.current {
   color: var(--text);
   background: var(--surface);
 }

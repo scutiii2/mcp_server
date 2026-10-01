@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { usageClient, type AccountUsage, type MyUsage, type UsageWindow } from "../api/UsageClient";
+import { usageClient, type AccountUsage, type MyUsage } from "../api/UsageClient";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage, formatUtc } from "../utils/errors";
+import { usagePercent as percent } from "../utils/usageFormat";
 
 const auth = useAuthStore();
 
@@ -40,10 +41,6 @@ async function load(): Promise<void> {
 
 function tokens(n: number): string {
   return n.toLocaleString();
-}
-
-function percent(window: UsageWindow): number {
-  return window.limit ? Math.min(100, Math.round((window.used / window.limit) * 100)) : 0;
 }
 
 const maxDaily = computed(() => Math.max(1, ...(usage.value?.report.daily.map((d) => d.tokens) ?? [])));

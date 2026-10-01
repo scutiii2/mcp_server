@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../api/types";
+import type { UsageWindow } from "../api/UsageClient";
 
 /** 950 -> "950", 12,400 -> "12.4k", 1,250,000 -> "1.3M": the short form for
  * the chip; the detail panel shows the full number. */
@@ -32,4 +33,9 @@ export function usageSummary(m: ChatMessage): string {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** How much of a limit window is used, 0 to 100; 0 when it has no limit. */
+export function usagePercent(window: UsageWindow): number {
+  return window.limit ? Math.min(100, Math.round((window.used / window.limit) * 100)) : 0;
 }

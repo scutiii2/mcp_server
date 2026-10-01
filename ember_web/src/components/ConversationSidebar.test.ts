@@ -1,8 +1,14 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatSearchHit } from "../api/ChatsClient";
 import type { Conversation } from "../api/types";
+import { usageClient } from "../api/UsageClient";
 import ConversationSidebar from "./ConversationSidebar.vue";
+
+// The gauges at the bottom read the account usage; not under test here.
+vi.mock("../api/UsageClient", () => ({ usageClient: { mine: vi.fn(() => new Promise(() => {})) } }));
+
+const mine = vi.mocked(usageClient.mine);
 
 const chat = (id: string, title = `Chat ${id}`): Conversation => ({
   id,
@@ -149,5 +155,235 @@ describe("search states", () => {
     const wrapper = searching([], { searchError: "boom" });
 
     expect(wrapper.find('[role="alert"]').text()).toBe("Search failed: boom");
+  });
+});
+
+describe("select mode", () => {
+  const rows = (wrapper: ReturnType<typeof mountSidebar>) => wrapper.findAll("li.row");
+  const ticks = (wrapper: ReturnType<typeof mountSidebar>) => wrapper.findAll("input.tick");
+  const three = [chat("1"), chat("2"), chat("3")];
+  const selecting = async (props: Partial<Props> = {}) => {
+    const wrapper = mountSidebar({ conversations: three, ...props });
+    await wrapper.find("button.link").trigger("click"); // "Select"
+    return wrapper;
+  };
+  const bar = (wrapper: ReturnType<typeof mountSidebar>) => wrapper.find(".select-bar");
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("shows a Select button next to Delete all, and no boxes until it is pressed", () => {
+    const wrapper = mountSidebar({ conversations: three });
+
+    expect(wrapper.find(".footer").text()).toContain("Select");
+    expect(wrapper.find(".delete-all").exists()).toBe(true);
+    expect(ticks(wrapper)).toHaveLength(0);
+  });
+
+  it("offers Select with a single chat, but not Delete all", () => {
+    const wrapper = mountSidebar({ conversations: [chat("1")] });
+
+    expect(wrapper.find("button.link").text()).toBe("Select");
+    expect(wrapper.find(".delete-all").exists()).toBe(false);
+  });
+
+  it("gives every chat a box and swaps the footer for the selection bar", async () => {
+    const wrapper = await selecting();
+
+    expect(ticks(wrapper)).toHaveLength(3);
+    expect(bar(wrapper).exists()).toBe(true);
+    expect(wrapper.find(".footer").exists()).toBe(false);
+    expect(wrapper.find("button.icon").exists()).toBe(false);
+    expect(bar(wrapper).text()).toContain("0 selected");
+  });
+
+  it("clicking a row ticks it instead of opening the chat", async () => {
+    const wrapper = await selecting();
+
+    await rows(wrapper)[1]!.trigger("click");
+
+    expect(wrapper.emitted("select")).toBeUndefined();
+    expect((ticks(wrapper)[1]!.element as HTMLInputElement).checked).toBe(true);
+    expect(bar(wrapper).text()).toContain("1 selected");
+  });
+
+  it("clicking a box ticks it once, not twice", async () => {
+    const wrapper = await selecting();
+
+    await ticks(wrapper)[0]!.trigger("click");
+
+    expect(bar(wrapper).text()).toContain("1 selected");
+  });
+
+  it("clicking a ticked row unticks it", async () => {
+    const wrapper = await selecting();
+    await rows(wrapper)[0]!.trigger("click");
+
+    await rows(wrapper)[0]!.trigger("click");
+
+    expect(bar(wrapper).text()).toContain("0 selected");
+  });
+
+  it("All ticks every chat, and again unticks them", async () => {
+    const wrapper = await selecting();
+    const all = bar(wrapper).find(".all input");
+
+    await all.setValue(true);
+    expect(bar(wrapper).text()).toContain("3 selected");
+
+    await all.setValue(false);
+    expect(bar(wrapper).text()).toContain("0 selected");
+  });
+
+  it("All stays unticked while only some chats are", async () => {
+    const wrapper = await selecting();
+
+    await rows(wrapper)[0]!.trigger("click");
+
+    expect((bar(wrapper).find(".all input").element as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("All is ticked once every chat is", async () => {
+    const wrapper = await selecting();
+    for (const row of rows(wrapper)) await row.trigger("click");
+
+    expect((bar(wrapper).find(".all input").element as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("Delete is off until something is ticked", async () => {
+    const wrapper = await selecting();
+
+    expect(bar(wrapper).find("button.danger").attributes("disabled")).toBeDefined();
+    await rows(wrapper)[0]!.trigger("click");
+    expect(bar(wrapper).find("button.danger").attributes("disabled")).toBeUndefined();
+  });
+
+  it("deletes the ticked chats after confirming, then leaves select mode", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const wrapper = await selecting();
+    await rows(wrapper)[0]!.trigger("click");
+    await rows(wrapper)[2]!.trigger("click");
+
+    await bar(wrapper).find("button.danger").trigger("click");
+
+    expect(confirmSpy).toHaveBeenCalledWith("Delete 2 chats? This can't be undone.");
+    expect(wrapper.emitted("deleteMany")).toEqual([[["1", "3"]]]);
+    expect(bar(wrapper).exists()).toBe(false);
+    expect(ticks(wrapper)).toHaveLength(0);
+  });
+
+  it("says 'chat', not 'chats', for one", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const wrapper = await selecting();
+    await rows(wrapper)[0]!.trigger("click");
+
+    await bar(wrapper).find("button.danger").trigger("click");
+
+    expect(confirmSpy).toHaveBeenCalledWith("Delete 1 chat? This can't be undone.");
+  });
+
+  it("deletes nothing when the confirmation is declined, and stays in select mode", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const wrapper = await selecting();
+    await rows(wrapper)[0]!.trigger("click");
+
+    await bar(wrapper).find("button.danger").trigger("click");
+
+    expect(wrapper.emitted("deleteMany")).toBeUndefined();
+    expect(bar(wrapper).text()).toContain("1 selected");
+  });
+
+  it("Cancel leaves select mode and forgets the ticks", async () => {
+    const wrapper = await selecting();
+    await rows(wrapper)[0]!.trigger("click");
+
+    await bar(wrapper).findAll("button").at(-1)!.trigger("click"); // Cancel
+    expect(bar(wrapper).exists()).toBe(false);
+
+    await wrapper.find("button.link").trigger("click");
+    expect(bar(wrapper).text()).toContain("0 selected");
+  });
+
+  it("will not tick the chat that is answering while the sidebar is locked", async () => {
+    const wrapper = await selecting({ locked: true, activeId: "2" });
+
+    expect(ticks(wrapper)[1]!.attributes("disabled")).toBeDefined();
+    await rows(wrapper)[1]!.trigger("click");
+    expect(bar(wrapper).text()).toContain("0 selected");
+    expect((ticks(wrapper)[1]!.element as HTMLInputElement).checked).toBe(false);
+
+    await bar(wrapper).find(".all input").setValue(true);
+    expect(bar(wrapper).text()).toContain("2 selected");
+  });
+
+  it("leaves select mode when a search starts, since results can't be ticked", async () => {
+    const wrapper = await selecting();
+
+    await wrapper.setProps({ query: "ab", searchActive: true, hits: [hit("1")] });
+
+    expect(bar(wrapper).exists()).toBe(false);
+    expect(ticks(wrapper)).toHaveLength(0);
+  });
+
+  it("does not count a chat that vanished from the list", async () => {
+    const wrapper = await selecting();
+    await rows(wrapper)[0]!.trigger("click");
+    await rows(wrapper)[1]!.trigger("click");
+
+    await wrapper.setProps({ conversations: [chat("2"), chat("3")] });
+
+    expect(bar(wrapper).text()).toContain("1 selected");
+  });
+
+  it("leaves select mode when the last chat is gone", async () => {
+    const wrapper = await selecting({ conversations: [chat("1")] });
+
+    await wrapper.setProps({ conversations: [] });
+
+    expect(bar(wrapper).exists()).toBe(false);
+  });
+
+  it("a rename in progress ends when selecting starts", async () => {
+    const wrapper = mountSidebar({ conversations: three });
+    await wrapper.find("button.icon").trigger("click"); // rename the first chat
+    expect(wrapper.find("input.rename").exists()).toBe(true);
+
+    await wrapper.find("button.link").trigger("click");
+
+    expect(wrapper.find("input.rename").exists()).toBe(false);
+    expect(ticks(wrapper)).toHaveLength(3);
+  });
+
+  it("All is off, not ticked, when nothing can be selected", async () => {
+    const wrapper = await selecting({ conversations: [chat("1")], locked: true, activeId: "1" });
+
+    const all = bar(wrapper).find(".all input").element as HTMLInputElement;
+    expect(all.disabled).toBe(true);
+    expect(all.checked).toBe(false);
+  });
+
+  it("a rename abandoned by selecting does not come back after Cancel", async () => {
+    const wrapper = mountSidebar({ conversations: three });
+    await wrapper.find("button.icon").trigger("click");
+    await wrapper.find("button.link").trigger("click");
+
+    await bar(wrapper).findAll("button").at(-1)!.trigger("click"); // Cancel
+
+    expect(wrapper.find("input.rename").exists()).toBe(false);
+  });
+
+  it("tells the usage gauges when an answer ends", async () => {
+    mine.mockClear();
+    const wrapper = mountSidebar({ busy: true });
+    expect(mine).toHaveBeenCalledOnce();
+
+    await wrapper.setProps({ busy: false });
+
+    expect(mine).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the running dot beside the box", async () => {
+    const wrapper = await selecting({ conversations: [{ ...chat("1"), running: true }, chat("2")] });
+
+    expect(rows(wrapper)[0]!.find(".running").exists()).toBe(true);
   });
 });

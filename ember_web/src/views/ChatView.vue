@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import AgentPicker from "../components/AgentPicker.vue";
 import ChatInput from "../components/ChatInput.vue";
@@ -14,8 +14,9 @@ import { useChatStore } from "../stores/chat";
 import { useTemplatesStore } from "../stores/templates";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { JsonSchema } from "../api/types";
+import { useChatRoute } from "../composables/useChatRoute";
 import { useChatShortcuts } from "../composables/useChatShortcuts";
-import { splitAttachments } from "../utils/attachments";
+import { questionHistory } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
 const chat = useChatStore();
@@ -31,6 +32,7 @@ const {
   busy,
   caveman,
   listLoading,
+  listReady,
   chatLoading,
   loadError,
   saveError,
@@ -97,8 +99,32 @@ function runCommandForm(text: string): void {
 // Narrow screens only: the sidebar is a drawer toggled by the menu button.
 const drawerOpen = ref(false);
 
+// The address bar follows the open chat (/chat/<id>) and the other way round.
+// The page is cached behind the other pages (KeepAlive): while it is, the
+// address belongs to them.
+const shown = ref(false);
+const route = useChatRoute(
+  {
+    activeId,
+    listReady,
+    hasChat: chat.hasChat,
+    selectChat: chat.selectChat,
+    newChat: chat.newChat,
+    reload: chat.reload,
+  },
+  shown,
+);
+const { notFound } = route;
+onActivated(() => {
+  shown.value = true;
+  route.activate();
+});
+onDeactivated(() => {
+  shown.value = false;
+});
+
 function onNew(): void {
-  chat.newChat();
+  route.startNew();
   drawerOpen.value = false;
 }
 
@@ -135,22 +161,15 @@ const contextPercent = computed(() => {
 });
 
 function onSelect(id: string, messageIndex?: number): void {
-  void chat.selectChat(id, { messageIndex });
+  route.open(id, { messageIndex });
   drawerOpen.value = false;
 }
 
 // Tools the user allowed for the open chat ("Allow for this chat").
 const allowedCount = computed(() => (activeId.value ? (allowedTools.value[activeId.value]?.length ?? 0) : 0));
 
-// What ↑ in the empty input brings back: the last typed question (its
-// attached files aren't part of it).
-const lastPrompt = computed(() => {
-  for (let i = messages.value.length - 1; i >= 0; i -= 1) {
-    const m = messages.value[i]!;
-    if (m.role === "user" && !m.kind) return splitAttachments(m.content).text;
-  }
-  return "";
-});
+// What ↑ and ↓ in the input walk through: what was typed in this chat.
+const history = computed(() => questionHistory(messages.value));
 
 useChatShortcuts({
   canStop: () => busy.value,
@@ -168,6 +187,7 @@ useChatShortcuts({
       :active-id="activeId"
       :locked="false"
       :loading="listLoading"
+      :busy="busy"
       :query="searchQuery"
       :search-active="searchActive"
       :hits="searchHits"
@@ -179,6 +199,7 @@ useChatShortcuts({
       @delete="chat.deleteChat"
       @rename="chat.renameChat"
       @delete-all="chat.deleteAllChats"
+      @delete-many="chat.deleteChats"
     />
     <div v-if="drawerOpen" class="backdrop" @click="drawerOpen = false" />
 
@@ -197,6 +218,10 @@ useChatShortcuts({
           Couldn't load chats: {{ loadError }}
           <button type="button" @click="chat.reload()">Retry</button>
         </template>
+      </div>
+      <div v-if="notFound" class="banner" role="alert">
+        That chat doesn't exist, or it was deleted.
+        <button type="button" @click="notFound = false">Dismiss</button>
       </div>
       <div v-if="sendError" class="banner" role="alert">
         {{ sendError }}
@@ -285,7 +310,7 @@ useChatShortcuts({
           ref="input"
           :busy="busy"
           :commands="commands"
-          :last-prompt="lastPrompt"
+          :history="history"
           :templates="templates.templates"
           :templates-loading="templates.loading"
           :templates-error="templates.loadError"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../api/types";
-import { compactNumber, formatDuration, usageSummary } from "./usageFormat";
+import { compactNumber, formatDuration, usagePercent, usageSummary } from "./usageFormat";
 
 describe("compactNumber", () => {
   it.each([
@@ -68,5 +68,24 @@ describe("usageSummary", () => {
   it("is empty when nothing was saved", () => {
     expect(usageSummary(answer({}))).toBe("");
     expect(usageSummary(answer({ steps: [] }))).toBe("");
+  });
+});
+
+describe("usagePercent", () => {
+  const window = (used: number, limit: number) => ({ used, limit, reset_at: null });
+
+  it.each([
+    [0, 100, 0],
+    [50, 100, 50],
+    [1, 3, 33],
+    [2, 3, 67],
+    [100, 100, 100],
+    [250, 100, 100],
+  ])("%d of %d -> %d%%", (used, limit, expected) => {
+    expect(usagePercent(window(used, limit))).toBe(expected);
+  });
+
+  it("is 0 when there is no limit", () => {
+    expect(usagePercent(window(5000, 0))).toBe(0);
   });
 });

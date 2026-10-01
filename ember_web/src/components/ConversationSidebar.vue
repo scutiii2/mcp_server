@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import type { ChatSearchHit, MatchSpan } from "../api/ChatsClient";
 import type { Conversation } from "../api/types";
+import UsageGauges from "./UsageGauges.vue";
 
 // locked: a turn is running - switching or starting chats is blocked.
 // query / searchActive / hits: the search box and, once it holds enough
@@ -13,13 +14,15 @@ const props = withDefaults(
     locked: boolean;
     /** The chat list is still being fetched. */
     loading?: boolean;
+    /** An answer is being written: the usage gauges refresh when it ends. */
+    busy?: boolean;
     query?: string;
     searchActive?: boolean;
     hits?: ChatSearchHit[];
     searching?: boolean;
     searchError?: string;
   }>(),
-  { query: "", searchActive: false, hits: () => [], searching: false, searchError: "" },
+  { busy: false, query: "", searchActive: false, hits: () => [], searching: false, searchError: "" },
 );
 const emit = defineEmits<{
   new: [];
@@ -28,6 +31,7 @@ const emit = defineEmits<{
   delete: [id: string];
   rename: [id: string, title: string];
   deleteAll: [];
+  deleteMany: [ids: string[]];
   search: [query: string];
 }>();
 
@@ -68,6 +72,64 @@ function confirmDeleteAll(): void {
   const count = props.conversations.length;
   if (confirm(`Delete all ${count} chat${count === 1 ? "" : "s"}? This can't be undone.`)) emit("deleteAll");
 }
+
+// Select mode: tick chats, then delete the ticked ones together.
+const selecting = ref(false);
+const ticked = ref<Set<string>>(new Set());
+
+/** A chat that is answering right now can't be deleted from under its turn. */
+function isLocked(c: Conversation): boolean {
+  return props.locked && c.id === props.activeId;
+}
+
+const selectable = computed(() => props.conversations.filter((c) => !isLocked(c)));
+// Only chats still in the list count: one deleted elsewhere drops out.
+const chosen = computed(() => selectable.value.filter((c) => ticked.value.has(c.id)).map((c) => c.id));
+const allChosen = computed(() => selectable.value.length > 0 && chosen.value.length === selectable.value.length);
+
+function startSelecting(): void {
+  renamingId.value = null;
+  ticked.value = new Set();
+  selecting.value = true;
+}
+
+function stopSelecting(): void {
+  selecting.value = false;
+  ticked.value = new Set();
+}
+
+function toggle(c: Conversation): void {
+  if (isLocked(c)) return;
+  const next = new Set(ticked.value);
+  if (!next.delete(c.id)) next.add(c.id);
+  ticked.value = next;
+}
+
+function toggleAll(): void {
+  ticked.value = allChosen.value ? new Set() : new Set(selectable.value.map((c) => c.id));
+}
+
+function confirmDeleteChosen(): void {
+  const ids = chosen.value; // the Delete button is off while this is empty
+  if (!confirm(`Delete ${ids.length} chat${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+  emit("deleteMany", ids);
+  stopSelecting();
+}
+
+// Search results replace the list; there is nothing to tick in them.
+watch(
+  () => props.searchActive,
+  (active) => {
+    if (active) stopSelecting();
+  },
+);
+// Nothing left to select.
+watch(
+  () => props.conversations.length,
+  (count) => {
+    if (count === 0) stopSelecting();
+  },
+);
 </script>
 
 <template>
@@ -119,12 +181,24 @@ function confirmDeleteAll(): void {
       <li
         v-for="c in conversations"
         :key="c.id"
-        :class="['row', { active: c.id === activeId, locked }]"
+        :class="['row', { active: c.id === activeId, locked, ticked: selecting && ticked.has(c.id) }]"
         :title="c.title"
-        @click="renamingId !== c.id && emit('select', c.id)"
+        @click="selecting ? toggle(c) : renamingId !== c.id && emit('select', c.id)"
       >
+        <template v-if="selecting">
+          <input
+            type="checkbox"
+            class="tick"
+            :checked="ticked.has(c.id)"
+            :disabled="isLocked(c)"
+            :aria-label="`Select ${c.title}`"
+            @click.stop="toggle(c)"
+          />
+          <span v-if="c.running" class="running" title="An answer is being written" />
+          <span class="title">{{ c.title }}</span>
+        </template>
         <input
-          v-if="renamingId === c.id"
+          v-else-if="renamingId === c.id"
           ref="renameInput"
           v-model="draft"
           class="rename"
@@ -164,15 +238,24 @@ function confirmDeleteAll(): void {
       </li>
     </ul>
 
-    <button
-      v-if="conversations.length > 1 && !searchActive"
-      type="button"
-      class="delete-all"
-      :disabled="locked"
-      @click="confirmDeleteAll"
-    >
-      Delete all chats
-    </button>
+    <div v-if="selecting" class="select-bar">
+      <label class="all">
+        <input type="checkbox" :checked="allChosen" :disabled="selectable.length === 0" @change="toggleAll" />
+        All
+      </label>
+      <span class="count-chosen" aria-live="polite">{{ chosen.length }} selected</span>
+      <button type="button" class="danger" :disabled="chosen.length === 0" @click="confirmDeleteChosen">
+        Delete {{ chosen.length || "" }}
+      </button>
+      <button type="button" @click="stopSelecting">Cancel</button>
+    </div>
+    <div v-else-if="conversations.length > 0 && !searchActive" class="footer">
+      <button type="button" class="link" @click="startSelecting">Select</button>
+      <button v-if="conversations.length > 1" type="button" class="link delete-all" :disabled="locked" @click="confirmDeleteAll">
+        Delete all chats
+      </button>
+    </div>
+    <UsageGauges :busy="busy" />
   </aside>
 </template>
 
@@ -348,8 +431,18 @@ mark {
   background: var(--bg);
   font: inherit;
 }
-.delete-all {
+.footer,
+.select-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-top: auto;
+}
+.footer {
+  justify-content: space-between;
+}
+.link,
+.select-bar button {
   padding: 6px 12px;
   border: none;
   border-radius: 8px;
@@ -358,11 +451,40 @@ mark {
   color: var(--muted);
   background: transparent;
 }
-.delete-all:hover:not(:disabled) {
+.link:hover:not(:disabled),
+.select-bar button:hover:not(:disabled) {
+  color: var(--text);
+}
+.delete-all:hover:not(:disabled),
+.select-bar .danger:hover:not(:disabled) {
   color: var(--danger);
 }
-.delete-all:disabled {
+.link:disabled,
+.select-bar button:disabled {
   cursor: default;
   opacity: 0.5;
+}
+.select-bar {
+  flex-wrap: wrap;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+.select-bar .all {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.count-chosen {
+  flex: 1;
+}
+.tick {
+  flex-shrink: 0;
+  margin: 0 2px 0 0;
+  cursor: pointer;
+}
+.row.ticked {
+  color: var(--text);
+  background: var(--bg);
 }
 </style>

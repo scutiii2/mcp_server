@@ -613,3 +613,103 @@ describe("branchFrom (fork a chat at an answer)", () => {
     expect(chat.activeId).toBeNull();
   });
 });
+
+describe("deleteChats (several at once)", () => {
+  it("removes every listed chat and tells ember_api about each, in order", async () => {
+    const chat = await storeWith({ c1: FOUR, c2: FOUR, c3: FOUR });
+
+    chat.deleteChats(["c1", "c3"]);
+    await flushPromises();
+
+    expect(chat.sortedConversations.map((c) => c.id)).toEqual(["c2"]);
+    expect(client.remove.mock.calls.map((call) => call[0])).toEqual(["c1", "c3"]);
+  });
+
+  it("closes the open chat when it is among them", async () => {
+    const chat = await storeWith({ c1: FOUR, c2: FOUR });
+    await chat.selectChat("c1");
+
+    chat.deleteChats(["c1", "c2"]);
+
+    expect(chat.activeId).toBeNull();
+    expect(chat.messages).toEqual([]);
+  });
+
+  it("keeps the open chat when it is not among them", async () => {
+    const chat = await storeWith({ c1: FOUR, c2: FOUR });
+    await chat.selectChat("c1");
+
+    chat.deleteChats(["c2"]);
+
+    expect(chat.activeId).toBe("c1");
+  });
+
+  it("drops the deleted chats from search results and forgets their allowed tools", async () => {
+    client.search.mockResolvedValue([
+      { id: "c1", title: "Chat c1", updated_at: "x", title_match: null, snippet: null, message_index: null, message_matches: 0 },
+      { id: "c2", title: "Chat c2", updated_at: "x", title_match: null, snippet: null, message_index: null, message_matches: 0 },
+    ]);
+    const chat = await storeWith({ c1: FOUR, c2: FOUR });
+    chat.allowedTools = { c1: ["web__fetch"], c2: ["web__fetch"] };
+    chat.searchHits = [
+      { id: "c1", title: "Chat c1", updated_at: "x", title_match: null, snippet: null, message_index: null, message_matches: 0 },
+      { id: "c2", title: "Chat c2", updated_at: "x", title_match: null, snippet: null, message_index: null, message_matches: 0 },
+    ];
+
+    chat.deleteChats(["c1"]);
+
+    expect(chat.searchHits.map((h) => h.id)).toEqual(["c2"]);
+    expect(chat.allowedTools).toEqual({ c2: ["web__fetch"] });
+  });
+
+  it("an empty list changes nothing", async () => {
+    const chat = await storeWith({ c1: FOUR });
+
+    chat.deleteChats([]);
+
+    expect(chat.sortedConversations).toHaveLength(1);
+    expect(client.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("hasChat and listReady (deep links)", () => {
+  it("knows which chats are in the list", async () => {
+    const chat = await storeWith({ c1: FOUR });
+
+    expect(chat.hasChat("c1")).toBe(true);
+    expect(chat.hasChat("nope")).toBe(false);
+  });
+
+  it("is not ready until the list has loaded, then is", async () => {
+    setActivePinia(createPinia());
+    useAuthStore().account = ACCOUNT;
+    client.list.mockResolvedValue([summary("c1")]);
+    const chat = useChatStore();
+
+    expect(chat.listReady).toBe(false);
+    await flushPromises();
+
+    expect(chat.listReady).toBe(true);
+  });
+
+  it("is ready even when the list could not be loaded, so a deep link stops waiting", async () => {
+    setActivePinia(createPinia());
+    useAuthStore().account = ACCOUNT;
+    client.list.mockRejectedValue(new Error("down"));
+    const chat = useChatStore();
+    await flushPromises();
+
+    expect(chat.listReady).toBe(true);
+    expect(chat.loadError).toBe("down");
+  });
+
+  it("goes back to not ready when the account changes", async () => {
+    const chat = await storeWith({ c1: FOUR });
+    client.list.mockReturnValue(new Promise(() => {}));
+
+    useAuthStore().account = { ...ACCOUNT, id: 2 };
+    await flushPromises();
+
+    expect(chat.listReady).toBe(false);
+  });
+});

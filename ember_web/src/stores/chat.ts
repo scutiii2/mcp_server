@@ -129,6 +129,9 @@ export const useChatStore = defineStore("chat", () => {
   // null = a fresh chat; it's created in ember_api by its first question.
   const activeId = ref<string | null>(null);
   const listLoading = ref(false);
+  // The account's chat list has been fetched (or failed) at least once, so a
+  // chat id missing from it is really missing, not just not loaded yet.
+  const listReady = ref(false);
   const loadError = ref("");
   const saveError = ref("");
   const sendError = ref("");
@@ -284,7 +287,10 @@ export const useChatStore = defineStore("chat", () => {
     } catch (err) {
       if (started === generation) loadError.value = errorMessage(err);
     } finally {
-      if (started === generation) listLoading.value = false;
+      if (started === generation) {
+        listLoading.value = false;
+        listReady.value = true;
+      }
       scheduleBackgroundPoll();
     }
   }
@@ -330,6 +336,7 @@ export const useChatStore = defineStore("chat", () => {
       activeId.value = null;
       jumpIndex.value = null;
       conversations.value = [];
+      listReady.value = false;
       setSearch("");
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
       askBeforeTools.value = accountId !== null && readPreference(askBeforeToolsKey(accountId)) === "1";
@@ -727,15 +734,29 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   function deleteChat(id: string): void {
-    if (id === activeId.value) {
+    deleteChats([id]);
+  }
+
+  /** Deletes several chats at once: the screen changes first, ember_api is
+   * told one chat at a time, in order. */
+  function deleteChats(ids: string[]): void {
+    const doomed = new Set(ids);
+    if (activeId.value !== null && doomed.has(activeId.value)) {
       unfollow();
       jumpIndex.value = null;
       activeId.value = null;
     }
-    conversations.value = conversations.value.filter((c) => c.id !== id);
-    searchHits.value = searchHits.value.filter((h) => h.id !== id);
-    clearAllowedTools(id);
-    enqueue(() => storage.remove(id));
+    conversations.value = conversations.value.filter((c) => !doomed.has(c.id));
+    searchHits.value = searchHits.value.filter((h) => !doomed.has(h.id));
+    for (const id of doomed) {
+      clearAllowedTools(id);
+      enqueue(() => storage.remove(id));
+    }
+  }
+
+  /** Whether chat `id` is in this account's list. */
+  function hasChat(id: string): boolean {
+    return find(id) !== undefined;
   }
 
   function setAskBeforeTools(on: boolean): void {
@@ -903,6 +924,7 @@ export const useChatStore = defineStore("chat", () => {
     working,
     contextUsage,
     listLoading,
+    listReady,
     chatLoading,
     loadError,
     saveError,
@@ -918,6 +940,8 @@ export const useChatStore = defineStore("chat", () => {
     jumpIndex,
     clearJump,
     deleteChat,
+    deleteChats,
+    hasChat,
     renameChat,
     searchQuery,
     searchActive,

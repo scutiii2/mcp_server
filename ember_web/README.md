@@ -30,8 +30,12 @@ URL, token or key.
   follow-up without losing the first one. The copy keeps tool steps and
   usage data; it does not record where it came from.
 - Keyboard: `Esc` stops the running answer, `Ctrl/Cmd+K` focuses the input,
-  `Ctrl/Cmd+Shift+O` starts a new chat, `Up` in an empty input recalls your
-  last question.
+  `Ctrl/Cmd+Shift+O` starts a new chat. `Up` in an empty input brings back
+  your last question, again `Up` the one before, `Down` goes forward and past
+  the newest empties the box (a small note shows "Earlier question 3 of 12").
+  Typing over a recalled question ends it; in a multi-line one the arrows
+  move the caret until it reaches the first or last line. Slash commands you
+  ran are in the list too.
 - Slash commands: `/<capability> <command> key=value ...` runs an mcp_server
   tool directly (no AI), `/help` and `/<capability> help` show help; the input
   suggests commands as you type (needs `tools.use`). Tools of the extensions
@@ -66,6 +70,16 @@ URL, token or key.
 - Several conversations, saved per account in ember_api (they follow you to
   any browser; chats from the old browser-only storage are uploaded once):
   rename (double-click or pencil), export to Markdown, clear, delete, delete all.
+  "Select" ticks several chats (click a row or its box, or "All") and deletes
+  them together after a confirmation; searching leaves select mode.
+- Every chat has its own address, `/chat/<id>`: bookmark it, reload it, or use
+  the browser's back and forward buttons to move between chats you opened. An
+  id that is not one of your chats goes back to `/` with a notice. A new chat
+  gets its address when its first question is sent.
+- Token limits in the sidebar: two slim bars (last 6 hours, last 7 days) with
+  used and limit, shown only for a window that has a limit; hover for exact
+  numbers and when the oldest tokens stop counting. They refresh when an
+  answer ends. The Usage page has the detail.
   The sidebar search (2+ characters) looks through titles and message text
   (not attached files) and highlights the match; opening a result scrolls to
   the first matching message and flashes it.
@@ -149,10 +163,12 @@ Vitest with jsdom, `@vue/test-utils` for components. Test files sit beside
 their source as `*.test.ts` and are type-checked by `vue-tsc -b` (so
 `npm run build` covers them) but never bundled. They need no running server:
 ember_api calls are mocked. Covered so far: the chat store (regenerate, edit
-and resend, search, jump to a result), the templates store, the message list,
-usage chip, copy button, chat input (paste, drop, Up recall, `#` prompts),
-prompt picker and dialog, sidebar search, the shortcut and theme composables,
-clipboard, markdown code blocks, usage formatting and the prompt helpers.
+and resend, search, jump to a result, delete several, deep-link readiness),
+the templates store, the message list, usage chip, usage gauges, copy button,
+chat input (paste, drop, Up and Down recall, `#` prompts), prompt picker and
+dialog, sidebar search and select mode, the shortcut, theme and chat-address
+composables, clipboard, markdown code blocks, usage and attachment helpers and
+the prompt helpers.
 
 Other scripts: `npm run build` (type-check + production build into `dist/`),
 `npm run preview` (serves `dist/`, with the same `/api` forwarding).
@@ -180,11 +196,12 @@ src/
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat, templates
-  composables/  useChatShortcuts (window-level chat keys), useTheme (system / light / dark)
+  composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
+                useTheme (system / light / dark)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, UsageChip, UsageGauges, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)

@@ -28,6 +28,8 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", name: "chat", component: ChatView, meta: { permission: "chat.use" } },
+    // The same page with one chat open; ChatView keeps the address and the open chat in step.
+    { path: "/chat/:id", name: "chat-id", component: ChatView, meta: { permission: "chat.use" } },
     // Lazy: each of these loads its own chunk only when first opened.
     { path: "/overview", name: "overview", component: () => import("../views/OverviewView.vue") },
     {

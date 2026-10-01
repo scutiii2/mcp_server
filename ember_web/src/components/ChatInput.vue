@@ -10,19 +10,20 @@ import TemplatePicker from "./TemplatePicker.vue";
 
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
 // suggest while "/..." is being typed (empty without tools.use).
-// lastPrompt: the text of the latest question, recalled by ↑ in an empty box.
+// history: the questions asked in this chat, oldest first. ↑ in an empty box
+// brings them back one at a time, ↓ goes forward again.
 // templates: the account's saved prompts, for the picker button and for
 // "#..." suggestions; the parent loads them when asked (templatesNeeded).
 const props = withDefaults(
   defineProps<{
     busy: boolean;
     commands?: CommandInfo[];
-    lastPrompt?: string;
+    history?: string[];
     templates?: PromptTemplate[];
     templatesLoading?: boolean;
     templatesError?: string;
   }>(),
-  { commands: () => [], lastPrompt: "", templates: () => [], templatesLoading: false, templatesError: "" },
+  { commands: () => [], history: () => [], templates: () => [], templatesLoading: false, templatesError: "" },
 );
 // form: a command was picked from the suggestions; the chat may open its form.
 // templatesNeeded: the picker or a "#" wants the saved prompts.
@@ -37,6 +38,9 @@ const emit = defineEmits<{
 }>();
 
 const draft = ref("");
+// Browsing past questions: which one is shown (null = not browsing). It
+// starts only from an empty box, so ↓ past the newest returns to empty.
+const recallIndex = ref<number | null>(null);
 const textarea = ref<HTMLTextAreaElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const dragging = ref(false);
@@ -206,6 +210,50 @@ function insertText(text: string): void {
 
 defineExpose({ setDraft, focus, insertText });
 
+/** ↑ and ↓ browse the questions asked before, ready to edit and resend.
+ * Starts only from an empty box; once browsing, the arrows still move the
+ * caret inside a multi-line question until it reaches the first or last line.
+ * True when the key was used. */
+function recall(event: KeyboardEvent): boolean {
+  const entries = props.history;
+  const up = event.key === "ArrowUp";
+  const index = recallIndex.value;
+  if (index === null) {
+    if (!up || draft.value !== "" || entries.length === 0) return false;
+    show(entries.length - 1);
+  } else {
+    const el = event.target as HTMLTextAreaElement;
+    const caret = el.selectionStart ?? 0;
+    const atEdge = up ? !el.value.slice(0, caret).includes("\n") : !el.value.slice(el.selectionEnd ?? caret).includes("\n");
+    if (!atEdge) return false;
+    if (up) show(Math.max(0, index - 1));
+    else if (index < entries.length - 1) show(index + 1);
+    else {
+      recallIndex.value = null;
+      setDraft("");
+    }
+  }
+  event.preventDefault();
+  return true;
+}
+
+function show(index: number): void {
+  recallIndex.value = index;
+  setDraft(props.history[index] ?? "");
+}
+
+/** The user typed: whatever is in the box is theirs now, not a recalled question. */
+function onInput(): void {
+  recallIndex.value = null;
+  autoGrow();
+}
+
+// A different chat (or a new question) is a different list.
+watch(
+  () => props.history.join("\u0000"),
+  () => (recallIndex.value = null),
+);
+
 /** Grow with the content; CSS max-height caps it, then it scrolls. */
 function autoGrow(): void {
   const el = textarea.value;
@@ -221,6 +269,7 @@ function submit(): void {
   const files = isCommand.value ? [] : ready.value;
   emit("send", withAttachments(typed, files.map((a) => ({ filename: a.filename, chars: a.chars, truncated: a.truncated, text: a.text }))));
   draft.value = "";
+  recallIndex.value = null;
   if (!isCommand.value) attachments.value = attachments.value.filter((a) => a.state !== "ready");
   void nextTick(autoGrow);
 }
@@ -246,12 +295,7 @@ function onKeydown(event: KeyboardEvent): void {
     complete(suggestions.value[highlighted.value]!);
     return;
   }
-  // ↑ in an empty box brings back the last question, ready to edit and resend.
-  if (event.key === "ArrowUp" && !event.isComposing && draft.value === "" && props.lastPrompt) {
-    event.preventDefault();
-    setDraft(props.lastPrompt);
-    return;
-  }
+  if (!event.isComposing && (event.key === "ArrowUp" || event.key === "ArrowDown") && recall(event)) return;
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     submit();
@@ -285,6 +329,9 @@ function onKeydown(event: KeyboardEvent): void {
         <button type="button" :aria-label="`Remove ${a.filename}`" @click="removeAttachment(a.id)">×</button>
       </li>
     </ul>
+    <p v-if="recallIndex !== null" class="recall" aria-live="polite">
+      Earlier question {{ recallIndex + 1 }} of {{ history.length }} · ↑ older · ↓ newer
+    </p>
     <div :class="['box', { dragging }]">
       <input ref="fileInput" type="file" multiple hidden @change="onPick" />
       <button type="button" class="attach" title="Attach files (text, code, PDF, Word, Excel)" @click="fileInput?.click()">
@@ -314,7 +361,7 @@ function onKeydown(event: KeyboardEvent): void {
         v-model="draft"
         rows="1"
         :placeholder="commands.length ? 'Ask something, / for commands, # for saved prompts' : 'Ask something, # for saved prompts'"
-        @input="autoGrow"
+        @input="onInput"
         @keydown="onKeydown"
         @paste="onPaste"
       />
@@ -414,6 +461,11 @@ function onKeydown(event: KeyboardEvent): void {
 }
 .attach:hover {
   color: var(--text);
+}
+.recall {
+  margin: 0 0 4px 12px;
+  font-size: 0.75em;
+  color: var(--muted);
 }
 .attachments {
   display: flex;

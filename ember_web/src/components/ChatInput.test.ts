@@ -136,28 +136,81 @@ describe("dropping files anywhere on the composer", () => {
   });
 });
 
-describe("Up recalls the last question", () => {
+describe("Up and Down walk through the questions asked before", () => {
   const textareaOf = (wrapper: ReturnType<typeof mountInput>) => wrapper.find("textarea").element as HTMLTextAreaElement;
+  const press = (wrapper: ReturnType<typeof mountInput>, key: string) => wrapper.find("textarea").trigger("keydown", { key });
+  const HISTORY = ["first", "second", "third"];
+  const badge = (wrapper: ReturnType<typeof mountInput>) => wrapper.find(".recall");
 
-  it("fills an empty input", async () => {
-    const wrapper = mountInput({ lastPrompt: "what is up" });
+  it("Up in an empty box brings back the newest question", async () => {
+    const wrapper = mountInput({ history: HISTORY });
 
-    await wrapper.find("textarea").trigger("keydown", { key: "ArrowUp" });
+    await press(wrapper, "ArrowUp");
 
-    expect(textareaOf(wrapper).value).toBe("what is up");
+    expect(textareaOf(wrapper).value).toBe("third");
+    expect(badge(wrapper).text()).toContain("3 of 3");
+  });
+
+  it("each further Up goes one question older and stops at the oldest", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+
+    await press(wrapper, "ArrowUp");
+    await press(wrapper, "ArrowUp");
+    expect(textareaOf(wrapper).value).toBe("second");
+    await press(wrapper, "ArrowUp");
+    await press(wrapper, "ArrowUp");
+
+    expect(textareaOf(wrapper).value).toBe("first");
+    expect(badge(wrapper).text()).toContain("1 of 3");
+  });
+
+  it("Down goes newer again, and past the newest empties the box", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+    await press(wrapper, "ArrowUp");
+    await press(wrapper, "ArrowUp");
+
+    await press(wrapper, "ArrowDown");
+    expect(textareaOf(wrapper).value).toBe("third");
+
+    await press(wrapper, "ArrowDown");
+    expect(textareaOf(wrapper).value).toBe("");
+    expect(badge(wrapper).exists()).toBe(false);
+  });
+
+  it("keeps the browser from also moving the caret when it takes a key", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+    const up = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+    wrapper.find("textarea").element.dispatchEvent(up);
+    await flushPromises();
+    const down = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    wrapper.find("textarea").element.dispatchEvent(down);
+
+    expect(up.defaultPrevented).toBe(true);
+    expect(down.defaultPrevented).toBe(true);
+  });
+
+  it("Down does nothing when not browsing", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+    const event = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+
+    wrapper.find("textarea").element.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(textareaOf(wrapper).value).toBe("");
   });
 
   it("never overwrites what is being typed", async () => {
-    const wrapper = mountInput({ lastPrompt: "old" });
+    const wrapper = mountInput({ history: HISTORY });
     await wrapper.find("textarea").setValue("draft");
 
-    await wrapper.find("textarea").trigger("keydown", { key: "ArrowUp" });
+    await press(wrapper, "ArrowUp");
 
     expect(textareaOf(wrapper).value).toBe("draft");
+    expect(badge(wrapper).exists()).toBe(false);
   });
 
-  it("does nothing when there is no last question", async () => {
-    const wrapper = mountInput({ lastPrompt: "" });
+  it("does nothing when there are no questions yet", async () => {
+    const wrapper = mountInput({ history: [] });
 
     const event = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
     wrapper.find("textarea").element.dispatchEvent(event);
@@ -166,13 +219,88 @@ describe("Up recalls the last question", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it("sends the recalled question when Enter follows", async () => {
-    const wrapper = mountInput({ lastPrompt: "again please" });
-    await wrapper.find("textarea").trigger("keydown", { key: "ArrowUp" });
+  it("typing over a recalled question ends browsing, so Up no longer replaces it", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+    await press(wrapper, "ArrowUp");
 
-    await wrapper.find("textarea").trigger("keydown", { key: "Enter" });
+    await wrapper.find("textarea").setValue("third, edited");
+    await press(wrapper, "ArrowUp");
+
+    expect(textareaOf(wrapper).value).toBe("third, edited");
+    expect(badge(wrapper).exists()).toBe(false);
+  });
+
+  it("lets the arrows move the caret inside a multi-line question first", async () => {
+    const wrapper = mountInput({ history: ["one", "line a\nline b"] });
+    await press(wrapper, "ArrowUp");
+    const el = textareaOf(wrapper);
+
+    el.setSelectionRange(10, 10); // on the second line
+    const middle = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+    el.dispatchEvent(middle);
+    expect(middle.defaultPrevented).toBe(false);
+    expect(el.value).toBe("line a\nline b");
+
+    el.setSelectionRange(2, 2); // on the first line
+    await press(wrapper, "ArrowUp");
+    expect(el.value).toBe("one");
+  });
+
+  it("Down moves on only from the last line", async () => {
+    const wrapper = mountInput({ history: ["line a\nline b", "last"] });
+    await press(wrapper, "ArrowUp");
+    await press(wrapper, "ArrowUp");
+    const el = textareaOf(wrapper);
+
+    el.setSelectionRange(2, 2); // first line: Down belongs to the caret
+    const early = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    el.dispatchEvent(early);
+    expect(early.defaultPrevented).toBe(false);
+    expect(el.value).toBe("line a\nline b");
+
+    el.setSelectionRange(el.value.length, el.value.length);
+    await press(wrapper, "ArrowDown");
+    expect(el.value).toBe("last");
+  });
+
+  it("starts over when the questions change (another chat)", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+    await press(wrapper, "ArrowUp");
+    expect(badge(wrapper).exists()).toBe(true);
+
+    await wrapper.setProps({ history: ["elsewhere"] });
+
+    expect(badge(wrapper).exists()).toBe(false);
+  });
+
+  it("keeps browsing when the same questions arrive again", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+    await press(wrapper, "ArrowUp");
+
+    await wrapper.setProps({ history: [...HISTORY] });
+
+    expect(badge(wrapper).exists()).toBe(true);
+  });
+
+  it("does not browse while an IME is composing", async () => {
+    const wrapper = mountInput({ history: HISTORY });
+    const event = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+    Object.defineProperty(event, "isComposing", { value: true });
+
+    wrapper.find("textarea").element.dispatchEvent(event);
+
+    expect(textareaOf(wrapper).value).toBe("");
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("sends the recalled question when Enter follows, and stops browsing", async () => {
+    const wrapper = mountInput({ history: ["again please"] });
+    await press(wrapper, "ArrowUp");
+
+    await press(wrapper, "Enter");
 
     expect(wrapper.emitted("send")).toEqual([["again please"]]);
+    expect(badge(wrapper).exists()).toBe(false);
   });
 });
 

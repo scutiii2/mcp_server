@@ -3,6 +3,8 @@
  * agent sees the same thing and saved chats render the same in both apps.
  * The chat view pulls the blocks back out to show them collapsed. */
 
+import type { ChatMessage } from "../api/types";
+
 export interface AttachmentBlock {
   filename: string;
   chars: number;
@@ -33,4 +35,13 @@ export function splitAttachments(text: string): { text: string; attachments: Att
     return "";
   });
   return { text: rest.trim(), attachments };
+}
+
+/** What the user typed in a chat, oldest first, for the input's up and down
+ * arrows: questions and slash commands, without their attached files. */
+export function questionHistory(messages: ChatMessage[]): string[] {
+  return messages
+    .filter((m) => m.role === "user" && m.kind !== "summary" && m.kind !== "log_attachment")
+    .map((m) => splitAttachments(m.content).text)
+    .filter((text) => text !== "");
 }
