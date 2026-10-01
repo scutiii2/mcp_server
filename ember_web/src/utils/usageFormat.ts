@@ -22,9 +22,21 @@ export function formatDuration(seconds: number): string {
   return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
 }
 
+/** A running clock: 12.4 s under a minute, then 1 min 03 s. */
+export function formatClock(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} min ${String(Math.floor(seconds - minutes * 60)).padStart(2, "0")} s`;
+}
+
 /** The chip's one line for an answer: model, tokens, time and tools. Empty
- * when the message carries none of them (old chats, errors). */
+ * when the message carries none of them (old chats, errors). A slash
+ * command's reply was no model's answer: it says so, with how long the call took. */
 export function usageSummary(m: ChatMessage): string {
+  if (m.kind === "command" && m.role === "assistant") {
+    return ["Direct tool call", m.duration_s !== undefined ? formatDuration(m.duration_s) : ""].filter(Boolean).join(" · ");
+  }
   return [
     m.model,
     m.total_tokens ? `${compactNumber(m.total_tokens)} tokens` : "",

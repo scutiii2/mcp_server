@@ -16,6 +16,15 @@ URL, token or key.
   keeps going and is saved even if the page closes; reopening the chat picks
   the live answer back up. Chats still being answered show a pulsing dot.
 - Stop button (takes effect at the agent's next round).
+- A running clock under the answer being written (`12.4 s`, then `1 min 03 s`),
+  and beside "Running command ...". It counts from when you sent the question; for a
+  chat you reopen while it is still answering it counts from the reopen.
+- "Chime when done" (on by default, remembered per account): a short chime
+  when an answer arrives while this tab is hidden or not focused. A stopped
+  or failed answer does not chime, and neither does a chat you are not
+  watching. Browsers may keep the chime silent until you have clicked on the page once.
+- An empty chat shows a greeting (one of seven, picked once), a tip and, with
+  `tools.use`, what you can run ("I can help you with: Files (/files), ...").
 - Copy button on every answer, on your messages and on each code block.
 - A usage chip under each answer (`model · 12.4k tokens · 4.2 s · 3 tools`);
   click it for input/output tokens, time, tools run and context use. Answers
@@ -43,7 +52,8 @@ URL, token or key.
   that takes parameters opens its form (chat_app's command form): selects
   filled from mcp_server, dependent selects, and file fields that upload
   the file and fill in its path on mcp_server. Close the form to type
-  `key=value` instead.
+  `key=value` instead. A command's reply carries a chip "Direct tool call · 0.8 s"
+  (no AI was used; the time is saved with the reply, older replies show no time).
 - Attach files to a question (paperclip, paste, or drag and drop anywhere on
   the input area): text and code files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
   characters each), which goes into the question; the chat shows each file
@@ -164,10 +174,11 @@ their source as `*.test.ts` and are type-checked by `vue-tsc -b` (so
 `npm run build` covers them) but never bundled. They need no running server:
 ember_api calls are mocked. Covered so far: the chat store (regenerate, edit
 and resend, search, jump to a result, delete several, deep-link readiness),
-the templates store, the message list, usage chip, usage gauges, copy button,
+the templates store (including the chime and the clocks), the message list (welcome card, running clock,
+command replies), usage chip, usage gauges, elapsed clock, chime, copy button,
 chat input (paste, drop, Up and Down recall, `#` prompts), prompt picker and
 dialog, sidebar search and select mode, the shortcut, theme and chat-address
-composables, clipboard, markdown code blocks, usage and attachment helpers and
+composables, clipboard, markdown code blocks, usage, welcome and attachment helpers and
 the prompt helpers.
 
 Other scripts: `npm run build` (type-check + production build into `dist/`),
@@ -197,11 +208,11 @@ src/
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat, templates
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
-                useTheme (system / light / dark)
+                useElapsed (running clock), useNotify (chime), useTheme (system / light / dark)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, UsageChip, UsageGauges, ElapsedTime, WelcomeCard, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)

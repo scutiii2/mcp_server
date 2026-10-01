@@ -368,3 +368,103 @@ describe("tool approval cards", () => {
     expect(cards(wrapper)[0]!.attributes("aria-label")).toBe("Allow Stop App?");
   });
 });
+
+describe("the welcome card", () => {
+  const COMMANDS = [{ capability: "files", name: "list", description: "", tool_name: "files_list" }];
+
+  it("is shown in an empty chat, with a tip and what can be done", () => {
+    const wrapper = mountList({ messages: [], commands: COMMANDS });
+
+    expect(wrapper.find(".welcome").exists()).toBe(true);
+    expect(wrapper.find(".welcome .tip").text()).toContain("Type / to run a command");
+    expect(wrapper.find(".welcome .caps").text()).toContain("Files (/files)");
+  });
+
+  it("works without any commands", () => {
+    const wrapper = mountList({ messages: [] });
+
+    expect(wrapper.find(".welcome").exists()).toBe(true);
+    expect(wrapper.find(".welcome .caps").exists()).toBe(false);
+  });
+
+  it("is gone once the chat has messages", () => {
+    expect(mountList({ commands: COMMANDS }).find(".welcome").exists()).toBe(false);
+  });
+
+  it("is not shown while the first answer is being written", () => {
+    expect(mountList({ messages: [], busy: true }).find(".welcome").exists()).toBe(false);
+  });
+});
+
+describe("the running clock", () => {
+  const T0 = Date.parse("2026-10-01T10:00:00Z");
+  const live = (extra: Partial<Props> = {}) => mountList({ busy: true, ...extra });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+
+  it("shows how long the answer has been running", () => {
+    const wrapper = live({ since: T0 - 12_400 });
+
+    expect(wrapper.find(".live .elapsed").text()).toBe("12.4 s");
+  });
+
+  it("ticks", async () => {
+    const wrapper = live({ since: T0 });
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(wrapper.find(".live .elapsed").text()).toBe("2.0 s");
+  });
+
+  it("shows beside the streamed text too", () => {
+    const wrapper = live({ since: T0, streaming: "partial answer" });
+
+    expect(wrapper.find(".live").text()).toContain("partial answer");
+    expect(wrapper.find(".live .elapsed").exists()).toBe(true);
+  });
+
+  it("is not shown without a start time", () => {
+    expect(live({ since: null }).find(".elapsed").exists()).toBe(false);
+    expect(live().find(".elapsed").exists()).toBe(false);
+  });
+
+  it("is not shown when nothing is running", () => {
+    expect(mountList({ since: T0 }).find(".elapsed").exists()).toBe(false);
+  });
+});
+
+describe("a slash command's reply", () => {
+  const command = (extra: Partial<ChatMessage> = {}): ChatMessage[] => [
+    { role: "user", kind: "command", content: "/files list" },
+    assistant("two files", { kind: "command", ...extra }),
+  ];
+
+  it("shows the usage chip with 'Direct tool call' and the time", () => {
+    const wrapper = mountList({ messages: command({ duration_s: 0.8 }) });
+
+    expect(wrapper.find(".usage .chip").text()).toBe("Direct tool call · 0.8 s");
+  });
+
+  it("keeps the result in its own box, above the chip", () => {
+    const wrapper = mountList({ messages: command({ duration_s: 0.8 }) });
+
+    const reply = wrapper.findAll(".msg")[1]!;
+    expect(reply.find(".command-result").text()).toBe("two files");
+    expect(reply.find(".actions .chip").exists()).toBe(true);
+  });
+
+  it("has no copy, regenerate or branch buttons", () => {
+    const wrapper = mountList({ messages: command() });
+
+    expect(wrapper.findAll(".msg")[1]!.findAll("button").map((b) => b.classes())).toEqual([["chip"]]);
+  });
+
+  it("shows no chip on the command the user typed", () => {
+    const wrapper = mountList({ messages: command() });
+
+    expect(wrapper.findAll(".msg")[0]!.find(".chip").exists()).toBe(false);
+  });
+});

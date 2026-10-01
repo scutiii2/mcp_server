@@ -5,6 +5,7 @@ import { RouterLink } from "vue-router";
 import AgentPicker from "../components/AgentPicker.vue";
 import ChatInput from "../components/ChatInput.vue";
 import CommandFormModal from "../components/CommandFormModal.vue";
+import ElapsedTime from "../components/ElapsedTime.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import MessageList from "../components/MessageList.vue";
 import ShareDialog from "../components/ShareDialog.vue";
@@ -42,6 +43,8 @@ const {
   commands,
   enabledExtensions,
   askBeforeTools,
+  chime,
+  clockStart,
   allowedTools,
   pendingApprovals,
   deciding,
@@ -238,6 +241,8 @@ useChatShortcuts({
         :busy="busy"
         :can-change="!busy && !working"
         :approvals="pendingApprovals"
+        :since="clockStart"
+        :commands="commands"
         :deciding="deciding"
         @decide="chat.decideApproval"
         :regenerate-index="chat.regenerateIndex"
@@ -266,6 +271,10 @@ useChatShortcuts({
             />
             Ask before tools
           </label>
+          <label class="terse" title="Play a short chime when an answer arrives while this tab is in the background">
+            <input type="checkbox" :checked="chime" @change="chat.setChime(($event.target as HTMLInputElement).checked)" />
+            Chime when done
+          </label>
           <button
             v-if="askBeforeTools && allowedCount"
             type="button"
@@ -289,7 +298,9 @@ useChatShortcuts({
           >
             Context {{ contextPercent }}%
           </span>
-          <span v-if="working" class="working">{{ working }}</span>
+          <span v-if="working" class="working">
+            {{ working }}<template v-if="clockStart"> · <ElapsedTime :since="clockStart" /></template>
+          </span>
           <div v-if="active && messages.length" class="chat-actions">
             <button type="button" title="Download this chat as Markdown" @click="exportActive">Export</button>
             <button type="button" title="Make a read-only link to this chat" @click="shareOpen = true">Share</button>

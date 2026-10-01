@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../api/types";
-import { compactNumber, formatDuration, usagePercent, usageSummary } from "./usageFormat";
+import { compactNumber, formatClock, formatDuration, usagePercent, usageSummary } from "./usageFormat";
 
 describe("compactNumber", () => {
   it.each([
@@ -87,5 +87,45 @@ describe("usagePercent", () => {
 
   it("is 0 when there is no limit", () => {
     expect(usagePercent(window(5000, 0))).toBe(0);
+  });
+});
+
+describe("formatClock", () => {
+  it.each([
+    [0, "0.0 s"],
+    [-500, "0.0 s"],
+    [2400, "2.4 s"],
+    [12_345, "12.3 s"],
+    [59_940, "59.9 s"],
+    [60_000, "1 min 00 s"],
+    [63_000, "1 min 03 s"],
+    [125_900, "2 min 05 s"],
+    [3_600_000, "60 min 00 s"],
+  ])("%d ms -> %s", (ms, expected) => {
+    expect(formatClock(ms)).toBe(expected);
+  });
+});
+
+describe("usageSummary for a slash command's reply", () => {
+  const reply = (extra: Partial<ChatMessage> = {}): ChatMessage => ({ role: "assistant", kind: "command", content: "ok", ...extra });
+
+  it("says it was a direct tool call, with how long it took", () => {
+    expect(usageSummary(reply({ duration_s: 0.8 }))).toBe("Direct tool call · 0.8 s");
+  });
+
+  it("says only that, for an older reply without a time", () => {
+    expect(usageSummary(reply())).toBe("Direct tool call");
+  });
+
+  it("does not show model or tokens even when some were saved", () => {
+    expect(usageSummary(reply({ model: "m", total_tokens: 5, duration_s: 1 }))).toBe("Direct tool call · 1 s");
+  });
+
+  it("is not used for the command the user typed", () => {
+    expect(usageSummary({ role: "user", kind: "command", content: "/x" })).toBe("");
+  });
+
+  it("leaves a model's answer as it was", () => {
+    expect(usageSummary({ role: "assistant", content: "a", model: "m", duration_s: 4.2 })).toBe("m · 4.2 s");
   });
 });

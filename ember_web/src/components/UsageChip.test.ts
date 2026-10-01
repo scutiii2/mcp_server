@@ -90,3 +90,43 @@ describe("UsageChip", () => {
     expect(wrapper.find("button").exists()).toBe(false);
   });
 });
+
+describe("UsageChip on a slash command's reply", () => {
+  const reply = (extra: Partial<ChatMessage> = {}): ChatMessage => ({ role: "assistant", kind: "command", content: "ok", ...extra });
+
+  it("says it was a direct tool call and how long it took", () => {
+    const wrapper = mount(UsageChip, { props: { message: reply({ duration_s: 0.8 }) } });
+
+    expect(wrapper.find("button").text()).toBe("Direct tool call · 0.8 s");
+  });
+
+  it("says only that for an older reply with no time", () => {
+    const wrapper = mount(UsageChip, { props: { message: reply() } });
+
+    expect(wrapper.find("button").text()).toBe("Direct tool call");
+  });
+
+  it("explains in the detail panel that no AI was used", async () => {
+    const wrapper = mount(UsageChip, { props: { message: reply({ duration_s: 2 }) } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(rows(wrapper)).toEqual({ "Run as": "Direct tool call, no AI", Time: "2 s" });
+  });
+
+  it("shows no Run as row on a summary, which also carries a kind", async () => {
+    const wrapper = mount(UsageChip, { props: { message: { ...FULL, kind: "summary" } } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(rows(wrapper)["Run as"]).toBeUndefined();
+  });
+
+  it("shows no Run as row on a model's answer", async () => {
+    const wrapper = mount(UsageChip, { props: { message: FULL } });
+
+    await wrapper.find("button").trigger("click");
+
+    expect(rows(wrapper)["Run as"]).toBeUndefined();
+  });
+});

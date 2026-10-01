@@ -17,6 +17,7 @@ import {
   ServerConversationStorage,
   type ConversationStorage,
 } from "../services/ConversationStorage";
+import { chimeIfAway } from "../composables/useNotify";
 import { SlashCommandRunner } from "../services/slashCommands";
 import { watchTurn } from "../services/turnStream";
 import { splitAttachments, withAttachments } from "../utils/attachments";
@@ -46,6 +47,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function cavemanKey(accountId: number): string {
   return `ember_web.caveman.${accountId}`;
+}
+
+function chimeKey(accountId: number): string {
+  return `ember_web.chime.${accountId}`;
 }
 
 function askBeforeToolsKey(accountId: number): string {
@@ -149,6 +154,13 @@ export const useChatStore = defineStore("chat", () => {
   // "Ask before running tools": each tool the agent wants to run waits for the
   // user's answer. Off by default; remembered per account.
   const askBeforeTools = ref(false);
+  // A short chime when an answer arrives while the page is out of sight. On
+  // by default; remembered per account.
+  const chime = ref(true);
+  // When the running answer (or command) began, for the clock; null otherwise.
+  const clockStart = ref<number | null>(null);
+  // How the watched turn ended, from its final event: only an answer chimes.
+  let turnOutcome: "answered" | "stopped" | "failed" | null = null;
   // Tools the user chose "Allow for this chat" for, by chat id: they run
   // without asking again. Remembered per account (in this browser).
   const allowedTools = ref<Record<string, string[]>>({});
@@ -340,6 +352,7 @@ export const useChatStore = defineStore("chat", () => {
       setSearch("");
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
       askBeforeTools.value = accountId !== null && readPreference(askBeforeToolsKey(accountId)) === "1";
+      chime.value = accountId === null || readPreference(chimeKey(accountId)) !== "0";
       allowedTools.value = accountId !== null ? readAllowedTools(accountId) : {};
       enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
       commandRunner = new SlashCommandRunner();
@@ -405,6 +418,12 @@ export const useChatStore = defineStore("chat", () => {
         }
         break;
       }
+      case "final":
+        turnOutcome = event.cancelled ? "stopped" : "answered";
+        break;
+      case "error":
+        turnOutcome = "failed";
+        break;
       case "summarized":
         activity.value = "";
         break;
@@ -427,6 +446,7 @@ export const useChatStore = defineStore("chat", () => {
     watcher = null;
     streaming.value = "";
     activity.value = "";
+    clockStart.value = null;
     liveSteps.value = [];
     liveStepIndex.clear();
     pendingApprovals.value = [];
@@ -435,14 +455,17 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Streams chat `id`'s running answer into `streaming` until it ends,
    * then reloads the chat (ember_api's saved copy is the real one). */
-  function follow(id: string, after: number): void {
+  function follow(id: string, after: number, startedAt: number = Date.now()): void {
     unfollow();
+    turnOutcome = null;
+    clockStart.value = startedAt;
     const controller = new AbortController();
     watcher = controller;
     const started = generation;
     void watchTurn(id, after, onEvent, controller.signal)
       .then(async (end) => {
         if (end === "aborted" || started !== generation) return;
+        if (end === "done" && turnOutcome === "answered" && chime.value) chimeIfAway();
         const conversation = find(id);
         if (conversation) conversation.running = false;
         if (watcher === controller) unfollow();
@@ -484,19 +507,25 @@ export const useChatStore = defineStore("chat", () => {
       return;
     }
     working.value = "Running command ...";
+    const began = Date.now();
+    clockStart.value = began;
     const started = generation;
     try {
       const result = await commandRunner.run(text, enabledExtensions.value);
       if (started !== generation) return;
+      const seconds = Number(((Date.now() - began) / 1000).toFixed(1));
       await appendMessages(
         [
           { role: "user", kind: "command", content: text },
-          { role: "assistant", kind: "command", content: result },
+          { role: "assistant", kind: "command", content: result, duration_s: seconds },
         ],
         text,
       );
     } finally {
-      if (started === generation) working.value = "";
+      if (started === generation) {
+        working.value = "";
+        clockStart.value = null;
+      }
     }
   }
 
@@ -542,6 +571,8 @@ export const useChatStore = defineStore("chat", () => {
       truncateTo === undefined ? [...previous, { role: "user", content: question }] : [...previous.slice(0, truncateTo), { role: "user", content: question }];
     conversation.agentId = agent.id;
     starting.value = true;
+    const began = Date.now();
+    clockStart.value = began;
     const started = generation;
     try {
       const turn = await chatsClient.startTurn(id, {
@@ -556,9 +587,10 @@ export const useChatStore = defineStore("chat", () => {
       if (started !== generation) return;
       conversation.running = true;
       conversation.updatedAt = Date.parse(`${turn.chat.updated_at}Z`);
-      if (activeId.value === id) follow(id, turn.sequence);
+      if (activeId.value === id) follow(id, turn.sequence, began);
     } catch (err) {
       if (started !== generation) return;
+      clockStart.value = null;
       // Not saved (limit reached, agent gone ...): take the question back.
       conversation.messages = previous;
       if (isNew) {
@@ -765,6 +797,12 @@ export const useChatStore = defineStore("chat", () => {
     if (accountId !== undefined) writePreference(askBeforeToolsKey(accountId), on ? "1" : "0");
   }
 
+  function setChime(on: boolean): void {
+    chime.value = on;
+    const accountId = auth.account?.id;
+    if (accountId !== undefined) writePreference(chimeKey(accountId), on ? "1" : "0");
+  }
+
   function persistAllowedTools(): void {
     const accountId = auth.account?.id;
     if (accountId !== undefined) writePreference(allowedToolsKey(accountId), JSON.stringify(allowedTools.value));
@@ -954,6 +992,9 @@ export const useChatStore = defineStore("chat", () => {
     setCaveman,
     askBeforeTools,
     setAskBeforeTools,
+    chime,
+    setChime,
+    clockStart,
     allowedTools,
     clearAllowedTools,
     pendingApprovals,

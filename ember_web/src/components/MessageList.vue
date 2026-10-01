@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { ApprovalDecision, ChatMessage, PendingApproval, ToolStep } from "../api/types";
+import type { CommandInfo } from "../api/CommandsClient";
 import { splitAttachments } from "../utils/attachments";
 import { toolTitle } from "../utils/toolTitles";
 import CopyButton from "./CopyButton.vue";
+import ElapsedTime from "./ElapsedTime.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import ToolSteps from "./ToolSteps.vue";
 import UsageChip from "./UsageChip.vue";
+import WelcomeCard from "./WelcomeCard.vue";
 
 const props = defineProps<{
   messages: ChatMessage[];
@@ -25,6 +28,10 @@ const props = defineProps<{
    * but not yet confirmed (their buttons are off). */
   approvals?: PendingApproval[];
   deciding?: string[];
+  /** When the answer being written started (a Date.now() value): shows a running clock. */
+  since?: number | null;
+  /** The slash commands the account may run, for the welcome card of an empty chat. */
+  commands?: CommandInfo[];
 }>();
 const emit = defineEmits<{
   regenerate: [];
@@ -164,7 +171,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="scroller" class="scroller" @scroll.passive="onScroll">
     <div class="column">
-      <p v-if="messages.length === 0 && !busy" class="empty">Ask ember anything</p>
+      <WelcomeCard v-if="messages.length === 0 && !busy" :commands="commands ?? []" />
 
       <div v-for="(m, i) in messages" :key="i" :class="['msg', { flash: flashIndex === i }]" :data-index="i">
         <!-- Raw messages a summary or clear replaced: kept for reading, never
@@ -178,7 +185,10 @@ onBeforeUnmount(() => {
           <MarkdownContent :text="m.content" />
         </section>
         <div v-else-if="m.kind === 'command' && m.role === 'user'" class="user-bubble command">{{ m.content }}</div>
-        <MarkdownContent v-else-if="m.kind === 'command'" class="assistant command-result" :text="m.content" />
+        <div v-else-if="m.kind === 'command'" class="assistant">
+          <MarkdownContent class="command-result" :text="m.content" />
+          <div class="actions"><UsageChip :message="m" /></div>
+        </div>
         <!-- Only model output is rendered as markdown; the user's own text stays literal. -->
         <div v-else-if="m.role === 'user' && editingIndex === i" class="user-row editing">
           <textarea
@@ -310,6 +320,7 @@ onBeforeUnmount(() => {
         <span v-if="activity" class="activity"><span class="dot" />{{ activity }}</span>
         <MarkdownContent v-if="streaming" :text="streaming" />
         <span v-else-if="!activity" class="activity"><span class="dot" />thinking ...</span>
+        <ElapsedTime v-if="since" :since="since" class="elapsed" />
       </div>
     </div>
   </div>
@@ -327,10 +338,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 18px;
 }
-.empty {
-  margin-top: 25vh;
-  text-align: center;
-  font-size: 1.4em;
+.elapsed {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8em;
   color: var(--muted);
 }
 /* One wrapper per message (the scroll-to target); a column so children keep

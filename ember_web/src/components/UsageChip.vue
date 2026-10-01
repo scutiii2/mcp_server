@@ -17,6 +17,7 @@ interface Row {
 const rows = computed<Row[]>(() => {
   const m = props.message;
   const list: Row[] = [];
+  if (m.kind === "command") list.push({ label: "Run as", value: "Direct tool call, no AI" });
   if (m.model) list.push({ label: "Model", value: m.model });
   if (m.input_tokens !== undefined) list.push({ label: "Input tokens", value: m.input_tokens.toLocaleString() });
   if (m.output_tokens !== undefined) list.push({ label: "Output tokens", value: m.output_tokens.toLocaleString() });
