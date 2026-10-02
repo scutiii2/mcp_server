@@ -5,9 +5,10 @@ the SSE stream after POST /merge returned) still sees everything. All
 publish() calls happen on the event loop thread; worker threads report
 progress through loop.call_soon_threadsafe.
 
-A timed-out merge stops being awaited, but its worker thread runs to
-completion in the background (Python cannot kill threads). The semaphore
-slot is released at the timeout, so a stuck merge cannot block the queue.
+Timeouts are cooperative: when the timeout passes, the job's ``cancel``
+event is set and the work is awaited until it really stops (Python cannot
+kill threads). The semaphore slot is held until then, so timed-out merges
+never exceed the concurrency limit and always clean up after themselves.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -24,7 +26,7 @@ from src.errors import ErrorCode, MergerError
 logger = logging.getLogger(__name__)
 
 ProgressFn = Callable[[int], None]
-Work = Callable[[ProgressFn], Awaitable[dict]]
+Work = Callable[[ProgressFn, threading.Event], Awaitable[dict]]
 
 
 @dataclass
@@ -77,32 +79,43 @@ class JobQueue:
 
     async def _run(self, job: Job, total: int, work: Work) -> None:
         loop = asyncio.get_running_loop()
+        cancel = threading.Event()
 
         def progress(done: int) -> None:
-            loop.call_soon_threadsafe(job.publish, {"type": "progress", "done": done, "total": total})
+            try:
+                loop.call_soon_threadsafe(job.publish, {"type": "progress", "done": done, "total": total})
+            except RuntimeError:  # the loop closed while a worker thread was still running
+                pass
 
+        timeout_event = {
+            "type": "error",
+            "code": str(ErrorCode.MERGE_TIMEOUT),
+            "message": f"The merge took longer than {self._timeout:g} seconds and was stopped. Try fewer pages.",
+        }
         job.publish({"type": "queued", "total": total})
+        async with self._semaphore:
+            job.publish({"type": "progress", "done": 0, "total": total})
+            task = asyncio.ensure_future(work(progress, cancel))
+            await asyncio.wait({task}, timeout=self._timeout)
+            if not task.done():
+                cancel.set()
+                await asyncio.wait({task})  # hold the slot until the work has really stopped
         try:
-            async with self._semaphore:
-                job.publish({"type": "progress", "done": 0, "total": total})
-                result = await asyncio.wait_for(work(progress), self._timeout)
+            result = task.result()
         except MergerError as error:
-            job.publish({"type": "error", "code": str(error.code), "message": error.message}, final=True)
-        except TimeoutError:
-            job.publish(
-                {
-                    "type": "error",
-                    "code": str(ErrorCode.MERGE_TIMEOUT),
-                    "message": f"The merge took longer than {self._timeout:g} seconds and was stopped. Try fewer pages.",
-                },
-                final=True,
-            )
+            if cancel.is_set():
+                job.publish(timeout_event, final=True)
+            else:
+                job.publish({"type": "error", "code": str(error.code), "message": error.message}, final=True)
         except Exception:
-            logger.exception("Merge job %s failed", job.id)
-            job.publish(
-                {"type": "error", "code": str(ErrorCode.INTERNAL), "message": "The merge failed unexpectedly. Try again."},
-                final=True,
-            )
+            if cancel.is_set():
+                job.publish(timeout_event, final=True)
+            else:
+                logger.exception("Merge job %s failed", job.id)
+                job.publish(
+                    {"type": "error", "code": str(ErrorCode.INTERNAL), "message": "The merge failed unexpectedly. Try again."},
+                    final=True,
+                )
         else:
             job.publish({"type": "done", **result}, final=True)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pikepdf
+import pytest
 
 from src.engine.assembler import AssemblyPart, Assembler
 from tests.conftest import make_pdf, page_widths
@@ -83,3 +84,22 @@ async def test_metadata(tmp_path: Path):
     with pikepdf.open(out) as pdf:
         assert str(pdf.docinfo["/Title"]) == "Package"
         assert str(pdf.docinfo["/Author"]) == "Jane"
+
+
+async def test_preset_cancel_raises_and_writes_nothing(tmp_path: Path):
+    import threading
+
+    from src.errors import ErrorCode, MergerError
+
+    a = make_pdf(tmp_path / "a.pdf", [100, 101])
+    out = tmp_path / "out.pdf"
+    cancel = threading.Event()
+    cancel.set()
+
+    with pytest.raises(MergerError) as caught:
+        await Assembler().assemble(
+            [AssemblyPart(a, (0, 1), 0, "a", "fa")], out, title=None, author=None, bookmarks=False, cancel=cancel
+        )
+
+    assert caught.value.code == ErrorCode.MERGE_TIMEOUT
+    assert not out.exists()

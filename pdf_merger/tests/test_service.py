@@ -109,3 +109,30 @@ async def test_inspect_reports_failures_without_aborting(service, tmp_path: Path
 
     assert [f.file_id for f in files] == [pdf.file_id]
     assert [(file_id, error.code) for file_id, error in failed] == [("f_" + "0" * 32, ErrorCode.FILE_NOT_FOUND)]
+
+
+async def test_timed_out_merge_leaves_no_part_or_work_files(service, tmp_path: Path, settings, monkeypatch):
+    import time
+
+    import src.engine.assembler as assembler_module
+    from src.jobs.job_queue import JobQueue
+
+    pdf = await upload(service, WEB, make_pdf(tmp_path / "a.pdf", [100, 101]))
+    real = assembler_module._assemble
+
+    def slow_assemble(parts, out_path, title, author, bookmarks, on_page, cancel=None):
+        while not cancel.is_set():
+            time.sleep(0.01)
+        return real(parts, out_path, title, author, bookmarks, on_page, cancel)
+
+    monkeypatch.setattr(assembler_module, "_assemble", slow_assemble)
+    service._jobs = JobQueue(max_concurrent=1, timeout_seconds=0.05)
+    plan = MergePlan.model_validate({"segments": [{"file_id": pdf.file_id}]})
+
+    with pytest.raises(MergerError) as caught:
+        await service.merge_and_wait(WEB, plan)
+
+    assert caught.value.code == ErrorCode.MERGE_TIMEOUT
+    assert list(settings.store_dir.rglob("*.part")) == []
+    work = settings.store_dir / "_work"
+    assert not work.exists() or [p for p in work.iterdir() if p.is_dir()] == []

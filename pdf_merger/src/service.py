@@ -7,6 +7,7 @@ signer. Routers and tools hold no logic of their own.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from collections.abc import AsyncIterable, Sequence
 from dataclasses import dataclass
@@ -36,6 +37,11 @@ class Caller:
     @property
     def scope(self) -> str | None:
         return None if self.privileged else self.session
+
+
+def _raise_if_cancelled(cancel: threading.Event) -> None:
+    if cancel.is_set():
+        raise MergerError(ErrorCode.MERGE_TIMEOUT, "The merge took too long and was stopped. Try fewer pages.")
 
 
 def _read_head(path: Path) -> bytes:
@@ -129,7 +135,7 @@ class MergeService:
         return self._jobs.submit(
             caller.session,
             expanded.total_pages,
-            lambda progress: self._run_merge(caller.session, expanded, plan.output, progress),
+            lambda progress, cancel: self._run_merge(caller.session, expanded, plan.output, progress, cancel),
         )
 
     async def merge_and_wait(self, caller: Caller, plan: MergePlan) -> MergeResult:
@@ -141,11 +147,14 @@ class MergeService:
     def get_job(self, caller: Caller, job_id: str) -> Job:
         return self._jobs.get(job_id, caller.scope)
 
-    async def _run_merge(self, session: str, expanded: ExpandedPlan, output: OutputOptions, progress: ProgressFn) -> dict:
+    async def _run_merge(
+        self, session: str, expanded: ExpandedPlan, output: OutputOptions, progress: ProgressFn, cancel: threading.Event
+    ) -> dict:
         work_dir = await self._store.make_work_dir()
         try:
             parts: list[AssemblyPart] = []
             for segment in expanded.segments:
+                _raise_if_cancelled(cancel)
                 converter = self._registry.for_mime(segment.file.mime)
                 pdf_path = await converter.to_pdf(
                     self._store.path(segment.file), work_dir, segment.image_options or ImageOptions()
@@ -162,7 +171,7 @@ class MergeService:
             pending = self._store.new_pending(session)
             try:
                 pages = await self._assembler.assemble(
-                    parts, pending.path, title=output.title, author=output.author, bookmarks=output.bookmarks, on_page=progress
+                    parts, pending.path, title=output.title, author=output.author, bookmarks=output.bookmarks, on_page=progress, cancel=cancel
                 )
                 stored = await self._store.commit(
                     pending,

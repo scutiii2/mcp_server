@@ -8,12 +8,15 @@ callers must hand progress back to the event loop thread-safely.
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import pikepdf
 from pikepdf import OutlineItem
+
+from src.errors import ErrorCode, MergerError
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,7 @@ def _assemble(
     author: str | None,
     bookmarks: bool,
     on_page: Callable[[int], None] | None,
+    cancel: threading.Event | None = None,
 ) -> int:
     output = pikepdf.new()
     sources: dict[Path, pikepdf.Pdf] = {}
@@ -44,6 +48,8 @@ def _assemble(
                 source = sources[part.pdf_path] = pikepdf.open(part.pdf_path)
             first_page = len(output.pages)
             for index in part.pages:
+                if cancel is not None and cancel.is_set():
+                    raise MergerError(ErrorCode.MERGE_TIMEOUT, "The merge took too long and was stopped. Try fewer pages.")
                 output.pages.append(source.pages[index])
                 if part.rotate:
                     output.pages[-1].rotate(part.rotate, relative=True)
@@ -80,6 +86,10 @@ class Assembler:
         author: str | None,
         bookmarks: bool,
         on_page: Callable[[int], None] | None = None,
+        cancel: threading.Event | None = None,
     ) -> int:
-        """Write the merged PDF to ``out_path``; returns its page count."""
-        return await asyncio.to_thread(_assemble, parts, out_path, title, author, bookmarks, on_page)
+        """Write the merged PDF to ``out_path``; returns its page count.
+
+        If ``cancel`` is set mid-build, raises MERGE_TIMEOUT before anything is saved.
+        """
+        return await asyncio.to_thread(_assemble, parts, out_path, title, author, bookmarks, on_page, cancel)
