@@ -62,4 +62,18 @@ describe('PageStrip', () => {
     expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', '1')
     expect(dataTransfer.effectAllowed).toBe('move')
   })
+
+  it('ignores Alt+Arrow that bubbles from a child element', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const files = useFilesStore()
+    const plan = usePlanStore()
+    files.add({ file_id: 'f_a', name: 'contract.pdf', kind: 'pdf', pages: 2, size: 1, expires_at: 0 })
+    await nextTick()
+
+    const wrapper = mount(PageStrip, { global: { plugins: [pinia] } })
+    await wrapper.get('li figure').trigger('keydown', { key: 'ArrowRight', altKey: true })
+
+    expect(plan.pages.map((p) => p.key)).toEqual(['f_a:0', 'f_a:1'])
+  })
 })

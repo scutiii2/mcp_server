@@ -31,6 +31,14 @@ describe('SourceList', () => {
     expect(rows()[0]!.attributes('tabindex')).toBe('0')
   })
 
+  it('ignores Alt+Arrow typed inside the range input', async () => {
+    const { files, wrapper } = setup()
+
+    await wrapper.get('li input').trigger('keydown', { key: 'ArrowDown', altKey: true })
+
+    expect(ids(files)).toEqual(['f_a', 'f_b'])
+  })
+
   it('starts drags only from the handle, with drag data set', async () => {
     const { wrapper } = setup()
     const li = wrapper.get('li')

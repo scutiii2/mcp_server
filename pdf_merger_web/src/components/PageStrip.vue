@@ -31,6 +31,7 @@ function onDragOver(event: DragEvent): void {
 }
 
 function onKey(index: number, event: KeyboardEvent): void {
+  if (event.target !== event.currentTarget) return // typed inside a child, e.g. the range input
   if (!event.altKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return
   event.preventDefault()
   const to = event.key === 'ArrowLeft' ? index - 1 : index + 1
