@@ -1,3 +1,11 @@
+> **Retired on 2026-10-03.** chat_app is replaced by `ember_web` (the browser app) and
+> `ember_api` (its backend). Accounts, chats and token usage were moved with
+> `ember_api/scripts/import_chat_app.py`. This folder, its `data/` and its `secrets/` are kept
+> as a reference and a way back, and because `chat_cli` (see `_TODO.md`) plans to reuse
+> `src/services/ai_agent_client.py` and `mcp_client.py`. It is no longer started with the
+> Ember group in `server_launcher`. To run it again, add the `chat_app` template back to a
+> group there.
+
 # AuthTemplate
 
 A Flask app template that merges network-level security (rate limiting,

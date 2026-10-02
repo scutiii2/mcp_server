@@ -2,13 +2,6 @@
   "Main Group": {
     "members": [
       {
-        "template_key": "chat_app",
-        "port": 5000,
-        "extra_env": {},
-        "extra_args": "",
-        "preset_name": null
-      },
-      {
         "template_key": "mcp_server",
         "port": 8010,
         "extra_env": {},
