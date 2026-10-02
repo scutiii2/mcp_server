@@ -60,3 +60,18 @@ def make_image(
         options["exif"] = exif
     image.save(path, format=fmt, **options)
     return path
+
+
+from collections.abc import AsyncIterator
+
+
+async def chunks(data: bytes, size: int = 65536) -> AsyncIterator[bytes]:
+    for start in range(0, len(data), size):
+        yield data[start : start + size]
+
+
+@pytest.fixture
+def service(settings):
+    from src.service import build_service
+
+    return build_service(settings)
