@@ -192,3 +192,30 @@ async def test_removal_with_permission_error(tmp_path: Path, monkeypatch):
     removed = await store.sweep()
     assert removed == 1
     assert stored1.file_id not in store._index
+
+
+async def test_delete_with_permission_error(tmp_path: Path, monkeypatch):
+    store = make_store(tmp_path, FakeClock())
+    stored = await add(store, "web:1")
+
+    # Make unlink fail
+    original_unlink = Path.unlink
+
+    def failing_unlink(self, missing_ok=False):
+        raise PermissionError("File in use")
+
+    monkeypatch.setattr(Path, "unlink", failing_unlink)
+
+    # Delete should raise MergerError with INTERNAL code
+    with pytest.raises(MergerError) as caught:
+        await store.delete(stored.file_id, "web:1")
+
+    assert caught.value.code == ErrorCode.INTERNAL
+    # File should still be retrievable (not removed from index)
+    assert store.get(stored.file_id, "web:1") == stored
+
+    # Remove the patch and verify deletion succeeds on retry
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    await store.delete(stored.file_id, "web:1")
+    with pytest.raises(MergerError):
+        store.get(stored.file_id, "web:1")

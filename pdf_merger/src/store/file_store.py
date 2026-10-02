@@ -217,7 +217,7 @@ class FileStore:
     async def delete(self, file_id: str, session: str | None) -> None:
         if not await self._remove(self.get(file_id, session)):
             raise MergerError(
-                ErrorCode.INTERNAL_ERROR,
+                ErrorCode.INTERNAL,
                 "This file couldn't be deleted right now. Try again in a moment.",
             )
 
