@@ -470,7 +470,7 @@ async def test_proxied_call_forwards_the_requester(monkeypatch: pytest.MonkeyPat
     result = types.CallToolResult(content=[types.TextContent(type="text", text="hi")])
     session = _FakeSession(tools=[_echo_tool()], call_results={"echo": result})
     _install_fake_connection(monkeypatch, session)
-    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config()})
+    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config(forward_requester=True)})
     monkeypatch.setattr(extensions, "current_username", lambda: "alice")
     monkeypatch.setattr(extensions, "current_email", lambda: "alice@example.com")
 
@@ -486,9 +486,25 @@ async def test_proxied_call_without_identity_sends_no_meta(monkeypatch: pytest.M
     result = types.CallToolResult(content=[types.TextContent(type="text", text="hi")])
     session = _FakeSession(tools=[_echo_tool()], call_results={"echo": result})
     _install_fake_connection(monkeypatch, session)
-    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config()})
+    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config(forward_requester=True)})
     monkeypatch.setattr(extensions, "current_username", lambda: "")
     monkeypatch.setattr(extensions, "current_email", lambda: "")
+
+    registry = extensions.ExtensionRegistry()
+    await registry.connect_all(Path("unused.json"))
+    await registry.call("reference__echo", {"text": "hi"})
+
+    assert session.metas == [None]
+
+
+@pytest.mark.anyio
+async def test_proxied_call_without_forward_flag_sends_no_meta_even_with_identity(monkeypatch: pytest.MonkeyPatch):
+    result = types.CallToolResult(content=[types.TextContent(type="text", text="hi")])
+    session = _FakeSession(tools=[_echo_tool()], call_results={"echo": result})
+    _install_fake_connection(monkeypatch, session)
+    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config()})
+    monkeypatch.setattr(extensions, "current_username", lambda: "alice")
+    monkeypatch.setattr(extensions, "current_email", lambda: "alice@example.com")
 
     registry = extensions.ExtensionRegistry()
     await registry.connect_all(Path("unused.json"))

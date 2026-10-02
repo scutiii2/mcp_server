@@ -214,6 +214,7 @@ class ExtensionRegistry:
         # stack, closed independently.
         self._extension_stacks: dict[str, AsyncExitStack] = {}
         self._sessions: dict[str, ClientSession] = {}  # extension id -> session
+        self._forward_requester: set[str] = set()  # ids whose config opted in to requester forwarding
         self._proxied: dict[str, _ProxiedTool] = {}  # namespaced name -> tool
         self._statuses: list[ExtensionStatus] = []
         self._mcp: FastMCP | None = None
@@ -325,6 +326,8 @@ class ExtensionRegistry:
             tool_names.append(namespaced)
 
         self._sessions[extension_id] = session
+        if config.forward_requester:
+            self._forward_requester.add(extension_id)
         status = ExtensionStatus(
             id=extension_id,
             label=config.label,
@@ -359,6 +362,7 @@ class ExtensionRegistry:
                 pass
 
         self._sessions.pop(extension_id, None)
+        self._forward_requester.discard(extension_id)
         for name in [n for n, proxied in self._proxied.items() if proxied.extension_id == extension_id]:
             del self._proxied[name]
         self._statuses = [status for status in self._statuses if status.id != extension_id]
@@ -460,7 +464,7 @@ class ExtensionRegistry:
         "unknown tool" outcome a model should be told to retry, so this
         raises rather than returning a synthetic error result.
 
-        The caller's identity (headers or ai_agent's ``_meta``, whichever
+        When the extension's config sets ``forward_requester``, the caller's identity (headers or ai_agent's ``_meta``, whichever
         this request carried) goes upstream as ``_meta.requester``. An
         upstream can only trust it as far as it trusts this server, which is
         why an http extension can be given the internal token in ``headers``.
@@ -473,7 +477,7 @@ class ExtensionRegistry:
             proxied.upstream_name,
             arguments,
             read_timeout_seconds=timedelta(seconds=CALL_TIMEOUT_SECONDS),
-            meta=_requester_meta(),
+            meta=_requester_meta() if proxied.extension_id in self._forward_requester else None,
         )
 
     async def merged_list_tools(self) -> list[types.Tool]:

@@ -170,6 +170,10 @@ class ExtensionConfig:
     # Values are resolved from the environment at load time, so they are
     # secrets: never persisted by save_extension_config, never reported.
     headers: dict[str, str] = field(default_factory=dict, repr=False)
+    # Opt-in: send the asking user's username/email upstream as
+    # ``_meta.requester`` on each proxied call. Off by default so an
+    # extension never receives identity data it did not ask for.
+    forward_requester: bool = False
 
 
 def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:
@@ -418,12 +422,17 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
     if not isinstance(headers, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in headers.items()):
         raise ValueError(f"Config file {config_path}: '{id_}.headers' must be an object of string values")
 
+    forward_requester = entry.get("forward_requester", False)
+    if not isinstance(forward_requester, bool):
+        raise ValueError(f"Config file {config_path}: '{id_}.forward_requester' must be true or false")
+
     if has_url:
         url = str(required("url")).strip()
         if not url:
             raise ValueError(f"Config file {config_path}: '{id_}.url' must not be empty")
         return ExtensionConfig(
-            id=id_, label=label, description=description, transport="http", url=url, headers=dict(headers)
+            id=id_, label=label, description=description, transport="http", url=url, headers=dict(headers),
+            forward_requester=forward_requester,
         )
 
     args = entry.get("args", [])
@@ -437,6 +446,7 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
         transport="stdio",
         command=str(required("command")),
         args=[str(item) for item in args],
+        forward_requester=forward_requester,
     )
 
 

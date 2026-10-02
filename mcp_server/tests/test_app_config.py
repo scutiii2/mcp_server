@@ -793,3 +793,27 @@ def test_save_extension_config_never_writes_headers_and_repr_hides_them(tmp_path
     assert "headers" not in load_config(path)["remote"]
     assert "s3cret" not in path.read_text(encoding="utf-8")
     assert "s3cret" not in repr(config)
+
+
+def test_forward_requester_defaults_false_and_parses_true(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "plain": {"label": "P", "url": "http://127.0.0.1:9000/mcp"},
+            "http": {"label": "H", "url": "http://127.0.0.1:9001/mcp", "forward_requester": True},
+            "local": {"label": "L", "command": "python", "forward_requester": True},
+        },
+    )
+
+    loaded = load_extensions_config(path)
+
+    assert loaded["plain"].forward_requester is False
+    assert loaded["http"].forward_requester is True
+    assert loaded["local"].forward_requester is True
+
+
+def test_forward_requester_must_be_a_bool(tmp_path: Path):
+    path = _write(tmp_path, {"remote": {"label": "R", "url": "http://x/mcp", "forward_requester": "yes"}})
+
+    with pytest.raises(ValueError, match=r"'remote\.forward_requester' must be true or false"):
+        load_extensions_config(path)
