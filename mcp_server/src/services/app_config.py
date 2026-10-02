@@ -169,7 +169,7 @@ class ExtensionConfig:
     # upstream that, like this server, requires the shared internal token).
     # Values are resolved from the environment at load time, so they are
     # secrets: never persisted by save_extension_config, never reported.
-    headers: dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:

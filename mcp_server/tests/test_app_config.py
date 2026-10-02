@@ -775,3 +775,21 @@ def test_save_capabilities_config_preserves_other_capabilities(tmp_path: Path):
     data = load_capabilities_config(path)
     assert data["host_health"] == {"enabled": True}
     assert data["otp"] == {"enabled": False}
+
+
+def test_save_extension_config_never_writes_headers_and_repr_hides_them(tmp_path: Path):
+    path = _write(tmp_path, {})
+    config = ExtensionConfig(
+        id="remote",
+        label="Remote",
+        description="desc",
+        transport="http",
+        url="http://x/mcp",
+        headers={"X-Internal-Token": "s3cret"},
+    )
+
+    save_extension_config(path, config)
+
+    assert "headers" not in load_config(path)["remote"]
+    assert "s3cret" not in path.read_text(encoding="utf-8")
+    assert "s3cret" not in repr(config)
