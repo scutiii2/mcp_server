@@ -94,7 +94,7 @@ from src.services.app_config import (
     load_extensions_config,
     save_extension_config,
 )
-from src.services.identity_context import current_email, current_username
+from src.services.identity_context import REQUESTER_META_KEY, current_email, current_username
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +179,18 @@ class _ProxiedTool:
     extension_id: str
     upstream_name: str
     definition: types.Tool  # already carries the *namespaced* name
+
+
+def _requester_meta() -> dict[str, Any] | None:
+    """The asking user, in the same ``_meta.requester`` shape ai_agent sends
+    this server (see identity_context.py), so an upstream extension can tell
+    users apart - e.g. pdf_merger keeps one file session per user. None when
+    the caller sent no identity, so upstreams see exactly what they saw
+    before this existed."""
+    username, email = current_username(), current_email()
+    if not (username or email):
+        return None
+    return {REQUESTER_META_KEY: {"username": username, "email": email}}
 
 
 class ExtensionRegistry:
@@ -427,7 +439,7 @@ class ExtensionRegistry:
             assert config.url is not None  # guaranteed by _build_extension/the POST route
             await _check_tcp_reachable(config.url)
             read_stream, write_stream, _get_session_id = await local_stack.enter_async_context(
-                streamablehttp_client(config.url)
+                streamablehttp_client(config.url, headers=config.headers or None)
             )
         else:
             params = StdioServerParameters(command=config.command, args=config.args)
@@ -447,13 +459,21 @@ class ExtensionRegistry:
         anyway is a programming error in the caller, not a normal
         "unknown tool" outcome a model should be told to retry, so this
         raises rather than returning a synthetic error result.
+
+        The caller's identity (headers or ai_agent's ``_meta``, whichever
+        this request carried) goes upstream as ``_meta.requester``. An
+        upstream can only trust it as far as it trusts this server, which is
+        why an http extension can be given the internal token in ``headers``.
         """
         proxied = self._proxied.get(name)
         if proxied is None:
             raise KeyError(f"No proxied tool named {name!r}")
         session = self._sessions[proxied.extension_id]
         return await session.call_tool(
-            proxied.upstream_name, arguments, read_timeout_seconds=timedelta(seconds=CALL_TIMEOUT_SECONDS)
+            proxied.upstream_name,
+            arguments,
+            read_timeout_seconds=timedelta(seconds=CALL_TIMEOUT_SECONDS),
+            meta=_requester_meta(),
         )
 
     async def merged_list_tools(self) -> list[types.Tool]:
