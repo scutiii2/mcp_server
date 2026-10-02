@@ -85,9 +85,3 @@ dev_rfc.log
 
 # Archive snapshots are never tracked
 *.zip
-
-# pdf_merger's real secrets and runtime state (uploaded files, logs).
-/pdf_merger/.secrets/*
-!/pdf_merger/.secrets/*.example
-/pdf_merger/.data/
-/pdf_merger/.logs/

@@ -12,6 +12,10 @@ ASSETS_DIR = PROJECT_DIR / "src" / "assets"
 DATA_DIR = PROJECT_DIR / "data"
 _PRESETS_PATH = DATA_DIR / "presets.json"
 _GROUPS_PATH = DATA_DIR / "groups.json"
+# Other folders (relative to REPO_ROOT) whose */run.bat projects are
+# launchable too - for projects that live in their own repo next to this
+# one, e.g. "../PDFMerger". A JSON list of strings; tracked, not personal.
+_EXTRA_ROOTS_PATH = DATA_DIR / "extra_roots.json"
 # Written on close only when the user chooses to leave running instances in
 # the background instead of stopping them - the (template, port) pairs to
 # re-adopt on the next launch. Consumed (deleted) as soon as it's read, so

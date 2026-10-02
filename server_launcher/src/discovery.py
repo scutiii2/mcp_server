@@ -2,18 +2,47 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from .config import (
-    _DESCRIPTION_RE, _LABEL_RE, _MODULE_RE, _NPM_SCRIPT_RE, _PROJECT_PORT_ENV, _SET_VAR_RE, _VENV_RE, REPO_ROOT,
-    SELF_DIR_NAME,
+    _DESCRIPTION_RE, _EXTRA_ROOTS_PATH, _LABEL_RE, _MODULE_RE, _NPM_SCRIPT_RE, _PROJECT_PORT_ENV, _SET_VAR_RE,
+    _VENV_RE, REPO_ROOT, SELF_DIR_NAME,
 )
 from .models import ServerTemplate
 
 
-def discover_templates() -> list[ServerTemplate]:
+def project_roots(base: Path = REPO_ROOT, extra_roots_path: Path = _EXTRA_ROOTS_PATH) -> list[Path]:
+    """This repo's root, then each existing folder listed in extra_roots.json
+    (paths relative to ``base``). A missing or malformed file just means no
+    extra roots - the launcher must still start."""
+    roots = [base]
+    try:
+        raw = json.loads(extra_roots_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return roots
+    if not isinstance(raw, list):
+        return roots
+    for entry in raw:
+        if isinstance(entry, str):
+            root = (base / entry).resolve()
+            if root.is_dir() and root not in roots:
+                roots.append(root)
+    return roots
+
+
+def discover_templates(roots: list[Path] | None = None) -> list[ServerTemplate]:
+    """One template per */run.bat in each root. Template keys are folder
+    names, so the first root to have a folder name wins."""
     templates: list[ServerTemplate] = []
-    for bat_path in sorted(REPO_ROOT.glob("*/run.bat")):
+    seen: set[str] = set()
+    bat_paths = [bat for root in (roots or project_roots()) for bat in sorted(root.glob("*/run.bat"))]
+    for bat_path in bat_paths:
         if bat_path.parent.name == SELF_DIR_NAME:
             continue  # this launcher's own run.bat is not a server to launch
+        if bat_path.parent.name in seen:
+            continue
+        seen.add(bat_path.parent.name)
         working_dir = bat_path.parent.resolve()
         project_dir = bat_path.parent.name
         try:

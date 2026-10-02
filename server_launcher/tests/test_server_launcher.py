@@ -10,6 +10,65 @@ from unittest.mock import Mock, patch
 from src import discovery, instance as instance_module, models, storage, window
 
 
+_PY_RUN_BAT = (
+    "@echo off\nREM LABEL: {label}\nif not defined {port_var} set {port_var}={port}\n"
+    "call .venv_{venv}\\Scripts\\activate\npy -m src.run\n"
+)
+
+
+class ExtraProjectRootTests(unittest.TestCase):
+    def _make_project(self, root: Path, name: str, label: str, port: int) -> None:
+        (root / name).mkdir(parents=True)
+        (root / name / "run.bat").write_text(
+            _PY_RUN_BAT.format(label=label, port_var=f"{name.upper()}_PORT", port=port, venv=name), encoding="utf-8"
+        )
+
+    def test_projects_in_extra_roots_are_discovered(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            main, extra = Path(directory) / "MCPServer", Path(directory) / "PDFMerger"
+            self._make_project(main, "mcp_server", "MCP Server", 8010)
+            self._make_project(extra, "pdf_merger", "PDF Merger", 8040)
+
+            templates = discovery.discover_templates(roots=[main, extra])
+
+        by_key = {t.key: t for t in templates}
+        self.assertEqual(set(by_key), {"mcp_server", "pdf_merger"})
+        self.assertEqual(by_key["pdf_merger"].display_name, "PDF Merger")
+        self.assertEqual(by_key["pdf_merger"].default_port, 8040)
+
+    def test_first_root_wins_when_two_projects_share_a_folder_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            main, extra = Path(directory) / "a", Path(directory) / "b"
+            self._make_project(main, "tool", "Main tool", 1000)
+            self._make_project(extra, "tool", "Other tool", 2000)
+
+            [template] = discovery.discover_templates(roots=[main, extra])
+
+        self.assertEqual(template.display_name, "Main tool")
+
+    def test_extra_roots_file_is_resolved_against_the_repo_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory) / "MCPServer"
+            (base.parent / "PDFMerger").mkdir(parents=True)
+            base.mkdir()
+            roots_file = base / "extra_roots.json"
+            roots_file.write_text(json.dumps(["../PDFMerger", "../Missing"]), encoding="utf-8")
+
+            roots = discovery.project_roots(base=base, extra_roots_path=roots_file)
+
+        self.assertEqual(roots, [base, (base.parent / "PDFMerger").resolve()])
+
+    def test_missing_or_invalid_extra_roots_file_means_repo_root_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            bad = base / "extra_roots.json"
+            self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
+            bad.write_text("{not json", encoding="utf-8")
+            self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
+            bad.write_text(json.dumps({"roots": ["x"]}), encoding="utf-8")
+            self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
+
+
 class GroupPersistenceTests(unittest.TestCase):
     def test_invalid_member_schema_rejects_entire_file(self) -> None:
         valid = {"template_key": "ai_agent", "port": 9100}

@@ -13,7 +13,7 @@
     "url": "http://127.0.0.1:9000/mcp"
   },
   "pdf_merger": {
-    "_comment": "pdf_merger's MCP endpoint (Python/MCPServer/pdf_merger). It requires the shared internal token, sent here as a header. Start pdf_merger before mcp_server so the connection succeeds at startup. forward_requester sends the asking user's username and email upstream (_meta.requester) so each user gets their own file session; it is off unless set.",
+    "_comment": "pdf_merger's MCP endpoint (Python/PDFMerger/pdf_merger). It requires the shared internal token, sent here as a header. Start pdf_merger before mcp_server so the connection succeeds at startup. forward_requester sends the asking user's username and email upstream (_meta.requester) so each user gets their own file session; it is off unless set.",
     "label": "PDF Merger",
     "description": "Merge PDFs and images into one PDF by file ID; returns a download link.",
     "url": "http://127.0.0.1:8040/mcp",
