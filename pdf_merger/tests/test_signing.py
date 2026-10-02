@@ -24,3 +24,11 @@ def test_expired_link_fails():
     now[0] = 1061.0
 
     assert not signer.verify("f_" + "a" * 32, exp, sig)
+
+
+def test_non_ascii_sig_returns_false():
+    clock = lambda: 1000.0  # noqa: E731
+    signer = LinkSigner(b"k" * 32, ttl_seconds=60, clock=clock)
+    exp, sig = signer.sign("f_" + "a" * 32)
+
+    assert not signer.verify("f_" + "a" * 32, exp, "é" * 64)

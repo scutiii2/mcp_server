@@ -76,6 +76,7 @@ class FileStore:
         self._max_session_bytes = max_session_bytes
         self._clock = clock
         self._index: dict[str, StoredFile] = {}
+        self._reserved: dict[str, int] = {}
 
     # --- paths -------------------------------------------------------------
 
@@ -141,32 +142,44 @@ class FileStore:
     async def commit(self, pending: PendingFile, *, name: str, mime: str, kind: str, pages: int) -> StoredFile:
         """Register written content. Enforces the session quota."""
         size = (await asyncio.to_thread(pending.path.stat)).st_size
-        if self.session_usage(pending.session) + size > self._max_session_bytes:
+        reserved = self._reserved.get(pending.session, 0)
+        if self.session_usage(pending.session) + reserved + size > self._max_session_bytes:
             self.discard(pending)
             raise MergerError(
                 ErrorCode.LIMIT_EXCEEDED,
                 f"Your files would use more than {self._max_session_bytes // MB} MB. Delete some files or wait for them to expire.",
             )
-        now = self._clock()
-        stored = StoredFile(
-            file_id=pending.file_id,
-            session=pending.session,
-            name=name,
-            mime=mime,
-            kind=kind,
-            pages=pages,
-            size=size,
-            created_at=now,
-            expires_at=now + self._ttl,
-        )
+        # Synchronously reserve space before any further awaits
+        self._reserved[pending.session] = reserved + size
+        try:
+            now = self._clock()
+            stored = StoredFile(
+                file_id=pending.file_id,
+                session=pending.session,
+                name=name,
+                mime=mime,
+                kind=kind,
+                pages=pages,
+                size=size,
+                created_at=now,
+                expires_at=now + self._ttl,
+            )
 
-        def finish() -> None:
-            os.replace(pending.path, self.path(stored))
-            self._meta_path(stored).write_text(json.dumps(asdict(stored)), "utf-8")
+            def finish() -> None:
+                os.replace(pending.path, self.path(stored))
+                self._meta_path(stored).write_text(json.dumps(asdict(stored)), "utf-8")
 
-        await asyncio.to_thread(finish)
-        self._index[stored.file_id] = stored
-        return stored
+            await asyncio.to_thread(finish)
+            self._index[stored.file_id] = stored
+            return stored
+        finally:
+            # Release the reservation after index insert (or on failure)
+            reserved = self._reserved.get(pending.session, 0)
+            new_reserved = reserved - size
+            if new_reserved <= 0:
+                self._reserved.pop(pending.session, None)
+            else:
+                self._reserved[pending.session] = new_reserved
 
     # --- reading -----------------------------------------------------------
 
@@ -187,25 +200,36 @@ class FileStore:
 
     # --- removal -----------------------------------------------------------
 
-    async def _remove(self, file: StoredFile) -> None:
-        self._index.pop(file.file_id, None)
-
+    async def _remove(self, file: StoredFile) -> bool:
+        """Remove a file from disk and index. Returns True if successful, False if it failed."""
         def unlink() -> None:
             self.path(file).unlink(missing_ok=True)
             self._meta_path(file).unlink(missing_ok=True)
 
-        await asyncio.to_thread(unlink)
+        try:
+            await asyncio.to_thread(unlink)
+            self._index.pop(file.file_id, None)
+            return True
+        except OSError:
+            logger.warning("Could not remove file %s", file.file_id)
+            return False
 
     async def delete(self, file_id: str, session: str | None) -> None:
-        await self._remove(self.get(file_id, session))
+        if not await self._remove(self.get(file_id, session)):
+            raise MergerError(
+                ErrorCode.INTERNAL_ERROR,
+                "This file couldn't be deleted right now. Try again in a moment.",
+            )
 
     async def sweep(self) -> int:
         """Delete every expired file. Returns how many were removed."""
         now = self._clock()
         expired = [f for f in self._index.values() if f.expires_at <= now]
+        removed = 0
         for file in expired:
-            await self._remove(file)
-        return len(expired)
+            if await self._remove(file):
+                removed += 1
+        return removed
 
     # --- scratch space -----------------------------------------------------
 

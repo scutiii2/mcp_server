@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -135,3 +136,59 @@ async def test_work_dir_round_trip(tmp_path: Path):
     await store.remove_work_dir(work)
 
     assert not work.exists()
+
+
+async def test_concurrent_quota_check(tmp_path: Path):
+    store = make_store(tmp_path, FakeClock(), max_session_bytes=10)
+
+    results = await asyncio.gather(
+        add(store, "web:1", b"x" * 6),
+        add(store, "web:1", b"x" * 6),
+        return_exceptions=True,
+    )
+
+    successes = [r for r in results if not isinstance(r, Exception)]
+    failures = [r for r in results if isinstance(r, Exception)]
+
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert isinstance(failures[0], MergerError)
+    assert failures[0].code == ErrorCode.LIMIT_EXCEEDED
+    assert store.session_usage("web:1") == 6
+
+
+async def test_removal_with_permission_error(tmp_path: Path, monkeypatch):
+    clock = FakeClock()
+    store = make_store(tmp_path, clock)
+    stored1 = await add(store, "web:1", name="first.pdf")
+    stored2 = await add(store, "web:1", name="second.pdf")
+
+    # Advance clock to expire both files
+    clock.now += 101
+
+    # Make one file's unlink fail
+    original_unlink = Path.unlink
+    call_count = [0]
+
+    def failing_unlink(self, missing_ok=False):
+        call_count[0] += 1
+        if call_count[0] == 1:  # First unlink call fails
+            raise PermissionError("File in use")
+        return original_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", failing_unlink)
+
+    # Sweep should continue and remove only the second file
+    removed = await store.sweep()
+    assert removed == 1
+
+    # First file should still be in index (for retry)
+    assert store._index[stored1.file_id] == stored1
+
+    # Remove the patch
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+
+    # Second sweep should succeed for the first file
+    removed = await store.sweep()
+    assert removed == 1
+    assert stored1.file_id not in store._index

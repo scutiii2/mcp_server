@@ -26,4 +26,7 @@ class LinkSigner:
     def verify(self, file_id: str, exp: int, sig: str) -> bool:
         if exp < self._clock():
             return False
-        return hmac.compare_digest(self._digest(file_id, exp), sig)
+        return hmac.compare_digest(
+            self._digest(file_id, exp).encode("ascii"),
+            sig.encode("utf-8", "replace"),
+        )
