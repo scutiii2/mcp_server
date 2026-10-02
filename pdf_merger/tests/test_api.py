@@ -200,3 +200,14 @@ def test_other_browser_cannot_follow_the_job(app, client, tmp_path: Path):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "job_not_found"
+
+
+def test_session_cookie_is_renewed_on_every_request(client, tmp_path: Path):
+    first = upload(client, make_pdf(tmp_path / "a.pdf", [100]))
+    value = client.cookies["pm_session"]
+    assert "pm_session=" in first.headers["set-cookie"]
+
+    second = client.get("/api/files")
+
+    assert f"pm_session={value}" in second.headers["set-cookie"]
+    assert "HttpOnly" in second.headers["set-cookie"]

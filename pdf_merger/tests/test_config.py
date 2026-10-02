@@ -69,3 +69,13 @@ def test_missing_signing_key_gets_a_random_one(tmp_path: Path):
 
     assert len(first.signing_key) == 64
     assert first.signing_key != second.signing_key
+
+
+def test_mcp_wait_seconds_default_and_override(tmp_path):
+    import json
+
+    from src.config import Settings, load_settings
+
+    assert Settings().mcp_wait_seconds == 100
+    (tmp_path / "config_pdf_merger.json").write_text(json.dumps({"mcp_wait_seconds": 42}), "utf-8")
+    assert load_settings(tmp_path, tmp_path / "none", env={}).mcp_wait_seconds == 42

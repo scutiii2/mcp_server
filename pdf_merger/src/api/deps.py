@@ -35,11 +35,12 @@ def get_caller(request: Request, response: Response) -> Caller:
     session_id = request.cookies.get(COOKIE_NAME, "")
     if not _SESSION_RE.fullmatch(session_id):
         session_id = secrets.token_urlsafe(24)  # 32 URL-safe characters
-        response.set_cookie(
-            COOKIE_NAME,
-            session_id,
-            max_age=request.app.state.settings.file_ttl_seconds,
-            httponly=True,
-            samesite="strict",
-        )
+    # Sliding session: re-set the cookie on every request so it lives as long as the files do.
+    response.set_cookie(
+        COOKIE_NAME,
+        session_id,
+        max_age=request.app.state.settings.file_ttl_seconds,
+        httponly=True,
+        samesite="strict",
+    )
     return Caller(session=f"web:{session_id}")

@@ -175,3 +175,28 @@ async def test_work_finishing_despite_timeout_reports_done():
     final = await queue.wait(queue.submit("web:1", 1, work))
 
     assert final == {"type": "done", "file_id": "f_x"}
+
+
+async def test_cancelled_queued_job_never_runs_its_work():
+    queue = JobQueue(max_concurrent=1, timeout_seconds=5)
+    release = asyncio.Event()
+    ran = []
+
+    async def blocker(progress, cancel):
+        await release.wait()
+        return {}
+
+    async def work(progress, cancel):
+        ran.append(True)
+        return {}
+
+    first = queue.submit("web:1", 1, blocker)
+    second = queue.submit("web:1", 1, work)
+    await asyncio.sleep(0.01)
+    queue.cancel(second)
+    release.set()
+    await queue.wait(first)
+    final = await queue.wait(second)
+
+    assert ran == []
+    assert final["code"] == "merge_timeout"

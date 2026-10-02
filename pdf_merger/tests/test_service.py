@@ -136,3 +136,46 @@ async def test_timed_out_merge_leaves_no_part_or_work_files(service, tmp_path: P
     assert list(settings.store_dir.rglob("*.part")) == []
     work = settings.store_dir / "_work"
     assert not work.exists() or [p for p in work.iterdir() if p.is_dir()] == []
+
+
+async def test_mcp_wait_deadline_cancels_job_and_cleans_up(service, tmp_path: Path, settings, monkeypatch):
+    import time
+
+    import src.engine.assembler as assembler_module
+
+    pdf = await upload(service, WEB, make_pdf(tmp_path / "a.pdf", [100, 101]))
+    real = assembler_module._assemble
+
+    def slow_assemble(parts, out_path, title, author, bookmarks, on_page, cancel=None):
+        while not cancel.is_set():
+            time.sleep(0.01)
+        return real(parts, out_path, title, author, bookmarks, on_page, cancel)
+
+    monkeypatch.setattr(assembler_module, "_assemble", slow_assemble)
+    service._mcp_wait_seconds = 0.05
+    plan = MergePlan.model_validate({"segments": [{"file_id": pdf.file_id}]})
+    jobs = []
+    real_start = service.start_merge
+    monkeypatch.setattr(service, "start_merge", lambda caller, p: jobs.append(real_start(caller, p)) or jobs[-1])
+
+    with pytest.raises(MergerError) as caught:
+        await service.merge_and_wait(BOT, plan)
+
+    assert caught.value.code == ErrorCode.MERGE_TIMEOUT
+    assert "0.05 seconds" in caught.value.message
+    assert jobs[0].cancel_event.is_set()
+    await service._jobs.wait(jobs[0])  # the job cleans itself up cooperatively
+    assert list(settings.store_dir.rglob("*.part")) == []
+    work = settings.store_dir / "_work"
+    assert not work.exists() or [p for p in work.iterdir() if p.is_dir()] == []
+
+
+async def test_token_caller_cannot_delete_web_session_file(service, tmp_path: Path):
+    pdf = await upload(service, WEB, make_pdf(tmp_path / "a.pdf", [100]))
+
+    assert service.get_file(BOT, pdf.file_id).file_id == pdf.file_id  # read any file by ID
+    with pytest.raises(MergerError) as caught:
+        await service.delete_file(BOT, pdf.file_id)
+
+    assert caught.value.code == ErrorCode.FILE_NOT_FOUND
+    assert [f.file_id for f in service.list_files(WEB)] == [pdf.file_id]

@@ -70,6 +70,7 @@ class Settings:
     internal_api_token: str = ""
     signing_key: bytes = b""
     limits: Limits = field(default_factory=Limits)
+    mcp_wait_seconds: float = 100.0
 
 
 def _ensure_from_example(path: Path) -> bool:
@@ -128,4 +129,5 @@ def load_settings(
         internal_api_token=env.get("INTERNAL_API_TOKEN") or secret.get("INTERNAL_API_TOKEN", ""),
         signing_key=signing_key.encode("utf-8"),
         limits=Limits.from_config(raw.get("limits", {})),
+        mcp_wait_seconds=float(raw.get("mcp_wait_seconds", 100)),
     )

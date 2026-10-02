@@ -63,6 +63,7 @@ class MergeService:
         limits: Limits,
         public_base_url: str,
         file_ttl_seconds: int,
+        mcp_wait_seconds: float = 100.0,
     ) -> None:
         self._store = store
         self._registry = registry
@@ -72,6 +73,7 @@ class MergeService:
         self._limits = limits
         self._public_base_url = public_base_url.rstrip("/")
         self._file_ttl = file_ttl_seconds
+        self._mcp_wait_seconds = mcp_wait_seconds
 
     @property
     def store(self) -> FileStore:
@@ -103,7 +105,8 @@ class MergeService:
         return self._store.path(file)
 
     async def delete_file(self, caller: Caller, file_id: str) -> None:
-        await self._store.delete(file_id, caller.scope)
+        # Token callers may read any file by ID but only delete their own session's files.
+        await self._store.delete(file_id, caller.session)
 
     def inspect(self, caller: Caller, file_ids: Sequence[str]) -> tuple[list[StoredFile], list[tuple[str, MergerError]]]:
         """Look up each ID; one bad ID never aborts the rest."""
@@ -139,7 +142,16 @@ class MergeService:
         )
 
     async def merge_and_wait(self, caller: Caller, plan: MergePlan) -> MergeResult:
-        final = await self._jobs.wait(self.start_merge(caller, plan))
+        job = self.start_merge(caller, plan)
+        try:
+            # wait_for cancels (and awaits) the inner wait on expiry, so nothing dangles
+            final = await asyncio.wait_for(self._jobs.wait(job), self._mcp_wait_seconds)
+        except asyncio.TimeoutError:
+            self._jobs.cancel(job)
+            raise MergerError(
+                ErrorCode.MERGE_TIMEOUT,
+                f"The merge took longer than {self._mcp_wait_seconds:g} seconds and was stopped. Try fewer pages.",
+            ) from None
         if final.get("type") != "done":
             raise MergerError(ErrorCode(final.get("code", "internal_error")), final.get("message", "The merge failed."))
         return MergeResult.model_validate({k: v for k, v in final.items() if k != "type"})
@@ -220,4 +232,5 @@ def build_service(settings: Settings) -> MergeService:
         limits=limits,
         public_base_url=settings.public_base_url,
         file_ttl_seconds=settings.file_ttl_seconds,
+        mcp_wait_seconds=settings.mcp_wait_seconds,
     )

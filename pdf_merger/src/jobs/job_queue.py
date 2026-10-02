@@ -36,7 +36,12 @@ class Job:
     created_at: float
     events: list[dict] = field(default_factory=list)
     finished: bool = False
+    cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _changed: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+
+    def cancel(self) -> None:
+        """Ask the job to stop: a queued job never starts, a running one stops cooperatively."""
+        self.cancel_event.set()
 
     def publish(self, event: dict, *, final: bool = False) -> None:
         """Append an event. Events after the final one are dropped."""
@@ -79,7 +84,7 @@ class JobQueue:
 
     async def _run(self, job: Job, total: int, work: Work) -> None:
         loop = asyncio.get_running_loop()
-        cancel = threading.Event()
+        cancel = job.cancel_event
 
         def progress(done: int) -> None:
             try:
@@ -94,6 +99,9 @@ class JobQueue:
         }
         job.publish({"type": "queued", "total": total})
         async with self._semaphore:
+            if cancel.is_set():  # cancelled while queued: never start the work
+                job.publish(timeout_event, final=True)
+                return
             job.publish({"type": "progress", "done": 0, "total": total})
             task = asyncio.ensure_future(work(progress, cancel))
             await asyncio.wait({task}, timeout=self._timeout)
@@ -118,6 +126,9 @@ class JobQueue:
                 )
         else:
             job.publish({"type": "done", **result}, final=True)
+
+    def cancel(self, job: Job) -> None:
+        job.cancel()
 
     def get(self, job_id: str, session: str | None) -> Job:
         job = self._jobs.get(job_id)

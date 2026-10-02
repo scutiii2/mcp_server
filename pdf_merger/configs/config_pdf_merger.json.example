@@ -6,6 +6,7 @@
   "file_ttl_hours": 6,
   "sweep_interval_minutes": 10,
   "download_link_minutes": 60,
+  "mcp_wait_seconds": 100,
   "limits": {
     "max_file_mb": 100,
     "max_session_mb": 500,

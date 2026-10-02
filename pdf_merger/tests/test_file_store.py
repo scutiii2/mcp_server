@@ -219,3 +219,31 @@ async def test_delete_with_permission_error(tmp_path: Path, monkeypatch):
     await store.delete(stored.file_id, "web:1")
     with pytest.raises(MergerError):
         store.get(stored.file_id, "web:1")
+
+
+async def test_load_index_removes_stale_part_orphan_data_and_empty_work_dirs(tmp_path):
+    def make() -> FileStore:
+        return FileStore(tmp_path, ttl_seconds=60, max_file_bytes=1000, max_session_bytes=10000)
+
+    store = make()
+    pending = store.new_pending("web:1")
+    pending.path.write_bytes(b"z")
+    kept = await store.commit(pending, name="k", mime="m", kind="pdf", pages=1)
+    directory = store.path(kept).parent
+    stale_part = directory / ("f_" + "a" * 32 + ".part")
+    stale_part.write_bytes(b"y")
+    orphan = directory / ("f_" + "b" * 32)
+    orphan.write_bytes(b"x")
+    (tmp_path / "_work" / "empty").mkdir(parents=True)
+    busy = tmp_path / "_work" / "busy"
+    busy.mkdir()
+    (busy / "x.pdf").write_bytes(b"1")
+
+    fresh = make()
+    assert await fresh.load_index() == 1
+
+    assert not stale_part.exists()
+    assert not orphan.exists()
+    assert fresh.path(kept).exists()
+    assert not (tmp_path / "_work" / "empty").exists()
+    assert (busy / "x.pdf").exists()

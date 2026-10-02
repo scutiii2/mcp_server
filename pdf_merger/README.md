@@ -18,7 +18,7 @@ Python 3.11+. Dependencies install from `pyproject.toml` on first run.
 2. In `.secrets/secret_internal_api.env`, set `INTERNAL_API_TOKEN` to the same value as `mcp_server`.
 3. In `.secrets/secret_signing.env`, set `PDF_MERGER_SIGNING_KEY` to a random value:
    `py -c "import secrets; print(secrets.token_hex(32))"`.
-4. If other machines will open download links, set `public_base_url` in the config to this machine's LAN address.
+4. If other machines will open download links or the web app, set `public_base_url` in the config to this machine's LAN address, and also set `host` in the config (or `PDF_MERGER_HOST`) to `0.0.0.0` or that LAN address. The default `127.0.0.1` only accepts local connections.
 
 ## Run
 
@@ -27,7 +27,7 @@ run.bat
 ```
 
 Default port 8040 (`PDF_MERGER_PORT`). Files live in `.data/store/` and are deleted after `file_ttl_hours`.
-Merges stop cooperatively after the job timeout (`merge_timeout`). Unexpected errors return a generic JSON 500 (`internal_error`).
+Merges stop cooperatively after the job timeout (`merge_timeout`). MCP merge calls give up after `mcp_wait_seconds` (default 100, kept under the 120 s client limits of `mcp_server` and `ai_agent`): the job is cancelled and the call returns `merge_timeout`. Callers without an identity share the `mcp:anonymous` session and its quota. Unexpected errors return a generic JSON 500 (`internal_error`).
 
 ## API
 

@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import tempfile
@@ -30,6 +31,7 @@ from src.errors import ErrorCode, MergerError
 logger = logging.getLogger(__name__)
 
 _WORK_DIR_NAME = "_work"
+_DATA_NAME_RE = re.compile(r"f_[0-9a-f]{32}")
 
 
 @dataclass(frozen=True)
@@ -101,11 +103,30 @@ class FileStore:
                     found.append(StoredFile(**json.loads(meta.read_text("utf-8"))))
                 except (OSError, ValueError, TypeError):
                     logger.warning("Skipping unreadable sidecar %s", meta)
+            self._clean_stale(found)
             return found
 
         for file in await asyncio.to_thread(scan):
             self._index[file.file_id] = file
         return len(self._index)
+
+    def _clean_stale(self, found: list[StoredFile]) -> None:
+        """Delete leftovers of a crash: *.part, data files without a sidecar, empty _work dirs."""
+        known = {file.file_id for file in found}
+        for path in self._root.glob("*/f_*"):
+            if path.name.endswith(".json") or path.parent.name == _WORK_DIR_NAME:
+                continue
+            if path.name.endswith(".part") or (_DATA_NAME_RE.fullmatch(path.name) and path.name not in known):
+                try:
+                    path.unlink()
+                except OSError:
+                    logger.warning("Could not remove stale file %s", path)
+        for work in (self._root / _WORK_DIR_NAME).glob("*"):
+            if work.is_dir():
+                try:
+                    work.rmdir()  # only succeeds when empty
+                except OSError:
+                    pass
 
     # --- writing -----------------------------------------------------------
 
