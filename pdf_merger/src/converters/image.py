@@ -26,6 +26,16 @@ Image.MAX_IMAGE_PIXELS = None
 
 IMAGE_MIMES = frozenset({"image/jpeg", "image/png", "image/webp", "image/tiff", "image/gif", "image/heic"})
 
+# img2pdf's exception classes share no common base, so list them all.
+_IMG2PDF_ERRORS = (
+    img2pdf.AlphaChannelError,
+    img2pdf.ExifOrientationError,
+    img2pdf.ImageOpenError,
+    img2pdf.JpegColorspaceError,
+    img2pdf.NegativeDimensionError,
+    img2pdf.PdfTooLargeError,
+    img2pdf.UnsupportedColorspaceError,
+)
 _PAGE_SIZES: dict[PageSize, tuple[float, float]] = {
     "A4": (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(297)),
     "Letter": (img2pdf.in_to_pt(8.5), img2pdf.in_to_pt(11)),
@@ -48,7 +58,7 @@ def _layout(opts: ImageOptions):
 
 
 def _flatten(image: Image.Image) -> Image.Image:
-    has_alpha = image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info)
+    has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
     if has_alpha:
         rgba = image.convert("RGBA")
         background = Image.new("RGB", rgba.size, (255, 255, 255))
@@ -95,7 +105,7 @@ class ImageConverter:
         try:
             data = _image_bytes(path)
             out.write_bytes(img2pdf.convert(data, layout_fun=_layout(opts), rotation=img2pdf.Rotation.ifvalid))
-        except (img2pdf.ImageOpenError, ValueError, OSError) as error:
+        except (*_IMG2PDF_ERRORS, ValueError, OSError) as error:
             raise MergerError(ErrorCode.CORRUPT_FILE, "This image couldn't be converted to a PDF page.") from error
 
     async def inspect(self, path: Path) -> int:

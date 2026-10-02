@@ -150,3 +150,70 @@ async def test_unreadable_image_is_corrupt(tmp_path: Path):
     with pytest.raises(MergerError) as caught:
         await ImageConverter(10**8).inspect(path)
     assert caught.value.code == ErrorCode.CORRUPT_FILE
+
+
+async def test_colour_key_transparency_is_flattened(tmp_path: Path):
+    from PIL import Image
+
+    src = tmp_path / "keyed.png"
+    Image.new("RGB", (40, 30), (200, 10, 10)).save(src, format="PNG", transparency=(200, 10, 10))
+    out = await ImageConverter(10**8).to_pdf(src, tmp_path, ImageOptions())
+
+    with pikepdf.open(out) as pdf:
+        assert "/SMask" not in only_image(pdf)
+
+
+async def test_img2pdf_layout_error_becomes_merger_error(tmp_path: Path):
+    src = make_image(tmp_path / "photo.jpg")
+
+    with pytest.raises(MergerError) as caught:
+        await ImageConverter(10**8).to_pdf(src, tmp_path, ImageOptions(margin_mm=200))
+    assert caught.value.code == ErrorCode.CORRUPT_FILE
+
+
+def placed_size(path: Path) -> tuple[float, float]:
+    """Width and height of the image as drawn, read from the `cm` operator before `Do`."""
+    with pikepdf.open(path) as pdf:
+        matrix = None
+        for operands, operator in pikepdf.parse_content_stream(pdf.pages[0]):
+            if str(operator) == "cm":
+                matrix = [float(x) for x in operands]
+            elif str(operator) == "Do":
+                return abs(matrix[0]), abs(matrix[3])
+    raise AssertionError("no image drawn")
+
+
+async def _wide(tmp_path: Path, **options) -> Path:
+    src = make_image(tmp_path / "wide.png", size=(300, 150), fmt="PNG")
+    out = await ImageConverter(10**8).to_pdf(src, tmp_path, ImageOptions(**options))
+    assert mediabox(out) == pytest.approx(A4, abs=0.5)
+    return out
+
+
+async def test_fit_into_page_inside_margins(tmp_path: Path):
+    width, height = placed_size(await _wide(tmp_path, fit="fit", margin_mm=10))
+    inner = A4[0] - 2 * 28.3465
+    assert width == pytest.approx(inner, abs=0.5)
+    assert height == pytest.approx(inner / 2, abs=0.5)
+
+
+async def test_fit_fill_covers_page_inside_margins(tmp_path: Path):
+    width, height = placed_size(await _wide(tmp_path, fit="fill", margin_mm=10))
+    inner_h = A4[1] - 2 * 28.3465
+    assert height == pytest.approx(inner_h, abs=0.5)
+    assert width == pytest.approx(inner_h * 2, abs=0.5)
+
+
+async def test_fit_original_keeps_small_image_natural_size(tmp_path: Path):
+    src = make_image(tmp_path / "small.png", size=(100, 50), fmt="PNG")
+    out = await ImageConverter(10**8).to_pdf(src, tmp_path, ImageOptions(fit="original"))
+
+    assert mediabox(out) == pytest.approx(A4, abs=0.5)
+    width, height = placed_size(out)
+    assert width / height == pytest.approx(2.0, rel=0.01)
+    assert width < 300  # not stretched to the page (A4 inner width is about 539pt)
+
+
+async def test_zero_margin_uses_full_page_width(tmp_path: Path):
+    width, _ = placed_size(await _wide(tmp_path, fit="fit", margin_mm=0))
+    assert width == pytest.approx(A4[0], abs=0.5)
