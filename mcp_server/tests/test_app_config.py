@@ -592,6 +592,42 @@ def test_http_extension_empty_url_is_rejected(tmp_path: Path):
         load_extensions_config(path)
 
 
+def test_http_extension_headers_resolve_placeholders(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "s3cret")
+    path = _write(
+        tmp_path,
+        {
+            "pdf_merger": {
+                "label": "PDF Merger",
+                "url": "http://127.0.0.1:8040/mcp",
+                "headers": {"X-Internal-Token": "${INTERNAL_API_TOKEN}"},
+            }
+        },
+    )
+
+    assert load_extensions_config(path)["pdf_merger"].headers == {"X-Internal-Token": "s3cret"}
+
+
+def test_http_extension_without_headers_has_none(tmp_path: Path):
+    path = _write(tmp_path, {"remote": {"label": "Remote", "url": "http://127.0.0.1:9000/mcp"}})
+
+    assert load_extensions_config(path)["remote"].headers == {}
+
+
+def test_http_extension_headers_must_be_strings(tmp_path: Path):
+    path = _write(tmp_path, {"remote": {"label": "Remote", "url": "http://127.0.0.1:9000/mcp", "headers": {"X-Count": 3}}})
+
+    with pytest.raises(ValueError, match="'remote.headers' must be an object of string values"):
+        load_extensions_config(path)
+
+
+def test_stdio_extension_with_headers_is_rejected(tmp_path: Path):
+    path = _write(tmp_path, {"local": {"label": "Local", "command": "python", "headers": {"X": "y"}}})
+
+    with pytest.raises(ValueError, match="'local.headers' only applies to an http extension"):
+        load_extensions_config(path)
+
+
 # --- save_extension_config / delete_extension_config ----------------------
 # The runtime add/remove routes (extension_routes.py) persist through
 # these, so a successful HTTP response and config_extensions.json agreeing

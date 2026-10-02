@@ -164,6 +164,12 @@ class ExtensionConfig:
     args: list[str] = field(default_factory=list)
     transport: str = "stdio"
     url: str | None = None
+    # http transport only: extra HTTP headers sent on every request to the
+    # upstream (e.g. {"X-Internal-Token": "${INTERNAL_API_TOKEN}"} for an
+    # upstream that, like this server, requires the shared internal token).
+    # Values are resolved from the environment at load time, so they are
+    # secrets: never persisted by save_extension_config, never reported.
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:
@@ -403,11 +409,22 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
     label = str(required("label"))
     description = str(entry.get("description", ""))
 
+    headers = entry.get("headers", {})
+    if "headers" in entry and not has_url:
+        raise ValueError(
+            f"Config file {config_path}: '{id_}.headers' only applies to an http extension "
+            f"(one with 'url'). A stdio extension talks over stdin/stdout and sends no HTTP headers."
+        )
+    if not isinstance(headers, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in headers.items()):
+        raise ValueError(f"Config file {config_path}: '{id_}.headers' must be an object of string values")
+
     if has_url:
         url = str(required("url")).strip()
         if not url:
             raise ValueError(f"Config file {config_path}: '{id_}.url' must not be empty")
-        return ExtensionConfig(id=id_, label=label, description=description, transport="http", url=url)
+        return ExtensionConfig(
+            id=id_, label=label, description=description, transport="http", url=url, headers=dict(headers)
+        )
 
     args = entry.get("args", [])
     if not isinstance(args, list):
@@ -467,6 +484,10 @@ def save_extension_config(config_path: Path, config: ExtensionConfig) -> None:
     ``load_extensions_config`` gets exactly what ``_build_extension``
     expects for that transport - no leftover empty ``command``/``url``
     from the other branch's field defaults.
+
+    ``headers`` is never written: by the time a config reaches here its
+    header values are resolved secrets, not ``${VAR}`` placeholders. An
+    extension that needs headers is configured by hand in the file.
     """
     data = load_config(config_path)
 
