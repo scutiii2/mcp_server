@@ -52,15 +52,15 @@
         "preset_name": null
       },
       {
-        "template_key": "mcp_server",
-        "port": 8010,
+        "template_key": "pdf_merger",
+        "port": 8040,
         "extra_env": {},
         "extra_args": "",
         "preset_name": null
       },
       {
-        "template_key": "pdf_merger",
-        "port": 8040,
+        "template_key": "mcp_server",
+        "port": 8010,
         "extra_env": {},
         "extra_args": "",
         "preset_name": null
