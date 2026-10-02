@@ -14,6 +14,12 @@ from src.service import Caller, MergeService
 from src.store.names import content_disposition
 
 router = APIRouter(prefix="/api")
+_NOSNIFF = {"X-Content-Type-Options": "nosniff"}
+
+
+def declared_size(value: str) -> int | None:
+    """Parse a Content-Length header; anything but plain ASCII digits is ignored."""
+    return int(value) if value.isascii() and value.isdigit() else None
 
 
 @router.post("/files", status_code=201)
@@ -21,8 +27,8 @@ async def upload_file(
     request: Request, caller: Caller = Depends(get_caller), service: MergeService = Depends(get_service)
 ) -> FileInfo:
     """Raw request body is the file; X-Filename carries its URL-encoded name."""
-    declared = request.headers.get("content-length", "")
-    if declared.isdigit() and int(declared) > request.app.state.settings.limits.max_file_bytes:
+    declared = declared_size(request.headers.get("content-length", ""))
+    if declared is not None and declared > request.app.state.settings.limits.max_file_bytes:
         raise MergerError(ErrorCode.FILE_TOO_LARGE, "This file is over the size limit. Split or compress it, then upload it again.")
     name = unquote(request.headers.get("X-Filename", ""))
     stored = await service.upload(caller, name, request.stream())
@@ -50,7 +56,7 @@ async def file_content(
     return FileResponse(
         service.file_path(file),
         media_type=file.mime,
-        headers={"Content-Disposition": content_disposition(file.name, inline=True), "Cache-Control": "private, max-age=3600"},
+        headers={"Content-Disposition": content_disposition(file.name, inline=True), "Cache-Control": "private, max-age=3600", **_NOSNIFF},
     )
 
 
@@ -61,5 +67,5 @@ async def download(file_id: str, exp: int, sig: str, service: MergeService = Dep
     return FileResponse(
         service.file_path(file),
         media_type=file.mime,
-        headers={"Content-Disposition": content_disposition(file.name), "Cache-Control": "private, no-store"},
+        headers={"Content-Disposition": content_disposition(file.name), "Cache-Control": "private, no-store", **_NOSNIFF},
     )

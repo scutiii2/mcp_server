@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -15,6 +16,8 @@ from src.config import Settings
 from src.errors import ErrorCode, MergerError
 from src.service import MergeService, build_service
 from src.store.sweeper import run_sweeper
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(settings: Settings, service: MergeService | None = None) -> FastAPI:
@@ -46,6 +49,12 @@ def create_app(settings: Settings, service: MergeService | None = None) -> FastA
         message = f"{where}: {first.get('msg', 'invalid value')}" if where else str(first.get("msg", "Invalid request."))
         body = MergerError(ErrorCode.INVALID_REQUEST, message).to_body()
         return JSONResponse(body, status_code=422)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(_: Request, error: Exception) -> JSONResponse:
+        logger.error("Unhandled error", exc_info=error)
+        body = MergerError(ErrorCode.INTERNAL, "Something went wrong on the server. Try again.").to_body()
+        return JSONResponse(body, status_code=500)
 
     @app.get("/api/health")
     async def health() -> dict:

@@ -67,6 +67,7 @@ def test_content_is_served_inline(client, tmp_path: Path):
     assert response.content == path.read_bytes()
     assert response.headers["content-type"] == "application/pdf"
     assert response.headers["content-disposition"].startswith("inline;")
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_unsupported_type_body(client, tmp_path: Path):
@@ -108,6 +109,7 @@ def test_merge_streams_events_and_download_works(client, tmp_path: Path):
     download = client.get(f"{link.path}?{link.query}")
     assert download.status_code == 200
     assert download.headers["content-disposition"].startswith("attachment;")
+    assert download.headers["x-content-type-options"] == "nosniff"
     out = tmp_path / "downloaded.pdf"
     out.write_bytes(download.content)
     assert page_widths(out)[0] == 101
@@ -158,3 +160,43 @@ def test_wrong_token_is_treated_as_a_browser(app, client, tmp_path: Path):
 
     response = TestClient(app).get(f"/api/files/{file_id}/content", headers={"X-Internal-Token": "wrong"})
     assert response.status_code == 404
+
+
+def test_non_ascii_token_header_is_treated_as_a_browser(app):
+    bot = TestClient(app)
+
+    response = bot.get("/api/files", headers=[(b"x-internal-token", "é".encode("latin-1"))])
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_unexpected_error_is_a_json_500_without_details(app, service, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("secret")
+
+    monkeypatch.setattr(app.state.service, "list_files", boom)
+
+    response = TestClient(app, raise_server_exceptions=False).get("/api/files")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "secret" not in response.text
+
+
+def test_content_length_guard_ignores_non_ascii_digits():
+    from src.api.files import declared_size
+
+    assert declared_size("²") is None
+    assert declared_size("12") == 12
+    assert declared_size("") is None
+
+
+def test_other_browser_cannot_follow_the_job(app, client, tmp_path: Path):
+    file_id = upload(client, make_pdf(tmp_path / "a.pdf", [100])).json()["file_id"]
+    job_id = client.post("/api/merge", json={"segments": [{"file_id": file_id}]}).json()["job_id"]
+
+    response = TestClient(app).get(f"/api/jobs/{job_id}/events")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "job_not_found"

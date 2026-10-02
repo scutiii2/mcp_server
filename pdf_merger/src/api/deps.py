@@ -24,7 +24,7 @@ def _token_valid(request: Request) -> bool:
     """Constant-time compare. An unset expected token never validates."""
     expected = request.app.state.settings.internal_api_token
     provided = request.headers.get(TOKEN_HEADER, "")
-    return bool(expected) and hmac.compare_digest(expected, provided)
+    return bool(expected) and hmac.compare_digest(expected.encode("utf-8"), provided.encode("utf-8", "replace"))
 
 
 def get_caller(request: Request, response: Response) -> Caller:
