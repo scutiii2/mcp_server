@@ -57,6 +57,31 @@
         "extra_env": {},
         "extra_args": "",
         "preset_name": null
+      },
+      {
+        "template_key": "pdf_merger",
+        "port": 8040,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      }
+    ]
+  },
+  "PDF Merger": {
+    "members": [
+      {
+        "template_key": "pdf_merger",
+        "port": 8040,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "pdf_merger_web",
+        "port": 5174,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
       }
     ]
   }
