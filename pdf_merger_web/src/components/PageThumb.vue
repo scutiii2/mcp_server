@@ -50,7 +50,7 @@ onBeforeUnmount(() => observer?.disconnect())
   <figure ref="root" class="thumb">
     <div class="paper" :style="{ transform: `rotate(${item.rotate}deg)` }">
       <canvas v-if="kind === 'pdf' && !failed" ref="canvas" />
-      <img v-else-if="kind === 'image' && visible" :src="contentUrl(item.fileId)" alt="" />
+      <img v-else-if="kind === 'image' && visible" :src="contentUrl(item.fileId)" alt="" draggable="false" />
       <span v-else-if="failed" class="muted small">No preview</span>
     </div>
     <figcaption class="small">{{ label }}</figcaption>

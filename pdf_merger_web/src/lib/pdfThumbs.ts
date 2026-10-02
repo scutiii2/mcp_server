@@ -31,13 +31,16 @@ function loadDocument(url: string): Promise<PDFDocumentProxy> {
 }
 
 async function withSlot<T>(work: () => Promise<T>): Promise<T> {
+  // A freed slot is handed straight to the next waiter (active stays counted),
+  // so a new caller can never slip in between release and wake-up.
   if (active >= MAX_ACTIVE) await new Promise<void>((resolve) => waiting.push(resolve))
-  active++
+  else active++
   try {
     return await work()
   } finally {
-    active--
-    waiting.shift()?.()
+    const next = waiting.shift()
+    if (next) next()
+    else active--
   }
 }
 
@@ -50,13 +53,16 @@ export function renderPage(url: string, pageIndex: number, canvas: HTMLCanvasEle
     const viewport = page.getViewport({ scale: (cssWidth * window.devicePixelRatio) / base.width })
     canvas.width = Math.round(viewport.width)
     canvas.height = Math.round(viewport.height)
-    await page.render({ canvas, viewport }).promise
-    page.cleanup()
+    try {
+      await page.render({ canvas, viewport }).promise
+    } finally {
+      page.cleanup()
+    }
   })
 }
 
 /** Drop a cached document, e.g. after its file is removed. */
 export function forgetDocument(url: string): void {
-  void documents.get(url)?.then((document) => document.destroy())
+  void documents.get(url)?.then((document) => document.destroy()).catch(() => {})
   documents.delete(url)
 }

@@ -6,7 +6,14 @@ import { formatBytes, plural } from '../lib/format'
 import type { SourceState } from '../stores/files'
 
 const props = defineProps<{ source: SourceState }>()
-const emit = defineEmits<{ range: [string]; rotate: []; fit: [Fit | null]; remove: [] }>()
+const emit = defineEmits<{
+  range: [string]
+  rotate: []
+  fit: [Fit | null]
+  remove: []
+  dragstart: [DragEvent]
+  dragend: []
+}>()
 const copied = ref(false)
 
 async function copyId(): Promise<void> {
@@ -31,7 +38,7 @@ function onFit(event: Event): void {
 
 <template>
   <div class="source-row">
-    <span class="handle" aria-hidden="true">⋮⋮</span>
+    <span class="handle" aria-hidden="true" draggable="true" @dragstart="emit('dragstart', $event)" @dragend="emit('dragend')">⋮⋮</span>
     <span class="kind" :class="source.info.kind">{{ source.info.kind === 'pdf' ? 'PDF' : 'IMG' }}</span>
     <div class="meta">
       <div class="name" :title="source.info.name">{{ source.info.name }}</div>

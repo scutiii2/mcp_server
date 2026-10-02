@@ -18,6 +18,25 @@ function label(fileId: string, page: number): string {
   return info.kind === 'image' ? name : `${name} p${page + 1}`
 }
 
+function onDragStart(index: number, event: DragEvent): void {
+  dragFrom.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('text/plain', String(index))
+    event.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function onDragOver(event: DragEvent): void {
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+
+function onKey(index: number, event: KeyboardEvent): void {
+  if (!event.altKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return
+  event.preventDefault()
+  const to = event.key === 'ArrowLeft' ? index - 1 : index + 1
+  if (to >= 0 && to < plan.pages.length) plan.movePage(index, to)
+}
+
 function onDrop(index: number): void {
   if (dragFrom.value !== null) plan.movePage(dragFrom.value, index)
   dragFrom.value = null
@@ -31,15 +50,17 @@ function onDrop(index: number): void {
       <span class="muted small">{{ plural(plan.pages.length, 'page') }}</span>
       <button v-if="plan.manualOrder" type="button" class="link" @click="plan.resetOrder()">Reset order</button>
     </div>
-    <ol class="strip">
+    <ol class="strip" aria-label="Pages. Press Alt and an arrow key to move a page.">
       <li
         v-for="(item, index) in plan.pages"
         :key="item.key"
         draggable="true"
+        tabindex="0"
         :class="{ dragging: dragFrom === index }"
-        @dragstart="dragFrom = index"
+        @dragstart="onDragStart(index, $event)"
         @dragend="dragFrom = null"
-        @dragover.prevent
+        @keydown="onKey(index, $event)"
+        @dragover.prevent="onDragOver"
         @drop.prevent="onDrop(index)"
       >
         <PageThumb :item="item" :kind="infoById.get(item.fileId)?.kind ?? 'pdf'" :label="label(item.fileId, item.page)" />
