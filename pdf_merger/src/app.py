@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse
 from src.api import files, merge
 from src.config import Settings
 from src.errors import ErrorCode, MergerError
+from src.internal_token import InternalTokenMiddleware
+from src.mcp_tools.tools import build_mcp
 from src.service import MergeService, build_service
 from src.store.sweeper import run_sweeper
 
@@ -22,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 def create_app(settings: Settings, service: MergeService | None = None) -> FastAPI:
     service = service or build_service(settings)
+    mcp = build_mcp(service)
+    mcp_app = mcp.streamable_http_app()  # serves /mcp
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -29,7 +33,8 @@ def create_app(settings: Settings, service: MergeService | None = None) -> FastA
         stop = asyncio.Event()
         sweeper = asyncio.create_task(run_sweeper(service, settings.sweep_interval_seconds, stop))
         try:
-            yield
+            async with mcp.session_manager.run():
+                yield
         finally:
             stop.set()
             await sweeper
@@ -62,6 +67,8 @@ def create_app(settings: Settings, service: MergeService | None = None) -> FastA
 
     app.include_router(files.router)
     app.include_router(merge.router)
+    app.mount("/", mcp_app)  # after the routers, so /api/* matches first
+    app.add_middleware(InternalTokenMiddleware, token=settings.internal_api_token)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.web_origin],
