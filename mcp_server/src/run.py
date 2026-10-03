@@ -130,6 +130,7 @@ async def _serve() -> None:
 
         from src.capability_routes import install_capability_routes
         from src.command_routes import install_command_routes
+        from src.download_routes import install_download_routes
         from src.extension_routes import install_extension_routes
         from src.help_routes import install_help_routes
         from src.upload_routes import install_upload_routes
@@ -208,6 +209,11 @@ async def _serve() -> None:
         # the same internal shared secret chat_app itself checks in the
         # other direction. See upload_routes.py.
         install_upload_routes(app)
+        # Where a caller fetches a file a tool offered it (a download card's
+        # link, through ember_api): a plain HTTP route for the same reason as
+        # /upload, checked against the internal token and the requester. See
+        # download_routes.py.
+        install_download_routes(app)
 
         # uvicorn.Server(...).serve() rather than the uvicorn.run()
         # convenience function: run() calls asyncio.run() itself, which

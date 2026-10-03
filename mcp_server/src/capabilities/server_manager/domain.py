@@ -24,7 +24,10 @@ from __future__ import annotations
 import docker
 from docker.errors import DockerException, NotFound
 
-from src.capabilities.server_manager.contract import AppActionResult, AppInfo, AppListResult
+from src.capabilities.server_manager.contract import AppActionResult, AppInfo, AppListResult, AppLogsResult
+from src.services import downloads, identity_context
+
+MAX_LOG_LINES = 5000
 
 
 def _client() -> docker.DockerClient:
@@ -86,6 +89,40 @@ def stop_app(name: str) -> AppActionResult:
 
 def restart_app(name: str) -> AppActionResult:
     return _act(name, "restart", "restarted")
+
+
+def _fit(data: bytes) -> tuple[bytes, bool]:
+    """The newest part of `data` that fits one download, cut at a line start."""
+    if len(data) <= downloads.MAX_FILE_BYTES:
+        return data, False
+    tail = data[-downloads.MAX_FILE_BYTES :]
+    newline = tail.find(b"\n")
+    return (tail[newline + 1 :] if newline != -1 else tail), True
+
+
+def get_app_logs(name: str, lines: int = 500) -> AppLogsResult:
+    """The last `lines` log lines of an app as a file the caller can download.
+    The file is offered only to the account that asked (see services/downloads.py)."""
+    if not 1 <= lines <= MAX_LOG_LINES:
+        raise ValueError(f"lines must be between 1 and {MAX_LOG_LINES}, not {lines}")
+    container = _get_container(_client(), name)
+    raw = container.logs(tail=lines, timestamps=True)
+    data, trimmed = _fit(raw)
+    count = data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
+    if not data:
+        return AppLogsResult(name=name, lines=0, message=f"{name} has no log output.")
+    owner = identity_context.current_username()
+    try:
+        offer = downloads.registry.offer(owner, f"{name}-logs.log", data)
+    except downloads.DownloadRefused as error:
+        return AppLogsResult(name=name, lines=count, message=f"Collected {count} lines of {name}, but: {error}")
+    note = " (cut to the newest part that fits)" if trimmed else ""
+    return AppLogsResult(
+        name=name,
+        lines=count,
+        download_markers=[downloads.marker(offer, "LOGS")],
+        message=f"The last {count} lines of {name}{note}. The download link works for 10 minutes.",
+    )
 
 
 def list_apps() -> AppListResult:

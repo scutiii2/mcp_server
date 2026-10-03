@@ -148,7 +148,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/commands/help`, `/api/commands/help/{capability}?target=&command=` | `tools.use` | mcp_server's capability help (what `/help` shows). |
 | `GET` | `/api/commands/options?template=...&arg.<name>=...` | `tools.use` | A command-form select's options: `[{value, label, extra}]` from the mcp_server path `template`, which must be an `options_url` some tool's schema declares (its `{name}` placeholders filled from `arg.<name>`). `400` undeclared template or missing arg, `502` mcp_server down. |
 | `POST` | `/api/uploads` | `tools.use` | `{filename, data}` (base64, up to 15 MB) -> `201 {path}`: stored by mcp_server's `/upload` (which picks the allowed file types) for a command's file-path parameter. `400` refused type. |
-| `GET` | `/api/server/download?path=` | `tools.use` | A file a tool offered with a `[[DOWNLOAD ...]]` marker, streamed from mcp_server's `/download?path=` (identity and internal token added). Always sent as an attachment of type `application/octet-stream`, named after the last part of `path`, so a file never runs as a page on ember's origin. `path` is 1 to 1000 characters without control characters (`422`). `404` unknown file, `400` refused, `502` mcp_server unreachable or failing. mcp_server has no `/download` route yet: until a capability serves one this answers `404` or `502`. |
+| `GET` | `/api/server/download?path=` | `tools.use` | A file a tool offered with a `[[DOWNLOAD ...]]` marker, streamed from mcp_server's `/download?path=` (identity and internal token added). Always sent as an attachment of type `application/octet-stream`, named by mcp_server's `Content-Disposition` filename (cleaned to a bare name) or else the last part of `path`, so a file never runs as a page on ember's origin. `path` is 1 to 1000 characters without control characters (`422`). `404` unknown file, `400` refused, `502` mcp_server unreachable or failing. mcp_server's `/download` takes an opaque id (see "Downloads" under Security). |
 | `GET` | `/api/capabilities` | `tools.use` | mcp_server's built-in capabilities: `[{name, label, enabled, tools, resources}]`. |
 | `PATCH` | `/api/capabilities/{name}` | `admin.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
 | `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools}]`. |
@@ -318,7 +318,10 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   - *Downloads:* `GET /api/server/download?path=` forwards `path` to mcp_server
     as it is. It must therefore be an **opaque id that mcp_server checks against
     the requesting account**, never a file path mcp_server would serve to anyone
-    who names it. mcp_server has no such route yet.
+    who names it. mcp_server's `/download` does exactly that: ids are random,
+    held in memory for 10 minutes, bound to the asking username (sent as
+    `X-Requester-Username`), and an unknown, expired or someone else's id are
+    the same `404`. Today `/server logs` is the one tool that offers a file.
   - Known and left as is: five wrong logins lock that account (and address)
     out for the lockout time, so someone can lock a known username out on
     purpose; and any member with `tools.use` can run any tool (that is what the

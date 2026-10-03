@@ -225,3 +225,68 @@ def test_it_needs_a_login_and_a_verified_member_with_tools_use(
     make_member(member, email, "alice")
     login(member, "alice")
     assert member.get("/api/server/download", params={"path": PATH}).status_code == 200
+
+
+# --- the file's name comes from mcp_server -----------------------------------------------------
+
+OPAQUE_ID = "k3J9x_Qm2vA8wLzP5nR7tg"
+
+
+def disposition(value: str):
+    return lambda request: httpx.Response(200, content=b"x", headers={"Content-Disposition": value})
+
+
+def test_the_name_mcp_server_gives_is_used_not_the_opaque_id(client: TestClient, upstream: FakeUpstream) -> None:
+    upstream.handler = disposition("attachment; filename*=UTF-8''web-logs.log")
+    as_admin(client)
+
+    response = client.get("/api/server/download", params={"path": OPAQUE_ID})
+
+    assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''web-logs.log"
+
+
+def test_a_percent_encoded_name_from_mcp_server_is_decoded_and_encoded_again(client: TestClient, upstream: FakeUpstream) -> None:
+    upstream.handler = disposition("attachment; filename*=UTF-8''report%201%C3%A9.csv")
+    as_admin(client)
+
+    response = client.get("/api/server/download", params={"path": OPAQUE_ID})
+
+    assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''report%201%C3%A9.csv"
+
+
+@pytest.mark.parametrize(
+    "given, expected",
+    [
+        ("..%2F..%2Fetc%2Fpasswd", "passwd"),
+        ("C%3A%5Cdata%5Cx.log", "x.log"),
+        ("a%0D%0ASet-Cookie%3A%20x%3D1.log", "aSet-Cookie%3A%20x%3D1.log"),
+    ],
+)
+def test_a_hostile_name_from_mcp_server_is_cleaned_to_a_bare_name(
+    client: TestClient, upstream: FakeUpstream, given: str, expected: str
+) -> None:
+    upstream.handler = disposition(f"attachment; filename*=UTF-8''{given}")
+    as_admin(client)
+
+    response = client.get("/api/server/download", params={"path": OPAQUE_ID})
+
+    assert response.headers["content-disposition"] == f"attachment; filename*=UTF-8''{expected}"
+
+
+@pytest.mark.parametrize("given", ["..", ".", "%2F", ""])
+def test_a_useless_name_from_mcp_server_falls_back_to_the_path(client: TestClient, upstream: FakeUpstream, given: str) -> None:
+    upstream.handler = disposition(f"attachment; filename*=UTF-8''{given}")
+    as_admin(client)
+
+    response = client.get("/api/server/download", params={"path": "/srv/out/fallback.txt"})
+
+    assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''fallback.txt"
+
+
+def test_a_very_long_name_is_cut(client: TestClient, upstream: FakeUpstream) -> None:
+    upstream.handler = disposition(f"attachment; filename*=UTF-8''{'a' * 400}.log")
+    as_admin(client)
+
+    response = client.get("/api/server/download", params={"path": OPAQUE_ID})
+
+    assert response.headers["content-disposition"] == f"attachment; filename*=UTF-8''{'a' * 150}"

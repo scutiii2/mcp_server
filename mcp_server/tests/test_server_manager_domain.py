@@ -8,6 +8,7 @@ reported) rather than Docker itself.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -182,3 +183,126 @@ def test_dangling_image_falls_back_to_the_short_id():
         result = domain.list_apps()
 
     assert result.apps[0].image == "sha256:abc123"
+
+
+# --- app logs ------------------------------------------------------------
+
+
+from src.services import downloads, identity_context  # noqa: E402
+
+
+@pytest.fixture
+def requester(monkeypatch):
+    """Who is asking, and a fresh store for the file offered to them."""
+    fresh = downloads.DownloadRegistry()
+    monkeypatch.setattr(downloads, "registry", fresh)
+    who = {"name": "alice"}
+    monkeypatch.setattr(identity_context, "current_username", lambda: who["name"])
+    return SimpleNamespace(store=fresh, who=who)
+
+
+def _logging_container(name: str, output: bytes):
+    container = _fake_container(name)
+    container.logs.return_value = output
+    return container
+
+
+def test_the_log_is_offered_as_a_download_to_the_asker(requester):
+    web = _logging_container("web", b"2026-01-01T00:00:00Z started\n2026-01-01T00:00:01Z ready\n")
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        result = domain.get_app_logs("web", 200)
+
+    web.logs.assert_called_once_with(tail=200, timestamps=True)
+    assert result.lines == 2
+    (marker,) = result.download_markers
+    assert 'filename="web-logs.log"' in marker and 'label="LOGS"' in marker
+    download_id = marker.split("path=")[1].split('"')[0]
+    got = requester.store.get(download_id, "alice")
+    assert got is not None and got.data.startswith(b"2026-01-01T00:00:00Z started")
+    assert requester.store.get(download_id, "bob") is None
+    assert "2 lines" in result.message and "10 minutes" in result.message
+
+
+def test_the_default_is_five_hundred_lines(requester):
+    web = _logging_container("web", b"x\n")
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        domain.get_app_logs("web")
+
+    assert web.logs.call_args.kwargs["tail"] == 500
+
+
+@pytest.mark.parametrize("lines", [0, -1, 5001])
+def test_the_line_count_is_bounded(requester, lines):
+    with pytest.raises(ValueError, match="between 1 and 5000"):
+        domain.get_app_logs("web", lines)
+
+
+def test_the_largest_line_count_is_allowed(requester):
+    web = _logging_container("web", b"x\n")
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        domain.get_app_logs("web", 5000)
+
+    assert web.logs.call_args.kwargs["tail"] == 5000
+
+
+def test_an_empty_log_offers_no_file(requester):
+    web = _logging_container("web", b"")
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        result = domain.get_app_logs("web")
+
+    assert result.download_markers == [] and result.lines == 0
+    assert "no log output" in result.message
+    assert len(requester.store) == 0
+
+
+def test_nobody_identified_means_no_file(requester):
+    requester.who["name"] = ""
+    web = _logging_container("web", b"line\n")
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        result = domain.get_app_logs("web")
+
+    assert result.download_markers == []
+    assert "not identified" in result.message
+    assert len(requester.store) == 0
+
+
+def test_an_unknown_app_lists_the_names_that_exist(requester):
+    with patch("docker.from_env", return_value=_fake_client([_logging_container("web", b"x")])):
+        with pytest.raises(KeyError, match="web"):
+            domain.get_app_logs("nope")
+
+
+def test_a_log_over_the_limit_is_cut_to_its_newest_whole_lines(requester, monkeypatch):
+    monkeypatch.setattr(downloads, "MAX_FILE_BYTES", 20)
+    web = _logging_container("web", b"aaaaaaaaaa\nbbbbbbbbbb\ncccccccccc\n")
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        result = domain.get_app_logs("web")
+
+    (marker,) = result.download_markers
+    got = requester.store.get(marker.split("path=")[1].split('"')[0], "alice")
+    assert got.data == b"cccccccccc\n"
+    assert result.lines == 1 and "cut to the newest part" in result.message
+
+
+def test_a_log_without_a_final_newline_counts_its_last_line(requester):
+    web = _logging_container("web", b"one\ntwo")
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        assert domain.get_app_logs("web").lines == 2
+
+
+def test_a_log_that_exactly_fits_is_not_cut(requester, monkeypatch):
+    monkeypatch.setattr(downloads, "MAX_FILE_BYTES", 11)
+    web = _logging_container("web", b"aaaaaaaaaa\n")  # 11 bytes
+
+    with patch("docker.from_env", return_value=_fake_client([web])):
+        result = domain.get_app_logs("web")
+
+    assert "cut" not in result.message
+    assert result.lines == 1 and len(result.download_markers) == 1

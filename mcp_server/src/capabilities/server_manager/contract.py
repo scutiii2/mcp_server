@@ -17,6 +17,16 @@ class AppListResult(BaseModel):
     message: str = Field(description="Human-readable table of the same data, safe to relay verbatim.")
 
 
+class AppLogsResult(BaseModel):
+    name: str = Field(description="The container the log is from.")
+    lines: int = Field(description="How many log lines the file holds.")
+    download_markers: list[str] = Field(
+        default_factory=list,
+        description="Download cards for the log file; empty when nothing could be offered.",
+    )
+    message: str = Field(description="Human-readable summary, safe to relay verbatim.")
+
+
 class AppActionResult(BaseModel):
     name: str = Field(description="The container that was acted on.")
     action: str = Field(description="Which action ran: start, stop, or restart.")

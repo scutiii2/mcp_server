@@ -34,6 +34,10 @@ reads `from src.foo import bar`, matching chat_app's layout.
   `capability_routes.py` - plain HTTP routes (not MCP tools) mounted
   alongside the MCP surface: where extensions are listed/added/removed, where chat_app discovers
   slash commands, and where a capability is turned on/off live.
+- `upload_routes.py`, `download_routes.py` - plain HTTP routes for files:
+  `POST /upload` takes a file dropped into a command form; `GET /download?path=<id>`
+  hands a caller a file a tool offered it (an opaque id, bound to the
+  asking account; see `services/downloads.py`). Both need `X-Internal-Token`.
 
 ## Runtime data (not code)
 

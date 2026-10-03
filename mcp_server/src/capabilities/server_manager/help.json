@@ -1,15 +1,20 @@
 {
-  "summary": "Start, stop, restart and list the Docker containers on this host.",
+  "summary": "Start, stop, restart and list the Docker containers on this host, and download an app's recent log.",
   "tools": [
     {"name": "tool_srv_startApp", "purpose": "Start a stopped app.", "connection": "Docker socket", "commands": ["start"]},
     {"name": "tool_srv_stopApp", "purpose": "Stop a running app.", "connection": "Docker socket", "commands": ["stop"]},
     {"name": "tool_srv_restartApp", "purpose": "Restart an app.", "connection": "Docker socket", "commands": ["restart"]},
+    {"name": "tool_srv_getAppLogs", "purpose": "Download an app's newest log lines as a file.", "connection": "Docker socket", "commands": ["logs"]},
     {"name": "tool_srv_listApps", "purpose": "List every app with status and image.", "connection": "Docker socket", "commands": ["list"]}
   ],
   "commands": [
     {"name": "start", "tool": "tool_srv_startApp", "params": [{"name": "name", "required": true, "default": null, "description": "Container name as Docker shows it."}]},
     {"name": "stop", "tool": "tool_srv_stopApp", "params": [{"name": "name", "required": true, "default": null, "description": "Container name as Docker shows it."}]},
     {"name": "restart", "tool": "tool_srv_restartApp", "params": [{"name": "name", "required": true, "default": null, "description": "Container name as Docker shows it."}]},
+    {"name": "logs", "tool": "tool_srv_getAppLogs", "params": [
+      {"name": "name", "required": true, "default": null, "description": "Container name as Docker shows it."},
+      {"name": "lines", "required": false, "default": "500", "description": "How many of the newest log lines to collect (1 to 5000)."}
+    ]},
     {"name": "list", "tool": "tool_srv_listApps", "params": []}
   ],
   "workflow": [

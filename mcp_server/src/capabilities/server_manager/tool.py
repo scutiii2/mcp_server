@@ -8,7 +8,7 @@ from typing import Annotated
 from pydantic import Field
 
 from src.capabilities.server_manager import domain
-from src.capabilities.server_manager.contract import AppActionResult, AppListResult
+from src.capabilities.server_manager.contract import AppActionResult, AppListResult, AppLogsResult
 from src.commands import command
 from src.offload import offload
 from src.server import mcp
@@ -45,6 +45,23 @@ def tool_srv_restartApp(name: AppName) -> AppActionResult:
     """Restart a Docker app hosted on this box - stop, then start. Works
     whether the app is running or already stopped."""
     return domain.restart_app(name)
+
+
+@command(name="logs", description="Download an app's recent log")
+@mcp.tool(meta={"keywords": ["server", "app", "container", "docker", "logs", "log", "download"], "display_label": "Collecting app log"})
+@offload
+def tool_srv_getAppLogs(
+    name: AppName,
+    lines: Annotated[
+        int, Field(description="How many of the newest log lines to collect.", ge=1, le=5000)
+    ] = 500,
+) -> AppLogsResult:
+    """Collect the newest `lines` log lines of a Docker app on this box as a
+    file the person can download (the result carries a download card; the
+    link works for 10 minutes and only for the person who asked). The log is
+    not shown here - say the file is ready. `tool_srv_listApps` shows the
+    exact `name`."""
+    return domain.get_app_logs(name, lines)
 
 
 @command(name="list", description="List apps")

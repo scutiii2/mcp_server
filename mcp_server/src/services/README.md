@@ -29,6 +29,12 @@ where that logic lives instead.
 - **`email.py`** - `send_email()`, stdlib `smtplib` wrapper supporting
   the three transports `config_email.json`'s `"security"` can name
   (`starttls` / `ssl` / `none`).
+- **`downloads.py`** - `DownloadRegistry`: files a tool offers its caller
+  for download, held in memory for 10 minutes under a random id and bound
+  to the asking account (never a path on disk). A tool calls
+  `registry.offer(...)` and puts `marker(...)` in its result's
+  `download_markers`; `download_routes.py` serves the file. Read its
+  module docstring first.
 - **`extensions.py`** - connects out to other MCP servers as a client
   and re-exposes their tools as this server's own, namespaced. The
   proxying/aggregation engine behind `config_extensions.json` and the

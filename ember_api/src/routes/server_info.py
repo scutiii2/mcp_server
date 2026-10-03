@@ -17,7 +17,7 @@ import binascii
 import re
 from collections.abc import AsyncIterator
 from typing import Any, Literal
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -213,6 +213,22 @@ async def upload_file(
     return UploadOut(path=path)
 
 
+_UPSTREAM_FILENAME = re.compile(r"filename\*=UTF-8''([^;]+)", re.IGNORECASE)
+_FILENAME_MAX = 150
+
+
+def _download_name(path: str, upstream_headers: Any) -> str:
+    """The file's name: the one mcp_server gave it (its `path` is an opaque id
+    that says nothing), cleaned to a bare name; else the last part of `path`."""
+    match = _UPSTREAM_FILENAME.search(upstream_headers.get("content-disposition", ""))
+    if match:
+        name = unquote(match.group(1)).replace("\\", "/").rsplit("/", 1)[-1]
+        name = "".join(c for c in name if ord(c) >= 32 and ord(c) != 127).strip()
+        if name and name not in (".", ".."):
+            return name[:_FILENAME_MAX]
+    return path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or "download"
+
+
 @router.get("/server/download")
 async def download_file(
     path: str = Query(pattern=DOWNLOAD_PATH_PATTERN),
@@ -223,7 +239,7 @@ async def download_file(
     mcp_server. Always an attachment of an opaque type, whatever mcp_server says
     it is, so a file can never run as a page on ember's own origin."""
     upstream = await _call(info.download(account, path))
-    name = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or "download"
+    name = _download_name(path, upstream.headers)
     headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name, safe='')}", "Cache-Control": "no-store"}
     # The length is only trustworthy as long as nothing was decoded on the way.
     length = upstream.headers.get("content-length")
