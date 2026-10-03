@@ -104,6 +104,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/account/devices` | cookie | Devices this account logged in from, most recent first: `[{id, label, user_agent, ip_subnet, first_seen_at, last_seen_at, current}]`. |
 | `DELETE` | `/api/account/devices/{id}` | cookie | `204`; its next login counts as a new device again. `404` unknown or another account's. |
 | `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
+| `PUT` | `/api/admin/settings/{name}` | `admin.manage` | `{value: true\|false}` -> `{name: value}`. Switches a setting everyone is held to; the only one is `force_tool_approval`. `404` unknown name, `422` for a non-boolean value. Logged as `admin.setting` with the old and new value. |
+| `GET` | `/api/settings` | any logged-in account | `{force_tool_approval}`: what the administrator requires of everyone. |
 | `GET` | `/api/admin/invites` | `admin.manage` | Open (unused, unexpired) invites, without codes. |
 | `DELETE` | `/api/admin/invites/{id}` | `admin.manage` | `204`; the code stops working. `409` if already used. |
 | `GET` | `/api/admin/accounts` | `admin.manage` | `[{id, username, email, email_verified, is_active, is_protected, created_at, roles: [{id, name}]}]` |
@@ -230,6 +232,12 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   the agent's own `approval_resolved` event then clears it. It fails closed:
   `AgentGateway.ask` checks the agent's `status` for `tool_approval` first and
   refuses an agent that would ignore the option, so no tool can run unasked.
+  **Required for everyone** (`force_tool_approval`, stored in `app_settings`,
+  switched by an admin with `PUT /api/admin/settings/force_tool_approval`):
+  every turn then asks, whatever `ask_before_tools` says; `allowed_tools` from
+  the browser is dropped; and an `always` answer is passed to the agent as
+  `allow`, so a tool never stops asking. Typed commands (`/tool`) call
+  mcp_server directly with no agent and are not affected.
 - **Regenerate / edit** (`truncate_to` on `POST /api/chats/{id}/turns`): the
   server cuts the history before a typed question and asks again, so the
   browser never rewrites saved history itself.
@@ -356,14 +364,14 @@ secrets/   secret_bootstrap_admin.env, secret_smtp.env, secret_internal_api.env 
 data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
-  models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
+  models/     Account, AppSetting, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
               UsageRecord, LogEntry, KnownDevice, PromptTemplate, SharedChat
-  services/   ChatAppImporter (chat_app_import), DatabaseBackup / BackupScheduler (backup_service), MigrationRunner (migrations), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
+  services/   ChatAppImporter (chat_app_import), DatabaseBackup / BackupScheduler (backup_service), MigrationRunner (migrations), SettingsService (settings_service), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
               AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, ShareService, PublicReadLimiter, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
               permissions
-  routes/     auth, account, admin, chats, templates, shares, usage, mcp, server_info, watchers, logs,
+  routes/     auth, account, admin, settings, chats, templates, shares, usage, mcp, server_info, watchers, logs,
               attachments, config_issues
   utils/      config_loader
 scripts/   import_chat_app.py                   one-off move of chat_app's data (see "Moving from chat_app")

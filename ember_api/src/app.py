@@ -27,6 +27,7 @@ from src.routes import (
     logs,
     mcp,
     server_info,
+    settings as settings_routes,
     shares,
     templates,
     usage,
@@ -147,6 +148,7 @@ def create_app(
     app.include_router(shares.router)
     app.include_router(shares.public_router)
     app.include_router(usage.router)
+    app.include_router(settings_routes.router)
     app.include_router(mcp.router)
     app.include_router(server_info.router)
     app.include_router(watchers.router)

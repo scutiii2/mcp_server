@@ -43,6 +43,7 @@ const {
   commands,
   enabledExtensions,
   askBeforeTools,
+  forceToolApproval,
   chime,
   clockStart,
   allowedTools,
@@ -246,6 +247,7 @@ useChatShortcuts({
         :commands="commands"
         :agent-labels="agentLabels"
         :deciding="deciding"
+        :approval-required="forceToolApproval"
         @decide="chat.decideApproval"
         :regenerate-index="chat.regenerateIndex"
         :jump-index="chat.jumpIndex"
@@ -265,10 +267,18 @@ useChatShortcuts({
             />
             Terse replies
           </label>
-          <label class="terse" title="Ask you before the agent runs each tool">
+          <label
+            class="terse"
+            :title="
+              forceToolApproval
+                ? 'Your administrator requires approval before every tool'
+                : 'Ask you before the agent runs each tool'
+            "
+          >
             <input
               type="checkbox"
-              :checked="askBeforeTools"
+              :checked="askBeforeTools || forceToolApproval"
+              :disabled="forceToolApproval"
               @change="chat.setAskBeforeTools(($event.target as HTMLInputElement).checked)"
             />
             Ask before tools
@@ -278,7 +288,7 @@ useChatShortcuts({
             Chime when done
           </label>
           <button
-            v-if="askBeforeTools && allowedCount"
+            v-if="askBeforeTools && allowedCount && !forceToolApproval"
             type="button"
             class="allowed"
             title="Ask again about the tools you allowed for this chat"

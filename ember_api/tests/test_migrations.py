@@ -17,6 +17,10 @@ from sqlalchemy import text
 from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
+# The newest real migration; the tests' throwaway one comes after it.
+HEAD = "0002"
+NEXT = "0003"
+
 
 def make_database(tmp_path: Path) -> Database:
     return Database(f"sqlite+aiosqlite:///{(tmp_path / 'ember.db').as_posix()}")
@@ -84,7 +88,7 @@ class TestFreshDatabase:
     def test_the_database_is_recorded_at_the_newest_revision(self, tmp_path: Path) -> None:
         run_with(make_database(tmp_path))
 
-        assert revision_of(tmp_path / "ember.db") == BASELINE
+        assert revision_of(tmp_path / "ember.db") == HEAD
 
 
 class TestDatabaseFromBeforeMigrations:
@@ -95,6 +99,7 @@ class TestDatabaseFromBeforeMigrations:
         asyncio.run(database.dispose())
         path = tmp_path / "ember.db"
         with closing(sqlite3.connect(path)) as conn:
+            conn.execute("DROP TABLE app_settings")  # made after the baseline, so a legacy database lacks it
             conn.execute(
                 "INSERT INTO accounts (username, email, password_hash, is_protected, is_active, email_verified, created_at)"
                 " VALUES ('lex', 'lex@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
@@ -103,27 +108,43 @@ class TestDatabaseFromBeforeMigrations:
         assert "alembic_version" not in tables_of(path)
         return path
 
-    def test_it_is_stamped_not_rebuilt(self, tmp_path: Path) -> None:
+    def test_it_is_stamped_then_brought_up_to_date_with_its_data_kept(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
 
-        assert run_with(make_database(tmp_path)) == "stamped"
+        assert run_with(make_database(tmp_path)) == "upgraded"
 
-        assert revision_of(path) == BASELINE
+        assert revision_of(path) == HEAD
+        assert "app_settings" in tables_of(path)
         with closing(sqlite3.connect(path)) as conn:
             assert conn.execute("SELECT username FROM accounts").fetchall() == [("lex",)]
 
-    def test_no_backup_is_made_just_to_stamp_it(self, tmp_path: Path) -> None:
-        self.build_legacy(tmp_path)
+    def test_a_backup_is_made_before_the_changes(self, tmp_path: Path) -> None:
+        path = self.build_legacy(tmp_path)
+        seen: list[bool] = []
+
+        async def backup() -> None:
+            seen.append("alembic_version" in tables_of(path))  # nothing changed yet
+
+        run_with(make_database(tmp_path), before_upgrade=backup)
+
+        assert seen == [False]
+
+    def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
+        path = self.build_legacy(tmp_path)
+        scripts = tmp_path / "baseline_only"
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*"))
         calls: list[int] = []
 
         async def backup() -> None:
             calls.append(1)
 
-        run_with(make_database(tmp_path), before_upgrade=backup)
+        result = run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts)
 
-        assert calls == []
+        assert result == "stamped"
+        assert revision_of(path) == BASELINE
+        assert calls == []  # nothing but the version table was written
 
-    def test_the_stamped_database_matches_the_models(self, tmp_path: Path) -> None:
+    def test_the_updated_database_matches_the_models(self, tmp_path: Path) -> None:
         self.build_legacy(tmp_path)
         run_with(make_database(tmp_path))
 
@@ -135,9 +156,9 @@ def scripts_with_a_new_migration(tmp_path: Path) -> Path:
     """The real migrations plus a throwaway one adding a column."""
     scripts = tmp_path / "migrations"
     shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
-    (scripts / "versions" / "0002_add_nickname.py").write_text(
-        'revision = "0002"\n'
-        'down_revision = "0001"\n'
+    (scripts / "versions" / "0003_add_nickname.py").write_text(
+        'revision = "0003"\n'
+        'down_revision = "0002"\n'
         "branch_labels = None\n"
         "depends_on = None\n"
         "import sqlalchemy as sa\n"
@@ -170,7 +191,7 @@ class TestLaterMigration:
         result = run_with(make_database(tmp_path), scripts=scripts_with_a_new_migration)
 
         assert result == "upgraded"
-        assert revision_of(path) == "0002"
+        assert revision_of(path) == NEXT
         with closing(sqlite3.connect(path)) as conn:
             assert conn.execute("SELECT username, nickname FROM accounts").fetchall() == [("lex", None)]
 
@@ -183,7 +204,7 @@ class TestLaterMigration:
 
         run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts_with_a_new_migration)
 
-        assert seen == [BASELINE]
+        assert seen == [HEAD]
 
     def test_a_failed_backup_stops_the_migration(self, tmp_path: Path, scripts_with_a_new_migration: Path) -> None:
         path = self.build_at_baseline(tmp_path)
@@ -194,7 +215,7 @@ class TestLaterMigration:
         with pytest.raises(RuntimeError, match="disk full"):
             run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts_with_a_new_migration)
 
-        assert revision_of(path) == BASELINE
+        assert revision_of(path) == HEAD
 
     def test_a_legacy_database_is_stamped_then_upgraded_after_a_backup(
         self, tmp_path: Path, scripts_with_a_new_migration: Path
@@ -202,6 +223,9 @@ class TestLaterMigration:
         database = make_database(tmp_path)
         asyncio.run(database.create_tables())
         asyncio.run(database.dispose())
+        with closing(sqlite3.connect(tmp_path / "ember.db")) as conn:
+            conn.execute("DROP TABLE app_settings")  # a legacy database predates it
+            conn.commit()
         calls: list[int] = []
 
         async def backup() -> None:
@@ -210,8 +234,8 @@ class TestLaterMigration:
         result = run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts_with_a_new_migration)
 
         assert result == "upgraded"
-        assert calls == [1]
-        assert revision_of(tmp_path / "ember.db") == "0002"
+        assert calls == [1]  # one backup for both pending migrations
+        assert revision_of(tmp_path / "ember.db") == NEXT
 
     def test_a_new_empty_database_is_not_backed_up(self, tmp_path: Path, scripts_with_a_new_migration: Path) -> None:
         calls: list[int] = []
@@ -223,7 +247,7 @@ class TestLaterMigration:
 
         assert result == "created"
         assert calls == []
-        assert revision_of(tmp_path / "ember.db") == "0002"
+        assert revision_of(tmp_path / "ember.db") == NEXT
 
 
 class TestStatusAndRevision:
@@ -237,7 +261,7 @@ class TestStatusAndRevision:
             await database.dispose()
             return before, after
 
-        assert asyncio.run(go()) == ((None, BASELINE), (BASELINE, BASELINE))
+        assert asyncio.run(go()) == ((None, HEAD), (HEAD, HEAD))
 
     def test_revision_writes_a_file_for_a_model_change(self, tmp_path: Path) -> None:
         scripts = tmp_path / "migrations"
@@ -259,7 +283,7 @@ class TestStatusAndRevision:
 
         body = written.read_text(encoding="utf-8")
         assert "probe" in body and "create_table" in body
-        assert 'down_revision = "0001"' in body or "down_revision = '0001'" in body
+        assert f'down_revision = "{HEAD}"' in body or f"down_revision = '{HEAD}'" in body
 
 
 def test_stamping_and_upgrading_are_not_confused_by_a_foreign_table(tmp_path: Path) -> None:

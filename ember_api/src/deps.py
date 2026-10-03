@@ -17,6 +17,7 @@ from src.services.otp_service import OtpService
 from src.services.public_rate_limiter import PublicReadLimiter
 from src.services.server_tools import ServerTools
 from src.services.session_service import SessionService
+from src.services.settings_service import SettingsService
 from src.services.turns import TurnRegistry
 
 
@@ -35,6 +36,10 @@ def get_session_service(
     settings: Settings = Depends(get_settings),
 ) -> SessionService:
     return SessionService(session, settings.session_hours)
+
+
+def get_settings_service(session: AsyncSession = Depends(get_db_session)) -> SettingsService:
+    return SettingsService(session)
 
 
 def get_otp_service(session: AsyncSession = Depends(get_db_session)) -> OtpService:

@@ -7,16 +7,24 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.deps import get_db_session, get_email_sender, get_log_writer, get_otp_service, require_permission
+from src.deps import (
+    get_db_session,
+    get_email_sender,
+    get_log_writer,
+    get_otp_service,
+    get_settings_service,
+    require_permission,
+)
 from src.models import Account, InviteCode, Permission, Role
 from src.services.admin_service import AdminError, AdminService, NotFoundError
 from src.services.email_service import EmailDeliveryError, EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
 from src.services.permissions import ADMIN_MANAGE, ADMIN_ROLE
+from src.services.settings_service import BOOLEAN_SETTINGS, SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +163,26 @@ class CreateInviteRequest(BaseModel):
 
 
 # --- accounts ----------------------------------------------------------------
+
+
+class SettingIn(BaseModel):
+    value: StrictBool
+
+
+@router.put("/settings/{name}")
+async def change_setting(
+    name: str,
+    body: SettingIn,
+    account: Account = Depends(require_admin),
+    app_settings: SettingsService = Depends(get_settings_service),
+    logs: LogWriter = Depends(get_log_writer),
+) -> dict[str, bool]:
+    """Switches one of the settings every account is held to (see GET /api/settings)."""
+    if name not in BOOLEAN_SETTINGS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown setting")
+    before = await app_settings.set_bool(name, body.value)
+    await logs.action(account, "admin.setting", f"{name}: {'on' if before else 'off'} -> {'on' if body.value else 'off'}")
+    return {name: body.value}
 
 
 @router.get("/accounts")

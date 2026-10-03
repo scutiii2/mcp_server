@@ -4,11 +4,13 @@ import { useRoute, useRouter } from "vue-router";
 import AccountsPanel from "../components/admin/AccountsPanel.vue";
 import InvitesPanel from "../components/admin/InvitesPanel.vue";
 import RolesPanel from "../components/admin/RolesPanel.vue";
+import SettingsPanel from "../components/admin/SettingsPanel.vue";
 
 const TABS = [
   { id: "accounts", label: "Accounts" },
   { id: "roles", label: "Roles" },
   { id: "invites", label: "Invites" },
+  { id: "settings", label: "Settings" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -45,7 +47,8 @@ function select(id: TabId): void {
            role created on one tab shows up in the Accounts dropdown. -->
       <AccountsPanel v-if="tab === 'accounts'" />
       <RolesPanel v-else-if="tab === 'roles'" />
-      <InvitesPanel v-else />
+      <InvitesPanel v-else-if="tab === 'invites'" />
+      <SettingsPanel v-else />
     </div>
   </section>
 </template>

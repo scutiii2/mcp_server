@@ -29,6 +29,8 @@ const props = defineProps<{
   /** Tool runs waiting for the user's answer, and the ones already answered
    * but not yet confirmed (their buttons are off). */
   approvals?: PendingApproval[];
+  /** The administrator requires approval for every tool: "Allow for this chat" is not offered. */
+  approvalRequired?: boolean;
   deciding?: string[];
   /** When the answer being written started (a Date.now() value): shows a running clock. */
   since?: number | null;
@@ -319,7 +321,12 @@ onBeforeUnmount(() => {
             <button type="button" class="allow" :disabled="isDeciding(a.id)" @click="emit('decide', a.id, 'allow')">
               Allow once
             </button>
-            <button type="button" :disabled="isDeciding(a.id)" @click="emit('decide', a.id, 'always')">
+            <button
+              v-if="!approvalRequired"
+              type="button"
+              :disabled="isDeciding(a.id)"
+              @click="emit('decide', a.id, 'always')"
+            >
               Allow for this chat
             </button>
             <button type="button" class="deny" :disabled="isDeciding(a.id)" @click="emit('decide', a.id, 'deny')">

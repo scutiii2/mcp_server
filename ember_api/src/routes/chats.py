@@ -16,7 +16,15 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.deps import get_agent_gateway, get_db_session, get_log_writer, get_settings, get_turns, require_permission
+from src.deps import (
+    get_agent_gateway,
+    get_db_session,
+    get_log_writer,
+    get_settings,
+    get_settings_service,
+    get_turns,
+    require_permission,
+)
 from src.models import Account, Chat
 from src.routes.mcp import get_agent_directory
 from src.routes.server_info import EXTENSION_ID_PATTERN
@@ -37,6 +45,7 @@ from src.services.chat_service import (
     decode_messages,
 )
 from src.services.permissions import CHAT_USE
+from src.services.settings_service import FORCE_TOOL_APPROVAL, SettingsService
 from src.services.turns import (
     MAX_AGENT_USAGE_ROWS,
     MAX_STEPS,
@@ -526,6 +535,7 @@ async def start_turn(
     turns: TurnRegistry = Depends(get_turns),
     directory: AgentDirectory = Depends(get_agent_directory),
     settings: Settings = Depends(get_settings),
+    app_settings: SettingsService = Depends(get_settings_service),
 ) -> TurnOut:
     """Saves the question and starts answering it in ember_api. The answer
     keeps going (and is saved) even if the browser leaves; watch it via
@@ -554,12 +564,15 @@ async def start_turn(
     except ChatLimitError as error:
         raise _too_large(error) from error
 
+    # When the administrator requires it, the browser's choice does not matter:
+    # every tool asks, and no tool is pre-allowed.
+    forced = await app_settings.get_bool(FORCE_TOOL_APPROVAL)
     try:
         options = TurnOptions(
             caveman=body.caveman,
             enabled_extensions=tuple(dict.fromkeys(body.enabled_extensions)),
-            ask_before_tools=body.ask_before_tools,
-            allowed_tools=tuple(dict.fromkeys(body.allowed_tools)),
+            ask_before_tools=body.ask_before_tools or forced,
+            allowed_tools=() if forced else tuple(dict.fromkeys(body.allowed_tools)),
         )
         turn = turns.start(account.id, chat_id, agent, _caller(account), options)
     except TurnConflict as error:
@@ -611,6 +624,7 @@ async def decide_approval(
     account: Account = Depends(require_chat),
     turns: TurnRegistry = Depends(get_turns),
     logs: LogWriter = Depends(get_log_writer),
+    app_settings: SettingsService = Depends(get_settings_service),
 ) -> dict[str, bool]:
     """Answers a tool the running answer is waiting to run (the `id` of an
     `approval_request` event). Only the chat's own account can; once a step is
@@ -620,13 +634,18 @@ async def decide_approval(
     pending = turns.pending_approval(account.id, chat_id, body.step_id)
     if pending is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Nothing is waiting for that answer")
+    # "Always" would let the tool skip asking for the rest of the turn; while
+    # approval is required it means "this once".
+    decision = body.decision
+    if decision == "always" and await app_settings.get_bool(FORCE_TOOL_APPROVAL):
+        decision = "allow"
     try:
-        decided = await turns.decide(account.id, chat_id, body.step_id, body.decision)
+        decided = await turns.decide(account.id, chat_id, body.step_id, decision)
     except AgentCallError as error:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
     if not decided:
         raise HTTPException(status.HTTP_409_CONFLICT, "Nothing is waiting for that answer")
-    await logs.action(account, "tool.approval", f'{body.decision}: "{pending["tool"]}"')
+    await logs.action(account, "tool.approval", f'{decision}: "{pending["tool"]}"')
     return {"decided": True}
 
 

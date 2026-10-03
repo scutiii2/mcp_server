@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import { chatsClient, type ChatSearchHit } from "../api/ChatsClient";
+import { settingsClient } from "../api/SettingsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import { ApiError } from "../api/http";
 import type {
@@ -154,6 +155,10 @@ export const useChatStore = defineStore("chat", () => {
   // "Ask before running tools": each tool the agent wants to run waits for the
   // user's answer. Off by default; remembered per account.
   const askBeforeTools = ref(false);
+  // The administrator requires approval for every tool: the checkbox is locked on,
+  // nothing is pre-allowed and "allow for this chat" is not offered. ember_api
+  // enforces it either way; this only keeps the page honest.
+  const forceToolApproval = ref(false);
   // A short chime when an answer arrives while the page is out of sight. On
   // by default; remembered per account.
   const chime = ref(true);
@@ -280,6 +285,17 @@ export const useChatStore = defineStore("chat", () => {
   /** Re-reads the list, keeping loaded transcripts of chats that didn't
    * change. A chat whose answer finished in the background is re-fetched
    * when next opened. */
+  /** Re-reads what the administrator requires; a failed read keeps what was known. */
+  async function refreshSettings(): Promise<void> {
+    const started = generation;
+    try {
+      const settings = await settingsClient.get();
+      if (started === generation) forceToolApproval.value = settings.force_tool_approval === true;
+    } catch {
+      // not fatal: ember_api enforces the setting whatever this page shows
+    }
+  }
+
   async function loadList(): Promise<void> {
     const started = generation;
     const accountId = auth.account?.id;
@@ -355,6 +371,8 @@ export const useChatStore = defineStore("chat", () => {
       chime.value = accountId === null || readPreference(chimeKey(accountId)) !== "0";
       allowedTools.value = accountId !== null ? readAllowedTools(accountId) : {};
       enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
+      forceToolApproval.value = false;
+      if (accountId !== null) void refreshSettings();
       commandRunner = new SlashCommandRunner();
       commands.value = [];
       if (accountId !== null) void loadList();
@@ -543,6 +561,8 @@ export const useChatStore = defineStore("chat", () => {
     if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return;
     sendError.value = "";
     if (truncateTo === undefined && question.startsWith("/")) return runCommand(question);
+    // The administrator may have changed what is required since the page loaded.
+    void refreshSettings();
     const agent = agents.selected;
     if (!agent) {
       sendError.value = "No ai_agent is available.";
@@ -582,7 +602,9 @@ export const useChatStore = defineStore("chat", () => {
         enabled_extensions: enabledExtensions.value,
         title: conversation.title,
         ...(truncateTo === undefined ? {} : { truncate_to: truncateTo }),
-        ...(askBeforeTools.value ? { ask_before_tools: true, allowed_tools: allowedTools.value[id] ?? [] } : {}),
+        ...(askBeforeTools.value || forceToolApproval.value
+          ? { ask_before_tools: true, allowed_tools: forceToolApproval.value ? [] : (allowedTools.value[id] ?? []) }
+          : {}),
       });
       if (started !== generation) return;
       conversation.running = true;
@@ -837,7 +859,7 @@ export const useChatStore = defineStore("chat", () => {
     try {
       await chatsClient.decide(chatId, stepId, decision);
       // Only once ember_api accepted the answer does "always" become a rule.
-      if (decision === "always") allowTool(chatId, approval.tool);
+      if (decision === "always" && !forceToolApproval.value) allowTool(chatId, approval.tool);
     } catch (err) {
       if (started !== generation) return;
       if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
@@ -991,6 +1013,8 @@ export const useChatStore = defineStore("chat", () => {
     caveman,
     setCaveman,
     askBeforeTools,
+    forceToolApproval,
+    refreshSettings,
     setAskBeforeTools,
     chime,
     setChime,

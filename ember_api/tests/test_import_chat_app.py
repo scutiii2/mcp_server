@@ -17,6 +17,7 @@ from src.db import Database
 from src.models import Account, Chat, Role, UsageRecord
 from src.services.chat_app_import import ChatAppImporter, ChatAppSource, ember_chat_id, to_naive_utc
 from src.services.chat_service import MAX_CHATS_PER_ACCOUNT
+from src.services.migrations import MigrationRunner
 
 HASH = "scrypt:32768:8:1$salt$abcdef"
 
@@ -613,7 +614,7 @@ class TestCli:
     def test_a_dry_run_prints_and_writes_nothing(self, monkeypatch, tmp_path, capsys):
         settings = self._settings(monkeypatch, tmp_path)
         existing = Database(settings.database_url)
-        asyncio.run(existing.create_tables())
+        asyncio.run(MigrationRunner(existing.engine).run())
         asyncio.run(existing.dispose())
         folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
 
@@ -630,7 +631,7 @@ class TestCli:
     def test_apply_backs_up_then_writes(self, monkeypatch, tmp_path, capsys):
         settings = self._settings(monkeypatch, tmp_path)
         seed = Database(settings.database_url)
-        asyncio.run(seed.create_tables())
+        asyncio.run(MigrationRunner(seed.engine).run())
         asyncio.run(seed.dispose())
         folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
 

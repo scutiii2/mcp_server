@@ -330,6 +330,14 @@ describe("tool approval cards", () => {
     expect(cards(none)[0]!.find("pre").text()).toBe("(no arguments)");
   });
 
+  it("leaves out Allow for this chat while the administrator requires approval", () => {
+    const required = mountList({ busy: true, approvalRequired: true, approvals: [STOP_APP] });
+    const open = mountList({ busy: true, approvalRequired: false, approvals: [STOP_APP] });
+
+    expect(buttons(cards(required)[0]!).map((b) => b.text())).toEqual(["Allow once", "Deny"]);
+    expect(buttons(cards(open)[0]!).map((b) => b.text())).toEqual(["Allow once", "Allow for this chat", "Deny"]);
+  });
+
   it("has three answers, each sent for its own step", async () => {
     const wrapper = mountList({ busy: true, approvals: [STOP_APP, { ...STOP_APP, id: "step1" }] });
     const [first, second] = cards(wrapper);

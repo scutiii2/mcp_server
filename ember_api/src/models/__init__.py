@@ -2,6 +2,7 @@
 in ember_api's own database."""
 
 from src.models.account import Account
+from src.models.app_setting import AppSetting
 from src.models.auth_session import AuthSession
 from src.models.chat import Chat
 from src.models.known_device import KnownDevice
@@ -15,6 +16,7 @@ from src.models.usage import UsageRecord
 
 __all__ = [
     "Account",
+    "AppSetting",
     "AuthSession",
     "Chat",
     "EmailVerificationCode",

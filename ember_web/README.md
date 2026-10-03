@@ -140,9 +140,12 @@ URL, token or key.
   from (forget one to have its next login noted as new). Reachable while
   unverified.
 - Overview (click "Ember"): every page you may open, as tiles.
-- Admin page, three tabs: Accounts (edit, enable/disable, add/remove roles,
+- Admin page, four tabs: Accounts (edit, enable/disable, add/remove roles,
   send verification, delete), Roles (create, edit, delete, permission
-  checkboxes) and Invites (create, optionally email, list, revoke).
+  checkboxes), Invites (create, optionally email, list, revoke) and Settings
+  ("Require approval for every tool": every account's answers then ask before
+  each tool, the "Ask before tools" checkbox is locked on, and "Allow for this
+  chat" is not offered).
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
   `admin.manage`, `watchers.view`, `logs.*`, `config.issues.view`);
   ember_api enforces the same rules on every call.
@@ -219,7 +222,7 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 src/
   api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
                 ExtensionsClient / WatchersClient / LogsClient / AttachmentsClient /
-                ConfigIssuesClient / TemplatesClient / SharesClient (ember_api REST),
+                ConfigIssuesClient / TemplatesClient / SharesClient / SettingsClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
@@ -230,7 +233,7 @@ src/
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
-    admin/      the Admin page's Accounts / Roles / Invites panels + shared admin.css
+    admin/      the Admin page's Accounts / Roles / Invites / Settings panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
@@ -241,7 +244,10 @@ src/
 
 - A tool approval is enforced by ai_agent and ember_api, not the browser:
   the card only sends an answer, and an answer is accepted only from the
-  chat's own account for a step that is waiting.
+  chat's own account for a step that is waiting. When an admin requires
+  approval for every tool, ember_api forces it on each turn and turns
+  "allow for this chat" into "allow once"; the locked checkbox and the missing
+  button only show it.
 - Access checks in the router only decide what the UI shows; ember_api
   enforces every permission itself. The one public page is `/shared/:token`
   (`meta.public`): the guard lets anyone in without loading an account, and
