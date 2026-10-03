@@ -35,6 +35,7 @@ from src.routes import (
 from src.services.agent_gateway import AgentGateway, McpAgentGateway
 from src.services.auth_service import AuthService
 from src.services.backup_service import BackupScheduler, DatabaseBackup
+from src.services.migrations import MigrationRunner
 from src.services.chat_service import MAX_CHAT_BYTES
 from src.services.email_service import EmailSender, SmtpEmailSender
 from src.services.log_service import LogWriter
@@ -76,7 +77,9 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.database_path.parent.mkdir(parents=True, exist_ok=True)
         database = Database(settings.database_url)
-        await database.create_tables()
+        # A backup first: SQLite cannot roll a half-finished migration back.
+        pre_migration = DatabaseBackup(settings.database_path, settings.backup_dir, settings.backup.keep)
+        await MigrationRunner(database.engine, before_upgrade=pre_migration.run).run()
         async with database.sessions() as session:
             auth_service = AuthService(session)
             generated = await auth_service.ensure_bootstrap_admin(settings.secrets_dir)

@@ -20,6 +20,7 @@ from pathlib import Path
 from src.config import load_settings
 from src.db import Database
 from src.services.chat_app_import import ChatAppImporter, ChatAppSource, ImportReport, TableReport
+from src.services.migrations import MigrationRunner
 
 
 def format_report(report: ImportReport) -> str:
@@ -50,7 +51,7 @@ async def run(chat_app: Path, apply: bool) -> ImportReport:
         print(f"Backup: {backup}")
     database = Database(settings.database_url)
     try:
-        await database.create_tables()
+        await MigrationRunner(database.engine).run()
         async with database.sessions() as session:
             return await ChatAppImporter(session, ChatAppSource(data_dir)).run(apply)
     finally:

@@ -1,0 +1,277 @@
+"""Schema migrations: a fresh database, one that predates them, and a later change."""
+
+from __future__ import annotations
+
+import asyncio
+import shutil
+import sqlite3
+from collections.abc import Callable
+from contextlib import closing
+from pathlib import Path
+
+import pytest
+from alembic.autogenerate import compare_metadata
+from alembic.runtime.migration import MigrationContext
+from sqlalchemy import text
+
+from src.db import Base, Database
+from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
+
+
+def make_database(tmp_path: Path) -> Database:
+    return Database(f"sqlite+aiosqlite:///{(tmp_path / 'ember.db').as_posix()}")
+
+
+def tables_of(path: Path) -> set[str]:
+    with closing(sqlite3.connect(path)) as conn:
+        return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+
+def revision_of(path: Path) -> str | None:
+    with closing(sqlite3.connect(path)) as conn:
+        row = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+    return row[0] if row else None
+
+
+def run_with(database: Database, **kwargs) -> str:
+    async def go() -> str:
+        try:
+            return await MigrationRunner(database.engine, **kwargs).run()
+        finally:
+            await database.dispose()
+
+    return asyncio.run(go())
+
+
+def differences(database: Database) -> list:
+    async def go() -> list:
+        try:
+            async with database.engine.connect() as conn:
+                return await conn.run_sync(
+                    lambda sync: compare_metadata(
+                        MigrationContext.configure(sync, opts={"compare_type": True}), Base.metadata
+                    )
+                )
+        finally:
+            await database.dispose()
+
+    from src import models  # noqa: F401
+
+    return asyncio.run(go())
+
+
+class TestFreshDatabase:
+    def test_the_migrations_build_every_table(self, tmp_path: Path) -> None:
+        database = make_database(tmp_path)
+
+        assert run_with(database) == "created"
+
+        from src import models  # noqa: F401
+
+        assert tables_of(tmp_path / "ember.db") == set(Base.metadata.tables) | {"alembic_version"}
+
+    def test_the_migrations_match_the_models_exactly(self, tmp_path: Path) -> None:
+        """Fails when a model is edited without a migration for it."""
+        run_with(make_database(tmp_path))
+
+        assert differences(make_database(tmp_path)) == []
+
+    def test_a_second_run_changes_nothing(self, tmp_path: Path) -> None:
+        run_with(make_database(tmp_path))
+
+        assert run_with(make_database(tmp_path)) == "current"
+
+    def test_the_database_is_recorded_at_the_newest_revision(self, tmp_path: Path) -> None:
+        run_with(make_database(tmp_path))
+
+        assert revision_of(tmp_path / "ember.db") == BASELINE
+
+
+class TestDatabaseFromBeforeMigrations:
+    def build_legacy(self, tmp_path: Path) -> Path:
+        """What ember_api made before: tables from the models, no revision, some data."""
+        database = make_database(tmp_path)
+        asyncio.run(database.create_tables())
+        asyncio.run(database.dispose())
+        path = tmp_path / "ember.db"
+        with closing(sqlite3.connect(path)) as conn:
+            conn.execute(
+                "INSERT INTO accounts (username, email, password_hash, is_protected, is_active, email_verified, created_at)"
+                " VALUES ('lex', 'lex@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
+            )
+            conn.commit()
+        assert "alembic_version" not in tables_of(path)
+        return path
+
+    def test_it_is_stamped_not_rebuilt(self, tmp_path: Path) -> None:
+        path = self.build_legacy(tmp_path)
+
+        assert run_with(make_database(tmp_path)) == "stamped"
+
+        assert revision_of(path) == BASELINE
+        with closing(sqlite3.connect(path)) as conn:
+            assert conn.execute("SELECT username FROM accounts").fetchall() == [("lex",)]
+
+    def test_no_backup_is_made_just_to_stamp_it(self, tmp_path: Path) -> None:
+        self.build_legacy(tmp_path)
+        calls: list[int] = []
+
+        async def backup() -> None:
+            calls.append(1)
+
+        run_with(make_database(tmp_path), before_upgrade=backup)
+
+        assert calls == []
+
+    def test_the_stamped_database_matches_the_models(self, tmp_path: Path) -> None:
+        self.build_legacy(tmp_path)
+        run_with(make_database(tmp_path))
+
+        assert differences(make_database(tmp_path)) == []
+
+
+@pytest.fixture
+def scripts_with_a_new_migration(tmp_path: Path) -> Path:
+    """The real migrations plus a throwaway one adding a column."""
+    scripts = tmp_path / "migrations"
+    shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
+    (scripts / "versions" / "0002_add_nickname.py").write_text(
+        'revision = "0002"\n'
+        'down_revision = "0001"\n'
+        "branch_labels = None\n"
+        "depends_on = None\n"
+        "import sqlalchemy as sa\n"
+        "from alembic import op\n\n\n"
+        "def upgrade():\n"
+        '    with op.batch_alter_table("accounts") as batch:\n'
+        '        batch.add_column(sa.Column("nickname", sa.String(40), nullable=True))\n\n\n'
+        "def downgrade():\n"
+        "    raise NotImplementedError\n",
+        encoding="utf-8",
+    )
+    return scripts
+
+
+class TestLaterMigration:
+    def build_at_baseline(self, tmp_path: Path) -> Path:
+        run_with(make_database(tmp_path))
+        path = tmp_path / "ember.db"
+        with closing(sqlite3.connect(path)) as conn:
+            conn.execute(
+                "INSERT INTO accounts (username, email, password_hash, is_protected, is_active, email_verified, created_at)"
+                " VALUES ('lex', 'lex@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
+            )
+            conn.commit()
+        return path
+
+    def test_a_column_is_added_and_the_data_kept(self, tmp_path: Path, scripts_with_a_new_migration: Path) -> None:
+        path = self.build_at_baseline(tmp_path)
+
+        result = run_with(make_database(tmp_path), scripts=scripts_with_a_new_migration)
+
+        assert result == "upgraded"
+        assert revision_of(path) == "0002"
+        with closing(sqlite3.connect(path)) as conn:
+            assert conn.execute("SELECT username, nickname FROM accounts").fetchall() == [("lex", None)]
+
+    def test_a_backup_is_made_before_it_runs(self, tmp_path: Path, scripts_with_a_new_migration: Path) -> None:
+        path = self.build_at_baseline(tmp_path)
+        seen: list[str | None] = []
+
+        async def backup() -> None:
+            seen.append(revision_of(path))  # the database is still at the old revision
+
+        run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts_with_a_new_migration)
+
+        assert seen == [BASELINE]
+
+    def test_a_failed_backup_stops_the_migration(self, tmp_path: Path, scripts_with_a_new_migration: Path) -> None:
+        path = self.build_at_baseline(tmp_path)
+
+        async def backup() -> None:
+            raise RuntimeError("disk full")
+
+        with pytest.raises(RuntimeError, match="disk full"):
+            run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts_with_a_new_migration)
+
+        assert revision_of(path) == BASELINE
+
+    def test_a_legacy_database_is_stamped_then_upgraded_after_a_backup(
+        self, tmp_path: Path, scripts_with_a_new_migration: Path
+    ) -> None:
+        database = make_database(tmp_path)
+        asyncio.run(database.create_tables())
+        asyncio.run(database.dispose())
+        calls: list[int] = []
+
+        async def backup() -> None:
+            calls.append(1)
+
+        result = run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts_with_a_new_migration)
+
+        assert result == "upgraded"
+        assert calls == [1]
+        assert revision_of(tmp_path / "ember.db") == "0002"
+
+    def test_a_new_empty_database_is_not_backed_up(self, tmp_path: Path, scripts_with_a_new_migration: Path) -> None:
+        calls: list[int] = []
+
+        async def backup() -> None:
+            calls.append(1)
+
+        result = run_with(make_database(tmp_path), before_upgrade=backup, scripts=scripts_with_a_new_migration)
+
+        assert result == "created"
+        assert calls == []
+        assert revision_of(tmp_path / "ember.db") == "0002"
+
+
+class TestStatusAndRevision:
+    def test_current_reports_none_then_the_head(self, tmp_path: Path) -> None:
+        async def go() -> tuple:
+            database = make_database(tmp_path)
+            runner = MigrationRunner(database.engine)
+            before = await runner.current()
+            await runner.run()
+            after = await runner.current()
+            await database.dispose()
+            return before, after
+
+        assert asyncio.run(go()) == ((None, BASELINE), (BASELINE, BASELINE))
+
+    def test_revision_writes_a_file_for_a_model_change(self, tmp_path: Path) -> None:
+        scripts = tmp_path / "migrations"
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
+        from sqlalchemy import Column, Integer, String
+
+        async def go() -> str:
+            database = make_database(tmp_path)
+            try:
+                return await MigrationRunner(database.engine, scripts=scripts).revision("add a probe table")
+            finally:
+                await database.dispose()
+
+        probe = type("Probe", (Base,), {"__tablename__": "probe", "id": Column(Integer, primary_key=True), "name": Column(String(10))})
+        try:
+            written = Path(asyncio.run(go()))
+        finally:
+            Base.metadata.remove(probe.__table__)
+
+        body = written.read_text(encoding="utf-8")
+        assert "probe" in body and "create_table" in body
+        assert 'down_revision = "0001"' in body or "down_revision = '0001'" in body
+
+
+def test_stamping_and_upgrading_are_not_confused_by_a_foreign_table(tmp_path: Path) -> None:
+    """Only the accounts table marks a database as ember_api's."""
+    database = make_database(tmp_path)
+
+    async def go() -> str:
+        async with database.engine.begin() as conn:
+            await conn.execute(text("CREATE TABLE unrelated (id INTEGER)"))
+        try:
+            return await MigrationRunner(database.engine).run()
+        finally:
+            await database.dispose()
+
+    assert asyncio.run(go()) == "created"

@@ -322,6 +322,32 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   machines can reach, when HSTS is off while cookies are secure, and when
   `INTERNAL_API_TOKEN` is empty.
 
+## Changing the schema
+
+The database schema is versioned with Alembic. At startup ember_api brings
+the database to the newest revision (`migrations/versions/`):
+
+- a new database gets every migration;
+- a database made before migrations existed is marked as the baseline
+  (`0001`) without being rebuilt;
+- a database that is behind gets the missing migrations, after a backup
+  (`data/backups/`). SQLite cannot undo a half-finished migration, so the
+  backup is the way back; if the backup fails, nothing is changed.
+
+To change a table or add a column:
+
+1. Edit the model in `src/models/`.
+2. Stop ember_api, then run `python -m scripts.migrate_db revision "what changed"`.
+   It writes a new file in `migrations/versions/`.
+3. Read that file. Check it does what you meant (a new `NOT NULL` column on a
+   table with rows needs a `server_default`). SQLite edits go through
+   `op.batch_alter_table`, which the generator already uses.
+4. Start ember_api, or run `python -m scripts.migrate_db upgrade`.
+   `python -m scripts.migrate_db status` shows where the database is.
+
+`tests/test_migrations.py` fails when a model differs from what the
+migrations build, so a model edit without its migration is caught.
+
 ## Layout
 
 ```
@@ -332,7 +358,7 @@ src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
               UsageRecord, LogEntry, KnownDevice, PromptTemplate, SharedChat
-  services/   ChatAppImporter (chat_app_import), DatabaseBackup / BackupScheduler (backup_service), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
+  services/   ChatAppImporter (chat_app_import), DatabaseBackup / BackupScheduler (backup_service), MigrationRunner (migrations), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
               AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, ShareService, PublicReadLimiter, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
@@ -342,5 +368,7 @@ src/
   utils/      config_loader
 scripts/   import_chat_app.py                   one-off move of chat_app's data (see "Moving from chat_app")
            backup_db.py                         back up the database now
+           migrate_db.py                        schema status / upgrade / new migration (see "Changing the schema")
+migrations/  Alembic environment and versions/ (0001_baseline.py)
 tests/
 ```

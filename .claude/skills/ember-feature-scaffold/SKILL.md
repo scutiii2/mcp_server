@@ -56,9 +56,11 @@ in routes), `src/models/` (SQLAlchemy 2 typed models), `src/deps.py`
 2. **Model** (if new data): new file in `src/models/`, export it from
    `src/models/__init__.py` (that import is what registers the table).
    Relationships use `lazy="selectin"` - async sessions can't lazy-load.
-   Store times as naive UTC via `src.db.utcnow`. `create_all` creates new
-   *tables* on startup but never adds *columns* to existing ones - a new
-   column on an existing table needs a migration step; flag it.
+   Store times as naive UTC via `src.db.utcnow`. Any model change (new
+   table or column) needs an Alembic migration: stop ember_api, run
+   `python -m scripts.migrate_db revision "what changed"`, read the file it
+   writes (a new `NOT NULL` column needs a `server_default`). Startup applies
+   it after a backup; `tests/test_migrations.py` fails if it is missing.
 3. **Service**: a class with `__init__(self, session: AsyncSession)`.
    Anything blocking (hashing, SMTP, file I/O) goes through
    `asyncio.to_thread`. Secrets/codes/tokens are stored hashed, never raw.
