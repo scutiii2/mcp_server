@@ -1,10 +1,14 @@
-"""One-off move of chat_app's accounts, chats and token usage into ember_api.
+"""One-off move of chat_app's accounts, chats, token usage, activity log and
+known devices into ember_api.
 
 chat_app keeps its data in three SQLite files (`app.db`, `chats.db`,
 `usage.db`). `ChatAppSource` reads them read-only; `ChatAppImporter` writes
 what is missing into ember_api's database. Re-running is safe: an account
-already imported is recognised, and its chats and usage rows are only added
-when absent.
+already imported is recognised, and its chats, usage rows, log entries and
+devices are only added when absent.
+
+`agent_map` renames chat_app's agent names (its provider names) to ember agent
+ids, for rows being imported and for rows imported earlier under the old name.
 
 Passwords move as they are: both apps store werkzeug hashes.
 """
@@ -16,21 +20,24 @@ import json
 import re
 import sqlite3
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Account, Chat, Role, UsageRecord
+from src.models import Account, Chat, KnownDevice, LogEntry, Role, UsageRecord
 from src.services.chat_service import MAX_CHATS_PER_ACCOUNT, TITLE_MAX, ChatLimitError, _encode
 
 # What ember_api accepts in a chat id (routes/chats.py); chat_app ids can also
 # hold "_", which ember_api's routes would refuse.
 _CHAT_ID_OK = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 _CHAT_ID_BAD_CHARS = re.compile(r"[^A-Za-z0-9-]")
+_FINGERPRINT = re.compile(r"[0-9a-f]{64}")
+LOG_MESSAGE_MAX = 500
 
 
 @dataclass(frozen=True)
@@ -66,11 +73,32 @@ class SourceUsage:
     chat_id: str | None
 
 
+@dataclass(frozen=True)
+class SourceLog:
+    # None: the entry belongs to no account (or to one chat_app no longer has).
+    username: str | None
+    kind: str
+    source: str
+    message: str
+    details: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class SourceDevice:
+    username: str
+    fingerprint_hash: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
 @dataclass
 class SourceData:
     accounts: list[SourceAccount] = field(default_factory=list)
     chats: list[SourceChat] = field(default_factory=list)
     usage: list[SourceUsage] = field(default_factory=list)
+    logs: list[SourceLog] = field(default_factory=list)
+    devices: list[SourceDevice] = field(default_factory=list)
     # Files that were not there: the matching part is left out of the import.
     missing: list[str] = field(default_factory=list)
 
@@ -80,6 +108,8 @@ class TableReport:
     imported: int = 0
     skipped: int = 0
     failed: int = 0
+    # Rows imported earlier under an old agent name, now given the mapped one.
+    relabelled: int = 0
     notes: list[str] = field(default_factory=list)
 
 
@@ -89,6 +119,8 @@ class ImportReport:
     accounts: TableReport = field(default_factory=TableReport)
     chats: TableReport = field(default_factory=TableReport)
     usage: TableReport = field(default_factory=TableReport)
+    logs: TableReport = field(default_factory=TableReport)
+    devices: TableReport = field(default_factory=TableReport)
     roles_created: list[str] = field(default_factory=list)
     missing_files: list[str] = field(default_factory=list)
 
@@ -114,6 +146,11 @@ def _read_only(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()
+    return row is not None
+
+
 class ChatAppSource:
     """Reads chat_app's data folder without ever writing to it."""
 
@@ -125,10 +162,10 @@ class ChatAppSource:
 
     def _load(self) -> SourceData:
         data = SourceData()
-        for name, read in (
-            ("app.db", self._read_accounts),
-            ("chats.db", self._read_chats),
-            ("usage.db", self._read_usage),
+        for name, readers in (
+            ("app.db", (self._read_accounts, self._read_logs, self._read_devices)),
+            ("chats.db", (self._read_chats,)),
+            ("usage.db", (self._read_usage,)),
         ):
             path = self._dir / name
             if not path.is_file():
@@ -136,10 +173,52 @@ class ChatAppSource:
                 continue
             conn = _read_only(path)
             try:
-                read(conn, data)
+                for read in readers:
+                    read(conn, data)
             finally:
                 conn.close()
         return data
+
+    @staticmethod
+    def _usernames(conn: sqlite3.Connection) -> dict[int, str]:
+        return {row["id"]: row["username"] for row in conn.execute("SELECT id, username FROM accounts")}
+
+    @classmethod
+    def _read_logs(cls, conn: sqlite3.Connection, data: SourceData) -> None:
+        if not _has_table(conn, "log_entries"):
+            data.missing.append("app.db: log_entries")
+            return
+        names = cls._usernames(conn)
+        for row in conn.execute("SELECT * FROM log_entries ORDER BY created_at, id"):
+            data.logs.append(
+                SourceLog(
+                    username=names.get(row["account_id"]),
+                    kind=row["kind"],
+                    source=row["source"],
+                    message=row["message"],
+                    details=row["details"],
+                    created_at=to_naive_utc(row["created_at"]),
+                )
+            )
+
+    @classmethod
+    def _read_devices(cls, conn: sqlite3.Connection, data: SourceData) -> None:
+        if not _has_table(conn, "device_fingerprints"):
+            data.missing.append("app.db: device_fingerprints")
+            return
+        names = cls._usernames(conn)
+        for row in conn.execute("SELECT * FROM device_fingerprints ORDER BY id"):
+            username = names.get(row["account_id"])
+            if username is None:
+                continue
+            data.devices.append(
+                SourceDevice(
+                    username=username,
+                    fingerprint_hash=row["fingerprint_hash"],
+                    first_seen_at=to_naive_utc(row["first_seen_at"]),
+                    last_seen_at=to_naive_utc(row["last_seen_at"]),
+                )
+            )
 
     @staticmethod
     def _read_accounts(conn: sqlite3.Connection, data: SourceData) -> None:
@@ -203,9 +282,15 @@ class ChatAppImporter:
     in a transaction that is rolled back, so the report is exactly what an
     apply would do."""
 
-    def __init__(self, session: AsyncSession, source: ChatAppSource) -> None:
+    def __init__(
+        self, session: AsyncSession, source: ChatAppSource, agent_map: dict[str, str] | None = None
+    ) -> None:
         self._session = session
         self._source = source
+        self._agent_map = dict(agent_map or {})
+
+    def _mapped(self, agent: str | None) -> str | None:
+        return self._agent_map.get(agent, agent) if agent else agent
 
     async def run(self, apply: bool) -> ImportReport:
         data = await self._source.load()
@@ -214,6 +299,8 @@ class ChatAppImporter:
             owners = await self._import_accounts(data, report)
             await self._import_chats(data, owners, report)
             await self._import_usage(data, owners, report)
+            await self._import_logs(data, owners, report)
+            await self._import_devices(data, owners, report)
             if apply:
                 await self._session.commit()
             else:
@@ -277,11 +364,10 @@ class ChatAppImporter:
     async def _import_chats(self, data: SourceData, owners: dict[str, Account], report: ImportReport) -> None:
         table = report.chats
         agents = self._latest_agents(data)
-        have: dict[int, set[str]] = {}
+        have: dict[int, dict[str, str | None]] = {}
         for account in owners.values():
-            have[account.id] = set(
-                await self._session.scalars(select(Chat.chat_id).where(Chat.account_id == account.id))
-            )
+            rows = await self._session.execute(select(Chat.chat_id, Chat.agent_id).where(Chat.account_id == account.id))
+            have[account.id] = {chat_id: agent for chat_id, agent in rows}
 
         for source in data.chats:
             account = owners.get(source.username)
@@ -295,7 +381,17 @@ class ChatAppImporter:
                 continue
             ids = have[account.id]
             if chat_id in ids:
-                table.skipped += 1
+                old = agents.get(source.chat_id)
+                new = self._mapped(old)
+                # Only a chat still carrying the old name from chat_app is renamed.
+                if new != old and ids[chat_id] == old:
+                    await self._session.execute(
+                        update(Chat).where(Chat.account_id == account.id, Chat.chat_id == chat_id).values(agent_id=new)
+                    )
+                    ids[chat_id] = new
+                    table.relabelled += 1
+                else:
+                    table.skipped += 1
                 continue
             if len(ids) >= MAX_CHATS_PER_ACCOUNT:
                 table.failed += 1
@@ -318,14 +414,14 @@ class ChatAppImporter:
                     account_id=account.id,
                     chat_id=chat_id,
                     title=title,
-                    agent_id=agents.get(source.chat_id),
+                    agent_id=self._mapped(agents.get(source.chat_id)),
                     messages=text,
                     message_count=len(messages),
                     created_at=source.created_at,
                     updated_at=source.updated_at,
                 )
             )
-            ids.add(chat_id)
+            ids[chat_id] = self._mapped(agents.get(source.chat_id))
             table.imported += 1
         await self._session.flush()
 
@@ -341,14 +437,19 @@ class ChatAppImporter:
 
     async def _import_usage(self, data: SourceData, owners: dict[str, Account], report: ImportReport) -> None:
         table = report.usage
-        seen: dict[int, set[tuple]] = {}
+        # The rows already there, by (time, tokens, agent, chat) -> their ids. A row
+        # of chat_app is matched with one of them, so two identical turns stay two.
+        seen: dict[int, dict[tuple, list[int]]] = {}
         for account in owners.values():
             rows = await self._session.execute(
                 select(
-                    UsageRecord.created_at, UsageRecord.total_tokens, UsageRecord.agent, UsageRecord.chat_id
+                    UsageRecord.id, UsageRecord.created_at, UsageRecord.total_tokens, UsageRecord.agent, UsageRecord.chat_id
                 ).where(UsageRecord.account_id == account.id)
             )
-            seen[account.id] = {tuple(row) for row in rows}
+            by_key: dict[tuple, list[int]] = {}
+            for row_id, *key in rows:
+                by_key.setdefault(tuple(key), []).append(row_id)
+            seen[account.id] = by_key
         turns: dict[tuple[int, datetime], str] = {}
 
         for source in data.usage:
@@ -357,10 +458,19 @@ class ChatAppImporter:
                 table.skipped += 1
                 continue
             chat_id = ember_chat_id(source.chat_id) if source.chat_id else None
-            key = (source.ts, source.tokens, source.agent, chat_id)
+            agent = self._mapped(source.agent)
+            there = seen[account.id]
+            old_ids = there.get((source.ts, source.tokens, source.agent, chat_id))
+            new_ids = there.get((source.ts, source.tokens, agent, chat_id))
+            # Rows imported earlier under the old agent name get the mapped one.
+            if agent != source.agent and old_ids:
+                await self._session.execute(update(UsageRecord).where(UsageRecord.id == old_ids.pop()).values(agent=agent))
+                table.relabelled += 1
+                continue
             # Only rows already in ember_api count: two identical rows in chat_app are
             # two real turns, and a re-run finds both already there.
-            if key in seen[account.id]:
+            if new_ids:
+                new_ids.pop()
                 table.skipped += 1
                 continue
             # Rows of one turn share a timestamp in chat_app; keep them one turn.
@@ -371,7 +481,7 @@ class ChatAppImporter:
                     turn_id=turn_id,
                     kind="chat",
                     chat_id=chat_id,
-                    agent=source.agent,
+                    agent=agent,
                     model=source.model,
                     input_tokens=source.input_tokens,
                     output_tokens=source.output_tokens,
@@ -381,3 +491,90 @@ class ChatAppImporter:
             )
             table.imported += 1
         await self._session.flush()
+
+    async def _import_logs(self, data: SourceData, owners: dict[str, Account], report: ImportReport) -> None:
+        """chat_app's activity log. An entry of an account that was not imported
+        (ember_api has its own with that name) is kept with no account and the
+        chat_app name added to its message; it is never attached to another person."""
+        table = report.logs
+        if not data.logs:
+            return
+        first = min(row.created_at for row in data.logs)
+        last = max(row.created_at for row in data.logs)
+        rows = await self._session.execute(
+            select(LogEntry.kind, LogEntry.account_id, LogEntry.source, LogEntry.message, LogEntry.created_at).where(
+                LogEntry.created_at >= first, LogEntry.created_at <= last
+            )
+        )
+        there = Counter(tuple(row) for row in rows)
+        for source in data.logs:
+            account = owners.get(source.username) if source.username else None
+            message = source.message
+            if source.username and account is None:
+                message = _with_origin(message, source.username)
+            account_id = account.id if account else None
+            key = (source.kind, account_id, source.source, message, source.created_at)
+            # One-to-one, like usage rows: a re-run finds each already there.
+            if there[key] > 0:
+                there[key] -= 1
+                table.skipped += 1
+                continue
+            self._session.add(
+                LogEntry(
+                    kind=source.kind,
+                    account_id=account_id,
+                    source=source.source,
+                    message=message,
+                    details=source.details,
+                    created_at=source.created_at,
+                )
+            )
+            table.imported += 1
+        await self._session.flush()
+
+    async def _import_devices(self, data: SourceData, owners: dict[str, Account], report: ImportReport) -> None:
+        """Devices an imported account logged in from. chat_app and ember_api hash
+        the same signals the same way, so a login from the same browser and
+        network is not reported as a new device. The browser and network were
+        never stored, so they show as unknown."""
+        table = report.devices
+        have: set[tuple[int, str]] = set()
+        for account in owners.values():
+            have.update(
+                (account.id, h)
+                for h in await self._session.scalars(
+                    select(KnownDevice.fingerprint_hash).where(KnownDevice.account_id == account.id)
+                )
+            )
+        for source in data.devices:
+            account = owners.get(source.username)
+            if account is None:
+                table.skipped += 1
+                continue
+            if not _FINGERPRINT.fullmatch(source.fingerprint_hash):
+                table.failed += 1
+                table.notes.append(f"{source.username}: a device fingerprint is not a SHA-256 hash, left out")
+                continue
+            if (account.id, source.fingerprint_hash) in have:
+                table.skipped += 1
+                continue
+            self._session.add(
+                KnownDevice(
+                    account_id=account.id,
+                    fingerprint_hash=source.fingerprint_hash,
+                    first_seen_at=source.first_seen_at,
+                    last_seen_at=source.last_seen_at,
+                )
+            )
+            have.add((account.id, source.fingerprint_hash))
+            table.imported += 1
+        await self._session.flush()
+
+
+def _with_origin(message: str, username: str) -> str:
+    """`message` with the chat_app account named at its end, within the column's size."""
+    suffix = f" [chat_app: {username}]"
+    room = LOG_MESSAGE_MAX - len(suffix)
+    if len(message) > room:
+        message = message[: room - 1] + "\u2026"
+    return message + suffix

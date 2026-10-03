@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
-from scripts.import_chat_app import format_report, main
+from scripts.import_chat_app import check_agents, format_report, main, parse_agent_map
 from src.db import Database
-from src.models import Account, Chat, Role, UsageRecord
+from src.models import Account, Chat, KnownDevice, LogEntry, Role, UsageRecord
 from src.services.chat_app_import import ChatAppImporter, ChatAppSource, ember_chat_id, to_naive_utc
 from src.services.chat_service import MAX_CHATS_PER_ACCOUNT
 from src.services.migrations import MigrationRunner
@@ -29,6 +29,8 @@ def make_chat_app(
     chats: list[tuple] | None = None,
     usage: list[tuple] | None = None,
     account_roles: list[tuple] | None = None,
+    logs: list[tuple] | None = None,
+    devices: list[tuple] | None = None,
 ) -> Path:
     """Builds data/{app,chats,usage}.db the way chat_app lays them out."""
     data = folder / "data"
@@ -41,6 +43,10 @@ def make_chat_app(
             is_protected INTEGER, is_active INTEGER, email_verified INTEGER, created_at TEXT);
         CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT, description TEXT);
         CREATE TABLE account_roles (account_id INTEGER, role_id INTEGER);
+        CREATE TABLE log_entries (id INTEGER PRIMARY KEY, kind TEXT, account_id INTEGER, source TEXT,
+            message TEXT, details TEXT, created_at TEXT);
+        CREATE TABLE device_fingerprints (id INTEGER PRIMARY KEY, account_id INTEGER, fingerprint_hash TEXT,
+            first_seen_at TEXT, last_seen_at TEXT);
         INSERT INTO roles VALUES (1, 'Administrator', 'x'), (2, 'Viewer', 'y');
         """
     )
@@ -51,6 +57,8 @@ def make_chat_app(
         else [(1, "lex", "lex@example.com", HASH, 0, 1, 1, "2026-09-24 16:21:48.336298")],
     )
     app.executemany("INSERT INTO account_roles VALUES (?, ?)", account_roles or [])
+    app.executemany("INSERT INTO log_entries VALUES (?, ?, ?, ?, ?, ?, ?)", logs or [])
+    app.executemany("INSERT INTO device_fingerprints VALUES (?, ?, ?, ?, ?)", devices or [])
     app.commit()
     app.close()
 
@@ -95,10 +103,10 @@ def db(tmp_path):
     asyncio.run(database.dispose())
 
 
-def run_import(db: Database, folder: Path, apply: bool = True):
+def run_import(db: Database, folder: Path, apply: bool = True, agent_map: dict[str, str] | None = None):
     async def go():
         async with db.sessions() as session:
-            return await ChatAppImporter(session, ChatAppSource(folder / "data")).run(apply)
+            return await ChatAppImporter(session, ChatAppSource(folder / "data"), agent_map).run(apply)
 
     return asyncio.run(go())
 
@@ -659,3 +667,484 @@ class TestCli:
         assert "chats: 0 imported, 0 skipped, 1 failed" in text
         assert "chat id 'abc' cannot be used" in text
         assert "roles created" in text and "Viewer" in text
+
+
+# --- activity log ------------------------------------------------------------------------------
+
+SHA = hashlib.sha256(b"Firefox|en-GB|192.168.1.0/24").hexdigest()
+
+# (id, kind, account_id, source, message, details, created_at); account 1 is lex, 2 is admin.
+LOGIN = (1, "action", 1, "auth.login", "Login succeeded", None, "2026-09-24 16:17:45.220886")
+SERVER_ERROR = (2, "error", None, "unhandled_exception", "Boom", "Traceback ...", "2026-09-24 16:20:00.000001")
+ADMIN_ACTION = (3, "action", 2, "admin.create_invite", "Generated invite (delivery=manual)", None, "2026-09-24 16:30:00.5")
+TWO_ACCOUNTS = [
+    (1, "lex", "lex@example.com", HASH, 0, 1, 1, "2026-09-24 16:21:48.336298"),
+    (2, "admin", "admin@example.com", HASH, 1, 1, 1, "2026-09-24 16:00:00.000000"),
+]
+
+
+def seed_ember_admin(db: Database) -> None:
+    async def go():
+        async with db.sessions() as session:
+            session.add(Account(username="admin", email="ember-admin@example.com", password_hash="x"))
+            await session.commit()
+
+    asyncio.run(go())
+
+
+class TestLogs:
+    def test_an_entry_of_an_imported_account_keeps_everything_and_belongs_to_it(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", logs=[LOGIN])
+
+        report = run_import(db, folder)
+
+        (entry,) = rows(db, LogEntry)
+        (account,) = rows(db, Account)
+        assert (entry.kind, entry.source, entry.message, entry.details) == ("action", "auth.login", "Login succeeded", None)
+        assert entry.account_id == account.id
+        assert entry.created_at == datetime(2026, 9, 24, 16, 17, 45, 220886)
+        assert report.logs.imported == 1
+
+    def test_an_entry_of_no_account_stays_that_way_with_its_message_unchanged(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", logs=[SERVER_ERROR])
+
+        run_import(db, folder)
+
+        (entry,) = rows(db, LogEntry)
+        assert (entry.account_id, entry.message, entry.details) == (None, "Boom", "Traceback ...")
+
+    def test_an_entry_of_a_skipped_account_names_it_but_is_not_given_to_ember_admin(self, db, tmp_path):
+        seed_ember_admin(db)
+        folder = make_chat_app(tmp_path / "old", accounts=TWO_ACCOUNTS, logs=[ADMIN_ACTION])
+
+        report = run_import(db, folder)
+
+        (entry,) = rows(db, LogEntry)
+        assert entry.account_id is None
+        assert entry.message == "Generated invite (delivery=manual) [chat_app: admin]"
+        assert report.logs.imported == 1
+
+    def test_an_entry_of_an_account_chat_app_no_longer_has_is_kept_without_one(self, db, tmp_path):
+        ghost = (4, "action", 99, "auth.login", "Login succeeded", None, "2026-09-24 17:00:00.0")
+        folder = make_chat_app(tmp_path / "old", logs=[ghost])
+
+        run_import(db, folder)
+
+        (entry,) = rows(db, LogEntry)
+        assert (entry.account_id, entry.message) == (None, "Login succeeded")
+
+    def test_a_long_message_is_cut_so_the_origin_still_fits(self, db, tmp_path):
+        seed_ember_admin(db)
+        long = (5, "action", 2, "x", "m" * 500, None, "2026-09-24 17:00:00.0")
+        folder = make_chat_app(tmp_path / "old", accounts=TWO_ACCOUNTS, logs=[long])
+
+        run_import(db, folder)
+
+        (entry,) = rows(db, LogEntry)
+        assert len(entry.message) == 500
+        assert entry.message.endswith("\u2026 [chat_app: admin]")
+
+    def test_a_message_that_just_fits_is_not_cut(self, db, tmp_path):
+        seed_ember_admin(db)
+        suffix = " [chat_app: admin]"
+        exact = (5, "action", 2, "x", "m" * (500 - len(suffix)), None, "2026-09-24 17:00:00.0")
+        folder = make_chat_app(tmp_path / "old", accounts=TWO_ACCOUNTS, logs=[exact])
+
+        run_import(db, folder)
+
+        assert rows(db, LogEntry)[0].message == "m" * (500 - len(suffix)) + suffix
+
+    def test_a_rerun_adds_nothing(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", logs=[LOGIN, SERVER_ERROR])
+        run_import(db, folder)
+
+        report = run_import(db, folder)
+
+        assert len(rows(db, LogEntry)) == 2
+        assert (report.logs.imported, report.logs.skipped) == (0, 2)
+
+    def test_two_identical_entries_are_two_entries_and_a_rerun_keeps_two(self, db, tmp_path):
+        twin = (9, *LOGIN[1:])
+        folder = make_chat_app(tmp_path / "old", logs=[LOGIN, twin])
+
+        run_import(db, folder)
+        run_import(db, folder)
+
+        assert len(rows(db, LogEntry)) == 2
+
+    def test_a_second_identical_entry_in_chat_app_is_added_when_ember_has_only_one(self, db, tmp_path):
+        run_import(db, make_chat_app(tmp_path / "one", logs=[LOGIN]))
+        twin = (9, *LOGIN[1:])
+
+        report = run_import(db, make_chat_app(tmp_path / "two", logs=[LOGIN, twin]))
+
+        assert len(rows(db, LogEntry)) == 2
+        assert (report.logs.imported, report.logs.skipped) == (1, 1)
+
+    def test_a_dry_run_writes_nothing_but_counts(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", logs=[LOGIN])
+
+        report = run_import(db, folder, apply=False)
+
+        assert rows(db, LogEntry) == []
+        assert report.logs.imported == 1
+
+    def test_ember_entries_of_the_same_time_are_not_confused_with_imported_ones(self, db, tmp_path):
+        async def seed():
+            async with db.sessions() as session:
+                session.add(
+                    LogEntry(kind="action", account_id=None, source="auth.login", message="Login succeeded",
+                             created_at=datetime(2026, 9, 24, 16, 17, 45, 220886))
+                )
+                await session.commit()
+
+        asyncio.run(seed())
+        folder = make_chat_app(tmp_path / "old", logs=[LOGIN])
+
+        run_import(db, folder)
+
+        assert len(rows(db, LogEntry)) == 2  # the account differs: not the same entry
+
+    def test_a_missing_table_is_named_and_the_rest_still_imports(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT])
+        conn = sqlite3.connect(folder / "data" / "app.db")
+        conn.execute("DROP TABLE log_entries")
+        conn.commit()
+        conn.close()
+
+        report = run_import(db, folder)
+
+        assert "app.db: log_entries" in report.missing_files
+        assert report.chats.imported == 1 and report.logs.imported == 0
+
+    def test_the_report_has_a_line_for_it(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", logs=[LOGIN])
+
+        assert "log entries: 1 imported, 0 skipped, 0 failed" in format_report(run_import(db, folder))
+
+
+# --- devices -----------------------------------------------------------------------------------
+
+
+class TestDevices:
+    DEVICE = (1, 1, SHA, "2026-09-24 16:17:45.214958", "2026-09-26 10:00:00.000001")
+
+    def test_a_device_moves_with_its_times_and_unknown_browser(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", devices=[self.DEVICE])
+
+        report = run_import(db, folder)
+
+        (device,) = rows(db, KnownDevice)
+        (account,) = rows(db, Account)
+        assert (device.account_id, device.fingerprint_hash) == (account.id, SHA)
+        assert (device.user_agent, device.ip_subnet) == ("", "")
+        assert device.first_seen_at == datetime(2026, 9, 24, 16, 17, 45, 214958)
+        assert device.last_seen_at == datetime(2026, 9, 26, 10, 0, 0, 1)
+        assert report.devices.imported == 1
+
+    def test_a_device_of_a_skipped_account_is_left_out(self, db, tmp_path):
+        seed_ember_admin(db)
+        admin_device = (2, 2, SHA, "2026-09-24 16:00:00.0", "2026-09-24 16:00:00.0")
+        folder = make_chat_app(tmp_path / "old", accounts=TWO_ACCOUNTS, devices=[admin_device])
+
+        report = run_import(db, folder)
+
+        assert rows(db, KnownDevice) == []
+        assert report.devices.skipped == 1
+
+    def test_a_hash_that_is_not_sha256_is_left_out_with_a_note(self, db, tmp_path):
+        bad = (3, 1, "not-a-hash", "2026-09-24 16:00:00.0", "2026-09-24 16:00:00.0")
+        folder = make_chat_app(tmp_path / "old", devices=[bad])
+
+        report = run_import(db, folder)
+
+        assert rows(db, KnownDevice) == []
+        assert report.devices.failed == 1 and "not a SHA-256" in report.devices.notes[0]
+
+    def test_a_rerun_adds_nothing(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", devices=[self.DEVICE])
+        run_import(db, folder)
+
+        report = run_import(db, folder)
+
+        assert len(rows(db, KnownDevice)) == 1
+        assert (report.devices.imported, report.devices.skipped) == (0, 1)
+
+    def test_the_same_device_twice_in_chat_app_arrives_once(self, db, tmp_path):
+        twin = (2, *self.DEVICE[1:])
+        folder = make_chat_app(tmp_path / "old", devices=[self.DEVICE, twin])
+
+        report = run_import(db, folder)
+
+        assert len(rows(db, KnownDevice)) == 1
+        assert (report.devices.imported, report.devices.skipped) == (1, 1)
+
+    def test_a_device_the_account_already_has_is_not_doubled(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old")
+        run_import(db, folder)
+
+        async def seed():
+            async with db.sessions() as session:
+                (account,) = list(await session.scalars(select(Account)))
+                session.add(KnownDevice(account_id=account.id, fingerprint_hash=SHA, user_agent="Firefox", ip_subnet="x"))
+                await session.commit()
+
+        asyncio.run(seed())
+        folder2 = make_chat_app(tmp_path / "old2", devices=[self.DEVICE])
+
+        run_import(db, folder2)
+
+        (device,) = rows(db, KnownDevice)
+        assert device.user_agent == "Firefox"
+
+    def test_the_hash_is_the_one_ember_api_computes_for_the_same_signals(self):
+        """chat_app's compute_fingerprint, written out: the same signals must hash the same,
+        or an imported device would never match a login."""
+        from src.services.device_service import DeviceSignals
+
+        user_agent, language, ip = "Mozilla/5.0 Firefox/130.0", "en-GB,en;q=0.9", "192.168.1.57"
+        chat_app = hashlib.sha256(f"{user_agent}|{language}|192.168.1.0/24".encode("utf-8")).hexdigest()
+
+        assert DeviceSignals(user_agent, language, ip).fingerprint() == chat_app
+
+    def test_a_missing_table_is_named(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old")
+        conn = sqlite3.connect(folder / "data" / "app.db")
+        conn.execute("DROP TABLE device_fingerprints")
+        conn.commit()
+        conn.close()
+
+        report = run_import(db, folder)
+
+        assert "app.db: device_fingerprints" in report.missing_files
+        assert report.accounts.imported == 1
+
+
+# --- mapping agent names -----------------------------------------------------------------------
+
+MAP = {"anthropic": "claude-agent"}
+TWO_TURNS = [
+    ("lex", "2026-09-25T01:00:00+00:00", 10, "anthropic", "m", 5, 5, "pHeTdzl3rpKue5Ak"),
+    ("lex", "2026-09-25T02:00:00+00:00", 20, "openai", "m", 10, 10, "another-chat-0001"),
+]
+
+
+class TestAgentMap:
+    def test_new_rows_get_the_mapped_name(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+
+        report = run_import(db, folder, agent_map=MAP)
+
+        assert rows(db, Chat)[0].agent_id == "claude-agent"
+        assert rows(db, UsageRecord)[0].agent == "claude-agent"
+        assert report.chats.relabelled == 0 and report.usage.relabelled == 0
+
+    def test_a_name_not_in_the_map_is_kept(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", usage=TWO_TURNS)
+
+        run_import(db, folder, agent_map=MAP)
+
+        assert sorted(r.agent for r in rows(db, UsageRecord)) == ["claude-agent", "openai"]
+
+    def test_without_a_map_nothing_changes(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+
+        run_import(db, folder)
+
+        assert rows(db, Chat)[0].agent_id == "anthropic"
+        assert rows(db, UsageRecord)[0].agent == "anthropic"
+
+    def test_rows_imported_earlier_are_relabelled(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+        run_import(db, folder)
+
+        report = run_import(db, folder, agent_map=MAP)
+
+        assert rows(db, Chat)[0].agent_id == "claude-agent"
+        (usage,) = rows(db, UsageRecord)
+        assert usage.agent == "claude-agent"
+        assert (report.chats.relabelled, report.usage.relabelled) == (1, 1)
+        assert (report.chats.imported, report.usage.imported) == (0, 0)
+
+    def test_relabelling_leaves_the_rest_of_the_row_alone(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+        run_import(db, folder)
+        before_chat, before_usage = rows(db, Chat)[0], rows(db, UsageRecord)[0]
+        expected = (before_chat.updated_at, before_chat.messages, before_usage.created_at, before_usage.turn_id,
+                    before_usage.total_tokens)
+
+        run_import(db, folder, agent_map=MAP)
+
+        chat, usage = rows(db, Chat)[0], rows(db, UsageRecord)[0]
+        assert (chat.updated_at, chat.messages, usage.created_at, usage.turn_id, usage.total_tokens) == expected
+
+    def test_a_rerun_after_relabelling_changes_nothing(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+        run_import(db, folder)
+        run_import(db, folder, agent_map=MAP)
+
+        report = run_import(db, folder, agent_map=MAP)
+
+        assert len(rows(db, UsageRecord)) == 1 and len(rows(db, Chat)) == 1
+        assert (report.chats.relabelled, report.usage.relabelled) == (0, 0)
+        assert (report.chats.skipped, report.usage.skipped) == (1, 1)
+
+    def test_a_chat_whose_agent_was_changed_since_is_not_touched(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+        run_import(db, folder)
+
+        async def change():
+            async with db.sessions() as session:
+                (chat,) = list(await session.scalars(select(Chat)))
+                chat.agent_id = "openai-agent"
+                await session.commit()
+
+        asyncio.run(change())
+
+        report = run_import(db, folder, agent_map=MAP)
+
+        assert rows(db, Chat)[0].agent_id == "openai-agent"
+        assert report.chats.relabelled == 0
+
+    def test_a_usage_row_of_ember_with_the_same_agent_name_is_not_touched(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", usage=[USAGE])
+        run_import(db, folder)
+
+        async def native():
+            async with db.sessions() as session:
+                (account,) = list(await session.scalars(select(Account)))
+                session.add(
+                    UsageRecord(account_id=account.id, turn_id="t", kind="chat", chat_id="zzzzzzzz1", agent="anthropic",
+                                model="m", total_tokens=5, created_at=datetime(2026, 10, 1))
+                )
+                await session.commit()
+
+        asyncio.run(native())
+
+        run_import(db, folder, agent_map=MAP)
+
+        assert sorted(r.agent for r in rows(db, UsageRecord)) == ["anthropic", "claude-agent"]
+
+    def test_identical_turns_are_relabelled_one_for_one(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", usage=[USAGE, USAGE])
+        run_import(db, folder)
+
+        report = run_import(db, folder, agent_map=MAP)
+
+        assert [r.agent for r in rows(db, UsageRecord)] == ["claude-agent", "claude-agent"]
+        assert report.usage.relabelled == 2
+        again = run_import(db, folder, agent_map=MAP)
+        assert len(rows(db, UsageRecord)) == 2 and again.usage.skipped == 2
+
+    def test_a_second_identical_turn_in_chat_app_is_added_when_ember_has_only_one(self, db, tmp_path):
+        run_import(db, make_chat_app(tmp_path / "one", usage=[USAGE]), agent_map=MAP)
+
+        report = run_import(db, make_chat_app(tmp_path / "two", usage=[USAGE, USAGE]), agent_map=MAP)
+
+        assert len(rows(db, UsageRecord)) == 2
+        assert (report.usage.imported, report.usage.skipped) == (1, 1)
+
+    def test_a_dry_run_counts_the_relabelling_but_writes_nothing(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+        run_import(db, folder)
+
+        report = run_import(db, folder, apply=False, agent_map=MAP)
+
+        assert (report.chats.relabelled, report.usage.relabelled) == (1, 1)
+        assert rows(db, Chat)[0].agent_id == "anthropic"
+        assert rows(db, UsageRecord)[0].agent == "anthropic"
+
+    def test_the_report_shows_the_relabelled_count_only_when_there_is_one(self, db, tmp_path):
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+        first = format_report(run_import(db, folder))
+        second = format_report(run_import(db, folder, agent_map=MAP))
+
+        assert "relabelled" not in first
+        assert "chats: 0 imported, 0 skipped, 0 failed, 1 relabelled" in second
+
+
+class TestAgentMapOnTheCommandLine:
+    def test_pairs_become_a_dict(self):
+        assert parse_agent_map(["anthropic=claude-agent", " a = b "]) == {"anthropic": "claude-agent", "a": "b"}
+
+    @pytest.mark.parametrize("pair", ["anthropic", "=x", "x=", " = ", ""])
+    def test_a_bad_pair_stops(self, pair):
+        with pytest.raises(SystemExit, match="OLD=NEW"):
+            parse_agent_map([pair])
+
+    def test_naming_one_agent_twice_stops(self):
+        with pytest.raises(SystemExit, match="twice"):
+            parse_agent_map(["a=b", "a=c"])
+
+    def registry(self, tmp_path, ids):
+        path = tmp_path / "agents.json"
+        path.write_text(
+            json.dumps({"agents": [{"id": i, "label": i, "url": "http://127.0.0.1:9100/mcp"} for i in ids]}),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_a_registered_agent_is_accepted(self, tmp_path):
+        asyncio.run(check_agents({"anthropic": "claude-agent"}, self.registry(tmp_path, ["claude-agent", "openai-agent"])))
+
+    def test_an_unknown_agent_is_refused_naming_the_registered_ones(self, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            asyncio.run(check_agents({"anthropic": "claud-agent"}, self.registry(tmp_path, ["claude-agent", "openai-agent"])))
+
+        message = str(raised.value)
+        assert "'claud-agent' is not a registered" in message
+        assert "claude-agent, openai-agent" in message
+
+    def test_an_empty_registry_says_to_start_ai_agent(self, tmp_path):
+        with pytest.raises(SystemExit, match="is ai_agent running"):
+            asyncio.run(check_agents({"a": "b"}, tmp_path / "missing.json"))
+
+    def test_no_mapping_needs_no_registry(self, tmp_path):
+        asyncio.run(check_agents({}, tmp_path / "missing.json"))
+
+    def test_main_applies_the_map_and_reports_it(self, monkeypatch, tmp_path, capsys):
+        from dataclasses import replace
+
+        from scripts import import_chat_app as cli
+        from src.config import load_settings
+
+        settings = replace(
+            load_settings(),
+            database_path=tmp_path / "ember.db",
+            agents_registry_path=self.registry(tmp_path, ["claude-agent"]),
+        )
+        monkeypatch.setattr(cli, "load_settings", lambda: settings)
+        seed = Database(settings.database_url)
+        asyncio.run(MigrationRunner(seed.engine).run())
+        asyncio.run(seed.dispose())
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+        assert main(["--chat-app", str(folder), "--apply"]) == 0
+        capsys.readouterr()
+
+        assert main(["--chat-app", str(folder), "--apply", "--agent-map", "anthropic=claude-agent"]) == 0
+
+        out = capsys.readouterr().out
+        assert "chats: 0 imported, 1 skipped, 0 failed, 1 relabelled" not in out  # relabelled, not skipped
+        assert "1 relabelled" in out
+        check = Database(settings.database_url)
+        assert rows(check, Chat)[0].agent_id == "claude-agent"
+        asyncio.run(check.dispose())
+
+    def test_main_refuses_an_unregistered_agent_before_changing_anything(self, monkeypatch, tmp_path):
+        from dataclasses import replace
+
+        from scripts import import_chat_app as cli
+        from src.config import load_settings
+
+        settings = replace(
+            load_settings(),
+            database_path=tmp_path / "ember.db",
+            agents_registry_path=self.registry(tmp_path, ["claude-agent"]),
+        )
+        monkeypatch.setattr(cli, "load_settings", lambda: settings)
+        folder = make_chat_app(tmp_path / "old", chats=[CHAT], usage=[USAGE])
+
+        with pytest.raises(SystemExit, match="not a registered"):
+            main(["--chat-app", str(folder), "--apply", "--agent-map", "anthropic=nope"])
+
+        assert not list(tmp_path.glob("ember.db*"))

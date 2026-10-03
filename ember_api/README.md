@@ -51,13 +51,14 @@ Tests:
 
 ## Moving from chat_app
 
-`scripts/import_chat_app.py` copies chat_app's accounts, chats and token usage
-into ember_api, so chat_app can be retired. Run it from `ember_api/` with
+`scripts/import_chat_app.py` copies chat_app's accounts, chats, token usage,
+activity log and known devices into ember_api, so chat_app can be retired. Run it from `ember_api/` with
 ember_api stopped:
 
 ```bash
 .venv_ember_api\Scripts\python -m scripts.import_chat_app --chat-app ..\chat_app
 .venv_ember_api\Scripts\python -m scripts.import_chat_app --chat-app ..\chat_app --apply
+.venv_ember_api\Scripts\python -m scripts.import_chat_app --chat-app ..\chat_app --apply --agent-map anthropic=claude-agent
 ```
 
 The first command is a dry run: it prints what would happen and writes nothing.
@@ -80,9 +81,31 @@ that is missing leaves that part out and is named in the report.
 - **Usage:** every row with tokens, with its agent, model, input/output split and
   chat, so the 6-hour and weekly limits and the Usage page carry on from the old
   history. Rows chat_app wrote at the same moment stay one turn.
+- **Log entries:** chat_app's Logs rows (logins, admin actions, errors, chat
+  turns) with their times. An entry of an imported account belongs to it. An
+  entry of an account that was skipped (ember_api has its own `admin`) or that
+  chat_app no longer has is kept with no account, and a skipped account's name
+  is added to the message (` [chat_app: admin]`); it is never given to another
+  person. ember_api deletes log entries older than 90 days at startup, so these
+  go with the rest.
+- **Devices:** the devices an imported account logged in from. chat_app and
+  ember_api hash the same signals the same way (User-Agent, language, /24
+  network), so a login from the same browser and network is not reported as a
+  new device. The browser and network were never stored, so the Account page
+  shows them as unknown. This holds only while `security.fingerprint.signals`
+  is the default three in both apps.
+- **Agent names:** chat_app stored its provider name (such as `anthropic`) as
+  the agent. `--agent-map OLD=NEW` (repeatable) gives rows that name an ember
+  agent id instead, for rows being imported and for rows imported earlier under
+  the old name (the report counts them as relabelled). NEW must be an agent
+  ai_agent has registered, so ai_agent has to be running; a typo stops the
+  command before anything is written. A chat or usage row is renamed only if
+  it matches a chat_app row and still carries the old name.
+- **Left out:** chat_app's login attempts and security events.
 - **Safe to repeat:** an account already imported (same username, email and
-  password hash) is recognised, and only chats and usage rows not yet there are
-  added. Nothing already in ember_api is changed.
+  password hash) is recognised, and only chats, usage rows, log entries and
+  devices not yet there are added. Apart from a `--agent-map` relabel, nothing
+  already in ember_api is changed.
 
 ## API
 
