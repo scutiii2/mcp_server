@@ -42,5 +42,10 @@
     "weekly_token_limit": 5000000,
     "max_context_tokens_per_chat": 150000,
     "auto_summarize_ratio": 0.6
+  },
+  "backup": {
+    "enabled": true,
+    "keep": 14,
+    "every_hours": 24
   }
 }

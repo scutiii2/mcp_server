@@ -105,6 +105,16 @@ async def send_verification_code(account: Account, otp: OtpService, email: Email
     return None
 
 
+def raise_if_verification_too_soon(wait: int | None) -> None:
+    """429 with Retry-After while the account's verification emails are rate limited."""
+    if wait is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"A code was sent a moment ago. Try again in {wait} s.",
+            headers={"Retry-After": str(wait)},
+        )
+
+
 def _minutes(seconds: int) -> str:
     minutes = -(-seconds // 60)  # round up: "1 minute" rather than "0 minutes"
     return "1 minute" if minutes == 1 else f"{minutes} minutes"
@@ -236,6 +246,7 @@ async def resend_verification(
 ) -> EmailSentOut:
     if account.email_verified:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email is already verified")
+    raise_if_verification_too_soon(await otp.verification_wait(account))
     error = await send_verification_code(account, otp, email)
     if error:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, error)

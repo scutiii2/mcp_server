@@ -102,6 +102,26 @@ class UsageSettings:
 
 
 @dataclass(frozen=True)
+class BackupSettings:
+    """config_app.json's "backup" block: a copy of the database every
+    `every_hours` hours, the newest `keep` of them kept (in `data/backups`)."""
+
+    enabled: bool = True
+    keep: int = 14
+    every_hours: int = 24
+
+    @classmethod
+    def from_config(cls, raw: dict) -> BackupSettings:
+        keep = int(raw.get("keep", 14))
+        every_hours = int(raw.get("every_hours", 24))
+        if keep < 1:
+            raise ValueError("backup.keep must be at least 1")
+        if every_hours < 1:
+            raise ValueError("backup.every_hours must be at least 1")
+        return cls(enabled=bool(raw.get("enabled", True)), keep=keep, every_hours=every_hours)
+
+
+@dataclass(frozen=True)
 class Settings:
     host: str
     port: int
@@ -115,8 +135,13 @@ class Settings:
     mcp_server_url: str = "http://127.0.0.1:8010/mcp"
     security: SecuritySettings = field(default_factory=SecuritySettings)
     usage: UsageSettings = field(default_factory=UsageSettings)
+    backup: BackupSettings = field(default_factory=BackupSettings)
     # Where these settings came from (the Config issues page re-reads it).
     config_path: Path = CONFIGS_DIR / "config_app.json"
+
+    @property
+    def backup_dir(self) -> Path:
+        return self.database_path.parent / "backups"
 
     @property
     def database_url(self) -> str:
@@ -144,6 +169,7 @@ def load_settings() -> Settings:
         mcp_server_url=raw.get("mcp_server_url") or "http://127.0.0.1:8010/mcp",
         security=SecuritySettings.from_config(raw.get("security", {})),
         usage=UsageSettings.from_config(raw.get("usage", {})),
+        backup=BackupSettings.from_config(raw.get("backup", {})),
         config_path=CONFIGS_DIR / "config_app.json",
     )
 

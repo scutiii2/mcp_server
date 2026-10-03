@@ -181,6 +181,9 @@ async def command_options(
         value = request.query_params.get(f"arg.{name}", "")
         if not value:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"arg.{name} is required")
+        if value in (".", ".."):
+            # Quoting keeps a "/" out of the value, but a dot segment would still climb a level.
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"arg.{name} is not a valid value")
         path = path.replace("{" + name + "}", quote(value, safe=""))
     options = await _call(info.options(account, path))
     return [

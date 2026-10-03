@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import traceback
+from datetime import timedelta
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -33,6 +34,7 @@ from src.routes import (
 )
 from src.services.agent_gateway import AgentGateway, McpAgentGateway
 from src.services.auth_service import AuthService
+from src.services.backup_service import BackupScheduler, DatabaseBackup
 from src.services.chat_service import MAX_CHAT_BYTES
 from src.services.email_service import EmailSender, SmtpEmailSender
 from src.services.log_service import LogWriter
@@ -48,6 +50,11 @@ from src.utils.config_loader import load_env_secrets
 logger = logging.getLogger(__name__)
 
 MAX_REQUEST_BYTES = 16 * MAX_CHAT_BYTES
+# Anywhere else a body is a few fields of JSON; login and registration need no more.
+DEFAULT_REQUEST_BYTES = 1024 * 1024
+# The routes that take big bodies: chats (history imports, questions with
+# attached text), attachment files and command-form uploads.
+LARGE_BODY_PREFIXES = ("/api/chats", "/api/attachments", "/api/uploads")
 
 # No read timeout: an MCP event stream stays open for as long as a chat turn
 # (or the session) lasts. Connect/write/pool still fail fast.
@@ -76,6 +83,7 @@ def create_app(
             await auth_service.ensure_default_role(settings.default_role)
             await SessionService(session, settings.session_hours).purge_expired()
             await OtpService(session).purge_stale()
+            await auth_service.purge_login_attempts()
             await purge_expired_shares(session)
         log_writer = LogWriter(database)
         await log_writer.purge_old()
@@ -97,9 +105,21 @@ def create_app(
         app.state.logs = log_writer
         app.state.share_limiter = PublicReadLimiter()
         app.state.turns = TurnRegistry(database, app.state.agent_gateway, settings.usage, log_writer)
+        backups: BackupScheduler | None = None
+        app.state.backups = None
+        if settings.backup.enabled:
+            backups = BackupScheduler(
+                DatabaseBackup(settings.database_path, settings.backup_dir, settings.backup.keep),
+                timedelta(hours=settings.backup.every_hours),
+                on_error=lambda message: log_writer.error(None, "backup", message),
+            )
+            backups.start()
+            app.state.backups = backups
         try:
             yield
         finally:
+            if backups is not None:
+                await backups.stop()
             # Before the database closes: running turns save what they have.
             await app.state.turns.shutdown()
             await upstream.aclose()
@@ -108,7 +128,11 @@ def create_app(
     app = FastAPI(title="ember_api", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(JsonOnlyMiddleware)
     # Largest legitimate body: a chat-history import of several 2 MB chats.
-    app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)
+    app.add_middleware(
+        BodyLimitMiddleware,
+        max_bytes=DEFAULT_REQUEST_BYTES,
+        path_limits={prefix: MAX_REQUEST_BYTES for prefix in LARGE_BODY_PREFIXES},
+    )
     # Added last, so it runs first: blocked IPs never reach JSON checks or
     # routes, and even those rejections carry the security headers.
     app.add_middleware(SecurityMiddleware, settings=settings.security)

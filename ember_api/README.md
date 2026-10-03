@@ -290,6 +290,38 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   declares, as plain paths on mcp_server (never a host); uploads go through
   mcp_server's own `/upload` checks.
 
+- **Hardening (security review of 2026-10-03):**
+  - *Verification codes* are voided when the email changes (a code sent to the
+    old address cannot verify the new one) and verification emails are limited
+    to one per 30 seconds and five per hour per account (`429` with
+    `Retry-After`), on resend and on email change.
+  - *Wrong passwords* typed into "change password" or "change email" count
+    towards the login lockout, so a stolen session cannot guess the password
+    there.
+  - *Request bodies* are capped at 1 MB everywhere except `/api/chats`,
+    `/api/attachments` and `/api/uploads` (32 MB), so the pre-login routes
+    cannot be fed huge bodies.
+  - *Attachments* are refused when an office file claims to unpack to more than
+    100 MB or 5,000 entries, and reading stops at 500 PDF pages, 200,000 sheet
+    rows, or as soon as 20,000 characters are read.
+  - *Usernames and emails* are unique ignoring case at registration.
+  - A command-form option value of `.` or `..` is refused. Old `login_attempts`
+    rows (over 30 days) are deleted at startup.
+  - *Downloads:* `GET /api/server/download?path=` forwards `path` to mcp_server
+    as it is. It must therefore be an **opaque id that mcp_server checks against
+    the requesting account**, never a file path mcp_server would serve to anyone
+    who names it. mcp_server has no such route yet.
+  - Known and left as is: five wrong logins lock that account (and address)
+    out for the lockout time, so someone can lock a known username out on
+    purpose; and any member with `tools.use` can run any tool (that is what the
+    permission means; "ask before each tool" is opt-in per chat).
+- **Backups:** the `backup` block in `config_app.json` copies the database
+  every 24 hours (default) into `data/backups` and keeps 14. See the config
+  README. `python -m scripts.backup_db` makes one now. The Config issues page
+  warns when backups are off, when `cookie_secure` is off on a host other
+  machines can reach, when HSTS is off while cookies are secure, and when
+  `INTERNAL_API_TOKEN` is empty.
+
 ## Layout
 
 ```
@@ -300,7 +332,7 @@ src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
               UsageRecord, LogEntry, KnownDevice, PromptTemplate, SharedChat
-  services/   ChatAppImporter (chat_app_import), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
+  services/   ChatAppImporter (chat_app_import), DatabaseBackup / BackupScheduler (backup_service), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
               AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, ShareService, PublicReadLimiter, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
@@ -309,5 +341,6 @@ src/
               attachments, config_issues
   utils/      config_loader
 scripts/   import_chat_app.py                   one-off move of chat_app's data (see "Moving from chat_app")
+           backup_db.py                         back up the database now
 tests/
 ```

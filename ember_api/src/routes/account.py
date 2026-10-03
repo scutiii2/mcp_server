@@ -24,12 +24,15 @@ from src.deps import (
     get_settings,
 )
 from src.models import Account
-from src.routes.auth import AccountOut, device_signals, send_verification_code
+from src.security import client_ip
+from src.routes.auth import AccountOut, device_signals, raise_if_verification_too_soon, send_verification_code
 from src.services.account_service import AccountChangeError, AccountService, WrongPasswordError
+from src.services.auth_service import AuthService
 from src.services.device_service import DeviceService, describe
 from src.services.email_service import EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
+from src.services.rate_limiter import LoginRateLimiter
 from src.services.session_service import SessionService
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -74,6 +77,23 @@ def get_device_service(
     return DeviceService(session, settings.security.fingerprint_signals)
 
 
+async def _guard_password_checks(request: Request, db: AsyncSession, settings: Settings, account: Account) -> None:
+    """The login lockout also covers the "current password" these routes ask
+    for: a stolen session must not be able to guess the password here, where
+    the login route's limit would never see it."""
+    retry_after = await LoginRateLimiter(db, settings.security).retry_after(client_ip(request), account.id)
+    if retry_after is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many wrong passwords. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+async def _record_wrong_password(request: Request, db: AsyncSession, account: Account) -> None:
+    await AuthService(db).record_login_attempt(client_ip(request), account.id, False)
+
+
 def _http_error(error: Exception) -> HTTPException:
     if isinstance(error, WrongPasswordError):
         return HTTPException(status.HTTP_400_BAD_REQUEST, str(error))
@@ -83,6 +103,9 @@ def _http_error(error: Exception) -> HTTPException:
 @router.post("/email")
 async def change_email(
     body: ChangeEmailRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
     account: Account = Depends(current_account),
     accounts: AccountService = Depends(get_account_service),
     otp: OtpService = Depends(get_otp_service),
@@ -91,11 +114,18 @@ async def change_email(
 ) -> EmailChangedOut:
     """The new email starts unverified, so permissions are off until the
     emailed code is entered on the verify page."""
+    await _guard_password_checks(request, db, settings, account)
+    raise_if_verification_too_soon(await otp.verification_wait(account))
     try:
         changed = await accounts.change_email(account, body.current_password, str(body.email))
-    except (AccountChangeError, WrongPasswordError) as error:
+    except WrongPasswordError as error:
+        await _record_wrong_password(request, db, account)
+        raise _http_error(error) from error
+    except AccountChangeError as error:
         raise _http_error(error) from error
     if changed:
+        # Codes sent to the old address must not verify the new one.
+        await otp.discard_email_verification(account)
         await logs.action(account, "account.email", f"Changed email to {account.email}")
     error = await send_verification_code(account, otp, email) if changed else None
     return EmailChangedOut(
@@ -109,6 +139,7 @@ async def change_email(
 async def change_password(
     body: ChangePasswordRequest,
     request: Request,
+    db: AsyncSession = Depends(get_db_session),
     account: Account = Depends(current_account),
     accounts: AccountService = Depends(get_account_service),
     sessions: SessionService = Depends(get_session_service),
@@ -116,9 +147,13 @@ async def change_password(
     logs: LogWriter = Depends(get_log_writer),
 ) -> AccountOut:
     """Every other session of this account is logged out; this one stays."""
+    await _guard_password_checks(request, db, settings, account)
     try:
         await accounts.change_password(account, body.current_password, body.new_password)
-    except (AccountChangeError, WrongPasswordError) as error:
+    except WrongPasswordError as error:
+        await _record_wrong_password(request, db, account)
+        raise _http_error(error) from error
+    except AccountChangeError as error:
         raise _http_error(error) from error
     # current_account already proved the cookie is there and valid.
     await sessions.revoke_others(account.id, request.cookies[settings.session_cookie_name])

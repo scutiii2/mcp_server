@@ -10,10 +10,18 @@ from __future__ import annotations
 
 import asyncio
 import io
+import zipfile
 from dataclasses import dataclass
 
 MAX_FILE_BYTES = 15 * 1024 * 1024  # a large document, not a video dropped by mistake
 MAX_TEXT_CHARS = 20_000  # about 5k tokens: one attachment mustn't take over the context
+
+# A small file can hide a lot of work: a zip that expands to gigabytes, or a
+# sheet of millions of empty rows. Every reader stops at these.
+MAX_UNZIPPED_BYTES = 100 * 1024 * 1024
+MAX_ZIP_ENTRIES = 5_000
+MAX_PDF_PAGES = 500
+MAX_SHEET_ROWS = 200_000
 
 PLAIN_TEXT_SUFFIXES = frozenset({
     ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".log", ".ini", ".cfg", ".conf",
@@ -69,6 +77,23 @@ def extract_text(filename: str, content: bytes) -> ExtractedText:
     return ExtractedText(filename=filename, text=text, char_count=len(text), truncated=truncated)
 
 
+def _enough(parts: list[str]) -> bool:
+    """True once the text read so far already fills the attachment, so the rest of the file need not be read."""
+    return sum(len(p) for p in parts) >= MAX_TEXT_CHARS
+
+
+def _refuse_zip_bomb(content: bytes) -> None:
+    """Office files are zip archives: refuse one that claims to expand beyond
+    any real document, before a library unpacks it."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            entries = archive.infolist()
+    except zipfile.BadZipFile:
+        return  # the library reports an unreadable file in its own words
+    if len(entries) > MAX_ZIP_ENTRIES or sum(e.file_size for e in entries) > MAX_UNZIPPED_BYTES:
+        raise ExtractionError("This file is far larger than it looks once unpacked, so it was not opened.")
+
+
 def _suffix(filename: str) -> str:
     dot = filename.rfind(".")
     return filename[dot:].lower() if dot != -1 else ""
@@ -89,8 +114,10 @@ def _pdf(content: bytes) -> str:
         reader = PdfReader(io.BytesIO(content))
     except Exception as error:  # noqa: BLE001 - any parse failure is one user-facing message
         raise ExtractionError(f"Could not read this PDF: {error}") from error
-    pages = []
-    for page in reader.pages:
+    pages: list[str] = []
+    for number, page in enumerate(reader.pages):
+        if number >= MAX_PDF_PAGES or _enough(pages):
+            break
         try:
             pages.append(page.extract_text() or "")
         except Exception:  # noqa: BLE001, S112 - one broken page shouldn't lose the rest
@@ -101,16 +128,21 @@ def _pdf(content: bytes) -> str:
 def _xlsx(content: bytes) -> str:
     from openpyxl import load_workbook
 
+    _refuse_zip_bomb(content)
     try:
         # data_only: a formula's last computed value, as the sheet shows it.
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except Exception as error:  # noqa: BLE001
         raise ExtractionError(f"Could not read this Excel file: {error}") from error
     several = len(workbook.sheetnames) > 1
-    parts = []
+    parts: list[str] = []
     for sheet in workbook.worksheets:
-        rows = []
-        for row in sheet.iter_rows(values_only=True):
+        if _enough(parts):
+            break
+        rows: list[str] = []
+        for scanned, row in enumerate(sheet.iter_rows(values_only=True)):
+            if scanned >= MAX_SHEET_ROWS or _enough([*parts, *rows]):
+                break
             # Blank cells stay as empty columns so later values don't shift left.
             cells = ["" if cell is None else str(cell) for cell in row]
             while cells and not cells[-1]:
@@ -126,13 +158,21 @@ def _xlsx(content: bytes) -> str:
 def _docx(content: bytes) -> str:
     from docx import Document
 
+    _refuse_zip_bomb(content)
     try:
         document = Document(io.BytesIO(content))
     except Exception as error:  # noqa: BLE001
         raise ExtractionError(f"Could not read this Word document: {error}") from error
-    parts = [p.text for p in document.paragraphs if p.text]
+    parts: list[str] = []
+    for paragraph in document.paragraphs:
+        if _enough(parts):
+            break
+        if paragraph.text:
+            parts.append(paragraph.text)
     for table in document.tables:
         for row in table.rows:
+            if _enough(parts):
+                return "\n".join(parts)
             cells = [cell.text for cell in row.cells if cell.text]
             if cells:
                 parts.append(" | ".join(cells))

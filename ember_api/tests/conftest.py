@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.app import create_app
-from src.config import SecuritySettings, Settings, UsageSettings
+from src.config import BackupSettings, SecuritySettings, Settings, UsageSettings
+from src.services import otp_service
 from src.services.agent_gateway import AgentCallError, Caller
 from src.services.email_service import EmailDeliveryError
 from src.services.server_tools import ServerUnavailable, WatcherReport
@@ -242,6 +243,7 @@ def make_settings(
     internal_token: str = "",
     security: SecuritySettings | None = None,
     usage: UsageSettings | None = None,
+    backup: BackupSettings | None = None,
 ) -> Settings:
     secrets_dir = tmp_path / "secrets"
     secrets_dir.mkdir(exist_ok=True)
@@ -266,8 +268,17 @@ def make_settings(
         mcp_server_url=MCP_SERVER_URL,
         security=security or SecuritySettings(),
         usage=usage or UsageSettings(),
+        # Off unless a test asks: a background copy of every test's database is noise.
+        backup=backup or BackupSettings(enabled=False),
         config_path=tmp_path / "config_app.json",
     )
+
+
+@pytest.fixture(autouse=True)
+def no_verification_cooldown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests send verification emails back to back; the cooldown itself is tested in
+    test_verification_limits.py, which puts it back."""
+    monkeypatch.setattr(otp_service, "VERIFICATION_COOLDOWN", timedelta(0))
 
 
 @pytest.fixture

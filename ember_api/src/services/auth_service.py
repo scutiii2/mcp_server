@@ -9,15 +9,19 @@ from __future__ import annotations
 import asyncio
 import secrets
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from src.db import utcnow
 from src.models import Account, LoginAttempt, Permission, Role
 from src.services.permissions import ADMIN_ROLE, ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS
 from src.utils.config_loader import load_env_secrets
+
+LOGIN_ATTEMPT_RETENTION = timedelta(days=30)
 
 # Password hashing is deliberately slow (scrypt); it runs on a worker thread
 # so one login never stalls the event loop for everyone else.
@@ -77,6 +81,12 @@ class AuthService:
     async def record_login_attempt(self, ip_address: str, account_id: int | None, succeeded: bool) -> None:
         self._session.add(LoginAttempt(ip_address=ip_address, account_id=account_id, succeeded=succeeded))
         await self._session.commit()
+
+    async def purge_login_attempts(self, older_than: timedelta = LOGIN_ATTEMPT_RETENTION) -> int:
+        """Drops audit rows nothing reads any more (the rate limiter looks back minutes)."""
+        result = await self._session.execute(delete(LoginAttempt).where(LoginAttempt.attempted_at < utcnow() - older_than))
+        await self._session.commit()
+        return result.rowcount or 0
 
     async def ensure_bootstrap_admin(self, secrets_dir: Path) -> str | None:
         """Makes sure the Administrator role holds every permission and that

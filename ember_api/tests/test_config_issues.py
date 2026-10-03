@@ -41,6 +41,8 @@ def test_reports_config_and_secret_problems(client: TestClient, tmp_path: Path) 
         ("config_app.json", "port", "must be a port number (1-65535)"),
         ("config_app.json", "mcp_server_url", "must be an http(s) URL"),
         ("config_app.json", "usage.weekly_token_limit", "must be a whole number, 0 or more (0 = unlimited)"),
+        # The test app runs with backups off.
+        ("config_app.json", "backup.enabled", "is false: the database is not backed up automatically"),
     }
     assert {i[1:] for i in found if i[0].startswith("agents registry")} == {
         ("agents[1].label", "must be a non-empty string"),

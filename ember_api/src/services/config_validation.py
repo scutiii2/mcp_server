@@ -14,6 +14,7 @@ to take effect, which the page says.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import re
 from collections.abc import Callable
@@ -70,6 +71,7 @@ def _check_app(data: dict[str, Any]) -> list[Problem]:
         ("mcp_server_url", _is_http_url, "an http(s) URL"),
         ("security", lambda v: isinstance(v, dict), "an object"),
         ("usage", lambda v: isinstance(v, dict), "an object"),
+        ("backup", lambda v: isinstance(v, dict), "an object"),
     ]
     problems = [(key, f"must be {expected}") for key, check, expected in rules if key in data and not check(data[key])]
     usage = data.get("usage")
@@ -77,12 +79,52 @@ def _check_app(data: dict[str, Any]) -> list[Problem]:
         for key in ("six_hour_token_limit", "weekly_token_limit", "max_context_tokens_per_chat"):
             if key in usage and not _is_int(usage[key], 0):
                 problems.append((f"usage.{key}", "must be a whole number, 0 or more (0 = unlimited)"))
+    backup = data.get("backup")
+    if isinstance(backup, dict):
+        if "enabled" in backup and not isinstance(backup["enabled"], bool):
+            problems.append(("backup.enabled", "must be true or false"))
+        for key in ("keep", "every_hours"):
+            if key in backup and not _is_int(backup[key], 1):
+                problems.append((f"backup.{key}", "must be a positive integer"))
     security = data.get("security")
     if isinstance(security, dict):
         rate = security.get("rate_limit", {})
         for key in ("max_attempts", "window_seconds", "lockout_seconds"):
             if isinstance(rate, dict) and key in rate and not _is_int(rate[key], 1):
                 problems.append((f"security.rate_limit.{key}", "must be a positive integer"))
+    return problems
+
+
+def _is_local_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+def _check_deployment(settings: Settings) -> list[Problem]:
+    """What is fine on a developer's machine but not on a server: these only
+    warn, because ember_api cannot tell which one this is."""
+    problems: list[Problem] = []
+    if not settings.cookie_secure and not _is_local_host(settings.host):
+        problems.append(
+            (
+                "cookie_secure",
+                f"is false while host is {settings.host!r}, which other machines can reach: "
+                "the session cookie can travel unencrypted. Serve ember over HTTPS and set it to true",
+            )
+        )
+    if settings.cookie_secure and settings.security.hsts_max_age == 0:
+        problems.append(
+            (
+                "security.headers.hsts_max_age",
+                "is 0 while cookie_secure is on: browsers are not told to insist on HTTPS. Set it, for example, to 31536000",
+            )
+        )
+    if not settings.backup.enabled:
+        problems.append(("backup.enabled", "is false: the database is not backed up automatically"))
     return problems
 
 
@@ -108,6 +150,18 @@ def _check_agents(data: Any) -> list[Problem]:
             problems.append((f"{label}.id", "duplicate agent id"))
         seen.add(agent.get("id"))
     return problems
+
+
+def _check_internal_api(env: dict[str, str]) -> list[Problem]:
+    if not env.get("INTERNAL_API_TOKEN"):
+        return [
+            (
+                "INTERNAL_API_TOKEN",
+                "is empty: mcp_server and ai_agent accept requests from anything that can reach them. "
+                "Set the same token in each project's secret_internal_api.env",
+            )
+        ]
+    return []
 
 
 def _check_bootstrap_admin(env: dict[str, str]) -> list[Problem]:
@@ -138,7 +192,7 @@ def _check_smtp(env: dict[str, str]) -> list[Problem]:
 
 _ENV_CHECKS: dict[str, Callable[[dict[str, str]], list[Problem]]] = {
     "secret_bootstrap_admin.env": _check_bootstrap_admin,
-    "secret_internal_api.env": lambda env: [],
+    "secret_internal_api.env": _check_internal_api,
     "secret_smtp.env": _check_smtp,
 }
 
@@ -164,6 +218,7 @@ def collect_issues(settings: Settings) -> list[ConfigIssue]:
             issues.extend(ConfigIssue(name, k, m) for k, m in _check_app(data))
         else:
             issues.append(ConfigIssue(name, "-", "top level must be a JSON object"))
+    issues.extend(ConfigIssue(name, k, m) for k, m in _check_deployment(settings))
 
     registry = settings.agents_registry_path
     agents = _read_json(registry, "agents registry", issues)

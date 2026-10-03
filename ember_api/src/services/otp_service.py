@@ -8,6 +8,7 @@ time. Each code expires after CODE_EXPIRY and works once.
 from __future__ import annotations
 
 import hashlib
+import math
 import secrets
 from datetime import timedelta
 
@@ -19,6 +20,11 @@ from src.models import Account, EmailVerificationCode, InviteCode
 
 CODE_EXPIRY = timedelta(minutes=15)
 CODE_LENGTH = 10
+# Verification emails per account: one every VERIFICATION_COOLDOWN, and at most
+# VERIFICATION_PER_HOUR in any hour, so resend and email changes cannot be used
+# to flood an address.
+VERIFICATION_COOLDOWN = timedelta(seconds=30)
+VERIFICATION_PER_HOUR = 5
 
 
 def generate_code() -> str:
@@ -90,6 +96,38 @@ class OtpService:
         self._session.add(row)
         await self._session.commit()
         return row, code
+
+    async def verification_wait(self, account: Account) -> int | None:
+        """Seconds until another verification email may be sent to `account`,
+        or None when one may be sent now."""
+        now = utcnow()
+        created = list(
+            await self._session.scalars(
+                select(EmailVerificationCode.created_at)
+                .where(
+                    EmailVerificationCode.account_id == account.id,
+                    EmailVerificationCode.created_at > now - timedelta(hours=1),
+                )
+                .order_by(EmailVerificationCode.created_at.desc())
+            )
+        )
+        waits = []
+        if created:
+            waits.append((created[0] + VERIFICATION_COOLDOWN - now).total_seconds())
+        if len(created) >= VERIFICATION_PER_HOUR:
+            waits.append((created[VERIFICATION_PER_HOUR - 1] + timedelta(hours=1) - now).total_seconds())
+        longest = max(waits, default=0)
+        return math.ceil(longest) if longest > 0 else None
+
+    async def discard_email_verification(self, account: Account) -> None:
+        """Voids the account's unused codes. Called when its email changes: a
+        code was sent to the old address and must not verify the new one."""
+        await self._session.execute(
+            delete(EmailVerificationCode).where(
+                EmailVerificationCode.account_id == account.id, EmailVerificationCode.used_at.is_(None)
+            )
+        )
+        await self._session.commit()
 
     async def consume_email_verification(self, account: Account, code: str) -> bool:
         """Marks the account verified if `code` is one of its valid codes."""

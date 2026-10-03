@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,9 +54,12 @@ class RegistrationService:
         return account
 
     async def _taken_message(self, username: str, email: str) -> str | None:
+        # Ignoring case: "Alice" and "alice" must not be two accounts, nor one mailbox twice.
         clash = await self._session.scalar(
-            select(Account).where(or_(Account.username == username, Account.email == email))
+            select(Account).where(
+                or_(func.lower(Account.username) == username.lower(), func.lower(Account.email) == email.lower())
+            )
         )
         if clash is None:
             return None
-        return "Username is already taken" if clash.username == username else "Email is already registered"
+        return "Username is already taken" if clash.username.lower() == username.lower() else "Email is already registered"
