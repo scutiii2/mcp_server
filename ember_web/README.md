@@ -23,6 +23,12 @@ URL, token or key.
   when an answer arrives while this tab is hidden or not focused. A stopped
   or failed answer does not chime, and neither does a chat you are not
   watching. Browsers may keep the chime silent until you have clicked on the page once.
+- "Notify when done" (off by default, remembered per account, shown only where the browser
+  has notifications): a browser notification, "Answer ready" with the chat's title (never the
+  answer), when an answer arrives while this tab is hidden or not focused. Switching it on
+  asks the browser for permission; if that is refused it stays off and says how to allow it.
+  It is silent while the chime is on, one notification per chat, and clicking it brings the
+  tab forward and opens that chat. Like the chime, only the chat being watched notifies.
 - An empty chat shows a greeting (one of seven, picked once), a tip and, with
   `tools.use`, what you can run ("I can help you with: Files (/files), ...").
 - Copy button on every answer, on your messages and on each code block.
@@ -201,6 +207,21 @@ dialog, sidebar search and select mode, the shortcut, theme and chat-address
 composables, clipboard, markdown code blocks, usage (stats, heatmap, export), welcome and attachment helpers and
 the prompt helpers.
 
+`turnStream` (the event stream: pieces of events, ping, reconnect with backoff, resume, give up, abort) and
+the notification setting are covered too.
+
+### End-to-end test
+
+```bash
+npm run test:e2e
+```
+
+Playwright runs the built app in the Chrome installed on this machine (no browser download) on port
+5199 (`EMBER_E2E_PORT`). One test logs in (a wrong password first), asks a question and reads the
+streamed answer, then reloads. ember_api is not needed: `e2e/fakeApi.ts` answers every `/api` call,
+and the test fails if the page asks for anything the fake does not know, so the fake cannot drift
+from the app unnoticed. If the app starts calling a new route on these pages, add it there.
+
 Other scripts: `npm run build` (type-check + production build into `dist/`),
 `npm run preview` (serves `dist/`, with the same `/api` forwarding).
 
@@ -228,7 +249,7 @@ src/
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, agents, chat, templates
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
-                useElapsed (running clock), useNotify (chime), useTheme (system / light / dark)
+                useElapsed (running clock), useNotify (chime and notification), useTheme (system / light / dark)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,

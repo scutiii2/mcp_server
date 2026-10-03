@@ -17,6 +17,7 @@ import type { CommandInfo } from "../api/CommandsClient";
 import type { JsonSchema } from "../api/types";
 import { useChatRoute } from "../composables/useChatRoute";
 import { useChatShortcuts } from "../composables/useChatShortcuts";
+import { notificationsSupported } from "../composables/useNotify";
 import { questionHistory } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
@@ -45,6 +46,8 @@ const {
   askBeforeTools,
   forceToolApproval,
   chime,
+  notify,
+  notifyError,
   clockStart,
   allowedTools,
   pendingApprovals,
@@ -56,6 +59,14 @@ const {
   searchError,
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
+const notifySupported = notificationsSupported();
+
+/** The checkbox flips by itself; when the browser refuses, put it back to what the store says. */
+async function onNotifyChange(event: Event): Promise<void> {
+  const box = event.target as HTMLInputElement;
+  await chat.setNotify(box.checked);
+  box.checked = chat.notify;
+}
 const agentsStore = useAgentsStore();
 const agentLabels = computed(() => Object.fromEntries(agentsStore.agents.map((a) => [a.id, a.label])));
 const templates = useTemplatesStore();
@@ -287,6 +298,15 @@ useChatShortcuts({
             <input type="checkbox" :checked="chime" @change="chat.setChime(($event.target as HTMLInputElement).checked)" />
             Chime when done
           </label>
+          <label
+            v-if="notifySupported"
+            class="terse"
+            title="Show a browser notification when an answer arrives while this tab is in the background"
+          >
+            <input type="checkbox" :checked="notify" @change="onNotifyChange" />
+            Notify when done
+          </label>
+          <span v-if="notifyError" class="notify-error" role="status">{{ notifyError }}</span>
           <button
             v-if="askBeforeTools && allowedCount && !forceToolApproval"
             type="button"
@@ -418,6 +438,11 @@ useChatShortcuts({
   font-size: 0.85em;
   color: var(--muted);
   cursor: pointer;
+}
+.notify-error {
+  flex-basis: 100%;
+  font-size: 0.85em;
+  color: var(--danger);
 }
 .allowed {
   padding: 1px 8px;

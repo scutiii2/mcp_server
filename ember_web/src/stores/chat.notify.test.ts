@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { chatsClient, type ChatSummary } from "../api/ChatsClient";
 import type { ChatMessage, TurnEvent } from "../api/types";
-import { chimeIfAway } from "../composables/useNotify";
+import { chimeIfAway, notificationsSupported, notifyIfAway, requestNotifyPermission } from "../composables/useNotify";
 import { watchTurn, type WatchEnd } from "../services/turnStream";
 import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
@@ -25,7 +25,12 @@ vi.mock("../api/ChatsClient", () => ({
   },
 }));
 vi.mock("../services/turnStream", () => ({ watchTurn: vi.fn() }));
-vi.mock("../composables/useNotify", () => ({ chimeIfAway: vi.fn() }));
+vi.mock("../composables/useNotify", () => ({
+  chimeIfAway: vi.fn(),
+  notifyIfAway: vi.fn(),
+  notificationsSupported: vi.fn(() => true),
+  requestNotifyPermission: vi.fn(),
+}));
 
 // Slash commands: what the runner returns is set per test.
 const runCommand = vi.fn();
@@ -400,5 +405,222 @@ describe("a slash command", () => {
     expect(chat.sendError).toContain("tools.use");
     expect(chat.clockStart).toBeNull();
     expect(runCommand).not.toHaveBeenCalled();
+  });
+});
+
+// --- browser notification ----------------------------------------------------------------------
+
+const NOTIFY_KEY = "ember_web.notify.1";
+const notifyIfAwayMock = vi.mocked(notifyIfAway);
+const permission = vi.mocked(requestNotifyPermission);
+const supported = vi.mocked(notificationsSupported);
+
+function browserPermission(state: NotificationPermission): void {
+  vi.stubGlobal("Notification", { permission: state });
+}
+
+describe("the notification setting", () => {
+  beforeEach(() => {
+    supported.mockReturnValue(true);
+    browserPermission("granted");
+    permission.mockResolvedValue("granted");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("is off by default", async () => {
+    expect((await storeWith({ c1: TWO })).notify).toBe(false);
+  });
+
+  it("asks the browser when switched on, then stays on and is remembered", async () => {
+    const chat = await storeWith({ c1: TWO });
+
+    await chat.setNotify(true);
+
+    expect(permission).toHaveBeenCalledOnce();
+    expect(chat.notify).toBe(true);
+    expect(chat.notifyError).toBe("");
+    expect(localStorage.getItem(NOTIFY_KEY)).toBe("1");
+  });
+
+  it("stays off, says why and remembers nothing is wanted when the browser refuses", async () => {
+    permission.mockResolvedValue("denied");
+    const chat = await storeWith({ c1: TWO });
+
+    await chat.setNotify(true);
+
+    expect(chat.notify).toBe(false);
+    expect(chat.notifyError).toContain("blocked for this site");
+    expect(localStorage.getItem(NOTIFY_KEY)).toBe("0");
+  });
+
+  it("says so when the browser cannot show notifications", async () => {
+    permission.mockResolvedValue("unsupported");
+    const chat = await storeWith({ c1: TWO });
+
+    await chat.setNotify(true);
+
+    expect(chat.notify).toBe(false);
+    expect(chat.notifyError).toContain("cannot show notifications");
+  });
+
+  it("clears an earlier error on the next try", async () => {
+    permission.mockResolvedValueOnce("denied").mockResolvedValueOnce("granted");
+    const chat = await storeWith({ c1: TWO });
+    await chat.setNotify(true);
+    expect(chat.notifyError).not.toBe("");
+
+    await chat.setNotify(true);
+
+    expect(chat.notifyError).toBe("");
+    expect(chat.notify).toBe(true);
+  });
+
+  it("switches itself off when it was on and the browser now refuses", async () => {
+    const chat = await storeWith({ c1: TWO });
+    await chat.setNotify(true);
+    expect(chat.notify).toBe(true);
+    permission.mockResolvedValue("denied");
+
+    await chat.setNotify(true);
+
+    expect(chat.notify).toBe(false);
+  });
+
+  it("forgets an error when another account logs in", async () => {
+    permission.mockResolvedValue("denied");
+    const chat = await storeWith({ c1: TWO });
+    await chat.setNotify(true);
+    expect(chat.notifyError).not.toBe("");
+
+    useAuthStore().account = { ...ACCOUNT, id: 2 };
+    await flushPromises();
+
+    expect(chat.notifyError).toBe("");
+  });
+
+  it("switching off does not ask the browser", async () => {
+    const chat = await storeWith({ c1: TWO });
+    await chat.setNotify(true);
+    permission.mockClear();
+
+    await chat.setNotify(false);
+
+    expect(permission).not.toHaveBeenCalled();
+    expect(chat.notify).toBe(false);
+    expect(localStorage.getItem(NOTIFY_KEY)).toBe("0");
+  });
+
+  it("is read back on login while the browser still allows it", async () => {
+    localStorage.setItem(NOTIFY_KEY, "1");
+
+    expect((await storeWith({ c1: TWO })).notify).toBe(true);
+  });
+
+  it("is off on login when the browser's permission was taken back since", async () => {
+    localStorage.setItem(NOTIFY_KEY, "1");
+    browserPermission("denied");
+
+    expect((await storeWith({ c1: TWO })).notify).toBe(false);
+  });
+
+  it("is off on login when the browser cannot show notifications", async () => {
+    localStorage.setItem(NOTIFY_KEY, "1");
+    supported.mockReturnValue(false);
+
+    expect((await storeWith({ c1: TWO })).notify).toBe(false);
+  });
+
+  it("is not shared with another account", async () => {
+    localStorage.setItem(NOTIFY_KEY, "1");
+    const chat = await storeWith({ c1: TWO });
+    expect(chat.notify).toBe(true);
+
+    useAuthStore().account = { ...ACCOUNT, id: 2 };
+    await flushPromises();
+
+    expect(chat.notify).toBe(false);
+  });
+});
+
+describe("notifying when an answer ends", () => {
+  beforeEach(() => {
+    supported.mockReturnValue(true);
+    browserPermission("granted");
+    permission.mockResolvedValue("granted");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function runningWithNotify() {
+    const chat = await running();
+    await chat.setNotify(true);
+    return chat;
+  }
+
+  it("notifies once for an answer that arrives, with the chat's title and no sound of its own", async () => {
+    await runningWithNotify();
+
+    fire(finalEvent());
+    endStream("done");
+    await flushPromises();
+
+    expect(notifyIfAwayMock).toHaveBeenCalledOnce();
+    expect(notifyIfAwayMock.mock.calls[0]![0]).toMatchObject({ chatId: "c1", title: "Chat c1", silent: true });
+  });
+
+  it("lets the notification make its own sound when the chime is off", async () => {
+    const chat = await runningWithNotify();
+    chat.setChime(false);
+
+    fire(finalEvent());
+    endStream("done");
+    await flushPromises();
+
+    expect(notifyIfAwayMock.mock.calls[0]![0].silent).toBe(false);
+  });
+
+  it("opens the chat when the notification is clicked", async () => {
+    const chat = await runningWithNotify();
+    fire(finalEvent());
+    endStream("done");
+    await flushPromises();
+    await chat.newChat();
+    expect(chat.activeId).not.toBe("c1");
+
+    notifyIfAwayMock.mock.calls[0]![0].onOpen();
+    await flushPromises();
+
+    expect(chat.activeId).toBe("c1");
+  });
+
+  it("does not notify while the setting is off", async () => {
+    await running();
+
+    fire(finalEvent());
+    endStream("done");
+    await flushPromises();
+
+    expect(notifyIfAwayMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an answer still being written", () => fire({ type: "token", text: "partial" }), null],
+    ["a stopped answer", () => fire(finalEvent(true)), "done"],
+    ["a failed answer", () => fire({ type: "error", message: "boom" }), "done"],
+    ["a watch that was cut off", () => fire(finalEvent()), "aborted"],
+    ["a turn that is gone", () => fire(finalEvent()), "gone"],
+  ] as const)("does not notify for %s", async (_name, happen, end) => {
+    await runningWithNotify();
+
+    happen();
+    if (end) endStream(end);
+    await flushPromises();
+
+    expect(notifyIfAwayMock).not.toHaveBeenCalled();
   });
 });
