@@ -4,7 +4,7 @@ and /api/admin/usage: every account's totals (admin.manage)."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.deps import get_db_session, get_settings, require_permission
-from src.models import Account
+from src.models import Account, UsageRecord
 from src.services.permissions import ADMIN_MANAGE, CHAT_USE
 from src.db import utcnow
 from src.services.usage_service import MAX_REPORT_DAYS, UsageService, Window
@@ -67,10 +67,36 @@ class AccountUsageOut(BaseModel):
     last_used_at: datetime | None
 
 
+class UsageRecordOut(BaseModel):
+    id: int
+    turn_id: str
+    kind: str
+    chat_id: str | None
+    agent: str | None
+    agent_id: str | None
+    provider_id: str | None
+    gateway: str | None
+    model: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int
+    started_at: datetime | None
+    finished_at: datetime | None
+    delegated_by: str | None
+    created_at: datetime
+
+    @classmethod
+    def of(cls, row: UsageRecord) -> UsageRecordOut:
+        return cls(**{name: getattr(row, name) for name in cls.model_fields})
+
+
 @router.get("/api/usage")
 async def my_usage(
     days: int = Query(default=30, ge=1, le=366),
     since: date | None = Query(default=None),
+    group_by: Literal["agent", "provider", "gateway", "model"] = Query(default="agent"),
+    agent: str | None = Query(default=None, max_length=120),
+    provider: str | None = Query(default=None, max_length=60),
     account: Account = Depends(require_chat),
     usage: UsageService = Depends(get_usage_service),
 ) -> UsageOut:
@@ -78,8 +104,24 @@ async def my_usage(
     return UsageOut(
         six_hour=WindowOut.of(windows["six_hour"]),
         weekly=WindowOut.of(windows["weekly"]),
-        report=await usage.report(account.id, days, check_since(since)),
+        report=await usage.report(
+            account.id, days, check_since(since), group_by=group_by, agent=agent, provider=provider
+        ),
     )
+
+
+@router.get("/api/usage/records")
+async def my_usage_records(
+    days: int = Query(default=30, ge=1, le=366),
+    since: date | None = Query(default=None),
+    agent: str | None = Query(default=None, max_length=120),
+    provider: str | None = Query(default=None, max_length=60),
+    limit: int = Query(default=100, ge=1, le=500),
+    account: Account = Depends(require_chat),
+    usage: UsageService = Depends(get_usage_service),
+) -> list[UsageRecordOut]:
+    rows = await usage.records(account.id, days, check_since(since), agent=agent, provider=provider, limit=limit)
+    return [UsageRecordOut.of(row) for row in rows]
 
 
 @router.get("/api/admin/usage")
