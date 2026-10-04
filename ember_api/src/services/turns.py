@@ -81,15 +81,25 @@ class TurnOptions:
     allowed_tools: tuple[str, ...] = ()
 
 
+def _iso(value: Any) -> str | None:
+    """A naive-UTC datetime as the ISO string with "Z" ai_agent sent it as."""
+    return value.isoformat(timespec="milliseconds") + "Z" if hasattr(value, "isoformat") else None
+
+
 def _agent_usage(row: dict[str, Any]) -> dict[str, Any]:
-    """One saved `agent_usage` entry from a usage row: who, which model and the
-    token counts that are known."""
+    """One saved `agent_usage` entry from a usage row: who, which model, where
+    it ran and when, and the token counts that are known."""
     entry = {
         "agent": row["agent"] or "unknown",
+        "agent_label": row.get("agent_label"),
+        "provider_id": row.get("provider_id"),
+        "gateway": row.get("gateway"),
         "model": row["model"],
         "input_tokens": row["input_tokens"],
         "output_tokens": row["output_tokens"],
         "total_tokens": row["total_tokens"],
+        "started_at": _iso(row.get("started_at")),
+        "finished_at": _iso(row.get("finished_at")),
     }
     return {key: value for key, value in entry.items() if value is not None}
 

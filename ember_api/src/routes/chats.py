@@ -107,6 +107,12 @@ class AgentUsageIn(BaseModel):
     """One agent's share of an answer that delegated to others."""
 
     agent: str = Field(max_length=120)
+    agent_label: str | None = Field(default=None, max_length=120)
+    provider_id: str | None = Field(default=None, max_length=60)
+    gateway: str | None = Field(default=None, max_length=60)
+    # ISO-8601 UTC ("...Z"), as ai_agent reported them.
+    started_at: str | None = Field(default=None, max_length=40)
+    finished_at: str | None = Field(default=None, max_length=40)
     model: str | None = Field(default=None, max_length=120)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)

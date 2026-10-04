@@ -195,8 +195,8 @@ def test_an_answer_that_delegated_saves_who_used_the_tokens(client: TestClient, 
     saved = chat(client, chat_id)["messages"][-1]
 
     expected = [
-        {"agent": "claude", "model": "a", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100},
-        {"agent": "openai", "model": "b", "input_tokens": 40, "output_tokens": 10, "total_tokens": 50},
+        {"agent": "claude", "provider_id": "claude", "model": "a", "input_tokens": 70, "output_tokens": 30, "total_tokens": 100},
+        {"agent": "openai", "provider_id": "openai", "model": "b", "input_tokens": 40, "output_tokens": 10, "total_tokens": 50},
     ]
     assert final["agent_usage"] == expected
     assert saved["agent_usage"] == expected

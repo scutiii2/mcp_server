@@ -26,5 +26,14 @@ class UsageRecord(Base):
     model: Mapped[str | None] = mapped_column(String(120))
     input_tokens: Mapped[int | None]
     output_tokens: Mapped[int | None]
+    # Which agent, provider and gateway spent the tokens, and when its call ran
+    # (naive UTC). Absent on rows recorded before multi-agent ai_agent.
+    agent_id: Mapped[str | None] = mapped_column(String(120))
+    provider_id: Mapped[str | None] = mapped_column(String(60))
+    gateway: Mapped[str | None] = mapped_column(String(60))
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+    # The orchestrator that handed this agent its question.
+    delegated_by: Mapped[str | None] = mapped_column(String(120))
     total_tokens: Mapped[int]
     created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
