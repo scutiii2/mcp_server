@@ -17,8 +17,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
+from src import agent_spec
+from src.agent_spec import RosterEntry
 from src.seed import seed_from_example
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_ai_agent_roles.json"
@@ -47,6 +49,11 @@ def _load() -> dict[str, Any]:
 
 
 def _resolve() -> tuple[str, dict[str, Any]]:
+    # An agent file's persona replaces the role (AI_AGENT_ROLE is only for
+    # instances started the old way, whose spec has persona None).
+    spec = agent_spec.current()
+    if spec.persona is not None:
+        return spec.id, {"persona": spec.persona}
     config = _load()
     try:
         roles = config["roles"]
@@ -61,7 +68,19 @@ def _resolve() -> tuple[str, dict[str, Any]]:
     return role_id, role
 
 
-def _compose_system_prompt(config: dict[str, Any], role: dict[str, Any]) -> str:
+def roster_block(roster: Sequence[RosterEntry]) -> str:
+    """The orchestrator's view of its specialists, one line each."""
+    if not roster:
+        return ""
+    lines = "\n".join(f"- {r.id} - {r.label}: {r.focus or '(no focus given)'}" for r in roster)
+    return (
+        "You coordinate these specialist agents. When a part of the request fits one of them "
+        "better than you, hand that part to it with delegate_to_agent, then combine the answers:\n"
+        f"{lines}"
+    )
+
+
+def _compose_system_prompt(config: dict[str, Any], role: dict[str, Any], roster_text: str = "") -> str:
     try:
         tool_use_instructions = config["tool_use_instructions"]
     except KeyError as exc:
@@ -75,7 +94,7 @@ def _compose_system_prompt(config: dict[str, Any], role: dict[str, Any]) -> str:
             identity += f" {app_description}"
         identity += " When asked who you are or what your name is, answer with your name and this role."
     persona = role.get("persona") or ""
-    parts = [p for p in (identity, persona, tool_use_instructions) if p]
+    parts = [p for p in (identity, persona, roster_text, tool_use_instructions) if p]
     return "\n\n".join(parts)
 
 
@@ -96,5 +115,8 @@ CAVEMAN_INSTRUCTIONS = (
 )
 
 
-def system_prompt_for(caveman: bool = False) -> str:
-    return f"{SYSTEM_PROMPT}\n\n{CAVEMAN_INSTRUCTIONS}" if caveman else SYSTEM_PROMPT
+def system_prompt_for(caveman: bool = False, roster: Sequence[RosterEntry] = ()) -> str:
+    """SYSTEM_PROMPT, with this turn's orchestrator roster (if any) placed
+    before the tool-use instructions, and caveman instructions appended."""
+    prompt = _compose_system_prompt(_load(), _ROLE, roster_block(roster)) if roster else SYSTEM_PROMPT
+    return f"{prompt}\n\n{CAVEMAN_INSTRUCTIONS}" if caveman else prompt

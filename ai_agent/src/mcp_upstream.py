@@ -106,3 +106,7 @@ def call_tool(name: str, arguments: dict[str, Any]) -> str:
 
 def close() -> None:
     client.close()
+
+
+def warn_unmatched_tool_globs() -> None:
+    """Replaced in the tool-scope task."""

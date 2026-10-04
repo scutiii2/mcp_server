@@ -31,6 +31,10 @@ __pycache__/
 !/ai_agent/secrets/README.md
 /ai_agent/configs/*
 !/ai_agent/configs/*.example
+# ai_agent's real agent definitions (seeded from agents.example/ on first
+# supervisor run) and its per-agent token usage log.
+/ai_agent/agents/
+/ai_agent/data/
 
 # mcp_server's real SMTP-account addresses. The equivalent data lived in the old root-level config.json,
 # which was gitignored outright - these carry the same real deployment

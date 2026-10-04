@@ -116,3 +116,34 @@ def test_system_prompt_for_appends_caveman_instructions_only_when_asked():
     on = agent_roles.system_prompt_for(True)
     assert on.startswith(agent_roles.SYSTEM_PROMPT)
     assert agent_roles.CAVEMAN_INSTRUCTIONS in on
+
+
+from src import agent_spec
+from src.agent_spec import AgentSpec, LlmSpec, RosterEntry
+from src.llm import agent_roles
+
+
+def test_resolve_uses_the_agent_file_persona(monkeypatch):
+    spec = AgentSpec(id="calc", label="Calculator", port=9103, llm=LlmSpec(provider="anthropic"),
+                     persona="You are a precise mathematician.")
+    monkeypatch.setattr(agent_spec, "_current", spec)
+
+    role_id, role = agent_roles._resolve()
+
+    assert role_id == "calc"
+    assert role == {"persona": "You are a precise mathematician."}
+
+
+def test_system_prompt_for_adds_the_roster_before_tool_instructions(monkeypatch):
+    roster = [RosterEntry("calc", "Calculator", "Arithmetic."), RosterEntry("explainer", "Explainer", "")]
+
+    prompt = agent_roles.system_prompt_for(roster=roster)
+
+    assert "- calc - Calculator: Arithmetic." in prompt
+    assert "- explainer - Explainer: (no focus given)" in prompt
+    tool_instructions = agent_roles._load()["tool_use_instructions"]
+    assert prompt.index("calc - Calculator") < prompt.index(tool_instructions)
+
+
+def test_system_prompt_for_without_roster_is_unchanged():
+    assert agent_roles.system_prompt_for() == agent_roles.SYSTEM_PROMPT

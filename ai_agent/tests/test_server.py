@@ -159,3 +159,27 @@ def test_role_flag_sets_env_var(monkeypatch):
     args, _ = server._parser.parse_known_args(["--role", "ops_specialist"])
 
     assert args.role == "ops_specialist"
+
+
+def test_server_uses_the_env_spec_identity_without_an_agent_file():
+    # conftest sets AI_AGENT_PROVIDER=anthropic and no AI_AGENT_FILE.
+    assert server.SPEC.source is None
+    assert server._AGENT_ID == "claude-agent"
+    assert server._AGENT_LABEL.endswith(" Agent")
+
+
+def test_main_registers_with_the_spec_flags(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(server.mcp_upstream, "connect", lambda: None)
+    monkeypatch.setattr(server.mcp_upstream, "warn_unmatched_tool_globs", lambda: None)
+    monkeypatch.setattr(server.mcp_upstream, "close", lambda: None)
+    monkeypatch.setattr(server.agent_registry, "register", lambda *a, **k: calls.setdefault("register", (a, k)))
+    monkeypatch.setattr(server.agent_registry, "deregister", lambda agent_id: calls.setdefault("deregister", agent_id))
+    monkeypatch.setattr(server.uvicorn, "run", lambda *a, **k: None)
+
+    server.main()
+
+    args, kwargs = calls["register"]
+    assert args[0] == server._AGENT_ID
+    assert kwargs == {"entry": server.SPEC.entry, "orchestrator": server.SPEC.orchestrator, "focus": server.SPEC.focus}
+    assert calls["deregister"] == server._AGENT_ID

@@ -58,13 +58,26 @@ if _args.role:
 if _args.mcp_url:
     os.environ["MCP_SERVER_URL"] = _args.mcp_url
 
+# A supervised child (see supervisor.py) gets its agent file in
+# AI_AGENT_FILE. Its provider/gateway/model must reach the env vars before
+# agent_config is imported (the providers resolve them at import time), so
+# this runs first. agent_spec imports nothing from this project.
+from src import agent_spec
+
+if os.getenv("AI_AGENT_FILE"):
+    try:
+        agent_spec.apply_to_environ(agent_spec.current())
+    except agent_spec.AgentSpecError as _exc:
+        sys.stderr.write(f"\nai_agent cannot start - agent file error:\n  {_exc}\n\n")
+        sys.exit(1)
+
 import uvicorn
 from mcp.server.fastmcp import Context, FastMCP
 
 # agent_config resolves provider/key/role/config files at import time and
 # raises on a bad value; show that as one clean line instead of a traceback.
 # Anything else (a real bug, ImportError...) still propagates untouched.
-_CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError"}
+_CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError", "AgentSpecError"}
 try:
     from src import agent_config, agent_registry, approvals, internal_auth, mcp_upstream
     from src.llm.base_provider import ChatCancelled
@@ -81,11 +94,14 @@ PORT = int(os.getenv("AI_AGENT_PORT", "9100"))
 # the URL this instance registers under (see register()/deregister()
 # below) needs an address a peer on the same machine can actually
 # connect to, so it falls back to loopback rather than publishing 0.0.0.0.
-_AGENT_ID = agent_registry.agent_id_for(agent_config.PROVIDER_ID)
+SPEC = agent_spec.current()
+_AGENT_ID = SPEC.id
+# An env-var instance has no label of its own: keep today's "<vendor> Agent".
+_AGENT_LABEL = SPEC.label or f"{agent_config.status()['vendor_label']} Agent"
 _AGENT_URL = f"http://{HOST if HOST not in ('0.0.0.0', '') else '127.0.0.1'}:{PORT}/mcp"
 
 mcp = FastMCP(
-    name=f"ai-agent-{agent_config.PROVIDER_ID}",
+    name=f"ai-agent-{_AGENT_ID}",
     instructions=(
         f"Chat agent backed by {agent_config.PROVIDER_ID} "
         f"({agent_config.MODEL or 'provider default'}), with tool access to "
@@ -251,7 +267,11 @@ def cancel(request_id: str) -> dict[str, Any]:
 
 def main() -> None:
     mcp_upstream.connect()
-    agent_registry.register(_AGENT_ID, f"{agent_config.status()['vendor_label']} Agent", _AGENT_URL)
+    mcp_upstream.warn_unmatched_tool_globs()
+    agent_registry.register(
+        _AGENT_ID, _AGENT_LABEL, _AGENT_URL,
+        entry=SPEC.entry, orchestrator=SPEC.orchestrator, focus=SPEC.focus,
+    )
     try:
         # Same app, host, port and log level mcp.run(transport="streamable-http")
         # would use, built explicitly so middleware can be added here. No CORS:
