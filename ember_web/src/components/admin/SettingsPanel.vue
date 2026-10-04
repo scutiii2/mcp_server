@@ -2,7 +2,7 @@
 import { onMounted, ref } from "vue";
 import { settingsClient, type AppSettings } from "../../api/SettingsClient";
 import { errorMessage } from "../../utils/errors";
-import ToggleSwitch from "../ToggleSwitch.vue";
+import LockSwitch from "../LockSwitch.vue";
 import "./admin.css";
 
 const settings = ref<AppSettings | null>(null);
@@ -42,14 +42,14 @@ onMounted(load);
   <div class="admin-panel">
     <h3>Tool approval</h3>
     <p v-if="loadError" class="error">error: {{ loadError }}</p>
-    <ToggleSwitch
+    <LockSwitch
       v-if="settings"
       :checked="settings.force_tool_approval"
       :disabled="saving"
       @change="setForceToolApproval($event.target as HTMLInputElement)"
     >
       Require approval for every tool
-    </ToggleSwitch>
+    </LockSwitch>
     <p class="muted">
       When on, every account's answers ask before each tool the agent runs, whatever the account chose, and "Allow for
       this chat" is not offered. A tool runs only after its own "Allow once". Typed commands (such as /tool) are not
