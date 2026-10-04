@@ -46,7 +46,7 @@ Routes:
 - Routes that act on a running turn (status, cancel, decide) keep accepting any
   registered id, so a turn started before a change of entry agent can still be
   cancelled or answered.
-- `GET /mcp/agents` is removed. New `GET /mcp/agent` returns `{id, label}` of
+- `GET /api/agents` is removed. New `GET /api/agent` (under the `/api/` prefix) returns `{id, label}` of
   the entry agent, or `503` as above.
 
 ### Live activity relay
@@ -61,8 +61,9 @@ Routes:
   matching `step_id` on `agent_end`. The entry agent is always the bottom item
   while the turn runs.
 - The turn snapshot (sent to a browser that connects or reconnects mid-turn)
-  includes `active_agents: [{agent_id, label, since}]`, so it shows who is
-  working without replaying every event.
+  includes `active_agents: [{agent_id, label, since, step_id}]`, so it shows who
+  is working without replaying every event. Steps are keyed `(agent_id, id)`,
+  since two agents can reuse the same step id.
 - `agent_token` text is not saved with the answer. Only the final answer and
   steps are saved, as today. Saved steps keep the `agent_id` and `agent_label`
   stamped by Phase 1.
@@ -84,6 +85,12 @@ Routes:
   `agent` and `provider` filters. Row listings include `started_at`,
   `finished_at` and `created_at`. All times are UTC ISO-8601; the browser shows
   local time.
+- New `GET /api/usage/records` lists the account's usage rows, newest first,
+  with the same `days`, `since`, `agent` and `provider` filters and `limit`
+  1-500 (default 100).
+- The `/api/usage` report gains `group_by` and `groups: [{key, tokens,
+  input_tokens, output_tokens, turns}]`, biggest first; a missing value is
+  grouped as `unknown`.
 
 ## ember_web
 
@@ -120,6 +127,11 @@ Each step below is proposed for approval before it is made.
 | Unknown event type from a newer ai_agent | Dropped by the relay, as today. |
 | Old usage rows without new columns | Shown with "—" in new columns; grouped under their `agent` value. |
 
+## Known limits
+
+- Saved answers from before keep their old agent id. The browser shows that id
+  as is, since only the entry agent's label is known.
+
 ## Testing
 
 ember_api (pytest):
@@ -128,7 +140,7 @@ ember_api (pytest):
   `claude-agent`, and with none.
 - `start_turn` and `summarize_chat` ignore `agent_id`, use the entry agent, and
   return 503 when there is none; an old chat's `agent_id` is updated.
-- `GET /mcp/agent`; `GET /mcp/agents` returns 404.
+- `GET /api/agent`; `GET /api/agents` returns 404.
 - Relay forwards the new events with caps; snapshot `active_agents` across
   start, nested start, end, and final without end.
 - Migration upgrade and downgrade.
