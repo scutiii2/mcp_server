@@ -49,6 +49,8 @@ TRACE_RESPONSE_MAX = 4000
 # _STEP_RESULT_MAX), and how many steps at most.
 STEP_RESULT_MAX = 4000
 MAX_STEPS = 50
+# StepIn.agent_label's limit.
+AGENT_LABEL_MAX = 120
 # Most agents one answer's usage is split into (its own plus delegated ones).
 MAX_AGENT_USAGE_ROWS = 20
 # Caps on what a delegated agent's live events may carry to a browser.
@@ -117,7 +119,7 @@ class Turn:
     status: str = "running"  # running | completed | failed | cancelled
     text: str = ""  # answer streamed so far
     activity: str = ""  # current tool step label, if any
-    # Tool steps so far: {tool, label, arguments, ok, result}; saved on the
+    # Tool steps so far: {id, tool, label, arguments, ok, result}; saved on the
     # answer so a reload can still show "Ran N tools".
     steps: list[dict[str, Any]] = field(default_factory=list)
     # (agent id, step id) -> index in `steps`: a specialist's step ids can
@@ -186,6 +188,7 @@ class Turn:
                 return
             self.step_index[key] = len(self.steps)
             step = {
+                "id": step_id,
                 "tool": str(event.get("tool") or ""),
                 "label": str(event.get("label") or ""),
                 "arguments": event.get("arguments") if isinstance(event.get("arguments"), dict) else {},
@@ -194,7 +197,7 @@ class Turn:
             }
             if event.get("agent_id"):
                 step["agent_id"] = str(event["agent_id"])
-                step["agent_label"] = str(event.get("agent_label") or "")
+                step["agent_label"] = str(event.get("agent_label") or "")[:AGENT_LABEL_MAX]
             self.steps.append(step)
         elif key in self.step_index:
             step = self.steps[self.step_index[key]]
@@ -523,7 +526,8 @@ class TurnRegistry:
         renamed, or deleted, meanwhile), then ends the turn for watchers."""
         message = answer if isinstance(answer, dict) else {"role": "assistant", "content": answer}
         if turn.steps:
-            message = {**message, "steps": [dict(s) for s in turn.steps]}
+            # The step id only matters to a live viewer (snapshot); it is not saved.
+            message = {**message, "steps": [{k: v for k, v in s.items() if k != "id"} for s in turn.steps]}
         try:
             async with self._database.sessions() as session:
                 chats = ChatService(session, turn.account_id)

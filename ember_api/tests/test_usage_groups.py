@@ -11,9 +11,7 @@ from fastapi.testclient import TestClient
 from tests.conftest import FakeAgent
 from tests.test_registration import as_admin
 from tests.test_turns import events, new_id, start
-from tests.test_usage_report import Clock, clock  # noqa: F401 - the fixture
-
-NOW = datetime(2026, 3, 15, 10, 0, 0)
+from tests.test_usage_report import clock  # noqa: F401 - the fixture
 
 ROWS = [
     {"agent_id": "claude-agent", "provider_id": "anthropic", "gateway": "openrouter", "model": "m1",
@@ -102,18 +100,26 @@ def test_old_rows_without_detail_group_as_unknown(client: TestClient, agent: Fak
 
 def test_records_list_rows_newest_first_with_their_times(client: TestClient, agent: FakeAgent, clock) -> None:  # noqa: F811
     as_admin(client)
-    run_turn(client, agent)
+    clock.now = datetime(2026, 3, 15, 9, 0, 0)
+    run_turn(client, agent)  # an older answer
+    clock.now = datetime(2026, 3, 15, 10, 0, 0)
+    agent.result_extra = {"total_tokens": 5, "agent_usage": [{"agent_id": "late", "total_tokens": 5}]}
+    chat_id = new_id()
+    start(client, chat_id)
+    events(client, chat_id)
 
     response = client.get("/api/usage/records")
 
     assert response.status_code == 200
     rows = response.json()
-    assert {r["agent_id"] for r in rows} == {"claude-agent", "calc"}
+    assert rows[0]["agent_id"] == "late"
+    assert [r["created_at"][:13] for r in rows] == ["2026-03-15T10", "2026-03-15T09", "2026-03-15T09"]
+    assert {r["agent_id"] for r in rows if r["created_at"].startswith("2026-03-15T09")} == {"claude-agent", "calc"}
     calc = next(r for r in rows if r["agent_id"] == "calc")
     assert calc["provider_id"] == "openai" and calc["gateway"] == "azure"
     assert calc["delegated_by"] == "claude-agent"
     assert calc["started_at"].startswith("2026-03-15T09:00:01")
-    assert calc["created_at"].startswith("2026-03-15T10:00:00")
+    assert calc["created_at"].startswith("2026-03-15T09:00:00")
     assert client.get("/api/usage/records", params={"agent": "calc"}).json() == [calc]
     assert len(client.get("/api/usage/records", params={"limit": 1}).json()) == 1
 

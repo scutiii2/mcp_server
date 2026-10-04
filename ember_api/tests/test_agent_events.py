@@ -8,6 +8,7 @@ import threading
 
 from fastapi.testclient import TestClient
 
+from src.services.turns import Turn
 from tests.conftest import FakeAgent
 from tests.test_registration import as_admin
 from tests.test_turns import chat, events, new_id, start, wait_until
@@ -115,3 +116,50 @@ def test_the_stack_is_empty_when_the_turn_ends_without_agent_end(client: TestCli
     registry = client.app.state.turns
     turn = registry.get(1, chat_id)
     assert turn is not None and turn.active_agents == []
+
+
+def test_a_late_joiners_steps_carry_their_id_and_agent(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    agent.events = delegation_events()[:5]  # both steps started, the specialist's one done
+    agent.hold = True
+    chat_id = new_id()
+    start(client, chat_id)
+    wait_until(lambda: agent.gate is not None)
+
+    timer = threading.Timer(0.3, agent.release)
+    timer.start()
+    snapshot = events(client, chat_id)[0]
+    timer.join()
+
+    assert [(s["id"], s["agent_id"], s["tool"]) for s in snapshot["steps"]] == [
+        ("d1", "claude-agent", "delegate_to_agent"),
+        ("d1", "calc", "tool_calc"),
+    ]
+    # The id is for live viewers only: the saved answer's steps are as before.
+    saved = [m for m in chat(client, chat_id)["messages"] if m["role"] == "assistant"][-1]["steps"]
+    assert all("id" not in s for s in saved)
+
+
+def test_an_agent_label_is_capped_like_the_saved_step_allows() -> None:
+    turn = Turn(account_id=1, chat_id="c", agent=None, caller=None)  # type: ignore[arg-type]
+
+    turn.record_step({"type": "step_start", "id": "s", "tool": "t", "agent_id": "calc", "agent_label": "L" * 500})
+
+    assert len(turn.steps[0]["agent_label"]) == 120
+
+
+def test_the_snapshot_lists_delegated_agents_outermost_first() -> None:
+    turn = Turn(account_id=1, chat_id="c", agent=None, caller=None)  # type: ignore[arg-type]
+
+    def stacked() -> list[tuple[str, str]]:
+        return [(a["agent_id"], a["step_id"]) for a in turn.snapshot()["active_agents"]]
+
+    assert stacked() == []
+    turn.record_agent({"type": "agent_start", "agent_id": "calc", "agent_label": "Calc", "step_id": "d1", "at": "t1"})
+    assert stacked() == [("calc", "d1")]
+    turn.record_agent({"type": "agent_start", "agent_id": "deep", "agent_label": "Deep", "step_id": "d2", "at": "t2"})
+    assert stacked() == [("calc", "d1"), ("deep", "d2")]
+    turn.record_agent({"type": "agent_end", "agent_id": "deep", "step_id": "d2"})
+    assert stacked() == [("calc", "d1")]
+    # A turn that ends without agent_end is cleared by the final event (see
+    # test_the_stack_is_empty_when_the_turn_ends_without_agent_end).

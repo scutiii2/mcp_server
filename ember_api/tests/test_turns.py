@@ -482,7 +482,7 @@ def test_snapshot_carries_the_steps_so_far(client: TestClient, agent: FakeAgent)
     timer.join()
 
     assert stream[0]["type"] == "snapshot"
-    assert stream[0]["steps"] == [{"tool": "tool_ping", "label": "", "arguments": {}, "ok": None, "result": ""}]
+    assert stream[0]["steps"] == [{"id": "1", "tool": "tool_ping", "label": "", "arguments": {}, "ok": None, "result": ""}]
 
 
 def test_cancel_keeps_what_streamed(client: TestClient, agent: FakeAgent) -> None:

@@ -22,7 +22,6 @@ from src.models import Account, UsageRecord
 SIX_HOURS = timedelta(hours=6)
 WEEK = timedelta(days=7)
 MAX_REPORT_DAYS = 366
-GROUP_BY = ("agent", "provider", "gateway", "model")
 
 
 @dataclass(frozen=True)

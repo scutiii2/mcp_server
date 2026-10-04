@@ -58,8 +58,8 @@ Routes:
   `step_id`, `ok`, `text` and `at` keys pass through. `question` is capped at
   500 characters and `text` chunks at 4,000 characters before relay.
 - Each turn keeps an `active_agents` stack: push on `agent_start`, pop the
-  matching `step_id` on `agent_end`. The entry agent is always the bottom item
-  while the turn runs.
+  matching `step_id` on `agent_end`. Only delegated agents are on the stack
+  (outermost first); the browser prepends the entry agent's own label.
 - The turn snapshot (sent to a browser that connects or reconnects mid-turn)
   includes `active_agents: [{agent_id, label, since, step_id}]`, so it shows who
   is working without replaying every event. Steps are keyed `(agent_id, id)`,

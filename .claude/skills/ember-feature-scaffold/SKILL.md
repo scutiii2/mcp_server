@@ -98,7 +98,7 @@ preference), `src/components/` (reusable pieces only), `src/router/`,
    response shapes.
 2. **Store** (when state outlives one view): `defineStore("name", () => {...})`.
    Per-user state must reset when the user changes - watch
-   `useAuthStore().account?.id` (see `stores/agents.ts`, `stores/chat.ts`).
+   `useAuthStore().account?.id` (see `stores/entryAgent.ts`, `stores/chat.ts`).
    Anything saved in `localStorage` is keyed per account and wrapped in
    try/catch (storage may be blocked) - see `services/ConversationStorage.ts`.
 3. **View** in `src/views/XxxView.vue`, lazy-loaded route in
@@ -153,7 +153,7 @@ send it too (`identity_headers()` in `services/mcp_session.py` does).
   (`LogWriter` via `Depends(get_log_writer)`) after it succeeded. New
   permissions go in `services/permissions.py`; the Administrator role gets
   them on the next start.
-- Agent discovery is ember_api's `GET /api/agents` (reads ai_agent's
+- Agent discovery is ember_api's `GET /api/agent` (the entry agent; reads ai_agent's
   `configs/config_agents.json`); don't add a tool for it.
 - Tests: route tests use `FakeAgent` (the `agent` fixture; `hold=True` keeps
   a turn running until `agent.release()`); `tests/test_agent_gateway.py`

@@ -90,6 +90,34 @@ class TestFreshDatabase:
 
         assert revision_of(tmp_path / "ember.db") == HEAD
 
+    def test_0003_downgrades_to_0002_and_drops_its_columns(self, tmp_path: Path) -> None:
+        from alembic import command
+
+        added = {"agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"}
+        path = tmp_path / "ember.db"
+        run_with(make_database(path.parent))
+
+        def columns() -> set[str]:
+            with closing(sqlite3.connect(path)) as conn:
+                return {row[1] for row in conn.execute("PRAGMA table_info(usage_records)")}
+
+        assert added <= columns()
+
+        async def downgrade() -> None:
+            database = make_database(tmp_path)
+            runner = MigrationRunner(database.engine)
+            try:
+                async with database.engine.begin() as conn:
+                    await conn.run_sync(lambda sync: command.downgrade(runner._config(sync), "0002"))
+            finally:
+                await database.dispose()
+
+        asyncio.run(downgrade())
+
+        assert revision_of(path) == "0002"
+        assert not (added & columns())
+        assert {"id", "account_id", "total_tokens", "created_at"} <= columns()
+
 
 class TestDatabaseFromBeforeMigrations:
     def build_legacy(self, tmp_path: Path) -> Path:
