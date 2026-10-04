@@ -22,16 +22,39 @@ export function formatDuration(seconds: number): string {
   return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
 }
 
-/** One agent's line in the chip's panel: "claude-x · 70 in · 30 out · 100 total". */
+/** One agent's line in the chip's panel: "claude-x · openai via azure · 70 in
+ * · 30 out · 100 total". The provider (and gateway, when one was used) follows
+ * the model; both are left out on older answers. */
 export function agentUsageText(a: AgentUsage): string {
+  const where = a.provider_id ? (a.gateway ? `${a.provider_id} via ${a.gateway}` : a.provider_id) : "";
   return [
     a.model,
+    where,
     a.input_tokens !== undefined ? `${a.input_tokens.toLocaleString()} in` : "",
     a.output_tokens !== undefined ? `${a.output_tokens.toLocaleString()} out` : "",
     `${a.total_tokens.toLocaleString()} total`,
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** An ISO time from the server as a timestamp; one without a zone is UTC. */
+function parseServerTime(value: string | undefined): number {
+  if (!value) return NaN;
+  return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`);
+}
+
+/** How long an agent's call took, "1.3 s", or "" when the times are missing. */
+export function agentDuration(a: AgentUsage): string {
+  const start = parseServerTime(a.started_at);
+  const end = parseServerTime(a.finished_at);
+  return Number.isNaN(start) || Number.isNaN(end) || end < start ? "" : formatDuration((end - start) / 1000);
+}
+
+/** When an agent's call began, in the browser's local time; "" when unknown. */
+export function agentStartTime(a: AgentUsage): string {
+  const start = parseServerTime(a.started_at);
+  return Number.isNaN(start) ? "" : new Date(start).toLocaleTimeString();
 }
 
 /** A running clock: 12.4 s under a minute, then 1 min 03 s. */

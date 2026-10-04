@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../api/types";
-import { agentUsageText, compactNumber, formatClock, formatDuration, usagePercent, usageSummary } from "./usageFormat";
+import { agentDuration, agentStartTime, agentUsageText, compactNumber, formatClock, formatDuration, usagePercent, usageSummary } from "./usageFormat";
 
 describe("compactNumber", () => {
   it.each([
@@ -166,5 +166,47 @@ describe("agentUsageText", () => {
 
   it("keeps a reported 0 instead of treating it as missing", () => {
     expect(agentUsageText({ agent: "a", input_tokens: 0, output_tokens: 0, total_tokens: 0 })).toBe("0 in · 0 out · 0 total");
+  });
+});
+
+describe("agentUsageText provider and gateway", () => {
+  it("adds provider and gateway when known", () => {
+    expect(
+      agentUsageText({ agent: "calc", model: "gpt-x", provider_id: "openai", gateway: "azure", input_tokens: 20, output_tokens: 5, total_tokens: 25 }),
+    ).toBe("gpt-x · openai via azure · 20 in · 5 out · 25 total");
+  });
+
+  it("leaves out the gateway when the provider was used directly", () => {
+    const text = agentUsageText({ agent: "calc", model: "m", provider_id: "anthropic", total_tokens: 9 });
+    expect(text).toContain("anthropic");
+    expect(text).not.toContain("via");
+  });
+});
+
+describe("agentDuration", () => {
+  it("is the time between start and finish", () => {
+    expect(agentDuration({ agent: "a", total_tokens: 1, started_at: "2026-10-04T09:12:04.000Z", finished_at: "2026-10-04T09:12:05.250Z" })).toBe("1.3 s");
+  });
+
+  it("treats times without a zone as UTC", () => {
+    expect(agentDuration({ agent: "a", total_tokens: 1, started_at: "2026-10-04T09:12:04", finished_at: "2026-10-04T09:12:06Z" })).toBe("2 s");
+  });
+
+  it("is empty when a time is missing, invalid or backwards", () => {
+    expect(agentDuration({ agent: "a", total_tokens: 1 })).toBe("");
+    expect(agentDuration({ agent: "a", total_tokens: 1, started_at: "x", finished_at: "2026-10-04T09:12:06Z" })).toBe("");
+    expect(agentDuration({ agent: "a", total_tokens: 1, started_at: "2026-10-04T09:12:06Z", finished_at: "2026-10-04T09:12:04Z" })).toBe("");
+  });
+});
+
+describe("agentStartTime", () => {
+  it("is the start in the browser's local time", () => {
+    expect(agentStartTime({ agent: "a", total_tokens: 1, started_at: "2026-10-04T09:12:04" })).toBe(
+      new Date("2026-10-04T09:12:04Z").toLocaleTimeString(),
+    );
+  });
+
+  it("is empty without a start", () => {
+    expect(agentStartTime({ agent: "a", total_tokens: 1 })).toBe("");
   });
 });

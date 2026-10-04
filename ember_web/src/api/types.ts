@@ -54,11 +54,22 @@ export interface ChatMessage {
 
 /** One agent's share of an answer that ran several. */
 export interface AgentUsage {
+  /** The agent's id (older answers: its provider's name). */
   agent: string;
+  /** Display name; absent on older answers. */
+  agent_label?: string;
+  provider_id?: string;
+  /** Absent: the provider was used directly. */
+  gateway?: string;
+  /** The agent that handed this one its work, when it was delegated. */
+  delegated_by?: string;
   model?: string;
   input_tokens?: number;
   output_tokens?: number;
   total_tokens: number;
+  /** When the agent's call began and ended (ISO-8601 UTC; no zone means UTC). */
+  started_at?: string;
+  finished_at?: string;
 }
 
 /** A tool run that waits for the user's answer before it starts. */
