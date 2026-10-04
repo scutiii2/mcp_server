@@ -10,7 +10,7 @@ chat_app  --(MCP: ask/interpret/status/cancel/decide)-->  ai_agent  --(MCP, pers
 It is both an MCP *server* (to `chat_app`, exposing
 `ask`/`interpret`/`status`/`cancel`/`decide`)
 and an MCP *client* (to `mcp_server`, via a persistent connection - see
-`src/mcp_upstream.py`). Run two instances - one per provider - to back
+`src/mcp_upstream.py`). Run one agent per provider (see Agents) to back
 `chat_app`'s Claude Agent / OpenAI Agent dropdown entries.
 
 ## Setup
@@ -18,46 +18,154 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
 1. Copy `secrets/secret_llm.env.example` to `secrets/secret_llm.env` and
    fill in `CLAUDE_API_KEY` and/or `GPT_API_KEY` (whichever provider(s)
    you're running), or the key(s) for whichever `AI_AGENT_GATEWAY` you're
-   pointing at instead. Both can be set at once - one file backs both
-   instances below.
+   pointing at instead. Both can be set at once - one file backs every agent.
 
 2. Make sure `mcp_server` is running (`mcp_server/run.bat`) -
    `ai_agent/configs/config_servers.json` points at its default
    `http://127.0.0.1:8010/mcp`.
 
-3. Run an instance:
+3. Start the agents with `run.bat` (from `ai_agent/`). It creates
+   `.venv_ai_agent` and installs this project into it in editable mode on
+   first run, then runs `py -m src.supervisor`. See Agents below.
 
-   ```
-   run.bat
-   ```
+## Agents
 
-   (from `ai_agent/` - creates `.venv_ai_agent` and installs this project
-   into it in editable mode on first run, then runs `py -m src.server`.)
-   Defaults to `AI_AGENT_PROVIDER=anthropic`, `AI_AGENT_PORT=9100`.
+Each ai_agent instance is defined by one file, `agents/<id>.json`. The file
+name stem is the agent id (`^[a-z0-9][a-z0-9-]{0,62}$`). `agents/` is
+gitignored; `agents.example/` is committed and is copied into `agents/` on
+first run when `agents/` is missing or empty. Unknown keys are an error, so
+typos are caught at startup.
 
-   To run a second instance side by side (e.g. openai on `9101`), set
-   both env vars first so the two don't collide:
+```json
+{
+  "label": "Calculator",
+  "port": 9103,
+  "enabled": true,
+  "entry": false,
+  "llm": {
+    "provider": "anthropic",
+    "gateway": "openrouter",
+    "model": "claude-sonnet-5-5",
+    "temperature": 0.0,
+    "reasoning_effort": "high",
+    "max_tokens": 4096,
+    "max_tool_rounds": 6
+  },
+  "persona": "You are a precise mathematician. Show every step and check results.",
+  "focus": "Arithmetic, algebra, percentages, unit conversion, compound interest.",
+  "tools": { "allow": ["calc_*", "convert_*"], "deny": [] },
+  "orchestrator": false,
+  "routing": { "laya": false, "top_k": 3, "allow_auto": false }
+}
+```
 
-   ```
-   set AI_AGENT_PROVIDER=openai
-   set AI_AGENT_PORT=9101
-   run.bat
-   ```
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `label` | no | id | Display name. |
+| `port` | yes | none | Port the child listens on. Unique across enabled files. |
+| `enabled` | no | `true` | `false`: not spawned, not registered. |
+| `entry` | no | `false` | The agent ember sends new turns to (Phase 2). Exactly one enabled file must set it. |
+| `llm.provider` | yes | none | `anthropic` or `openai` (keys of `_PROVIDERS` in `agent_config.py`). |
+| `llm.gateway` | no | provider default | A gateway key from `configs/config_llms.json` under that provider. |
+| `llm.model` | no | gateway's `model` | Model id. |
+| `llm.temperature` | no | unset (provider default) | Float 0-2. |
+| `llm.reasoning_effort` | no | `off` | `off`, `low`, `medium`, `high`. Maps to the Anthropic thinking budget or OpenAI `reasoning_effort`. |
+| `llm.max_tokens` | no | today's hard-coded value | Output token cap per model call. |
+| `llm.max_tool_rounds` | no | `6` | Cap on the tool loop. |
+| `persona` | no | `""` | Persona text placed in the system prompt. |
+| `focus` | no | `""` | One-line summary of what the agent is good at. Used for the orchestrator roster and for Laya routing. Should be concrete. |
+| `tools.allow` | no | `[]` (all) | fnmatch globs on mcp_server tool names without the `main__` prefix. Empty means all tools. |
+| `tools.deny` | no | `[]` | Globs removed after `allow`. Deny wins. |
+| `orchestrator` | no | `false` | Gets `delegate_to_agent` and the roster. |
+| `routing.laya` | no | `false` | Use Laya to shortlist the roster each turn. Orchestrators only. |
+| `routing.top_k` | no | `3` | Roster size after the Laya shortlist. |
+| `routing.allow_auto` | no | `false` | Offer `agent_id: "auto"` on `delegate_to_agent`. |
+| `routing.min_score` | no | unset | Signed cosine similarity (-1 to 1). `"auto"` returns a tool error when the best match scores below it. Skipped when Laya returns no scores (only one specialist). |
 
-   Override `AI_AGENT_HOST` if you need a non-default bind address.
-   `server_launcher` (repo root) does the same thing per-instance
-   through its own field editor, without needing to `set` anything by
-   hand.
+Two examples ship in `agents.example/`: `claude-agent.json` (port 9100,
+anthropic, `entry: true`, `orchestrator: true`) and `openai-agent.json`
+(port 9102, openai). They keep today's two registry ids and ports, so stored
+chat turns that name `claude-agent` or `openai-agent` keep resolving. Add
+more specialists as extra files.
 
-   To run against a different gateway block for this process only,
-   without editing `secret_llm.env`, pass `--gateway` (forwarded straight
-   through by `run.bat`):
+Exactly one enabled file must set `entry: true`. The supervisor validates
+every file before it starts anything and refuses to start, naming the file
+and field, on a bad file, a shared port among enabled agents, or a wrong
+number of entry agents.
 
-   ```
-   run.bat --gateway openrouter
-   ```
+`run.bat` starts all agents: it runs `python -m src.supervisor`, which
+spawns one `python -m src.server` child per enabled file (env
+`AI_AGENT_FILE`), prefixes each child's output with `[<agent id>] `, and
+restarts a crashed child with backoff (1s, 2s, 4s... capped at 60s; left
+stopped after 5 crashes within 5 minutes, the others keep running).
 
-   Takes precedence over `AI_AGENT_GATEWAY`.
+To run a single instance the old way (provider from env vars, no agent
+file), skip `run.bat`:
+
+```
+set AI_AGENT_PROVIDER=openai
+set AI_AGENT_PORT=9101
+.venv_ai_agent\Scripts\python -m src.server --gateway openrouter
+```
+
+An instance started this way is an orchestrator, and `--gateway` takes
+precedence over `AI_AGENT_GATEWAY`.
+
+## Orchestrator and routing
+
+An agent with `orchestrator: true` gets the `delegate_to_agent` tool;
+specialists never do. Each turn the orchestrator's roster is built from the
+registry: every registered agent that is not an orchestrator (and never the
+agent itself), as lines of `<id> - <label>: <focus>`. Because it is per turn,
+a specialist that starts or stops shows up without a restart. The
+`agent_id` argument of `delegate_to_agent` is an enum of the roster ids. An
+orchestrator may still answer directly when no specialist fits.
+
+Routing options (`routing.*`, orchestrators only):
+
+- `laya`: when true and there are more than `top_k` specialists with a
+  `focus`, Laya ranks them against the user's question at the start of each
+  turn and only the best `top_k` go into the roster. This flag only controls
+  whether the roster is shortlisted.
+- `top_k`: roster size after the shortlist (default 3).
+- `allow_auto`: adds `"auto"` to the `agent_id` enum. `agent_id: "auto"`
+  always uses Laya to choose the specialist for the sub-question, even when
+  `routing.laya` is false. The tool result begins with
+  `Delegated to <id> (<label>).`
+- `min_score`: signed cosine similarity (-1 to 1, unset by default). `"auto"`
+  returns a tool error when the best match scores below it, and the check is
+  skipped when Laya returns no scores (only one specialist).
+
+If Laya is not installed or fails, the roster falls back to every
+specialist and `"auto"` returns a tool error asking the model to pick an
+explicit id; a turn is never blocked. Laya is an optional extra:
+
+```
+pip install -e ".[laya]"
+```
+
+Specialist activity streams to the orchestrator's caller as `agent_start`,
+`agent_end` and `agent_token` events, and a specialist's own `step_*`
+events pass through stamped with its `agent_id`. A specialist's step ids can
+collide with the orchestrator's, so consumers key on `(agent_id, id)`.
+
+## Usage log
+
+Every completed `ask` appends one JSON line to
+`data/usage/YYYY-MM-DD.<agent id>.jsonl` (UTC date; one file per agent per
+day, so no two processes write the same file). Each line is the `agent_usage`
+row the `ask` result carries, plus `request_id` and `depth`:
+
+- `agent_id`, `agent_label`
+- `provider_id`, `gateway` (`null` when the provider is used directly), `model`
+- `input_tokens`, `output_tokens`, `total_tokens`
+- `started_at`, `finished_at` (UTC ISO-8601 with milliseconds)
+- `delegated_by` (`null` for the top-level agent)
+- `request_id`, `depth`
+
+Set `AI_AGENT_USAGE_DIR` to write somewhere else. A cancelled turn writes no
+line; only completed asks do. A write failure logs a warning and never fails
+the turn. `data/usage/` is gitignored.
 
 ## Asking before tools run
 
@@ -99,6 +207,9 @@ AI_AGENT_ROLE=ops_specialist
 The CLI flag takes precedence over the environment variable, which takes
 precedence over the `default_role` in `configs/config_ai_agent_roles.json`.
 
+An agent file's `persona` replaces the role. `AI_AGENT_ROLE` / `--role` apply
+only to an instance started without an agent file.
+
 An unknown role id fails loudly at startup, naming the bad id and the valid
 alternatives - no silent fallback. Role selection is fixed for the process
 lifetime; there is no per-request or runtime override.
@@ -123,16 +234,7 @@ under `roles` with a `label` (human-readable name) and `persona`
 No code change is required - the new role is available immediately on the next
 process restart.
 
-**Limitation:** the agent registry (`src/agent_registry.py`) derives an
-instance's id and label from its provider alone, not its role. Running two
-instances of the *same* provider with different `--role`/`AI_AGENT_ROLE`
-values is not currently supported - the second instance's `register()` call
-overwrites the first's entry under the same id, and the first instance's
-`deregister()` on shutdown then deletes the second (still-running)
-instance's entry. Only one role per provider at a time is supported; mixing
-roles across providers (e.g. `anthropic` as `ops_specialist`, `openai` as
-`generic`) is unaffected. Fixing this properly (role-aware agent ids) would
-touch `chat_app`'s persisted turn data and is left for a separate plan.
+Agent files give each instance its own id, so any number of same-provider agents can run side by side.
 
 ## Security
 
