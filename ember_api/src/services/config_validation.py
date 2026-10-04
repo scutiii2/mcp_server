@@ -67,6 +67,7 @@ def _check_app(data: dict[str, Any]) -> list[Problem]:
         ("session_hours", lambda v: _is_int(v, 1), "a positive integer"),
         ("cookie_secure", lambda v: isinstance(v, bool), "true or false"),
         ("default_role", _is_text, "a non-empty string"),
+        ("require_email_verification", lambda v: isinstance(v, bool), "true or false"),
         ("agents_registry_path", _is_text, "a non-empty string"),
         ("mcp_server_url", _is_http_url, "an http(s) URL"),
         ("security", lambda v: isinstance(v, dict), "an object"),

@@ -57,9 +57,12 @@ class AccountOut(BaseModel):
     email_verified: bool
     roles: list[str]
     permissions: list[str]
+    # False when config_app.json lets unverified accounts work; the web app
+    # then stops sending them to the verify page.
+    email_verification_required: bool = True
 
     @classmethod
-    def of(cls, account: Account) -> AccountOut:
+    def of(cls, account: Account, settings: Settings) -> AccountOut:
         return cls(
             id=account.id,
             username=account.username,
@@ -67,6 +70,7 @@ class AccountOut(BaseModel):
             email_verified=account.email_verified,
             roles=sorted(r.name for r in account.roles),
             permissions=sorted(account.permission_names),
+            email_verification_required=settings.require_email_verification,
         )
 
 
@@ -160,7 +164,7 @@ async def login(
             await logs.action(
                 account, "auth.new_device", f"First login from this device: {describe(device.user_agent)}, {device.subnet}"
             )
-    return AccountOut.of(account)
+    return AccountOut.of(account, settings)
 
 
 def device_signals(request: Request) -> DeviceSignals:
@@ -190,8 +194,8 @@ async def logout(
 
 
 @router.get("/me")
-async def me(account: Account = Depends(current_account)) -> AccountOut:
-    return AccountOut.of(account)
+async def me(account: Account = Depends(current_account), settings: Settings = Depends(get_settings)) -> AccountOut:
+    return AccountOut.of(account, settings)
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -206,7 +210,8 @@ async def register(
     logs: LogWriter = Depends(get_log_writer),
 ) -> RegisterOut:
     """Creates the account, logs it in, and emails a verification code.
-    Permissions stay inactive until the email is verified."""
+    Permissions stay inactive until the email is verified, unless
+    require_email_verification is off: then no code is sent."""
     registration = RegistrationService(db, otp, settings.default_role)
     try:
         account = await registration.register(body.username, str(body.email), body.password, body.invite_code)
@@ -219,8 +224,10 @@ async def register(
     # resend lets the user retry once SMTP works (same as chat_app).
     await _start_session(response, account, sessions, settings)
     await logs.action(account, "auth.register", "Registered with an invite code")
+    if not settings.require_email_verification:
+        return RegisterOut(account=AccountOut.of(account, settings), verification_email_sent=False)
     error = await send_verification_code(account, otp, email)
-    return RegisterOut(account=AccountOut.of(account), verification_email_sent=error is None, email_error=error)
+    return RegisterOut(account=AccountOut.of(account, settings), verification_email_sent=error is None, email_error=error)
 
 
 @router.post("/verify-email")
@@ -229,13 +236,14 @@ async def verify_email(
     account: Account = Depends(current_account),
     otp: OtpService = Depends(get_otp_service),
     logs: LogWriter = Depends(get_log_writer),
+    settings: Settings = Depends(get_settings),
 ) -> AccountOut:
     if account.email_verified:
-        return AccountOut.of(account)
+        return AccountOut.of(account, settings)
     if not await otp.consume_email_verification(account, body.code):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
     await logs.action(account, "auth.verify_email", f"Verified email {account.email}")
-    return AccountOut.of(account)
+    return AccountOut.of(account, settings)
 
 
 @router.post("/verify-email/resend")

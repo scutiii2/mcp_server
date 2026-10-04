@@ -118,7 +118,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 |---|---|---|---|
 | `POST` | `/api/auth/login` | - | `{username, password}` -> the account; sets the session cookie. `401` with one generic message on any failure; `429` + `Retry-After` after too many failures (`security.rate_limit`). |
 | `POST` | `/api/auth/logout` | cookie | `204`; deletes the session server-side and clears the cookie. |
-| `GET` | `/api/auth/me` | cookie | `{id, username, email, email_verified, roles, permissions}` or `401`. |
+| `GET` | `/api/auth/me` | cookie | `{id, username, email, email_verified, email_verification_required, roles, permissions}` or `401`. `email_verification_required` mirrors `require_email_verification` in config. |
 | `POST` | `/api/auth/register` | - | `{username, email, password, invite_code}` -> `201 {account, verification_email_sent, email_error}`; logs in. `400` bad/expired/used invite, `409` taken username/email, `422` invalid fields. |
 | `POST` | `/api/auth/verify-email` | cookie | `{code}` -> the account, now verified. `400` wrong/expired code. |
 | `POST` | `/api/auth/verify-email/resend` | cookie | `{sent: true}`; `503` if SMTP failed, `409` if already verified. |
@@ -207,7 +207,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   (`src/services/permissions.py`). The Administrator role always holds all
   of them (new ones are added to it on startup). New registrations get `default_role` (config, default `Member`:
   `chat.use` + `tools.use`) - unlike chat_app, where new accounts get no
-  role. An account with an unverified email holds no permissions at all.
+  role. An account with an unverified email holds no permissions at all, unless
+  `require_email_verification` is `false` in config.
 - **Invites and verification codes:** 10 random characters, stored as
   SHA-256, single use, 15-minute expiry (same as chat_app). Registration
   checks the invite before revealing whether a username is taken, and a

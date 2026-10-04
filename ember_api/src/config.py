@@ -131,6 +131,9 @@ class Settings:
     cookie_secure: bool
     secrets_dir: Path
     default_role: str = "Member"
+    # False: an account works without verifying its email, and registration
+    # sends no code. Verifying stays available (resend, the verify page).
+    require_email_verification: bool = True
     agents_registry_path: Path = PROJECT_DIR.parent / "ai_agent" / "configs" / "config_agents.json"
     mcp_server_url: str = "http://127.0.0.1:8010/mcp"
     security: SecuritySettings = field(default_factory=SecuritySettings)
@@ -163,6 +166,7 @@ def load_settings() -> Settings:
         cookie_secure=bool(raw.get("cookie_secure", False)),
         secrets_dir=SECRETS_DIR,
         default_role=raw.get("default_role") or "Member",
+        require_email_verification=bool(raw.get("require_email_verification", True)),
         agents_registry_path=_project_path(
             raw.get("agents_registry_path", "../ai_agent/configs/config_agents.json")
         ),

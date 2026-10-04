@@ -244,6 +244,7 @@ def make_settings(
     security: SecuritySettings | None = None,
     usage: UsageSettings | None = None,
     backup: BackupSettings | None = None,
+    require_email_verification: bool = True,
 ) -> Settings:
     secrets_dir = tmp_path / "secrets"
     secrets_dir.mkdir(exist_ok=True)
@@ -263,6 +264,7 @@ def make_settings(
         session_cookie_name="ember_session",
         session_hours=session_hours,
         cookie_secure=False,  # TestClient talks plain http
+        require_email_verification=require_email_verification,
         secrets_dir=secrets_dir,
         agents_registry_path=registry,
         mcp_server_url=MCP_SERVER_URL,

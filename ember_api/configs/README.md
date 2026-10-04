@@ -12,6 +12,7 @@ gitignored.
 | `session_hours` | How long a login lasts. |
 | `cookie_secure` | `true` once served over HTTPS (the cookie is then never sent over plain HTTP). |
 | `default_role` | Role every newly registered account gets (created with `chat.use` + `tools.use` if missing). |
+| `require_email_verification` | `true` (default): an account holds no permissions until its email is verified. `false`: unverified accounts work, registration sends no code, and `/api/auth/me` reports `email_verification_required: false`. |
 | `agents_registry_path` | ai_agent's `configs/config_agents.json` (relative to the ember_api folder). ember_api only proxies to agents listed there. |
 | `mcp_server_url` | mcp_server's MCP endpoint the proxy forwards to. |
 | `security` | Optional block; every key below has the default shown in the example, so it can be left out. |

@@ -6,6 +6,7 @@
   "session_hours": 12,
   "cookie_secure": false,
   "default_role": "Member",
+  "require_email_verification": true,
   "agents_registry_path": "../ai_agent/configs/config_agents.json",
   "mcp_server_url": "http://127.0.0.1:8010/mcp",
   "security": {

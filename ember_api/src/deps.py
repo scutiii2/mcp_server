@@ -87,15 +87,18 @@ async def current_account(
 
 def require_permission(name: str) -> Callable[..., Awaitable[Account]]:
     """Dependency factory: the logged-in account if it holds `name`, else 403.
-    An unverified email counts as holding no permissions at all."""
+    An unverified email counts as holding no permissions at all, unless
+    config_app.json sets require_email_verification to false."""
     return require_any_permission(name)
 
 
 def require_any_permission(*names: str) -> Callable[..., Awaitable[Account]]:
     """Like require_permission, satisfied by any one of `names`."""
 
-    async def dependency(account: Account = Depends(current_account)) -> Account:
-        if not account.email_verified:
+    async def dependency(
+        account: Account = Depends(current_account), settings: Settings = Depends(get_settings)
+    ) -> Account:
+        if settings.require_email_verification and not account.email_verified:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Email not verified")
         if not account.permission_names.intersection(names):
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing permission: {' or '.join(names)}")

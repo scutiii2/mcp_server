@@ -129,7 +129,7 @@ async def change_email(
         await logs.action(account, "account.email", f"Changed email to {account.email}")
     error = await send_verification_code(account, otp, email) if changed else None
     return EmailChangedOut(
-        account=AccountOut.of(account),
+        account=AccountOut.of(account, settings),
         verification_email_sent=changed and error is None,
         email_error=error,
     )
@@ -158,7 +158,7 @@ async def change_password(
     # current_account already proved the cookie is there and valid.
     await sessions.revoke_others(account.id, request.cookies[settings.session_cookie_name])
     await logs.action(account, "account.password", "Changed password; other sessions logged out")
-    return AccountOut.of(account)
+    return AccountOut.of(account, settings)
 
 
 @router.get("/devices")
