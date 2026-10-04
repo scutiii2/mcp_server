@@ -1,9 +1,14 @@
 ---
 name: chatapp-page-scaffold
-description: Scaffold a new page in chat_app (the Flask frontend), or add a route/permission/tab to an existing page, following this repo's folder-per-page blueprint convention. Use whenever the user asks to add a new page, screen, tab, dashboard, or UI section to chat_app — even if they describe it only by what it should show or do ("I want a page where operators can see X", "add a screen for the watchers") without naming files or saying "page" explicitly. Also use when reviewing whether an existing page folder follows the repo's conventions (blueprint discovery, PAGE_PERMISSION/nav_pages gating, template naming, shared layout).
+description: chat_app is RETIRED (2026-10-03) - new web UI goes in ember_web via ember-feature-scaffold. Use this only to read, fix or review the legacy chat_app Flask frontend: scaffold a page in chat_app, or add a route/permission/tab to an existing page, following this repo's folder-per-page blueprint convention. Use whenever the user asks to add a new page, screen, tab, dashboard, or UI section to chat_app — even if they describe it only by what it should show or do ("I want a page where operators can see X", "add a screen for the watchers") without naming files or saying "page" explicitly. Also use when reviewing whether an existing page folder follows the repo's conventions (blueprint discovery, PAGE_PERMISSION/nav_pages gating, template naming, shared layout).
 ---
 
 # chat_app page scaffolding
+
+> **chat_app was retired on 2026-10-03** (accounts, chats and usage were imported into ember_api;
+> the folder stays as a reference and the launcher no longer starts it). For new web UI use
+> **ember-feature-scaffold** (ember_web + ember_api). Use this skill only to read or fix chat_app
+> itself, or to compare conventions.
 
 `chat_app/src/pages/` (this repo's Flask frontend — see
 [chat_app/src/pages/README.md](../../chat_app/src/pages/README.md), the

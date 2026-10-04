@@ -1,0 +1,6 @@
+.venv_chat_cli/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+# Your real settings; config_cli.json.example is the tracked twin.
+configs/config_cli.json

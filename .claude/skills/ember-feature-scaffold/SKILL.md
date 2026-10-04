@@ -1,6 +1,6 @@
 ---
 name: ember-feature-scaffold
-description: Add a feature to ember_web (the Vue 3 + TypeScript browser app) and/or ember_api (its FastAPI backend) following this repo's established layout, auth and proxy conventions. Use whenever the user asks for a new ember_web page, screen, tab, panel, store or API call, a new ember_api route, permission, admin action or model, or wants ember_web to reach a new ai_agent / mcp_server capability - even if they only describe the behavior ("let admins see login attempts", "add a settings page to ember", "show token usage per answer") without naming files. Also use when reviewing whether ember_web/ember_api code follows these conventions. Not for chat_app (use chatapp-page-scaffold) or new mcp_server tools (use mcp-capability-scaffold).
+description: Add a feature to ember_web (the Vue 3 + TypeScript browser app) and/or ember_api (its FastAPI backend) following this repo's established layout, auth and proxy conventions. Use whenever the user asks for a new ember_web page, screen, tab, panel, store or API call, a new ember_api route, permission, admin action or model, or wants ember_web to reach a new ai_agent / mcp_server capability - even if they only describe the behavior ("let admins see login attempts", "add a settings page to ember", "show token usage per answer") without naming files. Also use when reviewing whether ember_web/ember_api code follows these conventions. Not for the retired chat_app (see chatapp-page-scaffold, legacy only) or new mcp_server tools (use mcp-capability-scaffold).
 ---
 
 # ember_web + ember_api feature scaffolding
@@ -12,10 +12,17 @@ Two root projects that ship together:
   so the `HttpOnly` session cookie just works and no server URL, token or
   key is ever in the bundle.
 - **ember_api/** - FastAPI + async SQLAlchemy (SQLite/aiosqlite). Owns
-  accounts, sessions, roles/permissions, invites, email verification, and
+  accounts, sessions, roles/permissions, invites, email verification (can be
+  switched off with `require_email_verification: false`), and
   proxies MCP to ai_agent (`/api/mcp/agents/{id}`) and mcp_server
   (`/api/mcp/server`). Auth logic mirrors chat_app's but lives in its own
   database; chat_app is never touched for ember work.
+
+A third client uses the same REST API: **chat_cli/** (terminal chat, logs in
+with the account, same cookie session, same SSE events). A change to an
+existing route's shape or to the turn/events contract must keep it working -
+check `chat_cli/src/api.py` and `events.py` - and a new route the web app
+needs is not automatically wanted there.
 
 Read both READMEs (`ember_web/README.md`, `ember_api/README.md`) before
 designing - they hold the current API table and security model this skill
@@ -65,7 +72,7 @@ in routes), `src/models/` (SQLAlchemy 2 typed models), `src/deps.py`
    Anything blocking (hashing, SMTP, file I/O) goes through
    `asyncio.to_thread`. Secrets/codes/tokens are stored hashed, never raw.
 4. **Route**: gate with `Depends(require_permission(NAME))` (it also
-   rejects unverified emails) or `Depends(current_account)` for any
+   rejects unverified emails, unless `require_email_verification` is false) or `Depends(current_account)` for any
    logged-in user. Request/response bodies are pydantic models; response
    models get a `@classmethod of(cls, row)`. Register a new router in
    `src/app.py` (`app.include_router(...)`). New app-wide dependencies
@@ -105,21 +112,34 @@ preference), `src/components/` (reusable pieces only), `src/router/`,
    `src/router/index.ts` with `meta: { permission: "..." }` (or
    `guestOnly: true` for logged-out pages). If it can be a landing page,
    add it to `HOME_PAGES`. Add it to `NAV_PAGES` in `src/router/pages.ts`
-   (label, one-line description, permission): that list drives both the
-   top-bar tabs and the Overview tiles. To keep its state across tab switches, add it
+   (label, **`icon`** = stroked 24x24 SVG path data, one-line description,
+   permission): that list drives both the icon-only left rail
+   (`components/NavRail.vue`) and the Overview tiles (`IconTile.vue`). Don't
+   add a page that duplicates one: Tools was merged into Capabilities
+   (`/tools` redirects), so put tool UI there (`CapabilitySection`, `ToolCard`
+   rows that open `ToolRunModal`). To keep its state across tab switches, add it
    to the `KeepAlive include` list (cache is keyed per account already).
-4. **Styling**: theme tokens from `src/style.css` (`--bg`, `--surface`,
+4. **Shared controls - reuse, don't hand-roll**: `ToggleSwitch` (pill, instead
+   of a checkbox), `LockSwitch` (a setting an admin can force on),
+   `SegmentedControl` (period/tab pickers; Admin, Logs and Usage use it),
+   `BaseModal` (every dialog: `AddExtensionModal`, `ToolRunModal`, ...),
+   `IconTile` (Overview tiles and extension tiles), `SaveButton`, `CopyButton`.
+   Look in `src/components/` before writing a new one.
+5. **Styling**: theme tokens from `src/style.css` (`--bg`, `--surface`,
    `--text`, `--muted`, `--border`, `--accent`, `--accent-contrast`,
    `--danger`, `--code-bg`, `--mono`) - never hardcoded colors, so light and
    dark both work. Page views scroll themselves (`flex: 1; min-height: 0;
    overflow-y: auto`), content column `max-width: 820px`.
-5. **TypeScript gotcha**: `tsconfig.app.json` has `erasableSyntaxOnly`, so
+6. **TypeScript gotcha**: `tsconfig.app.json` has `erasableSyntaxOnly`, so
    no constructor parameter properties (`constructor(private x: T)`) and no
    enums - declare fields explicitly.
-6. **Markdown/HTML from the server or a model** only via
+7. **Markdown/HTML from the server or a model** only via
    `components/MarkdownContent.vue` (DOMPurify-sanitized) - never raw `v-html`.
-7. Verify from `ember_web/`: `npx vue-tsc -b --noEmit` (must print
-   nothing) and `npx vite build`, then delete `dist/`.
+8. Verify from `ember_web/`: `npx vue-tsc -b --noEmit` (must print
+   nothing) and `npx vite build`, then delete `dist/`. Tests sit beside the source
+   (`*.test.ts`, Vitest + jsdom, ember_api mocked): `npm test`. If a page now
+   calls a new `/api` route, add it to `e2e/fakeApi.ts` - the Playwright test
+   (`npm run test:e2e`) fails on any call the fake does not know.
 
 ## 4. Reaching ai_agent / mcp_server
 
@@ -154,7 +174,19 @@ send it too (`identity_headers()` in `services/mcp_session.py` does).
   permissions go in `services/permissions.py`; the Administrator role gets
   them on the next start.
 - Agent discovery is ember_api's `GET /api/agent` (the entry agent; reads ai_agent's
-  `configs/config_agents.json`); don't add a tool for it.
+  `configs/config_agents.json` through `AgentDirectory`: `entry`, `orchestrator`,
+  `focus`); don't add a tool for it. **There is no agent picker**: every turn goes
+  to the entry agent, a browser-sent `agent_id` is ignored, and the entry agent
+  delegates to specialists itself. The chat store tracks who is working from
+  `agent_start` / `agent_end` / `agent_token` events and the snapshot's
+  `active_agents`; steps and tokens are keyed by `(agent_id, id)` because a
+  specialist's step ids can collide with the entry agent's. New per-agent
+  display belongs on those events, not on a new route.
+- **Usage** carries agent, provider, gateway, model and call times
+  (`agent_usage` on answers, usage rows in the DB): reports take `group_by`
+  (`agent|provider|gateway|model`) and `agent`/`provider` filters, and
+  `GET /api/usage/records` lists calls. Adding a column to usage rows is a
+  model change - see the Alembic step in section 2 (`0003` did this).
 - Tests: route tests use `FakeAgent` (the `agent` fixture; `hold=True` keeps
   a turn running until `agent.release()`); `tests/test_agent_gateway.py`
   runs the real gateway against a real FastMCP server. Starlette's
