@@ -49,8 +49,13 @@ TRACE_RESPONSE_MAX = 4000
 # _STEP_RESULT_MAX), and how many steps at most.
 STEP_RESULT_MAX = 4000
 MAX_STEPS = 50
+# StepIn.agent_label's limit.
+AGENT_LABEL_MAX = 120
 # Most agents one answer's usage is split into (its own plus delegated ones).
 MAX_AGENT_USAGE_ROWS = 20
+# Caps on what a delegated agent's live events may carry to a browser.
+AGENT_QUESTION_MAX = 500
+AGENT_TEXT_MAX = 4000
 
 
 class TurnConflict(Exception):
@@ -78,15 +83,25 @@ class TurnOptions:
     allowed_tools: tuple[str, ...] = ()
 
 
+def _iso(value: Any) -> str | None:
+    """A naive-UTC datetime as the ISO string with "Z" ai_agent sent it as."""
+    return value.isoformat(timespec="milliseconds") + "Z" if hasattr(value, "isoformat") else None
+
+
 def _agent_usage(row: dict[str, Any]) -> dict[str, Any]:
-    """One saved `agent_usage` entry from a usage row: who, which model and the
-    token counts that are known."""
+    """One saved `agent_usage` entry from a usage row: who, which model, where
+    it ran and when, and the token counts that are known."""
     entry = {
         "agent": row["agent"] or "unknown",
+        "agent_label": row.get("agent_label"),
+        "provider_id": row.get("provider_id"),
+        "gateway": row.get("gateway"),
         "model": row["model"],
         "input_tokens": row["input_tokens"],
         "output_tokens": row["output_tokens"],
         "total_tokens": row["total_tokens"],
+        "started_at": _iso(row.get("started_at")),
+        "finished_at": _iso(row.get("finished_at")),
     }
     return {key: value for key, value in entry.items() if value is not None}
 
@@ -104,10 +119,14 @@ class Turn:
     status: str = "running"  # running | completed | failed | cancelled
     text: str = ""  # answer streamed so far
     activity: str = ""  # current tool step label, if any
-    # Tool steps so far: {tool, label, arguments, ok, result}; saved on the
+    # Tool steps so far: {id, tool, label, arguments, ok, result}; saved on the
     # answer so a reload can still show "Ran N tools".
     steps: list[dict[str, Any]] = field(default_factory=list)
-    step_index: dict[str, int] = field(default_factory=dict)
+    # (agent id, step id) -> index in `steps`: a specialist's step ids can
+    # equal the orchestrator's own.
+    step_index: dict[tuple[str, str], int] = field(default_factory=dict)
+    # Agents working right now, outermost first: {agent_id, label, since, step_id}.
+    active_agents: list[dict[str, str]] = field(default_factory=list)
     # Tool runs waiting for the user's answer, by step id: {id, tool, label, arguments}.
     pending_approvals: dict[str, dict[str, Any]] = field(default_factory=dict)
     sequence: int = 0
@@ -125,6 +144,7 @@ class Turn:
             "activity": self.activity,
             "steps": [dict(s) for s in self.steps],
             "approvals": [dict(a) for a in self.pending_approvals.values()],
+            "active_agents": [dict(a) for a in self.active_agents],
             "sequence": self.sequence,
         }
 
@@ -141,22 +161,46 @@ class Turn:
             "arguments": event.get("arguments") if isinstance(event.get("arguments"), dict) else {},
         }
 
+    def record_agent(self, event: dict[str, Any]) -> None:
+        """Folds agent_start / agent_end into the stack of working agents."""
+        agent_id = str(event.get("agent_id") or "")
+        step_id = str(event.get("step_id") or "")
+        if event.get("type") == "agent_start":
+            self.active_agents.append(
+                {
+                    "agent_id": agent_id,
+                    "label": str(event.get("agent_label") or ""),
+                    "since": str(event.get("at") or ""),
+                    "step_id": step_id,
+                }
+            )
+        else:
+            self.active_agents = [
+                a for a in self.active_agents if not (a["step_id"] == step_id and a["agent_id"] == agent_id)
+            ]
+
     def record_step(self, event: dict[str, Any]) -> None:
         """Folds a step_start / step_end event into `steps`."""
         step_id = str(event.get("id") or "")
+        key = (str(event.get("agent_id") or ""), step_id)
         if event.get("type") == "step_start":
             if len(self.steps) >= MAX_STEPS:
                 return
-            self.step_index[step_id] = len(self.steps)
-            self.steps.append({
+            self.step_index[key] = len(self.steps)
+            step = {
+                "id": step_id,
                 "tool": str(event.get("tool") or ""),
                 "label": str(event.get("label") or ""),
                 "arguments": event.get("arguments") if isinstance(event.get("arguments"), dict) else {},
                 "ok": None,
                 "result": "",
-            })
-        elif step_id in self.step_index:
-            step = self.steps[self.step_index[step_id]]
+            }
+            if event.get("agent_id"):
+                step["agent_id"] = str(event["agent_id"])
+                step["agent_label"] = str(event.get("agent_label") or "")[:AGENT_LABEL_MAX]
+            self.steps.append(step)
+        elif key in self.step_index:
+            step = self.steps[self.step_index[key]]
             step["ok"] = bool(event.get("ok"))
             step["result"] = str(event.get("result") or "")[:STEP_RESULT_MAX]
 
@@ -319,6 +363,8 @@ class TurnRegistry:
                 turn.activity = ""
                 turn.record_step(event)
                 turn.pending_approvals.pop(str(event.get("id") or ""), None)
+            elif kind in ("agent_start", "agent_end"):
+                turn.record_agent(event)
             elif kind == "approval_request":
                 turn.activity = "waiting for your approval"
                 turn.record_approval(event)
@@ -334,6 +380,7 @@ class TurnRegistry:
                 turn.status = status or "failed"
                 turn.finished_at = monotonic()
                 turn.pending_approvals.clear()
+                turn.active_agents.clear()
             turn.condition.notify_all()
 
     def _expire_finished(self) -> None:
@@ -384,10 +431,10 @@ class TurnRegistry:
 
         async def on_event(event: dict[str, Any]) -> None:
             if event.get("type") in (
-            "token", "token_reset", "step_start", "step_progress", "step_end", "usage",
-            "approval_request", "approval_resolved",
-        ):
-                await self._publish(turn, event)
+                "token", "token_reset", "step_start", "step_progress", "step_end", "usage",
+                "approval_request", "approval_resolved", "agent_start", "agent_end", "agent_token",
+            ):
+                await self._publish(turn, _clamped(event))
 
         turn.asking = True
         try:
@@ -479,7 +526,8 @@ class TurnRegistry:
         renamed, or deleted, meanwhile), then ends the turn for watchers."""
         message = answer if isinstance(answer, dict) else {"role": "assistant", "content": answer}
         if turn.steps:
-            message = {**message, "steps": [dict(s) for s in turn.steps]}
+            # The step id only matters to a live viewer (snapshot); it is not saved.
+            message = {**message, "steps": [{k: v for k, v in s.items() if k != "id"} for s in turn.steps]}
         try:
             async with self._database.sessions() as session:
                 chats = ChatService(session, turn.account_id)
@@ -518,6 +566,16 @@ class TurnRegistry:
             f"{question} → {turn.agent.id}/{message.get('model') or status}, {elapsed}s",
             json.dumps(details, ensure_ascii=False, indent=2),
         )
+
+
+def _clamped(event: dict[str, Any]) -> dict[str, Any]:
+    """A delegated agent's question and streamed text are shown to browsers: cap them."""
+    kind = event.get("type")
+    if kind == "agent_start" and isinstance(event.get("question"), str):
+        return {**event, "question": event["question"][:AGENT_QUESTION_MAX]}
+    if kind == "agent_token" and isinstance(event.get("text"), str):
+        return {**event, "text": event["text"][:AGENT_TEXT_MAX]}
+    return event
 
 
 def _interrupted(text: str) -> str:

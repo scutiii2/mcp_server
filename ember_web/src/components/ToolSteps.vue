@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { storeToRefs } from "pinia";
 import { computed } from "vue";
-import type { ToolStep } from "../api/types";
+import type { ActiveAgent, ToolStep } from "../api/types";
+import { stepKey, useChatStore } from "../stores/chat";
+import { useEntryAgentStore } from "../stores/entryAgent";
 import { formatToolResult } from "../utils/toolResultFormat";
 import { toolTitle } from "../utils/toolTitles";
 import MarkdownContent from "./MarkdownContent.vue";
@@ -10,6 +13,9 @@ import MarkdownContent from "./MarkdownContent.vue";
  * Each step expands to its arguments and result. */
 
 const props = defineProps<{ steps: ToolStep[]; live?: boolean }>();
+
+const { agentText, activeAgents } = storeToRefs(useChatStore());
+const { entry } = storeToRefs(useEntryAgentStore());
 
 const failed = computed(() => props.steps.filter((s) => s.ok === false).length);
 const summary = computed(() => {
@@ -27,6 +33,47 @@ function title(step: ToolStep): string {
   return step.label || toolTitle(step.tool);
 }
 
+/** The agent that ran a step, when it was a delegated one (not the main
+ * agent). Nothing is badged until the main agent is known. */
+function badge(step: ToolStep): string | null {
+  const main = entry.value?.id;
+  if (!main || !step.agent_id || step.agent_id === main) return null;
+  return step.agent_label || step.agent_id;
+}
+
+/** The delegated agent working for a delegate step, when it is known: the
+ * one right after the step's own agent in the stack (outermost first; the
+ * main agent heads it, unlisted). */
+function delegateOf(step: ToolStep): ActiveAgent | undefined {
+  if (!step.id || !step.agent_id) return undefined;
+  const stack = activeAgents.value;
+  const at = stack.findIndex((a) => a.agent_id === step.agent_id);
+  const next = at >= 0 ? stack[at + 1] : step.agent_id === entry.value?.id ? stack[0] : undefined;
+  return next?.step_id === step.id ? next : undefined;
+}
+
+/** The key under which a delegate step's text is kept: its working agent's,
+ * or (text that came before the agent was announced) any other agent's text
+ * for this step id. */
+function textKey(step: ToolStep): string | null {
+  if (!step.id || !step.agent_id) return null;
+  const known = delegateOf(step);
+  if (known) return stepKey(known.agent_id, step.id);
+  const own = stepKey(step.agent_id, step.id);
+  const suffix = stepKey("", step.id);
+  return Object.keys(agentText.value).find((k) => k !== own && k.endsWith(suffix)) ?? null;
+}
+
+/** A delegated agent's text so far, for the delegate step that handed it its question. */
+function workingText(step: ToolStep): string {
+  const key = props.live ? textKey(step) : null;
+  return key ? (agentText.value[key] ?? "") : "";
+}
+
+function workingLabel(step: ToolStep): string {
+  return delegateOf(step)?.label || "Delegated agent";
+}
+
 function argumentsText(step: ToolStep): string {
   return Object.keys(step.arguments).length ? JSON.stringify(step.arguments, null, 2) : "";
 }
@@ -39,10 +86,15 @@ function argumentsText(step: ToolStep): string {
       <summary>
         <span class="icon">{{ icon(step) }}</span>
         <span class="title">{{ title(step) }}</span>
+        <span v-if="badge(step)" class="agent-badge">{{ badge(step) }}</span>
       </summary>
       <div class="detail">
         <p class="tool"><code>{{ step.tool }}</code></p>
         <pre v-if="argumentsText(step)">{{ argumentsText(step) }}</pre>
+        <details v-if="workingText(step)" class="agent-text" open>
+          <summary>{{ workingLabel(step) }} is working</summary>
+          <pre>{{ workingText(step) }}</pre>
+        </details>
         <template v-if="step.result">
           <MarkdownContent v-if="formatToolResult(step.result)" :text="formatToolResult(step.result) ?? ''" />
           <pre v-else>{{ step.result }}</pre>
@@ -98,6 +150,17 @@ function argumentsText(step: ToolStep): string {
   white-space: pre-wrap;
   font-family: var(--mono);
   background: var(--code-bg);
+}
+.agent-badge {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.85em;
+}
+.agent-text {
+  margin: 0.3rem 0;
 }
 .muted {
   margin: 0;

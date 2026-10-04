@@ -26,6 +26,8 @@ const REPORT: UsageReport = {
     { date: "2026-10-01", tokens: 1_233_567 },
   ],
   hourly: hourly(14, 1_234_567),
+  group_by: "agent",
+  groups: [],
 };
 
 const OPTIONS = { username: "root", rangeLabel: "30 days", generatedAt: new Date(2026, 9, 1, 9, 5), utcOffsetMinutes: 0 };
@@ -68,6 +70,27 @@ describe("usageToMarkdown", () => {
     expect(text).toContain("## Per day (UTC)");
     expect(text).toContain("| 2026-09-20 | 1,000 |");
     expect(text).toContain("| 2026-10-01 | 1,233,567 |");
+  });
+
+  it("has no extra table when grouped by agent", () => {
+    expect(text).not.toContain("## By provider");
+    expect(text.match(/## By /g)).toHaveLength(1);
+  });
+
+  it("adds a table for the chosen grouping", () => {
+    const grouped = usageToMarkdown(
+      {
+        ...REPORT,
+        group_by: "provider",
+        groups: [{ key: "open|ai", tokens: 1_000_000, input_tokens: 900_000, output_tokens: 100_000, turns: 7 }],
+      },
+      OPTIONS,
+    );
+
+    expect(grouped).toContain("## By provider");
+    expect(grouped).toContain("| Provider | Tokens | Turns |");
+    expect(grouped).toContain("| open\\|ai | 1,000,000 | 7 |");
+    expect(grouped).toContain("## By agent");
   });
 
   it("ends with a newline", () => {

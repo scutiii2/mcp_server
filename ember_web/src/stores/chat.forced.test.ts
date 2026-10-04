@@ -5,7 +5,6 @@ import { chatsClient, type ChatSummary } from "../api/ChatsClient";
 import { settingsClient } from "../api/SettingsClient";
 import type { ChatMessage, TurnEvent } from "../api/types";
 import { watchTurn } from "../services/turnStream";
-import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 import { useChatStore } from "./chat";
 
@@ -54,7 +53,6 @@ async function storeWith(forced: boolean | Error) {
   if (forced instanceof Error) settings.get.mockRejectedValue(forced);
   else settings.get.mockResolvedValue({ force_tool_approval: forced });
   useAuthStore().account = ACCOUNT;
-  useAgentsStore().agents = [{ id: "a1", label: "Agent" }];
   client.list.mockResolvedValue([summary("c1", FOUR.length)]);
   client.get.mockImplementation(async (id: string) => ({ ...summary(id, FOUR.length), messages: structuredClone(FOUR) }));
   const chat = useChatStore();

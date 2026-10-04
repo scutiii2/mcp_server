@@ -10,11 +10,18 @@ URL, token or key.
 
 - Log in, register with an invite code, verify your email (ember_api
   accounts - separate from chat_app's).
-- Chat with any registered `ai_agent` instance (Agent dropdown), with live
-  token streaming and the tools it runs. Each answer keeps a collapsed
-  "Ran N tools" list (arguments and result per step), also after a reload. ember_api runs each answer: it
+- Chat with the main agent, with live token streaming and the tools it runs.
+  There is no agent picker: the header says "Talking to <agent>" and ember_api
+  chooses the agent (`GET /api/agent`); the browser never sends an agent id.
+  Each answer keeps a collapsed "Ran N tools" list (arguments and result per
+  step), also after a reload. ember_api runs each answer: it
   keeps going and is saved even if the page closes; reopening the chat picks
   the live answer back up. Chats still being answered show a pulsing dot.
+- When the main agent hands a question to another agent, a live line shows who
+  is working ("Ember → Calculator", with a running clock for the innermost
+  agent) until it finishes. In the tool list a step run by a delegated agent
+  carries a badge with that agent's name, and the delegate step shows the text
+  that agent has written so far while it works.
 - Stop button (takes effect at the agent's next round).
 - A running clock under the answer being written (`12.4 s`, then `1 min 03 s`),
   and beside "Running command ...". It counts from when you sent the question; for a
@@ -68,8 +75,7 @@ URL, token or key.
   `[[DOWNLOAD filename="..." bytes="..." url="/server/download?path=..." label="..."]]`
   marker, the marker becomes a download card ("⬇ Download name (size)") that opens
   ember_api's `/api/server/download`. A card whose URL is not that route shows as
-  unavailable, with no link. The Agent dropdown above the chat picks the agent;
-  its provider and model come from ai_agent, so there are no separate pickers.
+  unavailable, with no link. The agent's provider and model come from ai_agent, so there are no pickers for them.
 - Attach files to a question (paperclip, paste, or drag and drop anywhere on
   the input area): text and code files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
   characters each), which goes into the question; the chat shows each file
@@ -118,10 +124,13 @@ URL, token or key.
   you answer, and no answer within 4 minutes counts as Deny. "Allow for this
   chat" is remembered in this browser per chat (a chip shows how many tools are
   allowed and resets them). Slash commands you type yourself never ask.
-- "Terse replies" toggle next to the Agent picker (ai_agent's `caveman`
+- "Terse replies" toggle in the chat header (ai_agent's `caveman`
   option), remembered per account.
 - Usage page: your 6-hour and weekly token limits, totals, tokens per day and
-  per agent; admins also see every account. Periods: This month (from the 1st,
+  per agent; admins also see every account. A "By" selector regroups the
+  totals by agent, provider, gateway or model, and a "Recent calls" table lists
+  each call (when, agent and who delegated it, provider, gateway, model, input,
+  output and total tokens). Periods: This month (from the 1st,
   UTC), 7, 30 and 90 days, 12 months. Also a "busiest hour" and a "favorite
   agent" tile, a 12-month heatmap (one square per UTC day, five shades
   relative to the busiest day; its own request, so it ignores the period) and
@@ -133,7 +142,7 @@ URL, token or key.
   resources, reading resources, and (admins) switching capabilities on/off.
 - Extensions page: mcp_server's extensions (other MCP servers) with their
   status and tools; switch on the ones the agent may use in your chats
-  (remembered per account, shown next to the Agent picker). Admins add and
+  (remembered per account, shown in the chat header). Admins add and
   remove extensions.
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s, with capability/status/date filters and search.
@@ -217,8 +226,9 @@ npm run test:e2e
 ```
 
 Playwright runs the built app in the Chrome installed on this machine (no browser download) on port
-5199 (`EMBER_E2E_PORT`). One test logs in (a wrong password first), asks a question and reads the
-streamed answer, then reloads. ember_api is not needed: `e2e/fakeApi.ts` answers every `/api` call,
+5199 (`EMBER_E2E_PORT`). One test logs in (a wrong password first), checks the header says "Talking to Test Agent" and
+there is no agent picker, asks a question, sees the live "Test Agent → Calculator" line while a
+delegated agent works, reads the streamed answer, then reloads. ember_api is not needed: `e2e/fakeApi.ts` answers every `/api` call,
 and the test fails if the page asks for anything the fake does not know, so the fake cannot drift
 from the app unnoticed. If the app starts calling a new route on these pages, add it there.
 
@@ -247,13 +257,13 @@ src/
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
-  stores/       Pinia: auth, agents, chat, templates
+  stores/       Pinia: auth, entryAgent, chat, templates
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime and notification), useTheme (system / light / dark)
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
-  components/   reusable pieces: MessageList, ToolSteps, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, AgentPicker, ToolRunForm, ToolResultPanel, AuthCard
+  components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
+                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)

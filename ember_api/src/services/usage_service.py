@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -41,6 +41,25 @@ def _int(value: Any) -> int | None:
     return int(value) if isinstance(value, (int, float)) and value >= 0 else None
 
 
+def _time(value: Any) -> datetime | None:
+    """An ISO-8601 time from ai_agent ("...Z") as naive UTC; None when absent or unreadable."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
+
+
+def _text(value: Any, limit: int) -> str | None:
+    return value[:limit] if isinstance(value, str) and value else None
+
+
+# Keys of a usage row that are shown but not stored (no column).
+_DISPLAY_ONLY = {"agent_label"}
+
+
 def period_start(days: int, since_date: date | None = None) -> tuple[datetime, int]:
     """Where a report begins, and how many days it spans. A `since_date` (a UTC
     day, from its midnight: "this month" is the 1st) replaces `days`."""
@@ -58,23 +77,39 @@ def usage_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for entry in result.get("agent_usage") or []:
         if isinstance(entry, dict) and _int(entry.get("total_tokens")):
+            agent_id = _text(entry.get("agent_id"), 120)
+            provider_id = _text(entry.get("provider_id"), 60)
             rows.append(
                 {
-                    "agent": entry.get("provider_id"),
+                    "agent": agent_id or provider_id,
+                    "agent_id": agent_id,
+                    "agent_label": _text(entry.get("agent_label"), 120),
+                    "provider_id": provider_id,
+                    "gateway": _text(entry.get("gateway"), 60),
                     "model": entry.get("model"),
                     "input_tokens": _int(entry.get("input_tokens")),
                     "output_tokens": _int(entry.get("output_tokens")),
                     "total_tokens": _int(entry.get("total_tokens")),
+                    "started_at": _time(entry.get("started_at")),
+                    "finished_at": _time(entry.get("finished_at")),
+                    "delegated_by": _text(entry.get("delegated_by"), 120),
                 }
             )
     if not rows and _int(result.get("total_tokens")):
         rows.append(
             {
                 "agent": result.get("provider_id"),
+                "agent_id": None,
+                "agent_label": None,
+                "provider_id": result.get("provider_id"),
+                "gateway": None,
                 "model": result.get("model"),
                 "input_tokens": _int(result.get("input_tokens")),
                 "output_tokens": _int(result.get("output_tokens")),
                 "total_tokens": _int(result.get("total_tokens")),
+                "started_at": None,
+                "finished_at": None,
+                "delegated_by": None,
             }
         )
     return rows
@@ -92,10 +127,9 @@ class UsageService:
         now = utcnow()
         rows = usage_rows(result)
         for row in rows:
+            stored = {k: v for k, v in row.items() if k not in _DISPLAY_ONLY}
             self._session.add(
-                UsageRecord(
-                    account_id=account_id, turn_id=turn_id, kind=kind, chat_id=chat_id, created_at=now, **row
-                )
+                UsageRecord(account_id=account_id, turn_id=turn_id, kind=kind, chat_id=chat_id, created_at=now, **stored)
             )
         if rows:
             await self._session.commit()
@@ -128,39 +162,67 @@ class UsageService:
                 return LimitBlock(reason=f"{label} token limit reached", reset_at=window.reset_at)
         return None
 
-    async def report(self, account_id: int, days: int, since_date: date | None = None) -> dict[str, Any]:
+    async def report(
+        self,
+        account_id: int,
+        days: int,
+        since_date: date | None = None,
+        *,
+        group_by: str = "agent",
+        agent: str | None = None,
+        provider: str | None = None,
+    ) -> dict[str, Any]:
         since, days = period_start(days, since_date)
-        rows = (
-            await self._session.execute(
-                select(
-                    UsageRecord.created_at,
-                    UsageRecord.turn_id,
-                    UsageRecord.kind,
-                    UsageRecord.chat_id,
-                    UsageRecord.agent,
-                    UsageRecord.model,
-                    UsageRecord.input_tokens,
-                    UsageRecord.output_tokens,
-                    UsageRecord.total_tokens,
-                )
-                .where(UsageRecord.account_id == account_id, UsageRecord.created_at >= since)
-                .order_by(UsageRecord.created_at)
+        query = (
+            select(
+                UsageRecord.created_at,
+                UsageRecord.turn_id,
+                UsageRecord.kind,
+                UsageRecord.chat_id,
+                UsageRecord.agent,
+                UsageRecord.provider_id,
+                UsageRecord.gateway,
+                UsageRecord.model,
+                UsageRecord.input_tokens,
+                UsageRecord.output_tokens,
+                UsageRecord.total_tokens,
             )
-        ).all()
+            .where(UsageRecord.account_id == account_id, UsageRecord.created_at >= since)
+            .order_by(UsageRecord.created_at)
+        )
+        if agent:
+            query = query.where(UsageRecord.agent == agent)
+        if provider:
+            query = query.where(UsageRecord.provider_id == provider)
+        rows = (await self._session.execute(query)).all()
 
         daily: dict[str, int] = {}
         # Tokens by UTC hour of day, for the busiest hour.
         hourly = [0] * 24
         agents: dict[tuple[str, str], int] = {}
+        groups: dict[str, dict[str, Any]] = {}
         turns: set[str] = set()
         chats: set[str] = set()
         total = input_total = output_total = summary_total = 0
-        for created_at, turn_id, kind, chat_id, agent, model, input_tokens, output_tokens, tokens in rows:
+        for created_at, turn_id, kind, chat_id, agent_name, provider_id, gateway, model, input_tokens, output_tokens, tokens in rows:
             day = created_at.date().isoformat()
             daily[day] = daily.get(day, 0) + tokens
             hourly[created_at.hour] += tokens
-            key = (agent or "unknown", model or "")
+            key = (agent_name or "unknown", model or "")
             agents[key] = agents.get(key, 0) + tokens
+            group_key = {
+                "agent": agent_name,
+                "provider": provider_id,
+                "gateway": gateway,
+                "model": model,
+            }[group_by] or "unknown"
+            group = groups.setdefault(
+                group_key, {"key": group_key, "tokens": 0, "input_tokens": 0, "output_tokens": 0, "turns": set()}
+            )
+            group["tokens"] += tokens
+            group["input_tokens"] += input_tokens or 0
+            group["output_tokens"] += output_tokens or 0
+            group["turns"].add(turn_id)
             if kind == "summary":
                 summary_total += tokens
             else:
@@ -184,9 +246,37 @@ class UsageService:
                 {"agent": agent, "model": model, "tokens": tokens}
                 for (agent, model), tokens in sorted(agents.items(), key=lambda item: -item[1])
             ],
+            "group_by": group_by,
+            "groups": [
+                {**g, "turns": len(g["turns"])} for g in sorted(groups.values(), key=lambda g: -g["tokens"])
+            ],
             "daily": [{"date": day, "tokens": tokens} for day, tokens in sorted(daily.items())],
             "hourly": hourly,
         }
+
+    async def records(
+        self,
+        account_id: int,
+        days: int,
+        since_date: date | None = None,
+        *,
+        agent: str | None = None,
+        provider: str | None = None,
+        limit: int = 100,
+    ) -> list[UsageRecord]:
+        """This account's usage rows, newest first, with when each agent's call ran."""
+        since, _ = period_start(days, since_date)
+        query = (
+            select(UsageRecord)
+            .where(UsageRecord.account_id == account_id, UsageRecord.created_at >= since)
+            .order_by(UsageRecord.created_at.desc(), UsageRecord.id.desc())
+            .limit(limit)
+        )
+        if agent:
+            query = query.where(UsageRecord.agent == agent)
+        if provider:
+            query = query.where(UsageRecord.provider_id == provider)
+        return list((await self._session.execute(query)).scalars())
 
     async def all_accounts(self, days: int, since_date: date | None = None) -> list[dict[str, Any]]:
         """Per-account totals for admins, busiest first."""

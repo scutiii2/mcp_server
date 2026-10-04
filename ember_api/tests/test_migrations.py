@@ -18,8 +18,8 @@ from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
 # The newest real migration; the tests' throwaway one comes after it.
-HEAD = "0002"
-NEXT = "0003"
+HEAD = "0003"
+NEXT = "0004"
 
 
 def make_database(tmp_path: Path) -> Database:
@@ -90,6 +90,34 @@ class TestFreshDatabase:
 
         assert revision_of(tmp_path / "ember.db") == HEAD
 
+    def test_0003_downgrades_to_0002_and_drops_its_columns(self, tmp_path: Path) -> None:
+        from alembic import command
+
+        added = {"agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"}
+        path = tmp_path / "ember.db"
+        run_with(make_database(path.parent))
+
+        def columns() -> set[str]:
+            with closing(sqlite3.connect(path)) as conn:
+                return {row[1] for row in conn.execute("PRAGMA table_info(usage_records)")}
+
+        assert added <= columns()
+
+        async def downgrade() -> None:
+            database = make_database(tmp_path)
+            runner = MigrationRunner(database.engine)
+            try:
+                async with database.engine.begin() as conn:
+                    await conn.run_sync(lambda sync: command.downgrade(runner._config(sync), "0002"))
+            finally:
+                await database.dispose()
+
+        asyncio.run(downgrade())
+
+        assert revision_of(path) == "0002"
+        assert not (added & columns())
+        assert {"id", "account_id", "total_tokens", "created_at"} <= columns()
+
 
 class TestDatabaseFromBeforeMigrations:
     def build_legacy(self, tmp_path: Path) -> Path:
@@ -100,6 +128,8 @@ class TestDatabaseFromBeforeMigrations:
         path = tmp_path / "ember.db"
         with closing(sqlite3.connect(path)) as conn:
             conn.execute("DROP TABLE app_settings")  # made after the baseline, so a legacy database lacks it
+            for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
+                conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")  # added after the baseline too
             conn.execute(
                 "INSERT INTO accounts (username, email, password_hash, is_protected, is_active, email_verified, created_at)"
                 " VALUES ('lex', 'lex@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
@@ -132,7 +162,7 @@ class TestDatabaseFromBeforeMigrations:
     def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
         scripts = tmp_path / "baseline_only"
-        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*"))
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*"))
         calls: list[int] = []
 
         async def backup() -> None:
@@ -156,9 +186,9 @@ def scripts_with_a_new_migration(tmp_path: Path) -> Path:
     """The real migrations plus a throwaway one adding a column."""
     scripts = tmp_path / "migrations"
     shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
-    (scripts / "versions" / "0003_add_nickname.py").write_text(
-        'revision = "0003"\n'
-        'down_revision = "0002"\n'
+    (scripts / "versions" / "0004_add_nickname.py").write_text(
+        'revision = "0004"\n'
+        'down_revision = "0003"\n'
         "branch_labels = None\n"
         "depends_on = None\n"
         "import sqlalchemy as sa\n"
@@ -225,6 +255,8 @@ class TestLaterMigration:
         asyncio.run(database.dispose())
         with closing(sqlite3.connect(tmp_path / "ember.db")) as conn:
             conn.execute("DROP TABLE app_settings")  # a legacy database predates it
+            for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
+                conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")
             conn.commit()
         calls: list[int] = []
 

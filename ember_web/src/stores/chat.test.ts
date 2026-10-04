@@ -5,7 +5,6 @@ import { chatsClient, type ChatSearchHit, type ChatSummary } from "../api/ChatsC
 import { ApiError } from "../api/http";
 import type { ChatMessage } from "../api/types";
 import { withAttachments } from "../utils/attachments";
-import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 import { useChatStore } from "./chat";
 
@@ -65,7 +64,6 @@ const FOUR: ChatMessage[] = [user("q1"), assistant("a1"), user("q2"), assistant(
 async function storeWith(transcripts: Record<string, ChatMessage[]>) {
   setActivePinia(createPinia());
   useAuthStore().account = ACCOUNT;
-  useAgentsStore().agents = [{ id: "a1", label: "Agent" }];
   client.list.mockResolvedValue(Object.entries(transcripts).map(([id, m]) => summary(id, m.length)));
   client.get.mockImplementation(async (id: string) => ({
     ...summary(id, transcripts[id]!.length),
@@ -101,7 +99,7 @@ describe("send with truncateTo (regenerate / edit)", () => {
 
     expect(client.startTurn).toHaveBeenCalledWith(
       "c1",
-      expect.objectContaining({ question: "q2 edited", truncate_to: 2, agent_id: "a1" }),
+      expect.objectContaining({ question: "q2 edited", truncate_to: 2 }),
     );
     expect(contents(chat.messages)).toEqual(["q1", "a1", "q2 edited"]);
   });
@@ -123,6 +121,24 @@ describe("send with truncateTo (regenerate / edit)", () => {
     expect(contents(chat.messages)).toEqual(["q1", "a1", "q2", "a2"]);
     expect(chat.sendError).toBe("An answer is still being written for this chat");
     expect(chat.busy).toBe(false);
+  });
+
+  it("says the question was not taken when there is no entry agent (503), so the typed text can be given back", async () => {
+    client.startTurn.mockRejectedValue(new ApiError(503, "No entry agent registered"));
+    const chat = await openChat(FOUR);
+
+    const taken = await chat.send("a long question I typed");
+
+    expect(taken).toBe(false);
+    expect(chat.sendError).toBe("No entry agent registered");
+    expect(contents(chat.messages)).toEqual(["q1", "a1", "q2", "a2"]);
+  });
+
+  it("says the question was taken when the turn starts", async () => {
+    const chat = await openChat(FOUR);
+
+    expect(await chat.send("q3")).toBe(true);
+    expect(chat.sendError).toBe("");
   });
 
   it("sends nothing for a target that is not a typed question", async () => {
@@ -499,7 +515,7 @@ describe("branchFrom (fork a chat at an answer)", () => {
     await chat.branchFrom(1);
     await chat.send("something else");
 
-    expect(client.startTurn).toHaveBeenCalledWith("b1", expect.objectContaining({ question: "something else", agent_id: "a1" }));
+    expect(client.startTurn).toHaveBeenCalledWith("b1", expect.objectContaining({ question: "something else" }));
     expect(contents(chat.messages)).toEqual(["q1", "a1", "something else"]);
     expect(client.get).toHaveBeenCalledTimes(1); // only the original was ever fetched
   });
@@ -711,5 +727,21 @@ describe("hasChat and listReady (deep links)", () => {
     await flushPromises();
 
     expect(chat.listReady).toBe(false);
+  });
+});
+
+describe("send without an agent", () => {
+  it("sends no agent id: ember_api picks the agent, and the chat takes the id it reports", async () => {
+    const chat = await storeWith({});
+    client.startTurn.mockResolvedValue({
+      chat: { ...summary("new", 1), agent_id: "main", running: true },
+      sequence: 1,
+    });
+
+    await chat.send("hello");
+
+    const body = client.startTurn.mock.calls[0]![1];
+    expect(body).not.toHaveProperty("agent_id");
+    expect(chat.active?.agentId).toBe("main");
   });
 });

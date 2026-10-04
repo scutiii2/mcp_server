@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from "vue";
 import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
-import { withAttachments } from "../utils/attachments";
+import { splitAttachments, withAttachments } from "../utils/attachments";
 import { errorMessage } from "../utils/errors";
 import { appendToDraft, filterTemplates, preview, templateQuery } from "../utils/templates";
 import TemplatePicker from "./TemplatePicker.vue";
@@ -208,7 +208,19 @@ function insertText(text: string): void {
   setDraft(appendToDraft(draft.value, text));
 }
 
-defineExpose({ setDraft, focus, insertText });
+/** Gives back a question that was not taken (ember_api refused it), as typed:
+ * the text, and its files as ready attachments. Only into an empty box, so
+ * whatever the person has typed since is never overwritten. */
+function restore(question: string): void {
+  if (draft.value.trim() !== "" || attachments.value.length > 0) return;
+  const { text, attachments: files } = splitAttachments(question);
+  for (const file of files) {
+    attachments.value.push({ id: nextAttachmentId++, filename: file.filename, state: "ready", text: file.text, chars: file.chars, truncated: file.truncated, error: "" });
+  }
+  setDraft(text);
+}
+
+defineExpose({ setDraft, focus, insertText, restore });
 
 /** ↑ and ↓ browse the questions asked before, ready to edit and resend.
  * Starts only from an empty box; once browsing, the arrows still move the

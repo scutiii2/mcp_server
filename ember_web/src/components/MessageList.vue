@@ -2,9 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { ApprovalDecision, ChatMessage, PendingApproval, ToolStep } from "../api/types";
 import type { CommandInfo } from "../api/CommandsClient";
+import { agentLabelFor } from "../utils/agentLabels";
 import { splitAttachments } from "../utils/attachments";
 import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
 import { toolTitle } from "../utils/toolTitles";
+import AgentActivity from "./AgentActivity.vue";
 import CopyButton from "./CopyButton.vue";
 import DownloadCards from "./DownloadCards.vue";
 import ElapsedTime from "./ElapsedTime.vue";
@@ -55,7 +57,7 @@ function formatArguments(args: Record<string, unknown>): string {
 
 function agentLabel(m: ChatMessage): string | undefined {
   // Without a label the chip shows the saved id.
-  return m.agent ? props.agentLabels?.[m.agent] : undefined;
+  return agentLabelFor(m.agent, props.agentLabels ?? {});
 }
 
 function isDeciding(id: string): boolean {
@@ -335,6 +337,7 @@ onBeforeUnmount(() => {
           </div>
           <p class="note">No answer within 4 minutes counts as Deny.</p>
         </section>
+        <AgentActivity />
         <span v-if="activity" class="activity"><span class="dot" />{{ activity }}</span>
         <MarkdownContent v-if="streaming" :text="hideDownloadMarkers(streaming)" />
         <span v-else-if="!activity" class="activity"><span class="dot" />thinking ...</span>

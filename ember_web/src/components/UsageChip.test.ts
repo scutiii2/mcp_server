@@ -210,4 +210,36 @@ describe("UsageChip on an answer that ran several agents", () => {
 
     expect(rows(wrapper)["Agents"]).toBeUndefined();
   });
+
+  it("lists each agent by its label, with when its call ran", async () => {
+    const message: ChatMessage = {
+      role: "assistant",
+      content: "x",
+      agent: "main",
+      total_tokens: 125,
+      agent_usage: [
+        { agent: "main", agent_label: "Ember", model: "m1", total_tokens: 100 },
+        {
+          agent: "calc",
+          agent_label: "Calculator",
+          model: "m2",
+          provider_id: "openai",
+          gateway: "azure",
+          total_tokens: 25,
+          started_at: "2026-10-04T09:12:04.000Z",
+          finished_at: "2026-10-04T09:12:05.250Z",
+        },
+      ],
+    };
+    const wrapper = mount(UsageChip, { props: { message } });
+
+    await wrapper.find("button").trigger("click");
+
+    const shown = rows(wrapper);
+    expect(shown["Ember"]).toBe("m1 · 100 total");
+    expect(shown["Calculator"]).toBe(
+      `m2 · openai via azure · 25 total · 1.3 s · at ${new Date("2026-10-04T09:12:04Z").toLocaleTimeString()}`,
+    );
+    expect(shown["calc"]).toBeUndefined();
+  });
 });

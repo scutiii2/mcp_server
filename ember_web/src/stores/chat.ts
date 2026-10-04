@@ -5,6 +5,7 @@ import { settingsClient } from "../api/SettingsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import { ApiError } from "../api/http";
 import type {
+  ActiveAgent,
   ApprovalDecision,
   ChatMessage,
   Conversation,
@@ -24,7 +25,6 @@ import { watchTurn } from "../services/turnStream";
 import { splitAttachments, withAttachments } from "../utils/attachments";
 import { errorMessage } from "../utils/errors";
 import { toolTitle } from "../utils/toolTitles";
-import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 
 const TITLE_MAX_CHARS = 60;
@@ -40,6 +40,12 @@ function titleFrom(question: string): string {
   const { text, attachments } = splitAttachments(question);
   const oneLine = (text || attachments[0]?.filename || question).replace(/\s+/g, " ").trim();
   return oneLine.length > TITLE_MAX_CHARS ? `${oneLine.slice(0, TITLE_MAX_CHARS - 1)}…` : oneLine;
+}
+
+/** Key of a live step (or of what a delegated agent said for one): two agents
+ * may reuse a step id, so the agent is part of it. */
+export function stepKey(agentId: string | undefined, id: string): string {
+  return `${agentId ?? ""}\t${id}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -131,7 +137,6 @@ type SaveOp = () => Promise<void>;
  * queue, in order. A failed one stops the queue and shows `saveError`;
  * retrySave() resends it and everything behind it. */
 export const useChatStore = defineStore("chat", () => {
-  const agents = useAgentsStore();
   const auth = useAuthStore();
   const storage: ConversationStorage = new ServerConversationStorage();
 
@@ -152,7 +157,9 @@ export const useChatStore = defineStore("chat", () => {
   const streaming = ref(""); // the open chat's answer, as it arrives
   const activity = ref(""); // its current tool step, if any
   const liveSteps = ref<ToolStep[]>([]); // the tools it ran so far
-  const liveStepIndex = new Map<string, number>();
+  const activeAgents = ref<ActiveAgent[]>([]); // delegated agents working on the answer, outermost first
+  const agentText = ref<Record<string, string>>({}); // a delegated agent's streamed text, by stepKey(that agent, delegate step id)
+  const liveStepIndex = new Map<string, number>(); // by stepKey: two agents may reuse a step id
   const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
   const caveman = ref(false);
@@ -403,10 +410,15 @@ export const useChatStore = defineStore("chat", () => {
       case "snapshot":
         streaming.value = event.text;
         activity.value = event.activity ? `${event.activity} ...` : "";
-        // Steps have no ids here; later step_end events for them are ignored.
         liveSteps.value = event.steps ?? [];
+        // Later step_end events (and a delegate's text) find their step by id.
         liveStepIndex.clear();
+        liveSteps.value.forEach((step, index) => {
+          if (step.id) liveStepIndex.set(stepKey(step.agent_id, step.id), index);
+        });
         pendingApprovals.value = event.approvals ?? [];
+        activeAgents.value = event.active_agents ?? [];
+        agentText.value = {};
         break;
       case "token":
         streaming.value += event.text;
@@ -416,8 +428,10 @@ export const useChatStore = defineStore("chat", () => {
         break;
       case "step_start":
         activity.value = `running ${event.label ?? toolTitle(event.tool)} ...`;
-        liveStepIndex.set(event.id, liveSteps.value.length);
+        liveStepIndex.set(stepKey(event.agent_id, event.id), liveSteps.value.length);
         liveSteps.value.push({
+          id: event.id,
+          ...(event.agent_id ? { agent_id: event.agent_id, agent_label: event.agent_label ?? "" } : {}),
           tool: event.tool,
           label: event.label ?? "",
           arguments: isRecord(event.arguments) ? event.arguments : {},
@@ -443,7 +457,7 @@ export const useChatStore = defineStore("chat", () => {
       case "step_end": {
         activity.value = "";
         dropApproval(event.id);
-        const index = liveStepIndex.get(event.id);
+        const index = liveStepIndex.get(stepKey(event.agent_id, event.id));
         const step = index === undefined ? undefined : liveSteps.value[index];
         if (step) {
           step.ok = event.ok;
@@ -451,10 +465,36 @@ export const useChatStore = defineStore("chat", () => {
         }
         break;
       }
+      case "agent_start":
+        if (!activeAgents.value.some((a) => a.step_id === event.step_id && a.agent_id === event.agent_id)) {
+          activeAgents.value = [
+            ...activeAgents.value,
+            { agent_id: event.agent_id, label: event.agent_label, since: event.at, step_id: event.step_id },
+          ];
+        }
+        break;
+      case "agent_end":
+        activeAgents.value = activeAgents.value.filter(
+          (a) => !(a.step_id === event.step_id && a.agent_id === event.agent_id),
+        );
+        break;
+      case "agent_token":
+        {
+          const key = stepKey(event.agent_id, event.step_id);
+          agentText.value = {
+            ...agentText.value,
+            [key]: event.reset ? "" : ((agentText.value[key] ?? "") + event.text).slice(-20_000),
+          };
+        }
+        break;
       case "final":
+        activeAgents.value = [];
+        agentText.value = {};
         turnOutcome = event.cancelled ? "stopped" : "answered";
         break;
       case "error":
+        activeAgents.value = [];
+        agentText.value = {};
         turnOutcome = "failed";
         break;
       case "summarized":
@@ -481,6 +521,8 @@ export const useChatStore = defineStore("chat", () => {
     activity.value = "";
     clockStart.value = null;
     liveSteps.value = [];
+    activeAgents.value = [];
+    agentText.value = {};
     liveStepIndex.clear();
     pendingApprovals.value = [];
     deciding.value = [];
@@ -570,27 +612,28 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
-  /** Asks the selected agent. ember_api saves the question and runs the
+  /** Asks the main agent. ember_api saves the question and runs the
    * turn; this page shows it arriving. A leading "/" runs a command instead.
    *
    * `truncateTo` (regenerate / edit): the index of the open chat's question
    * this one replaces. That message and everything after it are dropped; if
-   * the question isn't accepted they come back. */
-  async function send(question: string, options: { truncateTo?: number } = {}): Promise<void> {
-    if (!question || busy.value || chatLoading.value || working.value) return;
+   * the question isn't accepted they come back.
+   *
+   * Resolves false when the question was not taken (refused, or nothing was
+   * sent), so the caller can give the typed text back to the person. */
+  async function send(question: string, options: { truncateTo?: number } = {}): Promise<boolean> {
+    if (!question || busy.value || chatLoading.value || working.value) return false;
     // Its transcript failed to load: what's shown isn't the chat.
-    if (active.value?.messagesLoaded === false) return;
+    if (active.value?.messagesLoaded === false) return false;
     const truncateTo = options.truncateTo;
-    if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return;
+    if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return false;
     sendError.value = "";
-    if (truncateTo === undefined && question.startsWith("/")) return runCommand(question);
+    if (truncateTo === undefined && question.startsWith("/")) {
+      await runCommand(question);
+      return true;
+    }
     // The administrator may have changed what is required since the page loaded.
     void refreshSettings();
-    const agent = agents.selected;
-    if (!agent) {
-      sendError.value = "No ai_agent is available.";
-      return;
-    }
 
     let conversation = active.value;
     const isNew = conversation === null;
@@ -601,7 +644,6 @@ export const useChatStore = defineStore("chat", () => {
         title: titleFrom(question),
         messages: [],
         messagesLoaded: true,
-        agentId: agent.id,
         createdAt: now,
         updatedAt: now,
       });
@@ -612,7 +654,6 @@ export const useChatStore = defineStore("chat", () => {
     const previous = conversation.messages;
     conversation.messages =
       truncateTo === undefined ? [...previous, { role: "user", content: question }] : [...previous.slice(0, truncateTo), { role: "user", content: question }];
-    conversation.agentId = agent.id;
     starting.value = true;
     const began = Date.now();
     clockStart.value = began;
@@ -620,7 +661,6 @@ export const useChatStore = defineStore("chat", () => {
     try {
       const turn = await chatsClient.startTurn(id, {
         question,
-        agent_id: agent.id,
         caveman: caveman.value,
         enabled_extensions: enabledExtensions.value,
         title: conversation.title,
@@ -629,12 +669,14 @@ export const useChatStore = defineStore("chat", () => {
           ? { ask_before_tools: true, allowed_tools: forceToolApproval.value ? [] : (allowedTools.value[id] ?? []) }
           : {}),
       });
-      if (started !== generation) return;
+      if (started !== generation) return true;
+      conversation.agentId = turn.chat.agent_id ?? undefined;
       conversation.running = true;
       conversation.updatedAt = Date.parse(`${turn.chat.updated_at}Z`);
       if (activeId.value === id) follow(id, turn.sequence, began);
+      return true;
     } catch (err) {
-      if (started !== generation) return;
+      if (started !== generation) return true; // another chat is open: nothing to give back here
       clockStart.value = null;
       // Not saved (limit reached, agent gone ...): take the question back.
       conversation.messages = previous;
@@ -643,6 +685,7 @@ export const useChatStore = defineStore("chat", () => {
         if (activeId.value === id) activeId.value = null;
       }
       sendError.value = errorMessage(err);
+      return false;
     } finally {
       starting.value = false;
     }
@@ -669,7 +712,7 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   /** Asks the last question again: the answer to it is dropped and rewritten. */
-  function regenerate(): Promise<void> {
+  function regenerate(): Promise<boolean | void> {
     const index = regenerateIndex.value;
     const question = messages.value[index]?.content;
     if (index < 0 || !question) return Promise.resolve();
@@ -678,7 +721,7 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Replaces question `index` with `text` (its attached files stay) and
    * drops everything after it; the agent answers the new text. */
-  function editAndResend(index: number, text: string): Promise<void> {
+  function editAndResend(index: number, text: string): Promise<boolean | void> {
     const original = messages.value[index];
     if (!original || !canReplaceFrom(index)) return Promise.resolve();
     const { attachments } = splitAttachments(original.content);
@@ -720,7 +763,6 @@ export const useChatStore = defineStore("chat", () => {
       unfollow();
       jumpIndex.value = null;
       activeId.value = chat.id;
-      if (chat.agent_id) agents.select(chat.agent_id);
       scheduleBackgroundPoll();
     } catch (err) {
       if (started === generation) sendError.value = errorMessage(err);
@@ -800,8 +842,6 @@ export const useChatStore = defineStore("chat", () => {
     unfollow();
     sendError.value = "";
     activeId.value = id;
-    // Reopening a chat switches back to the agent it was last talking to.
-    if (conversation.agentId) agents.select(conversation.agentId);
     scheduleBackgroundPoll();
     if (conversation.messagesLoaded === false || conversation.running) await loadChat(id);
   }
@@ -983,7 +1023,7 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Condenses the history into a summary the agent keeps as its memory. */
   function summarizeChat(): Promise<void> {
-    return rewrite("Summarizing ...", (id) => chatsClient.summarize(id, agents.selected?.id ?? null));
+    return rewrite("Summarizing ...", (id) => chatsClient.summarize(id));
   }
 
   /** Starts the conversation afresh; old messages stay as a collapsed log. */
@@ -1022,6 +1062,8 @@ export const useChatStore = defineStore("chat", () => {
     messages,
     streaming,
     activity,
+    activeAgents,
+    agentText,
     liveSteps,
     commandSchema,
     busy,

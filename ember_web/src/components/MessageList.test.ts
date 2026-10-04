@@ -1,8 +1,15 @@
 import { flushPromises, mount, type DOMWrapper } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "../api/types";
+import { useChatStore } from "../stores/chat";
+import { useEntryAgentStore } from "../stores/entryAgent";
 import { withAttachments } from "../utils/attachments";
 import MessageList from "./MessageList.vue";
+
+// <AgentActivity> reads the chat store, which loads chats when it starts.
+vi.mock("../api/ChatsClient", () => ({ chatsClient: { list: vi.fn().mockResolvedValue([]) } }));
+vi.mock("../services/turnStream", () => ({ watchTurn: vi.fn(() => Promise.resolve("aborted")) }));
 
 const user = (content: string): ChatMessage => ({ role: "user", content });
 const assistant = (content: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({
@@ -19,6 +26,7 @@ type Props = InstanceType<typeof MessageList>["$props"];
 function mountList(props: Partial<Props> = {}) {
   return mount(MessageList, {
     props: { messages: FOUR, streaming: "", activity: "", steps: [], busy: false, canChange: true, regenerateIndex: 2, ...props },
+    global: { plugins: [createPinia()] },
     attachTo: document.body,
   });
 }
@@ -561,5 +569,23 @@ describe("download cards", () => {
 
     expect(wrapper.find(".downloads a").exists()).toBe(false);
     expect(wrapper.find(".downloads .unavailable").exists()).toBe(true);
+  });
+});
+
+describe("who is working", () => {
+  it("shows the agent chain while an answer runs with a delegated agent, and nothing otherwise", () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEntryAgentStore().entry = { id: "main", label: "Ember" };
+    useChatStore().activeAgents = [{ agent_id: "calc", label: "Calculator", since: "2026-10-04T09:12:03.512Z", step_id: "d1" }];
+    const mountWith = (busy: boolean) =>
+      mount(MessageList, {
+        props: { messages: FOUR, streaming: "", activity: "", steps: [], busy, canChange: !busy },
+        global: { plugins: [pinia] },
+        attachTo: document.body,
+      });
+
+    expect(mountWith(true).find(".agent-activity").text()).toContain("Ember → Calculator");
+    expect(mountWith(false).find(".agent-activity").exists()).toBe(false);
   });
 });

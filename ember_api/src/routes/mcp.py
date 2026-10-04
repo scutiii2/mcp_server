@@ -1,4 +1,4 @@
-"""The browser's only way to ai_agent and mcp_server: agent listing and the
+"""The browser's only way to ai_agent and mcp_server: the entry agent and the
 MCP proxy (Streamable HTTP: POST messages, GET event stream, DELETE session)."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from src.config import Settings
 from src.deps import get_settings, require_permission
 from src.models import Account
-from src.services.agent_directory import AgentDirectory
+from src.services.agent_directory import NO_AGENT_RUNNING, AgentDirectory
 from src.services.mcp_policy import AGENT_POLICY, SERVER_POLICY, McpPolicy, PolicyViolation
 from src.services.mcp_proxy import McpProxy
 from src.services.permissions import CHAT_USE, TOOLS_USE
@@ -42,12 +42,16 @@ class AgentOut(BaseModel):
     label: str
 
 
-@router.get("/agents")
-async def list_agents(
+@router.get("/agent")
+async def entry_agent(
     _account: Account = Depends(require_chat),
     directory: AgentDirectory = Depends(get_agent_directory),
-) -> list[AgentOut]:
-    return [AgentOut(id=a.id, label=a.label) for a in await directory.all()]
+) -> AgentOut:
+    """The agent every question goes to; ember_web shows its name."""
+    agent = await directory.entry()
+    if agent is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, NO_AGENT_RUNNING)
+    return AgentOut(id=agent.id, label=agent.label)
 
 
 async def _checked_body(request: Request, policy: McpPolicy) -> bytes | Response | None:

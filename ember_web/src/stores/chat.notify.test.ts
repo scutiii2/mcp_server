@@ -5,7 +5,6 @@ import { chatsClient, type ChatSummary } from "../api/ChatsClient";
 import type { ChatMessage, TurnEvent } from "../api/types";
 import { chimeIfAway, notificationsSupported, notifyIfAway, requestNotifyPermission } from "../composables/useNotify";
 import { watchTurn, type WatchEnd } from "../services/turnStream";
-import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 import { useChatStore } from "./chat";
 
@@ -85,7 +84,6 @@ const finalEvent = (cancelled = false) => ({ type: "final", message: { role: "as
 async function storeWith(chats: Record<string, ChatMessage[]>, running: string[] = []) {
   setActivePinia(createPinia());
   useAuthStore().account = ACCOUNT;
-  useAgentsStore().agents = [{ id: "a1", label: "Agent" }];
   client.list.mockResolvedValue(Object.entries(chats).map(([id, m]) => summary(id, m.length, running.includes(id))));
   client.get.mockImplementation(async (id: string) => ({
     ...summary(id, chats[id]!.length, running.includes(id)),

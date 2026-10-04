@@ -28,19 +28,34 @@ def post(client: TestClient, path: str, payload, **headers) -> httpx.Response:
     return client.post(path, json=payload, headers={**MCP_HEADERS, **headers})
 
 
-# --- agent listing ----------------------------------------------------------------
+# --- entry agent -------------------------------------------------------------------
 
 
-def test_agents_are_listed_without_urls(client: TestClient) -> None:
+def test_entry_agent_is_returned_without_a_url(client: TestClient) -> None:
     as_admin(client)
 
-    agents = client.get("/api/agents").json()
+    # conftest's registry marks no entry agent, so the legacy fallback applies.
+    assert client.get("/api/agent").json() == {"id": AGENTS[0]["id"], "label": AGENTS[0]["label"]}
 
-    assert agents == [{"id": a["id"], "label": a["label"]} for a in AGENTS]
+
+def test_entry_agent_requires_login(client: TestClient) -> None:
+    assert client.get("/api/agent").status_code == 401
 
 
-def test_agent_listing_requires_login(client: TestClient) -> None:
-    assert client.get("/api/agents").status_code == 401
+def test_no_entry_agent_is_a_503(client: TestClient, tmp_path) -> None:
+    as_admin(client)
+    (tmp_path / "config_agents.json").write_text('{"agents": []}', encoding="utf-8")
+
+    response = client.get("/api/agent")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "No agent is running"
+
+
+def test_the_old_agent_list_is_gone(client: TestClient) -> None:
+    as_admin(client)
+
+    assert client.get("/api/agents").status_code == 404
 
 
 # --- forwarding -------------------------------------------------------------------
