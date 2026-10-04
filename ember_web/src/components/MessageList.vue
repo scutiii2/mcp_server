@@ -6,6 +6,7 @@ import { agentLabelFor } from "../utils/agentLabels";
 import { splitAttachments } from "../utils/attachments";
 import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
 import { toolTitle } from "../utils/toolTitles";
+import AgentActivity from "./AgentActivity.vue";
 import CopyButton from "./CopyButton.vue";
 import DownloadCards from "./DownloadCards.vue";
 import ElapsedTime from "./ElapsedTime.vue";
@@ -336,6 +337,7 @@ onBeforeUnmount(() => {
           </div>
           <p class="note">No answer within 4 minutes counts as Deny.</p>
         </section>
+        <AgentActivity />
         <span v-if="activity" class="activity"><span class="dot" />{{ activity }}</span>
         <MarkdownContent v-if="streaming" :text="hideDownloadMarkers(streaming)" />
         <span v-else-if="!activity" class="activity"><span class="dot" />thinking ...</span>

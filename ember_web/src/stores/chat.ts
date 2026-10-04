@@ -5,6 +5,7 @@ import { settingsClient } from "../api/SettingsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import { ApiError } from "../api/http";
 import type {
+  ActiveAgent,
   ApprovalDecision,
   ChatMessage,
   Conversation,
@@ -150,6 +151,8 @@ export const useChatStore = defineStore("chat", () => {
   const streaming = ref(""); // the open chat's answer, as it arrives
   const activity = ref(""); // its current tool step, if any
   const liveSteps = ref<ToolStep[]>([]); // the tools it ran so far
+  const activeAgents = ref<ActiveAgent[]>([]); // delegated agents working on the answer, outermost first
+  const agentText = ref<Record<string, string>>({}); // a delegated agent's streamed text, by delegate step id
   const liveStepIndex = new Map<string, number>();
   const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
@@ -405,6 +408,8 @@ export const useChatStore = defineStore("chat", () => {
         liveSteps.value = event.steps ?? [];
         liveStepIndex.clear();
         pendingApprovals.value = event.approvals ?? [];
+        activeAgents.value = event.active_agents ?? [];
+        agentText.value = {};
         break;
       case "token":
         streaming.value += event.text;
@@ -416,6 +421,8 @@ export const useChatStore = defineStore("chat", () => {
         activity.value = `running ${event.label ?? toolTitle(event.tool)} ...`;
         liveStepIndex.set(event.id, liveSteps.value.length);
         liveSteps.value.push({
+          id: event.id,
+          ...(event.agent_id ? { agent_id: event.agent_id, agent_label: event.agent_label ?? "" } : {}),
           tool: event.tool,
           label: event.label ?? "",
           arguments: isRecord(event.arguments) ? event.arguments : {},
@@ -449,10 +456,31 @@ export const useChatStore = defineStore("chat", () => {
         }
         break;
       }
+      case "agent_start":
+        activeAgents.value = [
+          ...activeAgents.value,
+          { agent_id: event.agent_id, label: event.agent_label, since: event.at, step_id: event.step_id },
+        ];
+        break;
+      case "agent_end":
+        activeAgents.value = activeAgents.value.filter(
+          (a) => !(a.step_id === event.step_id && a.agent_id === event.agent_id),
+        );
+        break;
+      case "agent_token":
+        agentText.value = {
+          ...agentText.value,
+          [event.step_id]: event.reset ? "" : ((agentText.value[event.step_id] ?? "") + event.text).slice(-20_000),
+        };
+        break;
       case "final":
+        activeAgents.value = [];
+        agentText.value = {};
         turnOutcome = event.cancelled ? "stopped" : "answered";
         break;
       case "error":
+        activeAgents.value = [];
+        agentText.value = {};
         turnOutcome = "failed";
         break;
       case "summarized":
@@ -479,6 +507,8 @@ export const useChatStore = defineStore("chat", () => {
     activity.value = "";
     clockStart.value = null;
     liveSteps.value = [];
+    activeAgents.value = [];
+    agentText.value = {};
     liveStepIndex.clear();
     pendingApprovals.value = [];
     deciding.value = [];
@@ -1010,6 +1040,8 @@ export const useChatStore = defineStore("chat", () => {
     messages,
     streaming,
     activity,
+    activeAgents,
+    agentText,
     liveSteps,
     commandSchema,
     busy,

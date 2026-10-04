@@ -1,5 +1,10 @@
 /** One tool an answer ran, as ember_api saves it on the answer. */
 export interface ToolStep {
+  /** Live steps only: the step's id in the event stream. */
+  id?: string;
+  /** Which agent ran it, when a delegated agent did (absent for the main agent's own steps and older answers). */
+  agent_id?: string;
+  agent_label?: string;
   tool: string;
   /** Readable title from ai_agent, if it gave one. */
   label: string;
@@ -8,6 +13,16 @@ export interface ToolStep {
   ok: boolean | null;
   /** The result text, cut to 4,000 characters. */
   result: string;
+}
+
+/** An agent that is working on the running answer right now (ember_api's `active_agents`). */
+export interface ActiveAgent {
+  agent_id: string;
+  label: string;
+  /** When it started (ISO-8601 UTC). */
+  since: string;
+  /** The orchestrator's delegate_to_agent step that handed it its question. */
+  step_id: string;
 }
 
 /** One message of a chat, as ember_api stores it. */
@@ -62,18 +77,21 @@ export type ApprovalDecision = "allow" | "always" | "deny";
 /** Events of a turn ember_api runs, as its /events stream sends them. The
  * token/step ones are ai_agent's own, relayed. */
 export type TurnEvent = { sequence: number } & (
-  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[]; approvals?: PendingApproval[] }
+  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[]; approvals?: PendingApproval[]; active_agents?: ActiveAgent[] }
   | { type: "token"; text: string }
   | { type: "token_reset" }
-  | { type: "step_start"; id: string; tool: string; label?: string; arguments: unknown }
-  | { type: "step_progress"; id: string; message: string }
-  | { type: "step_end"; id: string; ok: boolean; result: string }
+  | { type: "step_start"; id: string; tool: string; label?: string; arguments: unknown; agent_id?: string; agent_label?: string }
+  | { type: "step_progress"; id: string; message: string; agent_id?: string; agent_label?: string }
+  | { type: "step_end"; id: string; ok: boolean; result: string; agent_id?: string; agent_label?: string }
   | { type: "approval_request"; id: string; tool: string; label?: string; arguments: unknown }
   | { type: "approval_resolved"; id: string; outcome: string }
   | { type: "usage"; total_tokens: number; estimated: boolean }
   | { type: "summarizing" }
   | { type: "summarized" }
   | { type: "cancelling" }
+  | { type: "agent_start"; agent_id: string; agent_label: string; delegated_by: string; question: string; step_id: string; at: string }
+  | { type: "agent_end"; agent_id: string; agent_label: string; ok: boolean; step_id: string; at: string }
+  | { type: "agent_token"; agent_id: string; agent_label: string; step_id: string; text: string; reset?: boolean }
   | { type: "final"; message: ChatMessage; cancelled: boolean }
   | { type: "error"; message: string }
 );
