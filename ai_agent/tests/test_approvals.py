@@ -591,7 +591,7 @@ def test_decide_rejects_an_unknown_decision() -> None:
 def _delegate_and_capture(mode: str) -> dict:
     captured: dict = {}
 
-    async def fake_call_tool(url, name, arguments):
+    async def fake_call_tool(url, name, arguments, on_progress=None):
         captured.update(arguments)
         return {"response": "sub", "cancelled": False}
 

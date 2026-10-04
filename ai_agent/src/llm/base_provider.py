@@ -19,7 +19,7 @@ from typing import Any, Awaitable, Callable
 
 import anyio.to_thread
 
-from src import tool_progress
+from src import agent_events, tool_progress
 from src.catalog import catalog
 from src.llm import cooldown
 
@@ -46,7 +46,8 @@ async def dispatch_with_progress(
 ) -> str:
     """Runs a provider's blocking tool ``dispatch`` on a worker thread and,
     while it runs, turns every progress message the tool reports into a
-    ``step_progress`` event for that step (see tool_progress.py). With
+    ``step_progress`` event for that step (see tool_progress.py). It also
+    carries ``agent_events`` emitted by a delegated call. With
     ``on_event`` None it is a plain worker-thread call."""
     if on_event is None:
         return await anyio.to_thread.run_sync(dispatch, *args)
@@ -58,10 +59,15 @@ async def dispatch_with_progress(
             asyncio.run_coroutine_threadsafe(on_event(step_event("step_progress", id=step_id, message=message)), loop)
         )
 
+    def event_sink(event: dict[str, Any]) -> None:
+        pending.append(asyncio.run_coroutine_threadsafe(on_event(event), loop))
+
     token = tool_progress.bind(sink)
+    events_token = agent_events.bind(event_sink, step_id)
     try:
         return await anyio.to_thread.run_sync(dispatch, *args)
     finally:
+        agent_events.reset(events_token)
         tool_progress.reset(token)
         # Deliver every queued progress event before the caller's step_end.
         await asyncio.gather(*(asyncio.wrap_future(f) for f in pending), return_exceptions=True)

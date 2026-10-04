@@ -22,13 +22,14 @@ request_id=None (cancellation.py already treats a falsy id as
 from __future__ import annotations
 
 import asyncio
+import json
 from contextvars import ContextVar, Token
 from typing import Any
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from src import agent_registry, agent_routing, approvals, internal_auth
+from src import agent_events, agent_registry, agent_routing, agent_spec, approvals, internal_auth
 from src.agent_spec import RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
@@ -98,6 +99,29 @@ async def _call_tool(url: str, name: str, arguments: dict[str, Any], on_progress
     return result.structuredContent or {}
 
 
+def _progress_forwarder(sink: agent_events.Sink | None, step_id: str | None) -> Any:
+    """An MCP progress callback that re-emits the specialist's live events
+    (JSON in each progress message - see server.ask) into this agent's
+    stream. The sink is captured here, not looked up per message: the
+    callback runs on the MCP client's own task inside asyncio.run below."""
+    if sink is None:
+        return None
+
+    async def on_progress(progress: float, total: float | None, message: str | None) -> None:
+        if not message:
+            return
+        try:
+            event = json.loads(message)
+        except ValueError:
+            return
+        if isinstance(event, dict):
+            out = agent_events.forwarded(event, step_id)
+            if out is not None:
+                sink(out)
+
+    return on_progress
+
+
 def call(agent_id: str, question: str, depth: int) -> str:
     """Blocking. Must run in a worker thread (the providers dispatch it via
     anyio.to_thread.run_sync): asyncio.run() below fails inside a running
@@ -122,22 +146,40 @@ def call(agent_id: str, question: str, depth: int) -> str:
     # A delegate has no way to ask the user, so when this turn asks before
     # tools run, the delegate's tools that would need asking are refused.
     approval_mode = "off" if approvals.current().mode == "off" else "deny"
-    result = asyncio.run(
-        _call_tool(
-            agent["url"],
-            "ask",
-            {
-                "question": question,
-                "history": [],
-                "enabled_extensions": [],
-                "request_id": None,
-                "depth": depth + 1,
-                "approval_mode": approval_mode,
-            },
+    me = agent_spec.current().id
+    label = agent.get("label") or agent_id
+    step_id = agent_events.current_step_id()
+    sink = agent_events.emitter()
+    agent_events.emit({
+        "type": "agent_start", "agent_id": agent_id, "agent_label": label, "delegated_by": me,
+        "question": question, "step_id": step_id, "at": agent_events.now_iso(),
+    })
+    ok = False
+    try:
+        result = asyncio.run(
+            _call_tool(
+                agent["url"],
+                "ask",
+                {
+                    "question": question,
+                    "history": [],
+                    "enabled_extensions": [],
+                    "request_id": None,
+                    "depth": depth + 1,
+                    "approval_mode": approval_mode,
+                    "delegated_by": me,
+                },
+                on_progress=_progress_forwarder(sink, step_id),
+            )
         )
-    )
-    sink = _usage_sink.get()
-    if sink is not None:
+        ok = True
+    finally:
+        agent_events.emit({
+            "type": "agent_end", "agent_id": agent_id, "agent_label": label,
+            "ok": ok, "step_id": step_id, "at": agent_events.now_iso(),
+        })
+    usage_sink = _usage_sink.get()
+    if usage_sink is not None:
         # The delegate's own entries already include anything it delegated on.
-        sink.extend(result.get("agent_usage") or [])
+        usage_sink.extend(result.get("agent_usage") or [])
     return prefix + result.get("response", "")

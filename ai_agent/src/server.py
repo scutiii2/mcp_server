@@ -79,7 +79,7 @@ from mcp.server.fastmcp import Context, FastMCP
 # Anything else (a real bug, ImportError...) still propagates untouched.
 _CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError", "AgentSpecError"}
 try:
-    from src import agent_config, agent_registry, approvals, internal_auth, mcp_upstream
+    from src import agent_config, agent_events, agent_registry, approvals, internal_auth, mcp_upstream
     from src.llm.base_provider import ChatCancelled
 except Exception as _exc:
     if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
@@ -153,6 +153,7 @@ async def ask(
     caveman: bool = False,
     approval_mode: str = "off",
     allowed_tools: list[str] | None = None,
+    delegated_by: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
@@ -166,6 +167,8 @@ async def ask(
     approval_mode: "off" (default), "ask" (the user answers, through
     decide(), before each tool not in allowed_tools runs) or "deny" (such
     tools are refused; a delegating agent's sub-agent gets this).
+    delegated_by: the orchestrator's agent id when another agent delegated
+    this question (see delegation.py); recorded in usage rows.
     ctx, if the MCP client requested it, is FastMCP's injected Context -
     used below only to relay run_chat's live step/token events as MCP
     progress notifications; chat_app's own tool call never needs to pass
@@ -179,7 +182,7 @@ async def ask(
         # MCP client that didn't request progress) - a no-op then,
         # since run_chat's on_event is always invoked either way.
         if ctx is not None:
-            await ctx.report_progress(0, None, json.dumps(event))
+            await ctx.report_progress(0, None, json.dumps(agent_events.stamp(event, _AGENT_ID, _AGENT_LABEL)))
 
     # The asking user, from ember_api's / chat_app's identity headers; every
     # mcp_server tool this turn calls carries it on (see internal_auth.py).

@@ -100,6 +100,7 @@ def test_call_returns_the_sub_agents_response_on_success(monkeypatch):
         "request_id": None,
         "depth": 1,
         "approval_mode": "off",
+        "delegated_by": delegation.agent_spec.current().id,
     }
 
 
@@ -138,7 +139,7 @@ def test_call_tool_raises_plain_exception_on_iserror_result():
 def test_call_reports_the_delegates_agent_usage_to_the_bound_sink(monkeypatch):
     usage = [{"provider_id": "openai", "model": "gpt", "input_tokens": 5, "output_tokens": 2, "total_tokens": 7}]
 
-    async def fake_call_tool(url, name, arguments):
+    async def fake_call_tool(url, name, arguments, on_progress=None):
         return {"response": "sub-answer", "agent_usage": usage}
 
     monkeypatch.setattr(delegation, "_call_tool", fake_call_tool)
@@ -151,3 +152,50 @@ def test_call_reports_the_delegates_agent_usage_to_the_bound_sink(monkeypatch):
         delegation.reset_usage(token)
 
     assert sink == usage
+
+
+def test_call_emits_start_and_end_and_forwards_specialist_progress(monkeypatch):
+    import json as _json
+    from src import agent_events
+
+    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
+    emitted = []
+    token = agent_events.bind(emitted.append, "step-7")
+
+    async def _fake_call_tool(url, name, arguments, on_progress=None):
+        assert arguments["delegated_by"] == delegation.agent_spec.current().id
+        await on_progress(0, None, _json.dumps({"type": "token", "text": "4", "agent_id": "calc", "agent_label": "Calculator"}))
+        await on_progress(0, None, _json.dumps({"type": "usage", "total_tokens": 9}))
+        await on_progress(0, None, "not json")
+        return {"response": "4"}
+
+    try:
+        with patch("src.delegation._call_tool", side_effect=_fake_call_tool):
+            assert delegation.call("calc", "2+2?", depth=0) == "4"
+    finally:
+        agent_events.reset(token)
+
+    assert [e["type"] for e in emitted] == ["agent_start", "agent_token", "agent_end"]
+    start, tok, end = emitted
+    assert start["agent_id"] == "calc" and start["question"] == "2+2?" and start["step_id"] == "step-7"
+    assert tok["text"] == "4" and tok["step_id"] == "step-7"
+    assert end["ok"] is True
+
+
+def test_call_emits_a_failed_end_when_the_specialist_errors(monkeypatch):
+    from src import agent_events
+
+    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
+    emitted = []
+    token = agent_events.bind(emitted.append, "step-7")
+    try:
+        with patch("src.delegation._call_tool", side_effect=RuntimeError("down")):
+            try:
+                delegation.call("calc", "2+2?", depth=0)
+                raise AssertionError("expected RuntimeError")
+            except RuntimeError:
+                pass
+    finally:
+        agent_events.reset(token)
+
+    assert emitted[-1]["type"] == "agent_end" and emitted[-1]["ok"] is False

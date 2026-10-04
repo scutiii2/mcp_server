@@ -6,7 +6,7 @@ from src import delegation
 
 @pytest.mark.anyio
 async def test_call_works_when_dispatched_from_a_running_event_loop(monkeypatch):
-    async def fake_call_tool(url, name, arguments):
+    async def fake_call_tool(url, name, arguments, on_progress=None):
         return {"response": "delegated answer"}
 
     monkeypatch.setattr(delegation.agent_registry, "get_agent", lambda agent_id: {"url": "http://x/mcp"})

@@ -116,7 +116,10 @@ def test_ask_relays_events_via_ctx_report_progress():
         assert result["response"] == "done"
         ctx.report_progress.assert_awaited_once()
         _, _, message = ctx.report_progress.call_args.args
-        assert json.loads(message) == {"type": "step_start", "id": "1", "tool": "x"}
+        assert json.loads(message) == {
+            "type": "step_start", "id": "1", "tool": "x",
+            "agent_id": server._AGENT_ID, "agent_label": server._AGENT_LABEL,
+        }
 
     asyncio.run(_run())
 
