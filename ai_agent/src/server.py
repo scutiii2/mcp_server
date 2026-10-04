@@ -79,7 +79,7 @@ from mcp.server.fastmcp import Context, FastMCP
 # Anything else (a real bug, ImportError...) still propagates untouched.
 _CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError", "AgentSpecError"}
 try:
-    from src import agent_config, agent_events, agent_registry, approvals, internal_auth, mcp_upstream
+    from src import agent_config, agent_events, agent_registry, approvals, internal_auth, mcp_upstream, usage_log
     from src.llm.base_provider import ChatCancelled
 except Exception as _exc:
     if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
@@ -186,6 +186,7 @@ async def ask(
 
     # The asking user, from ember_api's / chat_app's identity headers; every
     # mcp_server tool this turn calls carries it on (see internal_auth.py).
+    started_at = agent_events.now_iso()
     requester_token = internal_auth.bind_requester(internal_auth.Requester.from_headers(_request_headers(ctx)))
     try:
         result = await agent_config.run_chat(
@@ -196,6 +197,11 @@ async def ask(
         return _cancelled_result()
     finally:
         internal_auth.reset_requester(requester_token)
+    own_usage = usage_log.own_row(
+        result, agent_id=_AGENT_ID, agent_label=_AGENT_LABEL, gateway=SPEC.effective_gateway(),
+        started_at=started_at, finished_at=agent_events.now_iso(), delegated_by=delegated_by,
+    )
+    await usage_log.append({**own_usage, "request_id": request_id, "depth": depth})
     return {
         "response": result.response,
         "tools_used": result.tools_used,
@@ -203,18 +209,9 @@ async def ask(
             {"name": c.name, "arguments": c.arguments, "result": c.result} for c in result.tool_calls
         ],
         "total_tokens": result.total_tokens,
-        # Own usage first, then every delegated agent's, so chat_app can
-        # break tokens down per agent.
-        "agent_usage": [
-            {
-                "provider_id": result.provider_id,
-                "model": result.model,
-                "input_tokens": result.input_tokens,
-                "output_tokens": result.output_tokens,
-                "total_tokens": result.total_tokens,
-            },
-            *result.delegated_usage,
-        ],
+        # Own usage first, then every delegated agent's, so callers can
+        # break tokens down per agent (who, which provider/gateway, when).
+        "agent_usage": [own_usage, *result.delegated_usage],
         "input_tokens": result.input_tokens,
         "output_tokens": result.output_tokens,
         "context_tokens": result.context_tokens,

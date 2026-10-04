@@ -31,3 +31,10 @@ def _isolated_agent_registry(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_registry, "_CHAT_APP_CONFIG_PATH", tmp_path / "registry" / "chat_app_agents.json")
     monkeypatch.setattr(agent_registry, "_AGENTS", [])
     monkeypatch.setattr(agent_registry, "_AGENTS_BY_ID", {})
+
+
+import tempfile  # noqa: E402
+
+# server.ask() appends every turn to the usage log; keep test turns out of
+# the real ai_agent/data/usage/.
+os.environ.setdefault("AI_AGENT_USAGE_DIR", tempfile.mkdtemp(prefix="ai_agent_usage_"))

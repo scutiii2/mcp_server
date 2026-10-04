@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from src import server
 from src.llm.base_provider import ChatCancelled, ChatResult, ToolCallRecord
@@ -49,7 +49,7 @@ def test_ask_returns_the_result_shape_chat_app_expects():
             "tools_used": ["get_status_tool"],
             "tool_calls": [{"name": "get_status_tool", "arguments": {}, "result": "ok"}],
             "total_tokens": 42,
-            "agent_usage": [{"provider_id": "anthropic", "model": "claude-sonnet-5", "input_tokens": 30, "output_tokens": 12, "total_tokens": 42}],
+            "agent_usage": ANY,
             "input_tokens": 30,
             "output_tokens": 12,
             "context_tokens": 30,
@@ -58,6 +58,26 @@ def test_ask_returns_the_result_shape_chat_app_expects():
             "model": "claude-sonnet-5",
             "cancelled": False,
         }
+        own = result["agent_usage"][0]
+        assert own["agent_id"] == server._AGENT_ID
+        assert own["agent_label"] == server._AGENT_LABEL
+        assert (own["provider_id"], own["model"], own["input_tokens"], own["output_tokens"], own["total_tokens"]) == (
+            "anthropic", "claude-sonnet-5", 30, 12, 42,
+        )
+        assert own["delegated_by"] is None
+        assert own["started_at"] <= own["finished_at"]
+
+    asyncio.run(_run())
+
+
+def test_ask_records_delegated_by_and_appends_to_the_usage_log():
+    async def _run():
+        with patch("src.server.agent_config.run_chat", new_callable=AsyncMock, return_value=ChatResult(response="hi")),              patch("src.server.agent_config.status", return_value={"model": "m", "context_window": 1}),              patch("src.server.usage_log.append", new_callable=AsyncMock) as append:
+            result = await server.ask("q", request_id="r-1", depth=1, delegated_by="orchestrator")
+
+        assert result["agent_usage"][0]["delegated_by"] == "orchestrator"
+        row = append.await_args.args[0]
+        assert row["request_id"] == "r-1" and row["depth"] == 1 and row["delegated_by"] == "orchestrator"
 
     asyncio.run(_run())
 
