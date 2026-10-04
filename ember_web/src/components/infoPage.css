@@ -44,13 +44,6 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.info-page .switch {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85em;
-  cursor: pointer;
-}
 .info-page input:not([type="checkbox"]),
 .info-page select {
   padding: 6px 10px;

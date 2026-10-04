@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CapabilityInfo } from "../api/CommandsClient";
+import ToggleSwitch from "./ToggleSwitch.vue";
 
 /** One built-in capability as a collapsible card: the header (name, how much
  * it brings, and for admins the on/off switch) and, when open, whatever the
@@ -37,10 +38,13 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
         </span>
       </button>
       <template v-if="hideState" />
-      <label v-else-if="isAdmin" class="switch" :title="capability.enabled ? 'Turn off' : 'Turn on'">
-        <input type="checkbox" :checked="capability.enabled" :disabled="switching" @click.prevent="emit('switch')" />
-        {{ capability.enabled ? "On" : "Off" }}
-      </label>
+      <ToggleSwitch
+        v-else-if="isAdmin"
+        :title="capability.enabled ? 'Turn off' : 'Turn on'"
+        :checked="capability.enabled"
+        :disabled="switching"
+        @click.prevent="emit('switch')"
+      />
       <span v-else class="badge">{{ capability.enabled ? "On" : "Off" }}</span>
     </header>
     <div v-if="open" class="body">
@@ -107,13 +111,6 @@ h3 {
 }
 .muted {
   color: var(--muted);
-}
-.switch {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85em;
-  cursor: pointer;
 }
 .badge {
   padding: 1px 8px;

@@ -3,6 +3,7 @@ import { storeToRefs } from "pinia";
 import { computed, onMounted, reactive, ref } from "vue";
 import { extensionsClient, EXTENSION_SEPARATOR, type ExtensionInfo } from "../api/ExtensionsClient";
 import "../components/infoPage.css";
+import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
 import { errorMessage } from "../utils/errors";
@@ -102,14 +103,14 @@ onMounted(load);
             <code class="name">{{ e.id }}</code>
           </div>
           <div class="actions">
-            <label v-if="canChat" class="switch" title="Let the agent and slash commands use its tools in your chats">
-              <input
-                type="checkbox"
-                :checked="enabled.has(e.id)"
-                @change="chat.setExtensionEnabled(e.id, ($event.target as HTMLInputElement).checked)"
-              />
+            <ToggleSwitch
+              v-if="canChat"
+              title="Let the agent and slash commands use its tools in your chats"
+              :checked="enabled.has(e.id)"
+              @change="chat.setExtensionEnabled(e.id, ($event.target as HTMLInputElement).checked)"
+            >
               Use in my chats
-            </label>
+            </ToggleSwitch>
             <button v-if="isAdmin" type="button" class="danger" :disabled="removing === e.id" @click="remove(e)">
               Remove
             </button>

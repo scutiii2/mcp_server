@@ -4,6 +4,7 @@
 // panel opens upward, since the bar is at the bottom of the page.
 import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
+import ToggleSwitch from "./ToggleSwitch.vue";
 
 defineProps<{
   caveman: boolean;
@@ -69,25 +70,27 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
     </button>
 
     <div v-if="open" class="panel" role="group" aria-label="Chat settings" @keydown.esc.stop="closeWithEscape">
-      <label title="Ask the agent for short, terse answers">
-        <input type="checkbox" :checked="caveman" @change="emit('update:caveman', checked($event))" />
+      <ToggleSwitch
+        small
+        title="Ask the agent for short, terse answers"
+        :checked="caveman"
+        @change="emit('update:caveman', checked($event))"
+      >
         Terse replies
-      </label>
-      <label
+      </ToggleSwitch>
+      <ToggleSwitch
+        small
         :title="
           forceToolApproval
             ? 'Your administrator requires approval before every tool'
             : 'Ask you before the agent runs each tool'
         "
+        :checked="askBeforeTools || forceToolApproval"
+        :disabled="forceToolApproval"
+        @change="emit('update:askBeforeTools', checked($event))"
       >
-        <input
-          type="checkbox"
-          :checked="askBeforeTools || forceToolApproval"
-          :disabled="forceToolApproval"
-          @change="emit('update:askBeforeTools', checked($event))"
-        />
         Ask before tools
-      </label>
+      </ToggleSwitch>
       <button
         v-if="askBeforeTools && allowedCount && !forceToolApproval"
         type="button"
@@ -97,10 +100,14 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
       >
         {{ allowedCount }} tool{{ allowedCount === 1 ? "" : "s" }} allowed - reset
       </button>
-      <label title="Play a short chime when an answer arrives while this tab is in the background">
-        <input type="checkbox" :checked="chime" @change="emit('update:chime', checked($event))" />
+      <ToggleSwitch
+        small
+        title="Play a short chime when an answer arrives while this tab is in the background"
+        :checked="chime"
+        @change="emit('update:chime', checked($event))"
+      >
         Chime when done
-      </label>
+      </ToggleSwitch>
       <RouterLink to="/extensions" class="extensions" title="Which extensions' tools the agent may use in your chats">
         Extensions: {{ enabledExtensions.length ? enabledExtensions.join(", ") : "off" }}
       </RouterLink>
@@ -163,18 +170,8 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   background: var(--surface);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9em;
-  cursor: pointer;
-}
-label:has(input:disabled) {
-  cursor: default;
-}
 .allowed {
-  margin-left: 24px;
+  margin-left: 40px;
   padding: 1px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
