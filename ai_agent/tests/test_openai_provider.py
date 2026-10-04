@@ -16,7 +16,16 @@ import pytest
 
 from src.llm import cancellation, cooldown, token_limits
 from src.llm.base_provider import ChatCancelled
+from src.agent_spec import RosterEntry
 from src.llm import openai_provider
+
+ROSTER = [RosterEntry("openai-agent", "OpenAI Agent", "second opinion")]
+
+
+@pytest.fixture(autouse=True)
+def _no_roster():
+    with patch("src.llm.openai_provider.agent_routing.roster_for", new_callable=AsyncMock, return_value=[]):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -87,8 +96,7 @@ def test_run_interpret_rejects_context_before_calling_openai(monkeypatch):
 
 
 def test_tool_schemas_use_function_parameters_shape():
-    with patch("src.llm.openai_provider.list_tools", return_value=[_fake_tool()]), \
-         patch("src.llm.openai_provider.delegation.is_available", return_value=False):
+    with patch("src.llm.openai_provider.list_tools", return_value=[_fake_tool()]):
         schemas = openai_provider._tool_schemas()
 
     assert schemas == [
@@ -104,24 +112,22 @@ def test_tool_schemas_use_function_parameters_shape():
 
 def test_tool_schemas_includes_delegate_tool_when_available():
     with patch("src.llm.openai_provider.list_tools", return_value=[]), \
-         patch("src.llm.openai_provider.delegation.is_available", return_value=True), \
          patch("src.llm.openai_provider.delegation.tool_description", return_value="delegate away"):
-        schemas = openai_provider._tool_schemas()
+        schemas = openai_provider._tool_schemas(roster=ROSTER)
 
     assert schemas == [
         {
             "type": "function",
             "name": "delegate_to_agent",
             "description": "delegate away",
-            "parameters": openai_provider.delegation.TOOL_PARAMETERS,
+            "parameters": openai_provider.delegation.tool_parameters(ROSTER, False),
             "display_label": None,
         }
     ]
 
 
 def test_tool_schemas_excludes_delegate_tool_when_unavailable():
-    with patch("src.llm.openai_provider.list_tools", return_value=[]), \
-         patch("src.llm.openai_provider.delegation.is_available", return_value=False):
+    with patch("src.llm.openai_provider.list_tools", return_value=[]):
         schemas = openai_provider._tool_schemas()
 
     assert schemas == []
@@ -202,7 +208,7 @@ def test_run_chat_dispatches_a_delegate_function_call_through_delegation(monkeyp
     )
     with patch("src.llm.openai_provider._get_client", return_value=fake_client), \
          patch("src.llm.openai_provider.list_tools", return_value=[]), \
-         patch("src.llm.openai_provider.delegation.is_available", return_value=True), \
+         patch("src.llm.openai_provider.agent_routing.roster_for", new_callable=AsyncMock, return_value=ROSTER), \
          patch("src.llm.openai_provider.delegation.call", return_value="the sub-agent's answer") as fake_delegate:
         result = asyncio.run(openai_provider.run_chat("hello", [], depth=1))
 
@@ -230,7 +236,7 @@ def test_run_chat_shows_a_failed_delegation_the_same_way_as_a_failed_tool_call(m
     )
     with patch("src.llm.openai_provider._get_client", return_value=fake_client), \
          patch("src.llm.openai_provider.list_tools", return_value=[]), \
-         patch("src.llm.openai_provider.delegation.is_available", return_value=True), \
+         patch("src.llm.openai_provider.agent_routing.roster_for", new_callable=AsyncMock, return_value=ROSTER), \
          patch("src.llm.openai_provider.delegation.call", side_effect=ValueError("unknown agent_id 'nope'")):
         result = asyncio.run(openai_provider.run_chat("hello", [], depth=1))
 

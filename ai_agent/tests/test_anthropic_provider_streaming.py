@@ -60,7 +60,7 @@ def test_run_chat_emits_step_events_around_a_tool_call(monkeypatch):
 
         monkeypatch.setattr(anthropic_provider, "_get_client", lambda: client)
         monkeypatch.setattr(anthropic_provider, "_dispatch", lambda name, args, depth: "2 apps running")
-        monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None: [])
+        monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None, roster=(): [])
 
         result = await anthropic_provider.run_chat("status?", [], on_event=on_event)
         return result, events
@@ -103,7 +103,7 @@ def test_run_chat_thread_display_label_from_tool_schemas_into_step_start(monkeyp
         monkeypatch.setattr(
             anthropic_provider,
             "_tool_schemas",
-            lambda enabled_extensions=None: [
+            lambda enabled_extensions=None, roster=(): [
                 {
                     "name": "tool_srv_listApps",
                     "description": "d",
@@ -132,7 +132,7 @@ def test_run_chat_works_with_no_on_event_callback(monkeypatch):
         client.messages.stream = MagicMock(return_value=_round_cm(["ok"], response))
 
         monkeypatch.setattr(anthropic_provider, "_get_client", lambda: client)
-        monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None: [])
+        monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None, roster=(): [])
 
         return await anthropic_provider.run_chat("hi", [])
 
@@ -162,7 +162,7 @@ def test_run_chat_resets_streamed_text_from_a_tool_use_round(monkeypatch):
         ])
         monkeypatch.setattr(anthropic_provider, "_get_client", lambda: client)
         monkeypatch.setattr(anthropic_provider, "_dispatch", lambda name, args, depth: "ok")
-        monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None: [])
+        monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None, roster=(): [])
 
         result = await anthropic_provider.run_chat("status?", [], on_event=on_event)
         return result, events

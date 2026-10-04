@@ -35,11 +35,12 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Sequence
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, BadRequestError, OpenAI, RateLimitError
 
-from src import approvals, delegation, tool_selection
+from src import agent_routing, agent_spec, approvals, delegation, tool_selection
+from src.agent_spec import RosterEntry
 from src.llm import cancellation, cooldown, llm_config, llm_options, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
@@ -196,7 +197,9 @@ def _limit_gateway() -> str:
     return _OpenAI._gateway_name()
 
 
-def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str, Any]]:
+def _tool_schemas(
+    enabled_extensions: list[str] | None = None, roster: Sequence[RosterEntry] = ()
+) -> list[dict[str, Any]]:
     # display_label rides along on every schema dict returned here, same as
     # anthropic_provider._tool_schemas - NOT a real Responses API tools=
     # field, so run_chat pops it back off before sending schemas to the API.
@@ -210,13 +213,15 @@ def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str,
         }
         for tool in list_tools(enabled_extensions)
     ]
-    if delegation.is_available():
+    # Only an orchestrator has a roster, so only it can delegate.
+    if roster:
+        allow_auto = agent_spec.current().routing.allow_auto
         schemas.append(
             {
                 "type": "function",
                 "name": delegation.TOOL_NAME,
-                "description": delegation.tool_description(),
-                "parameters": delegation.TOOL_PARAMETERS,
+                "description": delegation.tool_description(list(roster), allow_auto),
+                "parameters": delegation.tool_parameters(list(roster), allow_auto),
                 "display_label": None,
             }
         )
@@ -265,11 +270,12 @@ async def run_chat(
     client = _get_client()
     model_name = model or DEFAULT_MODEL
     history = token_limits.trim_history_to_fit(history, PROVIDER_ID, _limit_gateway())
-    messages: list[Any] = [{"role": "system", "content": system_prompt_for(caveman)}, *history]
+    roster = await agent_routing.roster_for(question)
+    messages: list[Any] = [{"role": "system", "content": system_prompt_for(caveman, roster)}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
-    schemas = _tool_schemas(enabled_extensions)
+    schemas = _tool_schemas(enabled_extensions, roster)
     schemas = await tool_selection.shortlist_schemas(question, schemas, {delegation.TOOL_NAME})
     # display_label isn't a real Responses API tools= field (see
     # _tool_schemas) - pop it into this name->label lookup here, once,

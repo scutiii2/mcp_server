@@ -12,34 +12,45 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from src import agent_registry, delegation
+from src.agent_spec import RosterEntry
+
+ROSTER = [RosterEntry("calc", "Calculator", "Arithmetic."), RosterEntry("explainer", "Explainer", "Explanations.")]
 
 
 def _configure_agents(monkeypatch, agents):
     monkeypatch.setattr(agent_registry, "_AGENTS", agents)
     monkeypatch.setattr(agent_registry, "_AGENTS_BY_ID", {a["id"]: a for a in agents})
+    monkeypatch.setattr(agent_registry, "reload", lambda: None)
 
 
-def test_is_available_false_with_no_configured_agents(monkeypatch):
-    _configure_agents(monkeypatch, [])
-    assert delegation.is_available() is False
+def test_tool_parameters_enumerate_the_roster():
+    params = delegation.tool_parameters(ROSTER, allow_auto=False)
+    assert params["properties"]["agent_id"]["enum"] == ["calc", "explainer"]
+    assert params["required"] == ["agent_id", "question"]
 
 
-def test_is_available_true_with_configured_agents(monkeypatch):
-    _configure_agents(monkeypatch, [{"id": "claude-agent", "label": "Claude Agent", "url": "http://x/mcp"}])
-    assert delegation.is_available() is True
+def test_tool_parameters_offer_auto_when_allowed():
+    params = delegation.tool_parameters(ROSTER, allow_auto=True)
+    assert params["properties"]["agent_id"]["enum"] == ["calc", "explainer", "auto"]
 
 
-def test_tool_description_lists_configured_agent_ids_and_labels(monkeypatch):
-    _configure_agents(
-        monkeypatch,
-        [
-            {"id": "claude-agent", "label": "Claude Agent", "url": "http://x/mcp"},
-            {"id": "openai-agent", "label": "OpenAI Agent", "url": "http://y/mcp"},
-        ],
-    )
-    description = delegation.tool_description()
-    assert "claude-agent (Claude Agent)" in description
-    assert "openai-agent (OpenAI Agent)" in description
+def test_tool_description_lists_the_roster_and_auto():
+    description = delegation.tool_description(ROSTER, allow_auto=True)
+    assert "calc (Calculator): Arithmetic." in description
+    assert '"auto"' in description
+
+
+def test_call_resolves_auto_through_routing(monkeypatch):
+    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
+    monkeypatch.setattr("src.delegation.agent_routing.resolve_auto", lambda question: ROSTER[0])
+
+    async def _fake_call_tool(url, name, arguments, on_progress=None):
+        return {"response": "4"}
+
+    with patch("src.delegation._call_tool", side_effect=_fake_call_tool):
+        result = delegation.call("auto", "2+2?", depth=0)
+
+    assert result == "Delegated to calc (Calculator).\n\n4"
 
 
 def test_call_raises_at_the_depth_cap_without_any_network_call(monkeypatch):
@@ -70,7 +81,7 @@ def test_call_returns_the_sub_agents_response_on_success(monkeypatch):
 
     captured = {}
 
-    async def _fake_call_tool(url, name, arguments):
+    async def _fake_call_tool(url, name, arguments, on_progress=None):
         captured["url"] = url
         captured["name"] = name
         captured["arguments"] = arguments

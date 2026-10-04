@@ -96,8 +96,23 @@ class LayaToolRanker:
         _, embed = self._load()
         return list(laya.shortlist_choice(question, options, embed, k))
 
+    def rank_with_scores(self, question: str, options: dict[str, str], k: int) -> tuple[list[str], list[float] | None]:
+        """Like rank, plus Laya's signed cosine per kept label (rank order).
+        Scores are None when k covers every option (nothing was dropped)."""
+        import laya
+
+        _, embed = self._load()
+        labels, scores = laya.shortlist_choice(question, options, embed, k, return_scores=True)
+        return list(labels), (list(scores) if scores is not None else None)
+
 
 _default_ranker = LayaToolRanker()
+
+
+def default_ranker() -> LayaToolRanker:
+    """The process-wide Laya ranker - tool shortlisting and agent routing
+    share one loaded model."""
+    return _default_ranker
 
 
 @catalog

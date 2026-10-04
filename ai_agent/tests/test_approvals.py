@@ -350,7 +350,7 @@ def anthropic_turn(monkeypatch, policy, recorder, dispatch, request_id=REQUEST):
     client = _anthropic_rounds()
     monkeypatch.setattr(anthropic_provider, "_get_client", lambda: client)
     monkeypatch.setattr(anthropic_provider, "_dispatch", dispatch)
-    monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None: [])
+    monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None, roster=(): [])
 
     async def scenario():
         token = approvals.bind(policy)
@@ -422,7 +422,7 @@ def test_anthropic_delegate_tool_is_gated_too(monkeypatch) -> None:
     client = _anthropic_rounds(tool_name=delegation.TOOL_NAME)
     monkeypatch.setattr(anthropic_provider, "_get_client", lambda: client)
     monkeypatch.setattr(anthropic_provider, "_dispatch", dispatch)
-    monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None: [])
+    monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None, roster=(): [])
     rec = Recorder("deny")
 
     async def scenario():

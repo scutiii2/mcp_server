@@ -10,7 +10,7 @@ any instance reach one once it exists, including itself.
 
 Isolated from both provider files so neither anthropic_provider.py nor
 openai_provider.py duplicates the tool-schema/dispatch logic - each just
-calls is_available()/tool_description()/TOOL_PARAMETERS/call() from here.
+calls tool_description()/tool_parameters()/call() from here.
 
 Cancellation is NOT propagated into a delegated call: chat_app's Stop
 button only knows the top-level agent's request_id/URL, with no
@@ -28,9 +28,11 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from src import agent_registry, approvals, internal_auth
+from src import agent_registry, agent_routing, approvals, internal_auth
+from src.agent_spec import RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
+AUTO_AGENT_ID = "auto"
 
 # Token usage of every agent this turn delegated to (including their own
 # nested delegations). agent_config.run_chat binds a fresh list per turn;
@@ -53,31 +55,30 @@ def reset_usage(token: Token) -> None:
 # unbounded fan-out or a delegation cycle running forever.
 _MAX_DELEGATION_DEPTH = 2
 
-TOOL_PARAMETERS: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "agent_id": {"type": "string", "description": "Which configured agent to delegate to."},
-        "question": {"type": "string", "description": "The focused sub-question to ask it."},
-    },
-    "required": ["agent_id", "question"],
-}
+def tool_parameters(roster: list[RosterEntry], allow_auto: bool) -> dict[str, Any]:
+    """The delegate tool's input schema: agent_id limited to this turn's
+    roster (plus "auto" when Laya routing may choose)."""
+    ids = [r.id for r in roster] + ([AUTO_AGENT_ID] if allow_auto else [])
+    return {
+        "type": "object",
+        "properties": {
+            "agent_id": {"type": "string", "enum": ids, "description": "Which specialist to delegate to."},
+            "question": {"type": "string", "description": "The focused sub-question to ask it."},
+        },
+        "required": ["agent_id", "question"],
+    }
 
 
-def is_available() -> bool:
-    return bool(agent_registry.all_agents())
-
-
-def tool_description() -> str:
-    agents = agent_registry.all_agents()
-    listing = ", ".join(f"{a['id']} ({a['label']})" for a in agents)
+def tool_description(roster: list[RosterEntry], allow_auto: bool) -> str:
+    listing = "; ".join(f"{r.id} ({r.label}): {r.focus or 'no focus given'}" for r in roster)
+    auto = ' Use agent_id "auto" to let routing pick the best specialist for the question.' if allow_auto else ""
     return (
-        f"Delegate a focused sub-question to another configured agent: {listing}. "
-        "Useful for a fresh, unpolluted sub-conversation or a different model's "
-        "perspective - not for parallelism, this is a sequential call that adds latency."
+        f"Hand a focused sub-question to a specialist agent and get its answer back. Specialists: {listing}.{auto} "
+        "Sequential: each call adds latency, so delegate only what a specialist does better."
     )
 
 
-async def _call_tool(url: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+async def _call_tool(url: str, name: str, arguments: dict[str, Any], on_progress: Any = None) -> dict[str, Any]:
     # Same shape as chat_app/src/services/ai_agent_client.py's _call_tool,
     # including its fix: raise only AFTER both async with blocks exit,
     # never inside them - an exception raised while either is still open
@@ -89,7 +90,7 @@ async def _call_tool(url: str, name: str, arguments: dict[str, Any]) -> dict[str
     async with streamablehttp_client(url, headers=internal_auth.outbound_headers() or None) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            result = await session.call_tool(name, arguments)
+            result = await session.call_tool(name, arguments, progress_callback=on_progress)
 
     if result.isError:
         parts = [getattr(block, "text", str(block)) for block in result.content]
@@ -105,6 +106,14 @@ def call(agent_id: str, question: str, depth: int) -> str:
     if depth >= _MAX_DELEGATION_DEPTH:
         raise ValueError(f"max delegation depth ({_MAX_DELEGATION_DEPTH}) reached")
 
+    prefix = ""
+    if agent_id == AUTO_AGENT_ID:
+        chosen = agent_routing.resolve_auto(question)
+        agent_id = chosen.id
+        prefix = f"Delegated to {chosen.id} ({chosen.label}).\n\n"
+
+    # Specialists start and stop on their own - read the current registry.
+    agent_registry.reload()
     agent = agent_registry.get_agent(agent_id)
     if agent is None:
         configured = ", ".join(agent_registry.list_agent_ids()) or "(none configured)"
@@ -131,4 +140,4 @@ def call(agent_id: str, question: str, depth: int) -> str:
     if sink is not None:
         # The delegate's own entries already include anything it delegated on.
         sink.extend(result.get("agent_usage") or [])
-    return result.get("response", "")
+    return prefix + result.get("response", "")

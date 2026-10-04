@@ -30,7 +30,7 @@ as configured.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Sequence
 
 from anthropic import (
     Anthropic,
@@ -43,7 +43,8 @@ from anthropic import (
     RateLimitError,
 )
 
-from src import approvals, delegation, tool_selection
+from src import agent_routing, agent_spec, approvals, delegation, tool_selection
+from src.agent_spec import RosterEntry
 from src.llm import cancellation, cooldown, llm_config, llm_options, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
@@ -219,7 +220,9 @@ def _dispatch(name: str, arguments: dict[str, Any], depth: int) -> str:
     return call_tool(name, arguments)
 
 
-def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str, Any]]:
+def _tool_schemas(
+    enabled_extensions: list[str] | None = None, roster: Sequence[RosterEntry] = ()
+) -> list[dict[str, Any]]:
     # display_label rides along on every schema dict returned here so
     # run_chat can build its step_start "label" lookup from the same
     # list it already has - it is NOT a real Anthropic tools= schema
@@ -234,12 +237,14 @@ def _tool_schemas(enabled_extensions: list[str] | None = None) -> list[dict[str,
         }
         for tool in list_tools(enabled_extensions)
     ]
-    if delegation.is_available():
+    # Only an orchestrator has a roster, so only it can delegate.
+    if roster:
+        allow_auto = agent_spec.current().routing.allow_auto
         schemas.append(
             {
                 "name": delegation.TOOL_NAME,
-                "description": delegation.tool_description(),
-                "input_schema": delegation.TOOL_PARAMETERS,
+                "description": delegation.tool_description(list(roster), allow_auto),
+                "input_schema": delegation.tool_parameters(list(roster), allow_auto),
                 "display_label": None,
             }
         )
@@ -257,13 +262,14 @@ async def run_chat(
     caveman: bool = False,
 ) -> ChatResult:
     client = _get_client()
-    system_prompt = system_prompt_for(caveman)
+    roster = await agent_routing.roster_for(question)
+    system_prompt = system_prompt_for(caveman, roster)
     model_name = model or DEFAULT_MODEL
     history = token_limits.trim_history_to_fit(history, PROVIDER_ID)
     messages: list[dict[str, Any]] = [*history, {"role": "user", "content": question}]
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
-    schemas = _tool_schemas(enabled_extensions)
+    schemas = _tool_schemas(enabled_extensions, roster)
     schemas = await tool_selection.shortlist_schemas(question, schemas, {delegation.TOOL_NAME})
     # display_label isn't a real Anthropic tools= field (see _tool_schemas) -
     # pop it into this name->label lookup here, once, rather than sending it
