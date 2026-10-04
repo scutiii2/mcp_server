@@ -32,7 +32,7 @@ from scratch.
 A role is a system-prompt persona layered onto whichever provider an
 instance is already running — it does not pick a model or a provider.
 
-1. Edit `ai_agent/configs/config_ai_agent_roles.json` (copy from the
+1. Edit `ai_agent/configs/prompts.json` (copy from the
    `.example` first if it doesn't exist yet — the real file is
    gitignored and the process refuses to start without it):
 
@@ -49,7 +49,7 @@ instance is already running — it does not pick a model or a provider.
    `ai_agent` instance(s) that should use it, with `--role my_role` or
    `AI_AGENT_ROLE=my_role` in `.env`. CLI flag beats
    env var beats `default_role`.
-3. Write the persona the way `configs/config_ai_agent_roles.json.example`'s
+3. Write the persona the way `configs/prompts.json.example`'s
    `ops_specialist` entry does: name the specific tools/terminology/
    domain vocabulary the role should reach for, not a vague "be an
    expert" — the persona is the entire behavioral difference between
@@ -91,7 +91,7 @@ different role, or the same provider through a different gateway.
    `server_launcher.py` (repo root) does the same thing per-instance
    through its own field editor — pick `ai_agent` there, edit the fields,
    press Start — without needing a shell at all.
-3. That's it for config: **do not hand-edit `config_agents.json`** in
+3. That's it for config: **do not hand-edit `data/agent_registry.json`** in
    either `ai_agent/configs/` or `chat_app/src/configs/`. `agent_registry.py`'s
    `register()`/`deregister()` upsert this instance's `{id, label, url}`
    into *both* copies automatically on clean startup/shutdown — a
@@ -108,11 +108,11 @@ Use this only when the model family genuinely isn't reachable through
 the existing Anthropic Messages API or OpenAI-compatible Responses API
 shims — most "new" model needs are actually a new **gateway block**
 under the existing `openai` or `anthropic` provider in
-`config_llms.json` (see below), not a new provider module. Check that
+`config_gateways.json` (see below), not a new provider module. Check that
 first: `openrouter`, `bedrock`, `vertex`, `litellm`, `groq`,
 `fireworks`, `together`, `ollama`, `vllm`, `azure`, `deepinfra`,
 `perplexity` are already wired as gateways, each just a `base_url`/
-`api_key` swap in `configs/config_llms.json` under the matching
+`api_key` swap in `configs/config_gateways.json` under the matching
 provider — no new module needed for any of those.
 
 If you do need a real new provider (a structurally different API, e.g.
@@ -122,7 +122,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
    (the smaller of the two — `openai_provider.py`'s Responses API loop
    is more involved). It must define, at minimum:
    - A `_<Name>(BaseProvider)` class with `PROVIDER_ID`, `DEFAULT_MODEL_FALLBACK`,
-     and `has_api_key()` (check whatever `config_llms.json`/env shape this
+     and `has_api_key()` (check whatever `config_gateways.json`/env shape this
      provider's secrets take — see `llm_config.gateway()`).
    - Module-level `PROVIDER_ID`, `DEFAULT_MODEL`, `VENDOR_LABEL`,
      `has_api_key`, `is_available` (mirrors every existing provider
@@ -171,8 +171,10 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
      (`configs/config_usage_limits.json`, `services/usage_limits.py`).
      Only the per-request `max_output_tokens`/`max_context_tokens`/`max_tool_rounds` in
      `configs/config_limits.json` live here.
-     (`config_limits.json` is one file with `token_limits`, `tool_selection` and
-     `servers` sections, read via `src/limits_config.py`'s `read_section`.
+     (Startup config is one file per concern - `config_limits.json`
+     (`token_limits`), `config_servers.json` (`servers`),
+     `config_tool_selection.json` (`tool_selection`) - read via
+     `src/config_files.py`'s `read_section`.
      Credentials live in a single `ai_agent/.env`, seeded from `.env.example`;
      there is no `secrets/` folder.)
    - Wrap rate-limit errors into `cooldown.start_cooldown(PROVIDER_ID, seconds)`
@@ -188,7 +190,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
    This is the single point that makes `AI_AGENT_PROVIDER=<provider_id>`
    a valid value — an id missing from this dict fails loudly at startup
    with the list of valid alternatives, by design (no silent fallback).
-3. Add a top-level block for it in both `configs/config_llms.json` and
+3. Add a top-level block for it in both `configs/config_gateways.json` and
    `.json.example`, following the existing shape — a default gateway
    (e.g. `"<provider_id>": {"<default_gateway>": {"label": ..., "api_key": "{<PROVIDER>_API_KEY}", "model": ...}}}`).
 4. Add the real secret var name to `.env.example`
@@ -213,7 +215,7 @@ Unlike `chat_app`/`mcp_server`, `ai_agent` has no logging module and no `logs/` 
   design) and that a chat turn's tone/tool usage matches the persona.
 - **Instance**: start it, check `GET` on chat_app's agent list (or just
   the dropdown) shows the new entry, then Ctrl+C it cleanly and confirm
-  the entry disappears from both `config_agents.json` copies.
+  the entry disappears from both registry copies.
 - **Provider**: `python -m src.server` with the new `AI_AGENT_PROVIDER`
   set — a missing/bad API key should fail loudly at import time
   (`AgentConfigError`), not on the first request. Then run one real

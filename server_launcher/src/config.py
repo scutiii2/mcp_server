@@ -33,7 +33,7 @@ _EXTRA_ARGS_HINTS = {
         "litellm, helicone, portkey (anthropic) or azure, together, groq, fireworks, "
         "deepinfra, perplexity, ollama, vllm (openai)\n"
         "--role <name>      override the persona role, e.g. ops_specialist "
-        "(configs/config_ai_agent_roles.json)\n"
+        "(configs/prompts.json)\n"
         "--mcp-url <url>    override the mcp_server URL this agent connects to, "
         "e.g. http://127.0.0.1:8010/mcp"
     ),

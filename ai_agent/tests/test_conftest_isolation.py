@@ -1,5 +1,5 @@
 """The autouse registry isolation in conftest.py: no test sees (or rewrites)
-the developer's real config_agents.json."""
+the developer's real agent registry."""
 
 from __future__ import annotations
 

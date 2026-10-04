@@ -1,7 +1,6 @@
-"""Reads one top-level section of configs/config_limits.json - the single
-file holding token_limits, tool_selection and servers. Each consumer keeps
-its own `_CONFIG_PATH` and validation; this only does the shared
-seed-and-parse step."""
+"""Paths and the shared seed-and-parse step for ai_agent's startup config
+files under configs/. Each consumer keeps its own validation; this only
+locates the file and reads one top-level section of it."""
 
 from __future__ import annotations
 
@@ -11,7 +10,12 @@ from typing import Any
 
 from src.seed import seed_from_example
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "config_limits.json"
+CONFIGS_DIR = Path(__file__).resolve().parent.parent / "configs"
+
+# One file per concern, each a JSON object with one top-level section.
+LIMITS_PATH = CONFIGS_DIR / "config_limits.json"  # token_limits
+SERVERS_PATH = CONFIGS_DIR / "config_servers.json"  # servers
+TOOL_SELECTION_PATH = CONFIGS_DIR / "config_tool_selection.json"  # tool_selection
 
 _REQUIRED = object()
 

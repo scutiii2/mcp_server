@@ -1,6 +1,6 @@
 """Resolves this ai_agent instance's active persona role, once, at import
 time - fails loudly if AI_AGENT_ROLE names an id not present in
-configs/config_ai_agent_roles.json, rather than discovering that on the
+configs/prompts.json, rather than discovering that on the
 first real request.
 
 SYSTEM_PROMPT (imported by anthropic_provider.py/openai_provider.py in
@@ -23,14 +23,14 @@ from src import agent_spec
 from src.agent_spec import RosterEntry
 from src.seed import seed_from_example
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_ai_agent_roles.json"
+_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "prompts.json"
 
 _config: dict[str, Any] | None = None
 
 
 class AgentRoleError(Exception):
     """Raised at import time for an AI_AGENT_ROLE naming an id that isn't
-    in configs/config_ai_agent_roles.json's "roles" map, for the config
+    in configs/prompts.json's "roles" map, for the config
     file itself being missing, or for the config being malformed (missing
     a required key)."""
 

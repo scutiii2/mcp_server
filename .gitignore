@@ -81,7 +81,6 @@ MCPServer.yaml
 .output/
 PyRFC
 config_*.json
-!/ai_agent/configs/config_limits.json
 dev_rfc.log
 
 

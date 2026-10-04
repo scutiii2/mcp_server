@@ -1,4 +1,4 @@
-"""Loads configs/config_llms.json - per-gateway base_url/model presets for
+"""Loads configs/config_gateways.json - per-gateway base_url/model presets for
 each provider (e.g. anthropic -> openrouter/bedrock/vertex).
 
 Real secrets never live in that file: any "{ENV_VAR_NAME}" string value is
@@ -19,7 +19,7 @@ from typing import Any
 from src.catalog import catalog
 from src.seed import seed_from_example
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_llms.json"
+_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_gateways.json"
 _PLACEHOLDER = re.compile(r"^\{([A-Z0-9_]+)\}$")
 
 _config: dict[str, Any] | None = None
@@ -46,6 +46,6 @@ def gateway(provider: str, gateway_name: str) -> dict[str, Any]:
     """One gateway's config block, e.g. gateway("anthropic", "openrouter")
     - {ENV_VAR} placeholders resolved to their live env var value (None if
     that var is unset). Raises KeyError if provider/gateway_name isn't in
-    config_llms.json."""
+    config_gateways.json."""
     block = _load()[provider][gateway_name]
     return {key: _resolve(value) for key, value in block.items()}

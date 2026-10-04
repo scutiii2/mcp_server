@@ -16,12 +16,12 @@ import os
 from typing import Any
 
 from src import agent_spec, internal_auth, tool_progress
-from src.limits_config import CONFIG_PATH
+from src.config_files import SERVERS_PATH
 from src.sync_wrapper import SyncMcpClient
 
-_CONFIG_PATH = CONFIG_PATH
+_CONFIG_PATH = SERVERS_PATH
 
-# The single upstream server id configured in configs/config_limits.json.
+# The single upstream server id configured in configs/config_servers.json.
 # Every tool list_tools() returns is namespaced "main__<tool name>" by
 # SyncMcpClient's underlying McpClientRegistry (see registry.py's
 # NAMESPACE_SEPARATOR) even though there's only one upstream server today.
@@ -53,7 +53,7 @@ def tool_description(tool: Any) -> str:
 
 def connect() -> None:
     # MCP_SERVER_URL (set directly, or via --mcp-url - see server.py) repoints
-    # the "main" upstream server without editing config_limits.json - same
+    # the "main" upstream server without editing config_servers.json - same
     # env var chat_app's own services/llm/settings.py reads for its direct
     # connection to mcp_server, so one variable controls both.
     override = os.getenv("MCP_SERVER_URL")

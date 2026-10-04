@@ -13,11 +13,11 @@ from src import agent_registry
 
 
 def _configure(monkeypatch, tmp_path, agents, chat_app_agents=None):
-    config_path = tmp_path / "config_agents.json"
+    config_path = tmp_path / "agent_registry.json"
     config_path.write_text(json.dumps({"agents": agents}), encoding="utf-8")
     monkeypatch.setattr(agent_registry, "_CONFIG_PATH", config_path)
 
-    chat_app_config_path = tmp_path / "chat_app_config_agents.json"
+    chat_app_config_path = tmp_path / "chat_app_agent_registry.json"
     chat_app_config_path.write_text(
         json.dumps({"agents": chat_app_agents if chat_app_agents is not None else agents}), encoding="utf-8"
     )
@@ -48,6 +48,17 @@ def test_register_adds_this_instance_to_both_config_files(monkeypatch, tmp_path)
     assert json.loads(config_path.read_text(encoding="utf-8"))["agents"] == expected
     assert json.loads(chat_app_config_path.read_text(encoding="utf-8"))["agents"] == expected
     assert agent_registry.get_agent("claude-agent") == expected[0]
+
+
+def test_register_creates_the_missing_data_folder(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path, [])
+    target = tmp_path / "fresh" / "agent_registry.json"
+    monkeypatch.setattr(agent_registry, "_CONFIG_PATH", target)
+
+    agent_registry.register("claude-agent", "Claude Agent", "http://127.0.0.1:9100/mcp")
+
+    assert agent_registry.list_agent_ids() == ["claude-agent"]
+    assert target.exists()
 
 
 def test_register_upserts_rather_than_duplicating_an_existing_id(monkeypatch, tmp_path):
@@ -153,16 +164,16 @@ def test_old_entries_without_new_keys_still_load(monkeypatch, tmp_path):
 
 
 def test_write_writes_the_file_and_leaves_no_temp_file(tmp_path):
-    target = tmp_path / "config_agents.json"
+    target = tmp_path / "agent_registry.json"
 
     agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
 
     assert json.loads(target.read_text(encoding="utf-8"))["agents"][0]["id"] == "a"
-    assert [p.name for p in tmp_path.iterdir()] == ["config_agents.json"]
+    assert [p.name for p in tmp_path.iterdir()] == ["agent_registry.json"]
 
 
 def test_write_swaps_a_temp_file_in_with_os_replace(monkeypatch, tmp_path):
-    target = tmp_path / "config_agents.json"
+    target = tmp_path / "agent_registry.json"
     target.write_text('{"agents": []}', encoding="utf-8")
     real_replace = agent_registry.os.replace
     calls = []
@@ -184,7 +195,7 @@ def test_write_swaps_a_temp_file_in_with_os_replace(monkeypatch, tmp_path):
 
 
 def test_failed_swap_keeps_the_old_file_and_removes_the_temp_file(monkeypatch, tmp_path):
-    target = tmp_path / "config_agents.json"
+    target = tmp_path / "agent_registry.json"
     target.write_text('{"agents": []}', encoding="utf-8")
 
     def boom(source, destination):
@@ -196,11 +207,11 @@ def test_failed_swap_keeps_the_old_file_and_removes_the_temp_file(monkeypatch, t
         agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
 
     assert json.loads(target.read_text(encoding="utf-8"))["agents"] == []
-    assert [p.name for p in tmp_path.iterdir()] == ["config_agents.json"]
+    assert [p.name for p in tmp_path.iterdir()] == ["agent_registry.json"]
 
 
 def test_swap_is_retried_when_a_reader_holds_the_file(monkeypatch, tmp_path):
-    target = tmp_path / "config_agents.json"
+    target = tmp_path / "agent_registry.json"
     real_replace = agent_registry.os.replace
     attempts = []
 
@@ -217,11 +228,11 @@ def test_swap_is_retried_when_a_reader_holds_the_file(monkeypatch, tmp_path):
 
     assert len(attempts) == 3
     assert json.loads(target.read_text(encoding="utf-8"))["agents"][0]["id"] == "a"
-    assert [p.name for p in tmp_path.iterdir()] == ["config_agents.json"]
+    assert [p.name for p in tmp_path.iterdir()] == ["agent_registry.json"]
 
 
 def test_swap_gives_up_after_the_last_attempt(monkeypatch, tmp_path):
-    target = tmp_path / "config_agents.json"
+    target = tmp_path / "agent_registry.json"
     attempts = []
 
     def locked(source, destination):

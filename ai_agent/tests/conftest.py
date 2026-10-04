@@ -23,11 +23,11 @@ import pytest  # noqa: E402
 @pytest.fixture(autouse=True)
 def _isolated_agent_registry(monkeypatch, tmp_path):
     """Point the agent registry at empty, per-test files so no test reads or
-    rewrites the developer's real config_agents.json (roster_for and
+    rewrites the developer's real agent registry (roster_for and
     delegation.call reload it). Tests needing agents set their own."""
     from src import agent_registry
 
-    monkeypatch.setattr(agent_registry, "_CONFIG_PATH", tmp_path / "registry" / "config_agents.json")
+    monkeypatch.setattr(agent_registry, "_CONFIG_PATH", tmp_path / "registry" / "agent_registry.json")
     monkeypatch.setattr(agent_registry, "_CHAT_APP_CONFIG_PATH", tmp_path / "registry" / "chat_app_agents.json")
     monkeypatch.setattr(agent_registry, "_AGENTS", [])
     monkeypatch.setattr(agent_registry, "_AGENTS_BY_ID", {})

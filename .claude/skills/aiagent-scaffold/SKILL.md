@@ -18,10 +18,10 @@ file, not code - except a new provider.
 | A different agent for ember to talk to first, or one that delegates | **Entry / orchestrator** flags in the agent file | No |
 | A model family that isn't Claude or OpenAI (Gemini, a native SDK) | **Provider** | Yes |
 
-The retired pieces: roles in `config_ai_agent_roles.json` and a hand-run
+The retired pieces: roles in `prompts.json` and a hand-run
 instance per `AI_AGENT_PROVIDER`/`AI_AGENT_PORT` still work for a lone
 `python -m src.server` run but are not how agents are added now. Don't
-hand-edit `configs/config_agents.json` - it is the registry the children
+hand-edit `data/agent_registry.json` - it is the runtime registry the children
 write (atomic temp file + `os.replace`); ember_api reads it.
 
 `ai_agent/README.md` ("Agents", "Orchestrator and routing", "Usage log") is
@@ -100,11 +100,11 @@ Use this only when the model family genuinely isn't reachable through
 the existing Anthropic Messages API or OpenAI-compatible Responses API
 shims — most "new" model needs are actually a new **gateway block**
 under the existing `openai` or `anthropic` provider in
-`config_llms.json` (see below), not a new provider module. Check that
+`config_gateways.json` (see below), not a new provider module. Check that
 first: `openrouter`, `bedrock`, `vertex`, `litellm`, `groq`,
 `fireworks`, `together`, `ollama`, `vllm`, `azure`, `deepinfra`,
 `perplexity` are already wired as gateways, each just a `base_url`/
-`api_key` swap in `configs/config_llms.json` under the matching
+`api_key` swap in `configs/config_gateways.json` under the matching
 provider — no new module needed for any of those.
 
 If you do need a real new provider (a structurally different API, e.g.
@@ -114,7 +114,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
    (the smaller of the two — `openai_provider.py`'s Responses API loop
    is more involved). It must define, at minimum:
    - A `_<Name>(BaseProvider)` class with `PROVIDER_ID`, `DEFAULT_MODEL_FALLBACK`,
-     and `has_api_key()` (check whatever `config_llms.json`/env shape this
+     and `has_api_key()` (check whatever `config_gateways.json`/env shape this
      provider's secrets take — see `llm_config.gateway()`).
    - Module-level `PROVIDER_ID`, `DEFAULT_MODEL`, `VENDOR_LABEL`,
      `has_api_key`, `is_available` (mirrors every existing provider
@@ -163,8 +163,10 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
      did the same with its `usage.db`).
      Only the per-request `max_output_tokens`/`max_context_tokens`/`max_tool_rounds` in
      `configs/config_limits.json` live here.
-     (`config_limits.json` is one file with `token_limits`, `tool_selection` and
-     `servers` sections, read via `src/limits_config.py`'s `read_section`.
+     (Startup config is one file per concern - `config_limits.json`
+     (`token_limits`), `config_servers.json` (`servers`),
+     `config_tool_selection.json` (`tool_selection`) - read via
+     `src/config_files.py`'s `read_section`.
      Credentials live in a single `ai_agent/.env`, seeded from `.env.example`;
      there is no `secrets/` folder.)
    - Wrap rate-limit errors into `cooldown.start_cooldown(PROVIDER_ID, seconds)`
@@ -180,7 +182,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
    This is the single point that makes `AI_AGENT_PROVIDER=<provider_id>`
    a valid value — an id missing from this dict fails loudly at startup
    with the list of valid alternatives, by design (no silent fallback).
-3. Add a top-level block for it in both `configs/config_llms.json` and
+3. Add a top-level block for it in both `configs/config_gateways.json` and
    `.json.example`, following the existing shape — a default gateway
    (e.g. `"<provider_id>": {"<default_gateway>": {"label": ..., "api_key": "{<PROVIDER>_API_KEY}", "model": ...}}}`).
 4. Add the real secret var name to `.env.example`
@@ -210,7 +212,7 @@ write the file itself. ember_api owns usage limits and the usage reports.
 
 - **Agent file**: start `run.bat`. A bad file, a shared port or a wrong number
   of entry agents stops the supervisor with the file and field named. Then
-  `[<id>]` lines appear and the agent is listed in `configs/config_agents.json`;
+  `[<id>]` lines appear and the agent is listed in `data/agent_registry.json`;
   `GET /api/agent` on ember_api names the entry agent. Stop with Ctrl+C and
   confirm no child is left running and the entry leaves the registry.
 - **Orchestrator / routing**: ask the entry agent something that fits a

@@ -21,7 +21,7 @@ _parser = argparse.ArgumentParser(add_help=False)
 _parser.add_argument(
     "--gateway",
     help=(
-        "Override this run's gateway block (configs/config_llms.json), "
+        "Override this run's gateway block (configs/config_gateways.json), "
         "e.g. openrouter/bedrock/vertex/litellm/helicone/portkey for "
         "anthropic, or azure/together/groq/fireworks/deepinfra/"
         "perplexity/ollama/vllm for openai. Takes precedence over "
@@ -33,7 +33,7 @@ _parser.add_argument(
 _parser.add_argument(
     "--role",
     help=(
-        "Override this run's persona role (configs/config_ai_agent_roles.json), "
+        "Override this run's persona role (configs/prompts.json), "
         "e.g. ops_specialist. Takes precedence over AI_AGENT_ROLE. Set "
         "before importing agent_config, since agent_roles resolves "
         "SYSTEM_PROMPT from the role at import time, same as --gateway "
@@ -44,7 +44,7 @@ _parser.add_argument(
     "--mcp-url",
     help=(
         "Override the mcp_server URL this agent connects to as an MCP "
-        "client (configs/config_limits.json's 'main' entry), e.g. "
+        "client (configs/config_servers.json's 'main' entry), e.g. "
         "http://127.0.0.1:8010/mcp to point at a different host/port. "
         "Takes precedence over MCP_SERVER_URL. Set before mcp_upstream.connect() "
         "runs in main() below."

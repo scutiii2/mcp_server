@@ -12,9 +12,9 @@ import math
 from typing import Any
 
 from src.catalog import catalog
-from src.limits_config import CONFIG_PATH, read_section
+from src.config_files import LIMITS_PATH, read_section
 
-_CONFIG_PATH = CONFIG_PATH
+_CONFIG_PATH = LIMITS_PATH
 _REQUIRED_FIELDS = (
     "max_output_tokens",
     "max_context_tokens",

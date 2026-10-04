@@ -6,7 +6,7 @@ between several, so ProviderSpec/ModelOption/ModelAvailability* and the
 Ollama-only RecursiveRoundRecord - all built for chat_app's per-request
 provider dropdown - have no equivalent need here. ChatCancelled,
 ToolCallRecord and ChatResult carry over unchanged. SYSTEM_PROMPT moved to
-agent_roles.py, which composes it from configs/config_ai_agent_roles.json
+agent_roles.py, which composes it from configs/prompts.json
 instead of a fixed string.
 """
 
@@ -149,7 +149,7 @@ class ChatResult:
 class BaseProvider:
     """Shared, provider-agnostic pieces of claude_provider.py and
     openai_provider.py: key/cooldown checks, the delegate-or-call_tool
-    dispatch, and default-model resolution from configs/config_llms.json's
+    dispatch, and default-model resolution from configs/config_gateways.json's
     gateway block (so an OpenRouter-style gateway model override works the
     same way for both).
 
@@ -167,7 +167,7 @@ class BaseProvider:
     def has_api_key(cls) -> bool:
         """Whether the CURRENTLY SELECTED gateway (see GATEWAY_ENV) has its
         required secret(s) resolved - gateway-specific, since each block in
-        configs/config_llms.json points at different env var(s). Each
+        configs/config_gateways.json points at different env var(s). Each
         subclass overrides this to check its own gateway's shape (plain
         api_key/auth_token vs bedrock's AWS triple vs vertex's project_id).
         """

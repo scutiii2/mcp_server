@@ -31,11 +31,11 @@ Give each item found by the catalog its own description (catalog_service current
 - **mcp_server secrets**: merge `secret_app`, `secret_internal_api`, `secret_smtp` into one file. `secret_ssh.env` stays separate (more sensitive).
 - **chat_app configs** (7 files to 3): `config_security_fingerprint`, `_headers`, `_ip_filter`, `_rate_limit` into one `config_security.json` with a top-level key per feature. `config_app` + `config_usage_limits` into `config_app.json`. `config_agents.json` stays.
 - **mcp_server configs**: `config_capabilities` + `config_extensions` into `config_mcp_server.json`.
-- **ai_agent**: leave alone. `config_llms.json` (3 KB) is edited on its own. Merging `config_servers` / `config_token_limits` / `config_ai_agent_roles` is optional and low value.
+- **ai_agent**: split by concern instead of merged (done): `config_limits`, `config_servers`, `config_tool_selection`, `config_gateways`, `prompts.json`, and the runtime registry at `data/agent_registry.json`.
 
 **Notes**:
 - `INTERNAL_API_TOKEN` exists in both chat_app and mcp_server and must match. Do not share a file across projects (keeps each project self-contained).
-- `chat_app/configs/config_agents.json` and `ai_agent/configs/config_agents.json` are identical (265 bytes). Check whether both are needed.
+- ai_agent's registry is now `ai_agent/data/agent_registry.json`; its write into `chat_app/src/configs/` targets a folder that does not exist (chat_app's real one is `chat_app/configs/`). Remove or fix that copy.
 
 **Work involved**: update every loader, the `.example` twins, `config_validation.py` per-file checkers, tests, READMEs and the four scaffold skills (`aiagent-scaffold`, `chatapp-page-scaffold`, `mcp-capability-scaffold`, `root-project-scaffold`). Add a one-time migration that reads the old files when the new one is missing, so existing real secrets (for example the bootstrap admin password) are not lost. Trade-off: one typo can break several settings in a merged file, and a merged `config_security.json` reloads all four features together.
 

@@ -102,10 +102,10 @@ class AgentSpec:
     llm: LlmSpec
     enabled: bool = True
     entry: bool = False
-    # None = no persona in a file: use config_ai_agent_roles.json's role
+    # None = no persona in a file: use prompts.json's role
     # (the env-var path). A file spec always has a string, "" included.
     persona: str | None = ""
-    # Replaces config_ai_agent_roles.json's shared tool_use_instructions for
+    # Replaces prompts.json's shared tool_use_instructions for
     # this agent; "" = use the shared text.
     instructions: str = ""
     focus: str = ""

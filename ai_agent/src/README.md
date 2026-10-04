@@ -21,8 +21,8 @@ The `src` package - installed under that literal name (see
   orchestrators delegate to specialists only. Bounded by a depth cap (2 hops) so a
   delegation chain can't run away. `agent_registry.py`'s
   `register()`/`deregister()` also upsert/remove this instance's own
-  `{id, label, url}` in both `../configs/config_agents.json` and
-  `chat_app`'s copy, on startup/clean shutdown.
+  `{id, label, url}` in `../data/agent_registry.json` (runtime state,
+  gitignored) and `chat_app`'s copy, on startup/clean shutdown.
 - `agent_spec.py` - loads and validates one `agents/<id>.json` (identity,
   port, `llm`, `orchestrator`, `routing`) into the process-wide
   `AgentSpec` the other modules read.

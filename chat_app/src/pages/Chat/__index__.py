@@ -74,7 +74,7 @@ def providers_api():
 
     label prefers the agent's live vendor_label (its status tool's
     reading of the CURRENTLY SELECTED AI_AGENT_GATEWAY block's "label" in
-    ai_agent's configs/config_llms.json - e.g. "OpenRouter" rather than a
+    ai_agent's configs/config_gateways.json - e.g. "OpenRouter" rather than a
     static "Claude Agent" once that instance's gateway points elsewhere)
     over config_agents.json's own static label, which only remains a
     fallback for an agent that's unreachable (no live status to read).

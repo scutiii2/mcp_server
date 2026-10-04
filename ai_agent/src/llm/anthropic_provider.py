@@ -10,7 +10,7 @@ shared Settings object. The tool-calling loop itself, including the
 cancellation checkpoint between rounds, is unchanged.
 
 AI_AGENT_GATEWAY picks which client this instance talks through, always
-by looking up a block of the same name in configs/config_llms.json's
+by looking up a block of the same name in configs/config_gateways.json's
 "anthropic" section - "claude" (default) is just another block there,
 same as "openrouter"/"litellm"/"portkey"/etc, except it has no base_url
 (the Anthropic SDK already defaults to api.anthropic.com), needs no
@@ -116,20 +116,20 @@ class _Anthropic(BaseProvider):
         if gateway_name == "vertex":
             cfg = llm_config.gateway(PROVIDER_NAME, "vertex")
             if not cfg.get("project_id"):
-                raise ValueError("configs/config_llms.json anthropic.vertex.project_id env var not set")
+                raise ValueError("configs/config_gateways.json anthropic.vertex.project_id env var not set")
             cls._client = AsyncAnthropicVertex(project_id=cfg["project_id"], region=cfg.get("region"))
             return cls._client
 
         # Every other block ("claude" itself, "openrouter", "litellm",
         # "helicone", "portkey", ...) is a plain AsyncAnthropic() build -
-        # config_llms.json supplies api_key/auth_token/base_url, "claude"'s
+        # config_gateways.json supplies api_key/auth_token/base_url, "claude"'s
         # own block just leaves base_url unset (SDK default).
         cfg = llm_config.gateway(PROVIDER_NAME, gateway_name)
         api_key = cfg.get("api_key")
         auth_token = cfg.get("auth_token")
         if not api_key and not auth_token:
             raise ValueError(
-                f"configs/config_llms.json anthropic.{gateway_name}: neither its api_key nor "
+                f"configs/config_gateways.json anthropic.{gateway_name}: neither its api_key nor "
                 "auth_token env var is set in .env"
             )
         cls._client = AsyncAnthropic(api_key=api_key, auth_token=auth_token, base_url=cfg.get("base_url"))
@@ -162,7 +162,7 @@ class _Anthropic(BaseProvider):
         if gateway_name == "vertex":
             cfg = llm_config.gateway(PROVIDER_NAME, "vertex")
             if not cfg.get("project_id"):
-                raise ValueError("configs/config_llms.json anthropic.vertex.project_id env var not set")
+                raise ValueError("configs/config_gateways.json anthropic.vertex.project_id env var not set")
             cls._sync_client = AnthropicVertex(project_id=cfg["project_id"], region=cfg.get("region"))
             return cls._sync_client
 
@@ -171,7 +171,7 @@ class _Anthropic(BaseProvider):
         auth_token = cfg.get("auth_token")
         if not api_key and not auth_token:
             raise ValueError(
-                f"configs/config_llms.json anthropic.{gateway_name}: neither its api_key nor "
+                f"configs/config_gateways.json anthropic.{gateway_name}: neither its api_key nor "
                 "auth_token env var is set in .env"
             )
         cls._sync_client = Anthropic(api_key=api_key, auth_token=auth_token, base_url=cfg.get("base_url"))
@@ -190,7 +190,7 @@ class _Anthropic(BaseProvider):
     @classmethod
     def resolve_vendor_label(cls) -> str:
         """Human-readable name of the CURRENTLY SELECTED gateway (its
-        "label" field in configs/config_llms.json), for chat_app's
+        "label" field in configs/config_gateways.json), for chat_app's
         provider dropdown to show the actual vendor in use - e.g.
         "OpenRouter" rather than a static "Claude Agent" - when
         AI_AGENT_GATEWAY points this instance somewhere other than

@@ -98,7 +98,7 @@ def count_tokens(model: str, text: str) -> int:
     SDK's count_tokens endpoint (no completion cost), when this process
     has the plain CLAUDE_API_KEY secret_llm.env sets (the same env var
     ai_agent's default "claude" gateway resolves against - see
-    ai_agent/configs/config_llms.json - merged into this process's
+    ai_agent/configs/config_gateways.json - merged into this process's
     environment too by run.py's create_app()); approximate
     (len(text)//4) for every other model, or if that call fails for any
     reason. chat_app deliberately holds no LLM client of its own

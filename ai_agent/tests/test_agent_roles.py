@@ -7,7 +7,7 @@ re-executes the module body top to bottom, which would re-run the
 _CONFIG_PATH = Path(...) assignment and clobber the _config_file fixture's
 monkeypatch of _CONFIG_PATH before _resolve()/_compose_system_prompt() ever
 ran - the reloaded module would just go back to reading the real
-configs/config_ai_agent_roles.json instead of the fixture's tmp_path file.
+configs/prompts.json instead of the fixture's tmp_path file.
 Calling agent_roles._resolve() and agent_roles._compose_system_prompt(...)
 directly on the already-imported module sidesteps that: the monkeypatched
 _CONFIG_PATH stays in effect for the whole test. Same underlying reasoning
@@ -35,7 +35,7 @@ _CONFIG = {
 
 @pytest.fixture(autouse=True)
 def _config_file(monkeypatch, tmp_path):
-    path = tmp_path / "config_ai_agent_roles.json"
+    path = tmp_path / "prompts.json"
     path.write_text(json.dumps(_CONFIG))
 
     from src.llm import agent_roles

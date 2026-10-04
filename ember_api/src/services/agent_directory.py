@@ -1,6 +1,6 @@
 """Which ai_agent instances exist: ai_agent's own registry file.
 
-Every running ai_agent registers itself in ai_agent/configs/config_agents.json
+Every running ai_agent registers itself in ai_agent/data/agent_registry.json
 (see ai_agent/src/agent_registry.py). Reading that file directly means
 ember_api needs no tool call to discover agents, and - more importantly - the
 proxy can only ever reach URLs that file lists, never one the browser names.

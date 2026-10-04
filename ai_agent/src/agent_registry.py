@@ -1,9 +1,11 @@
 """Sibling ai_agent instances this instance can delegate a sub-question to
-(see delegation.py) - read once at import time from
-configs/config_agents.json, then kept live by register()/deregister()
-below. Identical in shape to chat_app/src/services/agent_registry.py;
-copied rather than shared cross-project, same convention as everything
-else in this project.
+(see delegation.py) - read once at import time from the runtime registry
+data/agent_registry.json, then kept live by register()/deregister()
+below. The file is written by the running instances, never edited by hand,
+so it lives under data/ (gitignored runtime state) rather than configs/.
+Identical in shape to chat_app/src/services/agent_registry.py; copied
+rather than shared cross-project, same convention as everything else in
+this project.
 
 Includes this instance's own entry, but an agent never lists itself in
 its roster (see agent_routing.specialists()): orchestrators delegate to
@@ -21,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "config_agents.json"
+_CONFIG_PATH = Path(__file__).resolve().parent.parent / "data" / "agent_registry.json"
 
 # chat_app's own copy of this same file (its provider dropdown - see
 # chat_app/src/services/agent_registry.py). register()/deregister() below
@@ -121,7 +123,7 @@ def _release_lock(lock_path: Path) -> None:
 
 
 def _update(path: Path, mutate) -> None:
-    """Locked read-modify-write of one config_agents.json: `mutate` takes
+    """Locked read-modify-write of one registry file: `mutate` takes
     the current agent list and returns the new one. Silently gives up on
     any OSError (e.g. chat_app's copy missing because only ai_agent was
     checked out) - self-registration is a convenience, not something
@@ -165,8 +167,8 @@ def reload() -> None:
 def register(
     agent_id: str, label: str, url: str, *, entry: bool = False, orchestrator: bool = False, focus: str = "",
 ) -> None:
-    """Upserts this instance's own entry into both config_agents.json
-    copies (this project's and chat_app's), so neither needs a manual edit
+    """Upserts this instance's own entry into both registry files
+    (this project's and chat_app's), so neither needs a manual edit
     to learn about a newly-started instance. Call once at startup, before
     serving; see deregister() for the matching shutdown call.
 
@@ -181,14 +183,20 @@ def register(
     def _upsert(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [a for a in agents if a["id"] != agent_id] + [record]
 
+    # data/ is gitignored runtime state, so a fresh checkout has no such
+    # folder yet; chat_app's folder is never created from here.
+    try:
+        _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
     for path in (_CONFIG_PATH, _CHAT_APP_CONFIG_PATH):
         _update(path, _upsert)
     reload()
 
 
 def deregister(agent_id: str) -> None:
-    """Removes this instance's own entry from both config_agents.json
-    copies - called on clean shutdown (Ctrl+C, or the process exiting
+    """Removes this instance's own entry from both registry files
+    - called on clean shutdown (Ctrl+C, or the process exiting
     normally) so a stopped instance doesn't linger in either list. A
     crash that skips Python's own shutdown path leaves the entry behind,
     same as any other clean-shutdown-only cleanup in this project."""

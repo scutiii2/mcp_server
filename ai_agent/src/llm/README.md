@@ -15,11 +15,11 @@ rather than routing between several per request.
   by `agent_config.py` when `AI_AGENT_PROVIDER=anthropic`.
 - **`openai_provider.py`** - OpenAI Responses API provider, pinned when
   `AI_AGENT_PROVIDER=openai`.
-- **`llm_config.py`** - loads `../../configs/config_llms.json`'s
+- **`llm_config.py`** - loads `../../configs/config_gateways.json`'s
   per-gateway `base_url`/`model` presets; resolves `"{ENV_VAR_NAME}"`
   placeholders against the process environment, never a literal secret.
 - **`agent_roles.py`** - resolves this instance's active persona
-  (`AI_AGENT_ROLE`) from `../../configs/config_ai_agent_roles.json`,
+  (`AI_AGENT_ROLE`) from `../../configs/prompts.json`,
   once, at import time; fails loudly on an unknown role id. Exposes
   `SYSTEM_PROMPT`, imported by both providers in place of
   `base_provider`'s old constant.

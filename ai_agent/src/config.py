@@ -1,4 +1,4 @@
-"""Load and validate configs/config_limits.json servers into typed ServerConfig
+"""Load and validate configs/config_servers.json into typed ServerConfig
 objects.
 
 Mirrors the shape of mcp_server/src/infra/app_config.py's ExtensionConfig,
@@ -15,12 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from src.catalog import catalog
-from src.limits_config import read_section
+from src.config_files import read_section
 
 
 @catalog
 class ConfigError(ValueError):
-    """Raised for a malformed config_limits.json servers entry."""
+    """Raised for a malformed config_servers.json servers entry."""
 
 
 @catalog
@@ -107,7 +107,7 @@ def _build_server(server_id: str, raw: dict[str, Any]) -> ServerConfig:
 
 @catalog
 def load_servers_config(path: Path, url_overrides: dict[str, str] | None = None) -> dict[str, ServerConfig]:
-    """Load and validate every entry in `path` (config_limits.json servers).
+    """Load and validate every entry in `path` (config_servers.json servers).
 
     Raises ConfigError for any entry missing a required field, using an
     unknown transport/auth type, or mixing fields from the wrong
@@ -118,7 +118,7 @@ def load_servers_config(path: Path, url_overrides: dict[str, str] | None = None)
     `url_overrides` (server_id -> url) replaces an http entry's configured
     url after loading - used by mcp_upstream.py to let --mcp-url/
     MCP_SERVER_URL repoint the "main" upstream server without editing
-    config_limits.json servers. Ignored for a stdio entry or an unknown server_id.
+    config_servers.json. Ignored for a stdio entry or an unknown server_id.
     """
     raw_data = read_section(path, "servers")
     servers = {server_id: _build_server(server_id, raw) for server_id, raw in raw_data.items()}

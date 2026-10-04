@@ -21,7 +21,7 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
    pointing at instead. Both can be set at once - one file backs every agent.
 
 2. Make sure `mcp_server` is running (`mcp_server/run.bat`) -
-   `ai_agent/configs/config_limits.json` points at its default
+   `ai_agent/configs/config_servers.json` points at its default
    `http://127.0.0.1:8010/mcp`.
 
 3. Start the agents with `run.bat` (from `ai_agent/`). It creates
@@ -66,14 +66,14 @@ typos are caught at startup.
 | `enabled` | no | `true` | `false`: not spawned, not registered. |
 | `entry` | no | `false` | The agent ember sends new turns to (Phase 2). Exactly one enabled file must set it. |
 | `llm.provider` | yes | none | `anthropic` or `openai` (keys of `_PROVIDERS` in `agent_config.py`). |
-| `llm.gateway` | no | provider default | A gateway key from `configs/config_llms.json` under that provider. |
+| `llm.gateway` | no | provider default | A gateway key from `configs/config_gateways.json` under that provider. |
 | `llm.model` | no | gateway's `model` | Model id. |
 | `llm.temperature` | no | unset (provider default) | Float 0-2. |
 | `llm.reasoning_effort` | no | `off` | `off`, `low`, `medium`, `high`. Maps to the Anthropic thinking budget or OpenAI `reasoning_effort`. |
 | `llm.max_tokens` | no | today's hard-coded value | Output token cap per model call. |
 | `llm.max_tool_rounds` | no | `6` | Cap on the tool loop. |
 | `persona` | no | `""` | Persona text placed in the system prompt. |
-| `instructions` | no | `""` (shared text) | Replaces `tool_use_instructions` from `configs/config_ai_agent_roles.json` for this agent only. Empty uses the shared text. |
+| `instructions` | no | `""` (shared text) | Replaces `tool_use_instructions` from `configs/prompts.json` for this agent only. Empty uses the shared text. |
 | `focus` | no | `""` | One-line summary of what the agent is good at. Used for the orchestrator roster and for Laya routing. Should be concrete. |
 | `tools.allow` | no | `[]` (all) | fnmatch globs on mcp_server tool names without the `main__` prefix. Empty means all tools. |
 | `tools.deny` | no | `[]` | Globs removed after `allow`. Deny wins. |
@@ -211,8 +211,8 @@ the turn. `data/usage/` is gitignored.
 
 ## Roles
 
-Copy `configs/config_ai_agent_roles.json.example` to
-`configs/config_ai_agent_roles.json` before running - like `.env`
+Copy `configs/prompts.json.example` to
+`configs/prompts.json` before running - like `.env`
 above, the real file is gitignored so a fresh checkout only has the
 `.example` twin, and `ai_agent` (and its tests) won't start without it.
 
@@ -230,7 +230,7 @@ AI_AGENT_ROLE=ops_specialist
 ```
 
 The CLI flag takes precedence over the environment variable, which takes
-precedence over the `default_role` in `configs/config_ai_agent_roles.json`.
+precedence over the `default_role` in `configs/prompts.json`.
 
 An agent file's `persona` replaces the role. `AI_AGENT_ROLE` / `--role` apply
 only to an instance started without an agent file.
@@ -243,7 +243,7 @@ One role ships out of the box:
 - `generic` (the default) - empty persona, preserving the original hardcoded
   system prompt behavior.
 
-To add a new role, edit `configs/config_ai_agent_roles.json` and add an entry
+To add a new role, edit `configs/prompts.json` and add an entry
 under `roles` with a `label` (human-readable name) and `persona`
 (system-prompt instructions):
 
