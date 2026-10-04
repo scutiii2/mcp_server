@@ -15,6 +15,7 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "config_agents.json"
 
@@ -44,14 +45,14 @@ def agent_id_for(provider_id: str) -> str:
     return f"{_AGENT_ID_PREFIX.get(provider_id, provider_id)}-agent"
 
 
-def _read(path: Path) -> list[dict[str, str]]:
+def _read(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
     return data.get("agents", [])
 
 
-def _write(path: Path, agents: list[dict[str, str]]) -> None:
+def _write(path: Path, agents: list[dict[str, Any]]) -> None:
     path.write_text(json.dumps({"agents": agents}, indent=2) + "\n", encoding="utf-8")
 
 
@@ -93,7 +94,7 @@ def _update(path: Path, mutate) -> None:
         pass
 
 
-def _load() -> list[dict[str, str]]:
+def _load() -> list[dict[str, Any]]:
     return _read(_CONFIG_PATH)
 
 
@@ -111,16 +112,24 @@ def reload() -> None:
     _AGENTS_BY_ID = {agent["id"]: agent for agent in _AGENTS}
 
 
-def register(agent_id: str, label: str, url: str) -> None:
-    """Upserts this instance's own {id, label, url} into both
-    config_agents.json copies (this project's and chat_app's), so
-    neither needs a manual edit to learn about a newly-started instance.
-    Call once at startup, before serving; see deregister() for the
-    matching shutdown call."""
-    entry = {"id": agent_id, "label": label, "url": url}
+def register(
+    agent_id: str, label: str, url: str, *, entry: bool = False, orchestrator: bool = False, focus: str = "",
+) -> None:
+    """Upserts this instance's own entry into both config_agents.json
+    copies (this project's and chat_app's), so neither needs a manual edit
+    to learn about a newly-started instance. Call once at startup, before
+    serving; see deregister() for the matching shutdown call.
 
-    def _upsert(agents: list[dict[str, str]]) -> list[dict[str, str]]:
-        return [a for a in agents if a["id"] != agent_id] + [entry]
+    entry/orchestrator/focus are optional for readers (a missing key reads
+    as False/False/""): ember_api picks the entry agent, and an
+    orchestrator builds its roster and Laya options from focus."""
+    record: dict[str, Any] = {
+        "id": agent_id, "label": label, "url": url,
+        "entry": entry, "orchestrator": orchestrator, "focus": focus,
+    }
+
+    def _upsert(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [a for a in agents if a["id"] != agent_id] + [record]
 
     for path in (_CONFIG_PATH, _CHAT_APP_CONFIG_PATH):
         _update(path, _upsert)
@@ -134,7 +143,7 @@ def deregister(agent_id: str) -> None:
     crash that skips Python's own shutdown path leaves the entry behind,
     same as any other clean-shutdown-only cleanup in this project."""
 
-    def _remove(agents: list[dict[str, str]]) -> list[dict[str, str]]:
+    def _remove(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [a for a in agents if a["id"] != agent_id]
 
     for path in (_CONFIG_PATH, _CHAT_APP_CONFIG_PATH):
@@ -146,11 +155,11 @@ def list_agent_ids() -> list[str]:
     return [agent["id"] for agent in _AGENTS]
 
 
-def get_agent(agent_id: str | None) -> dict[str, str] | None:
+def get_agent(agent_id: str | None) -> dict[str, Any] | None:
     if not agent_id:
         return None
     return _AGENTS_BY_ID.get(agent_id)
 
 
-def all_agents() -> list[dict[str, str]]:
+def all_agents() -> list[dict[str, Any]]:
     return list(_AGENTS)

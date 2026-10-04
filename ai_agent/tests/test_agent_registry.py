@@ -38,7 +38,10 @@ def test_register_adds_this_instance_to_both_config_files(monkeypatch, tmp_path)
 
     agent_registry.register("claude-agent", "Claude Agent", "http://127.0.0.1:9100/mcp")
 
-    expected = [{"id": "claude-agent", "label": "Claude Agent", "url": "http://127.0.0.1:9100/mcp"}]
+    expected = [{
+        "id": "claude-agent", "label": "Claude Agent", "url": "http://127.0.0.1:9100/mcp",
+        "entry": False, "orchestrator": False, "focus": "",
+    }]
     assert json.loads(config_path.read_text(encoding="utf-8"))["agents"] == expected
     assert json.loads(chat_app_config_path.read_text(encoding="utf-8"))["agents"] == expected
     assert agent_registry.get_agent("claude-agent") == expected[0]
@@ -51,7 +54,10 @@ def test_register_upserts_rather_than_duplicating_an_existing_id(monkeypatch, tm
     agent_registry.register("claude-agent", "Claude Agent", "http://127.0.0.1:9100/mcp")
 
     assert agent_registry.all_agents() == [
-        {"id": "claude-agent", "label": "Claude Agent", "url": "http://127.0.0.1:9100/mcp"}
+        {
+            "id": "claude-agent", "label": "Claude Agent", "url": "http://127.0.0.1:9100/mcp",
+            "entry": False, "orchestrator": False, "focus": "",
+        }
     ]
 
 
@@ -117,3 +123,27 @@ def test_missing_config_file_yields_no_agents(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_registry, "_CONFIG_PATH", tmp_path / "does_not_exist.json")
 
     assert agent_registry._load() == []
+
+
+def test_register_writes_entry_orchestrator_and_focus(monkeypatch, tmp_path):
+    config_path, _ = _configure(monkeypatch, tmp_path, [])
+
+    agent_registry.register(
+        "calc", "Calculator", "http://127.0.0.1:9103/mcp",
+        entry=False, orchestrator=False, focus="Arithmetic and unit conversion.",
+    )
+    agent_registry.register("orchestrator", "Ember", "http://127.0.0.1:9100/mcp", entry=True, orchestrator=True)
+
+    agents = {a["id"]: a for a in json.loads(config_path.read_text(encoding="utf-8"))["agents"]}
+    assert agents["calc"]["focus"] == "Arithmetic and unit conversion."
+    assert agents["orchestrator"]["entry"] is True
+    assert agents["orchestrator"]["orchestrator"] is True
+
+
+def test_old_entries_without_new_keys_still_load(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path, [{"id": "claude-agent", "label": "Claude Agent", "url": "http://x/mcp"}])
+
+    agent = agent_registry.get_agent("claude-agent")
+
+    assert agent["url"] == "http://x/mcp"
+    assert agent.get("orchestrator", False) is False
