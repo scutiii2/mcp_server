@@ -100,11 +100,11 @@ describe("live agent activity", () => {
 
     emit({ type: "agent_token", sequence: 1, agent_id: "calc", agent_label: "Calculator", step_id: "d1", text: "15% of " });
     emit({ type: "agent_token", sequence: 2, agent_id: "calc", agent_label: "Calculator", step_id: "d1", text: "2,340" });
-    expect(chat.agentText).toEqual({ d1: "15% of 2,340" });
+    expect(chat.agentText).toEqual({ "calc\td1": "15% of 2,340" });
     expect(chat.streaming).toBe(""); // never mixed into the answer
 
     emit({ type: "agent_token", sequence: 3, agent_id: "calc", agent_label: "Calculator", step_id: "d1", text: "", reset: true });
-    expect(chat.agentText).toEqual({ d1: "" });
+    expect(chat.agentText).toEqual({ "calc\td1": "" });
   });
 
   it("restores the working agents from a snapshot", async () => {
@@ -132,6 +132,42 @@ describe("live agent activity", () => {
 
     expect(chat.activeAgents).toEqual([]);
     expect(chat.agentText).toEqual({});
+  });
+});
+
+describe("a snapshot's steps", () => {
+  const delegating = {
+    type: "snapshot",
+    sequence: 5,
+    text: "so far",
+    activity: "",
+    approvals: [],
+    steps: [
+      { id: "d1", agent_id: "main", agent_label: "Ember", tool: "delegate_to_agent", label: "Delegate", arguments: {}, ok: null, result: "" },
+      { id: "s1", agent_id: "calc", agent_label: "Calculator", tool: "tool_calc", label: "Calc", arguments: {}, ok: null, result: "" },
+    ],
+    active_agents: [{ agent_id: "calc", label: "Calculator", since: "2026-10-04T09:12:03.512Z", step_id: "d1" }],
+  };
+
+  it("keeps their ids, so a delegate's text still lands under its step", async () => {
+    const { chat, emit } = await runningTurn();
+    emit(delegating);
+
+    emit({ type: "agent_token", sequence: 6, agent_id: "calc", agent_label: "Calculator", step_id: "d1", text: "15% of " });
+
+    expect(chat.liveSteps.map((s) => s.id)).toEqual(["d1", "s1"]);
+    expect(chat.agentText).toEqual({ "calc\td1": "15% of " });
+  });
+
+  it("are finished by a step_end that comes after the snapshot, for the right agent", async () => {
+    const { chat, emit } = await runningTurn();
+    emit(delegating);
+
+    emit({ type: "step_end", sequence: 6, id: "s1", ok: true, result: "4", agent_id: "calc", agent_label: "Calculator" });
+    expect(chat.liveSteps.map((s) => [s.ok, s.result])).toEqual([[null, ""], [true, "4"]]);
+
+    emit({ type: "step_end", sequence: 7, id: "d1", ok: true, result: "Delegated", agent_id: "main", agent_label: "Ember" });
+    expect(chat.liveSteps.map((s) => [s.ok, s.result])).toEqual([[true, "Delegated"], [true, "4"]]);
   });
 });
 
@@ -174,7 +210,7 @@ describe("live steps and agent events, edge cases", () => {
     const { chat, emit } = await runningTurn();
 
     emit({ type: "agent_token", sequence: 1, agent_id: "calc", agent_label: "Calculator", step_id: "d1", text: "early" });
-    expect(chat.agentText).toEqual({ d1: "early" });
+    expect(chat.agentText).toEqual({ "calc\td1": "early" });
     expect(chat.activeAgents).toEqual([]);
 
     emit({ type: "final", sequence: 2, message: { role: "assistant", content: "done" }, cancelled: false });

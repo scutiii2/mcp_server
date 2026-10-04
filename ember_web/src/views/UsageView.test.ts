@@ -254,7 +254,11 @@ describe("group by", () => {
 
     expect(wrapper.find("table.groups th").text()).toBe("Agent");
     expect(wrapper.find("table.groups tbody tr").text()).toContain("calc");
+    mine.mockResolvedValue(
+      usage({ group_by: "gateway", groups: [{ key: "azure", tokens: 30, input_tokens: 20, output_tokens: 10, turns: 1 }] }),
+    );
     await wrapper.find("select.group-by").setValue("gateway");
+    await flushPromises();
     expect(wrapper.find("table.groups th").text()).toBe("Gateway");
   });
 
@@ -262,6 +266,43 @@ describe("group by", () => {
     const wrapper = await mountView();
 
     expect(wrapper.find("table.groups").exists()).toBe(false);
+    expect(wrapper.find("h3 + p.muted").text()).toBe("None.");
+  });
+
+  it("keeps the heading of the loaded report while the next grouping loads", async () => {
+    const group = { key: "calc", tokens: 30, input_tokens: 20, output_tokens: 10, turns: 1 };
+    mine.mockResolvedValue(usage({ group_by: "agent", groups: [group] }));
+    const wrapper = await mountView();
+    mine.mockReturnValue(new Promise(() => {})); // the provider report is still loading
+
+    await wrapper.find("select.group-by").setValue("provider");
+
+    expect(wrapper.find("table.groups th").text()).toBe("Agent");
+  });
+
+  it("applies only the latest request when responses arrive out of order", async () => {
+    const later = (data: MyUsage) => data;
+    let releaseFirst: (value: MyUsage) => void = () => {};
+    mine.mockImplementation((days) => {
+      if (days === 366) return Promise.resolve(usage());
+      return new Promise((resolve) => {
+        if (calls++ === 0) releaseFirst = resolve;
+        else resolve(later(usage({ total_tokens: 777 })));
+      });
+    });
+    let calls = 0;
+    setActivePinia(createPinia());
+    useAuthStore().account = account(["chat.use"]);
+    const wrapper = mount(UsageView); // first request (30 days) stays pending
+    await flushPromises();
+    await rangeButton(wrapper, "7 days").trigger("click"); // second request answers at once
+    await flushPromises();
+
+    releaseFirst(usage({ total_tokens: 111 })); // the stale one answers last
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("777");
+    expect(wrapper.text()).not.toContain("111");
   });
 });
 
@@ -305,6 +346,8 @@ describe("the records table", () => {
     expect(wrapper.find(".error").exists()).toBe(false);
     expect(wrapper.find(".stats").exists()).toBe(true);
     expect(wrapper.find("table.records").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Could not load recent calls.");
+    expect(wrapper.text()).not.toMatch(/Recent calls\s*None\./);
   });
 });
 

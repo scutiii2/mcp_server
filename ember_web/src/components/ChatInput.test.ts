@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { attachmentsClient } from "../api/AttachmentsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
+import { withAttachments } from "../utils/attachments";
 import ChatInput from "./ChatInput.vue";
 
 vi.mock("../api/AttachmentsClient", () => ({ attachmentsClient: { text: vi.fn() } }));
@@ -26,6 +27,41 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = "";
+});
+
+describe("giving back a question that was not taken", () => {
+  it("puts the typed text and its files back into an empty box", async () => {
+    const wrapper = mountInput();
+    const question = withAttachments("Summarise this", [{ filename: "notes.txt", chars: 5, truncated: false, text: "hello" }]);
+
+    (wrapper.vm as unknown as { restore: (q: string) => void }).restore(question);
+    await flushPromises();
+
+    expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("Summarise this");
+    expect(wrapper.find(".attachments li").text()).toContain("notes.txt");
+    await wrapper.find("form").trigger("submit");
+    expect(wrapper.emitted("send")![0]).toEqual([question]);
+  });
+
+  it("never overwrites what was typed since", async () => {
+    const wrapper = mountInput();
+    await wrapper.find("textarea").setValue("something new");
+
+    (wrapper.vm as unknown as { restore: (q: string) => void }).restore("old question");
+    await flushPromises();
+
+    expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("something new");
+  });
+
+  it("leaves the box empty after a send that was taken (nothing is restored unasked)", async () => {
+    const wrapper = mountInput();
+    await wrapper.find("textarea").setValue("a question");
+
+    await wrapper.find("form").trigger("submit");
+
+    expect(wrapper.emitted("send")![0]).toEqual(["a question"]);
+    expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("");
+  });
 });
 
 describe("pasting files", () => {

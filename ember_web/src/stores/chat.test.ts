@@ -123,6 +123,24 @@ describe("send with truncateTo (regenerate / edit)", () => {
     expect(chat.busy).toBe(false);
   });
 
+  it("says the question was not taken when there is no entry agent (503), so the typed text can be given back", async () => {
+    client.startTurn.mockRejectedValue(new ApiError(503, "No entry agent registered"));
+    const chat = await openChat(FOUR);
+
+    const taken = await chat.send("a long question I typed");
+
+    expect(taken).toBe(false);
+    expect(chat.sendError).toBe("No entry agent registered");
+    expect(contents(chat.messages)).toEqual(["q1", "a1", "q2", "a2"]);
+  });
+
+  it("says the question was taken when the turn starts", async () => {
+    const chat = await openChat(FOUR);
+
+    expect(await chat.send("q3")).toBe(true);
+    expect(chat.sendError).toBe("");
+  });
+
   it("sends nothing for a target that is not a typed question", async () => {
     const chat = await openChat([assistant("summary", { kind: "summary" }), user("/x y"), ...FOUR]);
     chat.messages[1]!.kind = "command";

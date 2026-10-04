@@ -42,6 +42,12 @@ function titleFrom(question: string): string {
   return oneLine.length > TITLE_MAX_CHARS ? `${oneLine.slice(0, TITLE_MAX_CHARS - 1)}…` : oneLine;
 }
 
+/** Key of a live step (or of what a delegated agent said for one): two agents
+ * may reuse a step id, so the agent is part of it. */
+export function stepKey(agentId: string | undefined, id: string): string {
+  return `${agentId ?? ""}\t${id}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -152,9 +158,8 @@ export const useChatStore = defineStore("chat", () => {
   const activity = ref(""); // its current tool step, if any
   const liveSteps = ref<ToolStep[]>([]); // the tools it ran so far
   const activeAgents = ref<ActiveAgent[]>([]); // delegated agents working on the answer, outermost first
-  const agentText = ref<Record<string, string>>({}); // a delegated agent's streamed text, by delegate step id
+  const agentText = ref<Record<string, string>>({}); // a delegated agent's streamed text, by stepKey(that agent, delegate step id)
   const liveStepIndex = new Map<string, number>(); // by stepKey: two agents may reuse a step id
-  const stepKey = (agentId: string | undefined, id: string) => `${agentId ?? ""}\t${id}`;
   const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
   const caveman = ref(false);
@@ -405,9 +410,12 @@ export const useChatStore = defineStore("chat", () => {
       case "snapshot":
         streaming.value = event.text;
         activity.value = event.activity ? `${event.activity} ...` : "";
-        // Steps have no ids here; later step_end events for them are ignored.
         liveSteps.value = event.steps ?? [];
+        // Later step_end events (and a delegate's text) find their step by id.
         liveStepIndex.clear();
+        liveSteps.value.forEach((step, index) => {
+          if (step.id) liveStepIndex.set(stepKey(step.agent_id, step.id), index);
+        });
         pendingApprovals.value = event.approvals ?? [];
         activeAgents.value = event.active_agents ?? [];
         agentText.value = {};
@@ -471,10 +479,13 @@ export const useChatStore = defineStore("chat", () => {
         );
         break;
       case "agent_token":
-        agentText.value = {
-          ...agentText.value,
-          [event.step_id]: event.reset ? "" : ((agentText.value[event.step_id] ?? "") + event.text).slice(-20_000),
-        };
+        {
+          const key = stepKey(event.agent_id, event.step_id);
+          agentText.value = {
+            ...agentText.value,
+            [key]: event.reset ? "" : ((agentText.value[key] ?? "") + event.text).slice(-20_000),
+          };
+        }
         break;
       case "final":
         activeAgents.value = [];
@@ -606,15 +617,21 @@ export const useChatStore = defineStore("chat", () => {
    *
    * `truncateTo` (regenerate / edit): the index of the open chat's question
    * this one replaces. That message and everything after it are dropped; if
-   * the question isn't accepted they come back. */
-  async function send(question: string, options: { truncateTo?: number } = {}): Promise<void> {
-    if (!question || busy.value || chatLoading.value || working.value) return;
+   * the question isn't accepted they come back.
+   *
+   * Resolves false when the question was not taken (refused, or nothing was
+   * sent), so the caller can give the typed text back to the person. */
+  async function send(question: string, options: { truncateTo?: number } = {}): Promise<boolean> {
+    if (!question || busy.value || chatLoading.value || working.value) return false;
     // Its transcript failed to load: what's shown isn't the chat.
-    if (active.value?.messagesLoaded === false) return;
+    if (active.value?.messagesLoaded === false) return false;
     const truncateTo = options.truncateTo;
-    if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return;
+    if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return false;
     sendError.value = "";
-    if (truncateTo === undefined && question.startsWith("/")) return runCommand(question);
+    if (truncateTo === undefined && question.startsWith("/")) {
+      await runCommand(question);
+      return true;
+    }
     // The administrator may have changed what is required since the page loaded.
     void refreshSettings();
 
@@ -652,13 +669,14 @@ export const useChatStore = defineStore("chat", () => {
           ? { ask_before_tools: true, allowed_tools: forceToolApproval.value ? [] : (allowedTools.value[id] ?? []) }
           : {}),
       });
-      if (started !== generation) return;
+      if (started !== generation) return true;
       conversation.agentId = turn.chat.agent_id ?? undefined;
       conversation.running = true;
       conversation.updatedAt = Date.parse(`${turn.chat.updated_at}Z`);
       if (activeId.value === id) follow(id, turn.sequence, began);
+      return true;
     } catch (err) {
-      if (started !== generation) return;
+      if (started !== generation) return true; // another chat is open: nothing to give back here
       clockStart.value = null;
       // Not saved (limit reached, agent gone ...): take the question back.
       conversation.messages = previous;
@@ -667,6 +685,7 @@ export const useChatStore = defineStore("chat", () => {
         if (activeId.value === id) activeId.value = null;
       }
       sendError.value = errorMessage(err);
+      return false;
     } finally {
       starting.value = false;
     }
@@ -693,7 +712,7 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   /** Asks the last question again: the answer to it is dropped and rewritten. */
-  function regenerate(): Promise<void> {
+  function regenerate(): Promise<boolean | void> {
     const index = regenerateIndex.value;
     const question = messages.value[index]?.content;
     if (index < 0 || !question) return Promise.resolve();
@@ -702,7 +721,7 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Replaces question `index` with `text` (its attached files stay) and
    * drops everything after it; the agent answers the new text. */
-  function editAndResend(index: number, text: string): Promise<void> {
+  function editAndResend(index: number, text: string): Promise<boolean | void> {
     const original = messages.value[index];
     if (!original || !canReplaceFrom(index)) return Promise.resolve();
     const { attachments } = splitAttachments(original.content);

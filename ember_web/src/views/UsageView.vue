@@ -37,33 +37,46 @@ const usage = ref<MyUsage | null>(null);
 const accounts = ref<AccountUsage[]>([]);
 const groupBy = ref<UsageGroupBy>("agent");
 const records = ref<UsageRecordRow[]>([]);
+const recordsFailed = ref(false);
 const loading = ref(false);
 const error = ref("");
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 
+// Each load takes a number; a response that is no longer the latest request's
+// (the period or grouping changed meanwhile) is dropped.
+let latestLoad = 0;
+
 async function load(): Promise<void> {
+  const mine = ++latestLoad;
   loading.value = true;
   error.value = "";
   try {
     const { days, since } = period();
-    const [mine, all, rows] = await Promise.all([
+    let failed = false;
+    const [report, all, rows] = await Promise.all([
       usageClient.mine(days, since, { groupBy: groupBy.value }),
       isAdmin.value ? usageClient.allAccounts(days, since) : Promise.resolve([]),
-      usageClient.records(days, since, { limit: 100 }).catch(() => []), // the table is extra: the report still shows
+      usageClient.records(days, since, { limit: 100 }).catch(() => {
+        failed = true; // the table is extra: the report still shows
+        return [];
+      }),
     ]);
-    usage.value = mine;
+    if (mine !== latestLoad) return;
+    usage.value = report;
     accounts.value = all;
     records.value = rows;
+    recordsFailed.value = failed;
   } catch (err) {
-    error.value = errorMessage(err);
+    if (mine === latestLoad) error.value = errorMessage(err);
   } finally {
-    loading.value = false;
+    if (mine === latestLoad) loading.value = false;
   }
 }
 
 const GROUP_HEADINGS: Record<UsageGroupBy, string> = { agent: "Agent", provider: "Provider", gateway: "Gateway", model: "Model" };
-const groupHeading = computed(() => GROUP_HEADINGS[groupBy.value]);
+// The heading follows the loaded report, not the selector, which may already show the next choice.
+const groupHeading = computed(() => GROUP_HEADINGS[usage.value?.report.group_by ?? groupBy.value]);
 
 /** A naive-UTC API time as the viewer's local date and time. */
 function localTime(value: string): string {
@@ -220,7 +233,8 @@ onMounted(() => {
         </table>
 
         <h3>Recent calls</h3>
-        <p v-if="records.length === 0" class="muted">None.</p>
+        <p v-if="recordsFailed" class="muted">Could not load recent calls.</p>
+        <p v-else-if="records.length === 0" class="muted">None.</p>
         <div v-else class="table-scroll">
           <table class="records">
             <thead>

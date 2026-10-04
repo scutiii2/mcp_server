@@ -102,6 +102,12 @@ function closeCommandForm(): void {
   formSchema.value = null;
 }
 
+/** A question ember_api did not take (no entry agent, limit reached ...) goes
+ * back into the box, as typed, along with its files. */
+async function onSend(question: string): Promise<void> {
+  if (!(await chat.send(question))) input.value?.restore(question);
+}
+
 function runCommandForm(text: string): void {
   closeCommandForm();
   // An answer is still being written: leave the command ready to send.
@@ -360,7 +366,7 @@ useChatShortcuts({
           :templates-error="templates.loadError"
           @templates-needed="templates.ensureLoaded()"
           @manage-templates="openTemplates"
-          @send="chat.send"
+          @send="onSend"
           @stop="chat.stop"
           @form="openCommandForm"
         />

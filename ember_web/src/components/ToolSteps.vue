@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
-import type { ToolStep } from "../api/types";
-import { useChatStore } from "../stores/chat";
+import type { ActiveAgent, ToolStep } from "../api/types";
+import { stepKey, useChatStore } from "../stores/chat";
 import { useEntryAgentStore } from "../stores/entryAgent";
 import { formatToolResult } from "../utils/toolResultFormat";
 import { toolTitle } from "../utils/toolTitles";
@@ -33,19 +33,45 @@ function title(step: ToolStep): string {
   return step.label || toolTitle(step.tool);
 }
 
-/** The agent that ran a step, when it was a delegated one (not the main agent). */
+/** The agent that ran a step, when it was a delegated one (not the main
+ * agent). Nothing is badged until the main agent is known. */
 function badge(step: ToolStep): string | null {
-  if (!step.agent_id || step.agent_id === entry.value?.id) return null;
+  const main = entry.value?.id;
+  if (!main || !step.agent_id || step.agent_id === main) return null;
   return step.agent_label || step.agent_id;
+}
+
+/** The delegated agent working for a delegate step, when it is known: the
+ * one right after the step's own agent in the stack (outermost first; the
+ * main agent heads it, unlisted). */
+function delegateOf(step: ToolStep): ActiveAgent | undefined {
+  if (!step.id || !step.agent_id) return undefined;
+  const stack = activeAgents.value;
+  const at = stack.findIndex((a) => a.agent_id === step.agent_id);
+  const next = at >= 0 ? stack[at + 1] : step.agent_id === entry.value?.id ? stack[0] : undefined;
+  return next?.step_id === step.id ? next : undefined;
+}
+
+/** The key under which a delegate step's text is kept: its working agent's,
+ * or (text that came before the agent was announced) any other agent's text
+ * for this step id. */
+function textKey(step: ToolStep): string | null {
+  if (!step.id || !step.agent_id) return null;
+  const known = delegateOf(step);
+  if (known) return stepKey(known.agent_id, step.id);
+  const own = stepKey(step.agent_id, step.id);
+  const suffix = stepKey("", step.id);
+  return Object.keys(agentText.value).find((k) => k !== own && k.endsWith(suffix)) ?? null;
 }
 
 /** A delegated agent's text so far, for the delegate step that handed it its question. */
 function workingText(step: ToolStep): string {
-  return props.live && step.id && step.agent_id === entry.value?.id ? (agentText.value[step.id] ?? "") : "";
+  const key = props.live ? textKey(step) : null;
+  return key ? (agentText.value[key] ?? "") : "";
 }
 
 function workingLabel(step: ToolStep): string {
-  return activeAgents.value.find((a) => a.step_id === step.id)?.label || "Delegated agent";
+  return delegateOf(step)?.label || "Delegated agent";
 }
 
 function argumentsText(step: ToolStep): string {
