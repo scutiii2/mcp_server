@@ -5,9 +5,8 @@ REM process per agent on that file's port.
 REM
 REM To run a single instance the old way instead (provider from env vars,
 REM no agent files), skip this bat and run:
-REM   set AI_AGENT_PROVIDER=openai
-REM   set AI_AGENT_PORT=9101
-REM   .venv_ai_agent\Scripts\python -m src.server --gateway openrouter
+REM   with AI_AGENT_PROVIDER=openai and AI_AGENT_PORT=9101 in the environment,
+REM   run .venv_ai_agent\Scripts\python -m src.server --gateway openrouter
 REM LABEL: AI Agent
 REM DESCRIPTION: Starts every configured AI agent (agents\*.json) - each talks to mcp_server as an MCP client and serves MCP to ember_api/chat_app.
 

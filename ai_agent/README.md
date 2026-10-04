@@ -97,9 +97,18 @@ An orchestrator file adds the routing block:
 
 Two examples ship in `agents.example/`: `claude-agent.json` (port 9100,
 anthropic, `entry: true`, `orchestrator: true`) and `openai-agent.json`
-(port 9102, openai). They keep today's two registry ids and ports, so stored
-chat turns that name `claude-agent` or `openai-agent` keep resolving. Add
+(port 9102, openai). They keep today's two registry ids (`claude-agent`,
+`openai-agent`), so stored chat turns that name them keep resolving;
+`openai-agent.json` uses port 9102 (older example configs used 9101). Add
 more specialists as extra files.
+
+The gateway for a supervised agent comes from `llm.gateway` in
+`agents/<id>.json`. Omitted, it is the provider's default gateway (`claude`
+for anthropic, `gpt` for openai), pinned over `AI_AGENT_GATEWAY` and
+`secret_llm.env`. `--gateway`, `--role`, `AI_AGENT_GATEWAY` and
+`AI_AGENT_ROLE` only affect an instance started the old way (`python -m
+src.server`, no agent file). Saved launcher presets that pass `--gateway` no
+longer affect the supervisor.
 
 Exactly one enabled file must set `entry: true`. The supervisor validates
 every file before it starts anything and refuses to start, naming the file
@@ -122,7 +131,10 @@ set AI_AGENT_PORT=9101
 ```
 
 An instance started this way is an orchestrator, and `--gateway` takes
-precedence over `AI_AGENT_GATEWAY`.
+precedence over `AI_AGENT_GATEWAY`. Because `specialists()` excludes
+orchestrators, two instances started the old way cannot delegate to each
+other. The example above registers `openai-agent`, the same id as the shipped
+`agents/openai-agent.json` - don't run both.
 
 ## Orchestrator and routing
 

@@ -16,12 +16,26 @@ The `src` package - installed under that literal name (see
   `../secrets/secret_llm.env` once at startup; fails loudly on a bad
   config.
 - `delegation.py`, `agent_registry.py` - lets one agent hand a focused
-  sub-question to another configured agent (or itself) mid-loop via a
-  `delegate_to_agent` tool. Bounded by a depth cap (2 hops) so a
+  sub-question to another configured specialist mid-loop via a
+  `delegate_to_agent` tool. An agent never lists itself in its roster;
+  orchestrators delegate to specialists only. Bounded by a depth cap (2 hops) so a
   delegation chain can't run away. `agent_registry.py`'s
   `register()`/`deregister()` also upsert/remove this instance's own
   `{id, label, url}` in both `../configs/config_agents.json` and
   `chat_app`'s copy, on startup/clean shutdown.
+- `agent_spec.py` - loads and validates one `agents/<id>.json` (identity,
+  port, `llm`, `orchestrator`, `routing`) into the process-wide
+  `AgentSpec` the other modules read.
+- `agent_routing.py` - per-turn roster of specialists for an orchestrator
+  (optionally Laya-shortlisted) and the `agent_id="auto"` pick.
+- `agent_events.py` - the progress events a specialist emits and an
+  orchestrator re-emits upward (`agent_*`).
+- `usage_log.py` - append-only per-agent usage log.
+- `supervisor.py` - `python -m src.supervisor` (what `run.bat` runs):
+  spawns one `src.server` child per enabled agent file, relays output,
+  restarts crashed children with backoff.
+- `llm/llm_options.py` - per-agent LLM options (gateway, model, limits)
+  resolved from the agent file.
 - `mcp_upstream.py`, `registry.py`, `config.py`, `transports.py`,
   `sync_wrapper.py` - a generic MCP-client layer
   (`McpClientRegistry`/`SyncMcpClient`), giving this project a

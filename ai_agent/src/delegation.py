@@ -1,12 +1,13 @@
 """delegate_to_agent - lets one ai_agent instance hand a focused
-sub-question to another configured instance (or itself) mid-loop.
+sub-question to another configured specialist instance mid-loop.
 
 Not every "subagent" needs a new ai_agent process: delegating to a
-different already-running instance, or to itself for a fresh,
-unpolluted sub-conversation, both go through this one generic tool.
+different already-running instance goes through this one generic tool.
+An agent never lists itself in its roster; orchestrators delegate to
+specialists only (see agent_routing.specialists()).
 A genuinely distinct specialized subagent (its own system prompt/tool
 scope/model) is still a new ai_agent instance - this module is what lets
-any instance reach one once it exists, including itself.
+any orchestrator reach one once it exists.
 
 Isolated from both provider files so neither anthropic_provider.py nor
 openai_provider.py duplicates the tool-schema/dispatch logic - each just

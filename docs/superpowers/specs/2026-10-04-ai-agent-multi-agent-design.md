@@ -42,8 +42,8 @@ run.bat -> py -m src.supervisor
   runs and the existing tests working.
 - server_launcher still sees one ai_agent instance (the supervisor), because
   `run.bat` now runs the supervisor module.
-- Laya is loaded only in a child whose file has `routing.laya: true` (or whose
-  tool shortlisting is on, as today).
+- Laya is loaded in a child whose file has `routing.laya: true` or
+  `routing.allow_auto: true` (or whose tool shortlisting is on, as today).
 
 ## Agent file
 
@@ -149,8 +149,9 @@ tool_use_instructions.
   `orchestrator: true`, persona from today's default role.
 - `openai-agent.json` — port 9102, `llm.provider: openai`.
 
-These reproduce today's two registry ids and ports, so stored chat turns that
-name `claude-agent` or `openai-agent` keep resolving. New specialists are added
+These keep today's two registry ids (`claude-agent`, `openai-agent`), so stored
+chat turns that name them keep resolving; `openai-agent.json` uses port 9102
+(older example configs used 9101). New specialists are added
 as extra files.
 
 ## Supervisor (`src/supervisor.py`)
@@ -274,8 +275,8 @@ New event types:
   Each progress message from the specialist (a JSON-encoded event) is decoded
   and re-emitted upward through a ContextVar sink (same pattern as
   `src/tool_progress.py`) into the orchestrator's `on_event`. The sink hops from
-  the delegation worker thread back to the orchestrator's event loop with
-  `anyio.from_thread.run`.
+  the delegation worker thread back onto the orchestrator's event loop via
+  `asyncio.run_coroutine_threadsafe`.
 - A specialist's `token` events are re-emitted as `agent_token` (with the text)
   so they never mix into the orchestrator's answer stream; `token_reset`
   becomes `agent_token` with `"reset": true`. Its `step_*` events pass through
