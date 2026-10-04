@@ -208,23 +208,8 @@ def test_apply_to_environ_sets_provider_gateway_model_and_port(tmp_path, monkeyp
     agent_spec.apply_to_environ(spec)
 
     assert os.environ["AI_AGENT_PROVIDER"] == "openai"
-    # No gateway in the file: pin the provider default so secret_llm.env's
+    # No gateway in the file: pin the provider default so .env's
     # AI_AGENT_GATEWAY (loaded later with setdefault) cannot override it.
     assert os.environ["AI_AGENT_GATEWAY"] == "gpt"
     assert os.environ["AI_AGENT_MODEL"] == ""
     assert os.environ["AI_AGENT_PORT"] == "9103"
-
-
-def test_ensure_agents_dir_seeds_only_when_empty(tmp_path):
-    example = tmp_path / "agents.example"
-    example.mkdir()
-    (example / "claude-agent.json").write_text("{}", encoding="utf-8")
-    agents = tmp_path / "agents"
-
-    agent_spec.ensure_agents_dir(agents, example)
-    assert (agents / "claude-agent.json").exists()
-
-    (agents / "claude-agent.json").unlink()
-    (agents / "mine.json").write_text("{}", encoding="utf-8")
-    agent_spec.ensure_agents_dir(agents, example)
-    assert not (agents / "claude-agent.json").exists()

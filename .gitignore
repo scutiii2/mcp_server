@@ -25,15 +25,14 @@ __pycache__/
 !/mcp_server/.secrets/*.example
 
 # ai_agent's real API keys / pinned-provider selection, same treatment
-# as mcp_server's secret_*.env above - only the .example is committed.
-/ai_agent/secrets/*
-!/ai_agent/secrets/*.example
-!/ai_agent/secrets/README.md
+# as mcp_server's secret_*.env above - only .env.example is committed.
+/ai_agent/.env
 /ai_agent/configs/*
 !/ai_agent/configs/*.example
-# ai_agent's real agent definitions (seeded from agents.example/ on first
-# supervisor run) and its per-agent token usage log.
-/ai_agent/agents/
+# ai_agent's real agent definitions (only agents.json.template is committed)
+# and its per-agent token usage log.
+/ai_agent/agents/*
+!/ai_agent/agents/agents.json.template
 /ai_agent/data/
 
 # mcp_server's real SMTP-account addresses. The equivalent data lived in the old root-level config.json,
@@ -82,7 +81,7 @@ MCPServer.yaml
 .output/
 PyRFC
 config_*.json
-!/ai_agent/configs/config_token_limits.json
+!/ai_agent/configs/config_limits.json
 dev_rfc.log
 
 

@@ -101,7 +101,7 @@ class _OpenAI(BaseProvider):
             if not cfg.get("azure_endpoint") or not cfg.get("api_key"):
                 raise ValueError(
                     "configs/config_llms.json openai.azure: AZURE_OPENAI_ENDPOINT / "
-                    "AZURE_OPENAI_API_KEY not set in secret_llm.env"
+                    "AZURE_OPENAI_API_KEY not set in .env"
                 )
             cls._client = AsyncAzureOpenAI(
                 azure_endpoint=cfg["azure_endpoint"],
@@ -119,7 +119,7 @@ class _OpenAI(BaseProvider):
         if not secret:
             raise ValueError(
                 f"configs/config_llms.json openai.{gateway_name}: its api_key env var is not "
-                "set in secret_llm.env"
+                "set in .env"
             )
         cls._client = AsyncOpenAI(api_key=secret, base_url=cfg.get("base_url"))
         return cls._client
@@ -142,7 +142,7 @@ class _OpenAI(BaseProvider):
             if not cfg.get("azure_endpoint") or not cfg.get("api_key"):
                 raise ValueError(
                     "configs/config_llms.json openai.azure: AZURE_OPENAI_ENDPOINT / "
-                    "AZURE_OPENAI_API_KEY not set in secret_llm.env"
+                    "AZURE_OPENAI_API_KEY not set in .env"
                 )
             cls._sync_client = AzureOpenAI(
                 azure_endpoint=cfg["azure_endpoint"],
@@ -156,7 +156,7 @@ class _OpenAI(BaseProvider):
         if not secret:
             raise ValueError(
                 f"configs/config_llms.json openai.{gateway_name}: its api_key env var is not "
-                "set in secret_llm.env"
+                "set in .env"
             )
         cls._sync_client = OpenAI(api_key=secret, base_url=cfg.get("base_url"))
         return cls._sync_client

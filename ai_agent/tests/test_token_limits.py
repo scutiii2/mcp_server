@@ -11,8 +11,8 @@ from src.llm import token_limits
 
 @pytest.fixture
 def configured_limits(tmp_path, monkeypatch):
-    config_path = tmp_path / "config_token_limits.json"
-    config_path.write_text(json.dumps({
+    config_path = tmp_path / "config_limits.json"
+    config_path.write_text(json.dumps({"token_limits": {
         "default": {
             "max_output_tokens": 20,
             "max_context_tokens": 10,
@@ -22,7 +22,7 @@ def configured_limits(tmp_path, monkeypatch):
         "openai": {
             "gateways": {"ollama": {"max_context_tokens": 16_384}},
         },
-    }))
+    }}))
     monkeypatch.setattr(token_limits, "_CONFIG_PATH", config_path)
     token_limits.reset_cache()
     return config_path

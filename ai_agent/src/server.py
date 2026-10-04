@@ -44,7 +44,7 @@ _parser.add_argument(
     "--mcp-url",
     help=(
         "Override the mcp_server URL this agent connects to as an MCP "
-        "client (configs/config_servers.json's 'main' entry), e.g. "
+        "client (configs/config_limits.json's 'main' entry), e.g. "
         "http://127.0.0.1:8010/mcp to point at a different host/port. "
         "Takes precedence over MCP_SERVER_URL. Set before mcp_upstream.connect() "
         "runs in main() below."
@@ -157,7 +157,7 @@ async def ask(
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
-    mcp_server (up to max_tool_rounds from config_token_limits.json) before returning a final answer.
+    mcp_server (up to max_tool_rounds from config_limits.json) before returning a final answer.
     request_id, if given, can be passed to cancel() to stop this turn
     cooperatively before its next round. depth is set only by a
     delegating peer's own delegate_to_agent call (see delegation.py) -
@@ -281,7 +281,7 @@ def main() -> None:
         app = mcp.streamable_http_app()
         app.add_middleware(internal_auth.InternalTokenMiddleware, token=internal_auth.TOKEN)
         if not internal_auth.TOKEN:
-            print("ai_agent: /mcp has no auth - set INTERNAL_API_TOKEN in secrets/secret_internal_api.env", flush=True)
+            print("ai_agent: /mcp has no auth - set INTERNAL_API_TOKEN in .env", flush=True)
         uvicorn.run(app, host=HOST, port=PORT, log_level=mcp.settings.log_level.lower())
     finally:
         agent_registry.deregister(_AGENT_ID)

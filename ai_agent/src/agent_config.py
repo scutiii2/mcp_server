@@ -17,7 +17,7 @@ from dotenv import dotenv_values
 from src import approvals, delegation
 from src.seed import seed_from_example
 
-_SECRETS_PATH = Path(__file__).resolve().parent.parent / "secrets" / "secret_llm.env"
+_SECRETS_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 
 def _load_secrets_into_environ() -> None:
@@ -30,7 +30,7 @@ def _load_secrets_into_environ() -> None:
 # Must run BEFORE importing anthropic_provider/openai_provider below: each
 # resolves its own DEFAULT_MODEL/VENDOR_LABEL from AI_AGENT_GATEWAY (see
 # their resolve_default_model/resolve_vendor_label) once, at ITS OWN import
-# time. If secret_llm.env's AI_AGENT_GATEWAY were loaded any later (e.g.
+# time. If .env's AI_AGENT_GATEWAY were loaded any later (e.g.
 # inside _resolve(), as this used to do), a gateway chosen only via the
 # file - not via server.py's --gateway CLI flag, which sets the env var
 # before any import happens - would never take effect: the provider module
@@ -39,7 +39,7 @@ def _load_secrets_into_environ() -> None:
 # ordering invariant covers AI_AGENT_ROLE: it's read by src/llm/agent_roles.py,
 # which anthropic_provider/openai_provider import transitively for
 # SYSTEM_PROMPT, resolved once at agent_roles.py's own import time - if this
-# call ran any later, a role set only in secret_llm.env would silently fall
+# call ran any later, a role set only in .env would silently fall
 # back to the config's default_role instead of failing loudly or applying,
 # a worse failure mode than the gateway case above since it doesn't surface
 # as a visible auth failure.

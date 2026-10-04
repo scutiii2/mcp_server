@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,7 @@ from src import tool_selection
 
 @pytest.fixture
 def config_path(tmp_path, monkeypatch):
-    path = tmp_path / "config_tool_selection.json"
+    path = tmp_path / "config_limits.json"
     monkeypatch.setattr(tool_selection, "_CONFIG_PATH", path)
     tool_selection.reset_cache()
     yield path
@@ -20,7 +21,7 @@ def config_path(tmp_path, monkeypatch):
 
 
 def _write(path, data):
-    path.write_text(json.dumps(data), encoding="utf-8")
+    path.write_text(json.dumps({"tool_selection": data}), encoding="utf-8")
 
 
 def test_values_come_from_file(config_path):
@@ -37,9 +38,9 @@ def test_missing_keys_default_to_off_and_20(config_path):
 
 def test_missing_file_is_seeded_from_example(config_path):
     # tmp_path has no .example sibling, so point at the real one via the shipped file.
-    real = tool_selection.Path(tool_selection.__file__).resolve().parent.parent / "configs"
+    real = Path(tool_selection.__file__).resolve().parent.parent / "configs"
     config_path.with_name(config_path.name + ".example").write_text(
-        (real / "config_tool_selection.json.example").read_text(encoding="utf-8"), encoding="utf-8"
+        (real / "config_limits.json.example").read_text(encoding="utf-8"), encoding="utf-8"
     )
     assert tool_selection.is_enabled() is False
     assert config_path.exists()

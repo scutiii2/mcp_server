@@ -1,14 +1,3 @@
 {
-  "agents": [
-    {
-      "id": "openai-agent",
-      "label": "Ollama Agent",
-      "url": "http://127.0.0.1:9102/mcp"
-    },
-    {
-      "id": "claude-agent",
-      "label": "OpenRouter Agent",
-      "url": "http://127.0.0.1:9100/mcp"
-    }
-  ]
+  "agents": []
 }

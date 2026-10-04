@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -25,12 +24,11 @@ from typing import Any, Iterable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_DIR = PROJECT_ROOT / "agents"
-EXAMPLE_DIR = PROJECT_ROOT / "agents.example"
 
 PROVIDERS = ("anthropic", "openai")
 REASONING_EFFORTS = ("off", "low", "medium", "high")
 # The gateway each provider uses when a file names none - pinned in the env
-# so secret_llm.env's AI_AGENT_GATEWAY cannot silently re-point the agent.
+# so .env's AI_AGENT_GATEWAY cannot silently re-point the agent.
 _DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt"}
 # Same mapping as agent_registry.agent_id_for (kept here so this module
 # stays import-free): the legacy ids predate the "claude" -> "anthropic" rename.
@@ -254,7 +252,7 @@ def load_dir(directory: Path) -> list[AgentSpec]:
     enabled agents need distinct ports and exactly one entry agent."""
     paths = sorted(directory.glob("*.json"))
     if not paths:
-        raise AgentSpecError(f"{directory}: no agent files found")
+        raise AgentSpecError(f"{directory}: no agent files found (copy agents.json.template to <id>.json)")
     specs = [load_file(path) for path in paths]
     enabled = [s for s in specs if s.enabled]
 
@@ -317,20 +315,10 @@ def reset_cache() -> None:
 def apply_to_environ(spec: AgentSpec) -> None:
     """Hand a file spec's provider/gateway/model/port to the env vars the
     existing import-time code reads. Set (not setdefault) so they win over
-    secret_llm.env, which agent_config loads with setdefault."""
+    .env, which agent_config loads with setdefault."""
     os.environ["AI_AGENT_PROVIDER"] = spec.llm.provider
     os.environ["AI_AGENT_GATEWAY"] = spec.llm.gateway or _DEFAULT_GATEWAY[spec.llm.provider]
     # "" (not unset): agent_config reads `os.getenv("AI_AGENT_MODEL") or None`,
-    # and an existing key stops secret_llm.env's setdefault from filling it.
+    # and an existing key stops .env's setdefault from filling it.
     os.environ["AI_AGENT_MODEL"] = spec.llm.model or ""
     os.environ["AI_AGENT_PORT"] = str(spec.port)
-
-
-def ensure_agents_dir(agents_dir: Path = AGENTS_DIR, example_dir: Path = EXAMPLE_DIR) -> None:
-    """First run: copy agents.example/*.json into agents/ when agents/ is
-    missing or has no agent files (same idea as seed_from_example)."""
-    if agents_dir.exists() and any(agents_dir.glob("*.json")):
-        return
-    agents_dir.mkdir(parents=True, exist_ok=True)
-    for example in example_dir.glob("*.json"):
-        shutil.copyfile(example, agents_dir / example.name)

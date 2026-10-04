@@ -4,10 +4,10 @@ fail-loud paths) and the run_chat/cancel/status wrappers.
 PROVIDER_ID/MODEL/_PROVIDER_MODULE are resolved once at import time, so
 success-path tests re-import the module fresh (via importlib.reload)
 after setting the env vars _resolve() reads. monkeypatch.setenv runs
-before reload, so os.environ.setdefault (used when loading secret_llm.env)
+before reload, so os.environ.setdefault (used when loading .env)
 can never override it - but _SECRETS_PATH is ALSO redirected to a
 guaranteed-nonexistent path for every test here, since a developer who
-has already set up a real secrets/secret_llm.env (a very normal thing to
+has already set up a real .env (a very normal thing to
 have) would otherwise leak its AI_AGENT_PROVIDER/model/keys into these
 "nothing configured" tests via that same setdefault.
 """
@@ -25,13 +25,13 @@ from src.llm.base_provider import ChatResult
 def _no_real_secrets_file(monkeypatch, tmp_path):
     from src import agent_config
 
-    monkeypatch.setattr(agent_config, "_SECRETS_PATH", tmp_path / "secret_llm.env")
+    monkeypatch.setattr(agent_config, "_SECRETS_PATH", tmp_path / ".env")
     monkeypatch.setattr(agent_config.cancellation, "_cancelled", set())
 
 
 def _clear_env(monkeypatch):
     # AI_AGENT_GATEWAY is also cleared: has_api_key() is gateway-aware, so a
-    # developer's real secret_llm.env pointing it at e.g. "openrouter" (with
+    # developer's real .env pointing it at e.g. "openrouter" (with
     # OPENROUTER_API_KEY set) would otherwise leak a non-default gateway
     # selection into these "nothing configured" tests, same leak risk this
     # function already guards against for the provider/key vars below.

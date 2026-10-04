@@ -15,13 +15,13 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
 
 ## Setup
 
-1. Copy `secrets/secret_llm.env.example` to `secrets/secret_llm.env` and
+1. Copy `.env.example` to `.env` and
    fill in `CLAUDE_API_KEY` and/or `GPT_API_KEY` (whichever provider(s)
    you're running), or the key(s) for whichever `AI_AGENT_GATEWAY` you're
    pointing at instead. Both can be set at once - one file backs every agent.
 
 2. Make sure `mcp_server` is running (`mcp_server/run.bat`) -
-   `ai_agent/configs/config_servers.json` points at its default
+   `ai_agent/configs/config_limits.json` points at its default
    `http://127.0.0.1:8010/mcp`.
 
 3. Start the agents with `run.bat` (from `ai_agent/`). It creates
@@ -32,8 +32,8 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
 
 Each ai_agent instance is defined by one file, `agents/<id>.json`. The file
 name stem is the agent id (`^[a-z0-9][a-z0-9-]{0,62}$`). `agents/` is
-gitignored; `agents.example/` is committed and is copied into `agents/` on
-first run when `agents/` is missing or empty. Unknown keys are an error, so
+gitignored except `agents/agents.json.template`, a committed starting point:
+copy it to `agents/<id>.json` and edit. Nothing is seeded automatically. Unknown keys are an error, so
 typos are caught at startup.
 
 ```json
@@ -95,17 +95,16 @@ An orchestrator file adds the routing block:
 }
 ```
 
-Two examples ship in `agents.example/`: `claude-agent.json` (port 9100,
-anthropic, `entry: true`, `orchestrator: true`) and `openai-agent.json`
-(port 9102, openai). They keep today's two registry ids (`claude-agent`,
-`openai-agent`), so stored chat turns that name them keep resolving;
-`openai-agent.json` uses port 9102 (older example configs used 9101). Add
+`agents/agents.json.template` shows every field. The two ids the stored chat
+turns use are `claude-agent` (port 9100, anthropic, `entry: true`,
+`orchestrator: true`) and `openai-agent` (port 9102, openai); keep those names
+when you create them. Add
 more specialists as extra files.
 
 The gateway for a supervised agent comes from `llm.gateway` in
 `agents/<id>.json`. Omitted, it is the provider's default gateway (`claude`
 for anthropic, `gpt` for openai), pinned over `AI_AGENT_GATEWAY` and
-`secret_llm.env`. `--gateway`, `--role`, `AI_AGENT_GATEWAY` and
+`.env`. `--gateway`, `--role`, `AI_AGENT_GATEWAY` and
 `AI_AGENT_ROLE` only affect an instance started the old way (`python -m
 src.server`, no agent file). Saved launcher presets that pass `--gateway` no
 longer affect the supervisor.
@@ -212,7 +211,7 @@ the turn. `data/usage/` is gitignored.
 ## Roles
 
 Copy `configs/config_ai_agent_roles.json.example` to
-`configs/config_ai_agent_roles.json` before running - like `secret_llm.env`
+`configs/config_ai_agent_roles.json` before running - like `.env`
 above, the real file is gitignored so a fresh checkout only has the
 `.example` twin, and `ai_agent` (and its tests) won't start without it.
 
@@ -223,7 +222,7 @@ tailored to a domain or use case), pass `--role` or set `AI_AGENT_ROLE`:
 python -m src.server --role ops_specialist
 ```
 
-or in `secret_llm.env`:
+or in `.env`:
 
 ```
 AI_AGENT_ROLE=ops_specialist
@@ -264,7 +263,7 @@ Agent files give each instance its own id, so any number of same-provider agents
 ## Security
 
 - **`/mcp` needs the internal token** once `INTERNAL_API_TOKEN` is set in
-  `secrets/secret_internal_api.env` (created from its `.example` on first
+  `.env` (created from its `.example` on first
   run; same value as mcp_server's, chat_app's and ember_api's). Without it
   a request gets `401`. The agent sends the same token on its own calls to
   mcp_server and to peer agents (`src/internal_auth.py`).
@@ -279,8 +278,8 @@ Agent files give each instance its own id, so any number of same-provider agents
 
 - **`configs/*.json`** - structured settings, mostly gitignored. See
   [`configs/README.md`](configs/README.md).
-- **`secrets/*.env`** - credential values, gitignored. See
-  [`secrets/README.md`](secrets/README.md).
+- **`.env`** - the one credentials file (provider, gateway, role, API
+  keys, `INTERNAL_API_TOKEN`), gitignored; copy it from `.env.example`.
 
 See [`src/README.md`](src/README.md) for the full code map - what lives
 where, and where new code goes.

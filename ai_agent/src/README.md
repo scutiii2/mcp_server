@@ -13,7 +13,7 @@ The `src` package - installed under that literal name (see
   tools. `interpret` is the non-agentic, single-completion path used for
   chat summarization; `ask` is the full tool-calling loop for free-form chat.
 - `agent_config.py` - resolves the pinned provider+model from
-  `../secrets/secret_llm.env` once at startup; fails loudly on a bad
+  `.env` once at startup; fails loudly on a bad
   config.
 - `delegation.py`, `agent_registry.py` - lets one agent hand a focused
   sub-question to another configured specialist mid-loop via a
@@ -53,8 +53,8 @@ to sit alongside the modules that write to them:
 - **[`../configs/`](../configs/README.md)** - structured settings,
   mostly gitignored (this project's real config files carry
   deployment-specific tuning, unlike `chat_app`/`mcp_server`'s).
-- **[`../secrets/`](../secrets/README.md)** - credential values,
-  gitignored.
+- **`../.env`** - credential values (provider, gateway, role, API keys,
+  `INTERNAL_API_TOKEN`), gitignored; `../.env.example` is the committed twin.
 
 Unlike `chat_app`/`mcp_server`, this project has no `data/` or `logs/`
 folder: it holds no database and does its own file logging nowhere -

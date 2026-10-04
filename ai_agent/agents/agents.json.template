@@ -1,0 +1,19 @@
+{
+  "label": "Calculator",
+  "port": 9103,
+  "enabled": true,
+  "entry": false,
+  "llm": {
+    "provider": "anthropic",
+    "gateway": "openrouter",
+    "model": "claude-sonnet-5-5",
+    "temperature": 0.0,
+    "reasoning_effort": "high",
+    "max_tokens": 4096,
+    "max_tool_rounds": 6
+  },
+  "persona": "You are a precise mathematician. Show every step and check results.",
+  "focus": "Arithmetic, algebra, percentages, unit conversion, compound interest.",
+  "tools": { "allow": ["calc_*", "convert_*"], "deny": [] },
+  "orchestrator": false
+}

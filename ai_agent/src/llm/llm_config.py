@@ -3,9 +3,9 @@ each provider (e.g. anthropic -> openrouter/bedrock/vertex).
 
 Real secrets never live in that file: any "{ENV_VAR_NAME}" string value is
 a pointer, resolved here against the process environment (populated from
-secret_llm.env by agent_config.py's _load_secrets_into_environ) - never
+.env by agent_config.py's _load_secrets_into_environ) - never
 taken literally. A gateway block with an unresolved placeholder just
-yields None for that key, same as the var being blank in secret_llm.env.
+yields None for that key, same as the var being blank in .env.
 """
 
 from __future__ import annotations

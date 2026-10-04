@@ -227,7 +227,6 @@ class Supervisor:
 
 
 def main() -> None:
-    agent_spec.ensure_agents_dir()
     try:
         specs = agent_spec.load_dir(agent_spec.AGENTS_DIR)
     except agent_spec.AgentSpecError as error:

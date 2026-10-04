@@ -47,7 +47,7 @@ instance is already running — it does not pick a model or a provider.
 
 2. No code change, no restart-the-whole-repo — just restart the
    `ai_agent` instance(s) that should use it, with `--role my_role` or
-   `AI_AGENT_ROLE=my_role` in `secrets/secret_llm.env`. CLI flag beats
+   `AI_AGENT_ROLE=my_role` in `.env`. CLI flag beats
    env var beats `default_role`.
 3. Write the persona the way `configs/config_ai_agent_roles.json.example`'s
    `ops_specialist` entry does: name the specific tools/terminology/
@@ -170,7 +170,11 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
      `total_tokens` per user in its own `usage.db` and owns the caps
      (`configs/config_usage_limits.json`, `services/usage_limits.py`).
      Only the per-request `max_output_tokens`/`max_context_tokens`/`max_tool_rounds` in
-     `configs/config_token_limits.json` live here.
+     `configs/config_limits.json` live here.
+     (`config_limits.json` is one file with `token_limits`, `tool_selection` and
+     `servers` sections, read via `src/limits_config.py`'s `read_section`.
+     Credentials live in a single `ai_agent/.env`, seeded from `.env.example`;
+     there is no `secrets/` folder.)
    - Wrap rate-limit errors into `cooldown.start_cooldown(PROVIDER_ID, seconds)`
      and re-raise, same pattern as the existing providers, so `is_available()`
      correctly reflects a provider that just got rate-limited.
@@ -187,8 +191,8 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
 3. Add a top-level block for it in both `configs/config_llms.json` and
    `.json.example`, following the existing shape — a default gateway
    (e.g. `"<provider_id>": {"<default_gateway>": {"label": ..., "api_key": "{<PROVIDER>_API_KEY}", "model": ...}}}`).
-4. Add the real secret var name to `secrets/secret_llm.env.example`
-   (and your own gitignored `secret_llm.env`) — whatever `{PLACEHOLDER}`
+4. Add the real secret var name to `.env.example`
+   (and your own gitignored `.env`) — whatever `{PLACEHOLDER}`
    you referenced in step 3.
 5. If the new model family's context window matters for the usage bar,
    add a substring-matched entry to `src/llm/model_limits.py`'s

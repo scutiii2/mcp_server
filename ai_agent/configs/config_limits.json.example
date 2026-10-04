@@ -1,0 +1,29 @@
+{
+  "token_limits": {
+    "default": {
+      "max_output_tokens": 2048,
+      "max_context_tokens": 100000,
+      "max_tool_rounds": 15
+    },
+    "anthropic": {},
+    "openai": {
+      "gateways": {
+        "ollama": {
+          "max_context_tokens": 16384
+        }
+      }
+    }
+  },
+  "tool_selection": {
+    "enabled": false,
+    "top_k": 20
+  },
+  "servers": {
+    "main": {
+      "label": "mcp_server",
+      "description": "This repo's own MCP tool server.",
+      "transport": "http",
+      "url": "http://127.0.0.1:8010/mcp"
+    }
+  }
+}

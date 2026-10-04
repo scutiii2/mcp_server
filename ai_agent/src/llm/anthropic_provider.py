@@ -19,7 +19,7 @@ points at the plain CLAUDE_API_KEY var. "bedrock" and "vertex" are the
 two exceptions requiring a different SDK client class (AnthropicBedrock/
 AnthropicVertex, different auth shape entirely) rather than a base_url
 swap. Whichever block is picked, the actual secret values it points at
-("{CLAUDE_API_KEY}" etc) still only ever come from secret_llm.env,
+("{CLAUDE_API_KEY}" etc) still only ever come from .env,
 resolved by llm_config.py - never written in the JSON file itself.
 has_api_key() checks the CURRENTLY SELECTED gateway's own required
 secret(s), not a fixed var - a developer running only "openrouter" with
@@ -130,7 +130,7 @@ class _Anthropic(BaseProvider):
         if not api_key and not auth_token:
             raise ValueError(
                 f"configs/config_llms.json anthropic.{gateway_name}: neither its api_key nor "
-                "auth_token env var is set in secret_llm.env"
+                "auth_token env var is set in .env"
             )
         cls._client = AsyncAnthropic(api_key=api_key, auth_token=auth_token, base_url=cfg.get("base_url"))
         return cls._client
@@ -172,7 +172,7 @@ class _Anthropic(BaseProvider):
         if not api_key and not auth_token:
             raise ValueError(
                 f"configs/config_llms.json anthropic.{gateway_name}: neither its api_key nor "
-                "auth_token env var is set in secret_llm.env"
+                "auth_token env var is set in .env"
             )
         cls._sync_client = Anthropic(api_key=api_key, auth_token=auth_token, base_url=cfg.get("base_url"))
         return cls._sync_client

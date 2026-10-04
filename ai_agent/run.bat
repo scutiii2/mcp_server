@@ -1,6 +1,6 @@
 @echo off
-REM ai_agent dev launcher - starts every agent in agents\*.json (seeded
-REM from agents.example\ on first run) under src.supervisor, one child
+REM ai_agent dev launcher - starts every agent in agents\*.json (copy
+REM agentsgents.json.template to start) under src.supervisor, one child
 REM process per agent on that file's port.
 REM
 REM To run a single instance the old way instead (provider from env vars,

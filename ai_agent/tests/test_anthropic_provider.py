@@ -29,7 +29,7 @@ def _no_roster():
 @pytest.fixture(autouse=True)
 def _reset_state(monkeypatch, tmp_path):
     # has_api_key()/get_client() are gateway-aware (see AI_AGENT_GATEWAY),
-    # so a developer's real secret_llm.env pointing it at a non-default
+    # so a developer's real .env pointing it at a non-default
     # gateway (e.g. "openrouter") must not leak into these tests, which
     # assume the default "claude" gateway's CLAUDE_API_KEY semantics.
     monkeypatch.delenv("AI_AGENT_GATEWAY", raising=False)

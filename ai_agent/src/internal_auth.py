@@ -2,7 +2,7 @@
 
 Inbound: every caller of this agent's /mcp is another server in this repo
 (chat_app, ember_api, a delegating peer agent), so once INTERNAL_API_TOKEN
-is configured (secrets/secret_internal_api.env, the same value as
+is configured (.env, the same value as
 mcp_server's, chat_app's and ember_api's) InternalTokenMiddleware rejects a
 request without it.
 
@@ -30,7 +30,7 @@ from dotenv import dotenv_values
 
 from src.seed import seed_from_example
 
-_SECRETS_PATH = Path(__file__).resolve().parent.parent / "secrets" / "secret_internal_api.env"
+_SECRETS_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 REQUESTER_USERNAME_HEADER = "X-Requester-Username"
