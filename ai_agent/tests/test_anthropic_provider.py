@@ -25,8 +25,11 @@ def _reset_state(monkeypatch, tmp_path):
     # assume the default "claude" gateway's CLAUDE_API_KEY semantics.
     monkeypatch.delenv("AI_AGENT_GATEWAY", raising=False)
     cooldown.reset()
+    from src.llm import llm_options
+    llm_options.reset_cache()
     yield
     cooldown.reset()
+    llm_options.reset_cache()
 
 
 def _fake_tool():
@@ -275,3 +278,38 @@ def test_run_chat_raises_chat_cancelled_before_any_api_call_when_already_cancell
             asyncio.run(anthropic_provider.run_chat("hello", [], request_id="req-1"))
 
     cancellation.clear("req-1")
+
+
+def test_run_chat_sends_agent_llm_options_and_retries_without_a_rejected_one(monkeypatch):
+    import anthropic
+    from src import agent_spec
+    from src.agent_spec import AgentSpec, LlmSpec
+    from src.llm import llm_options
+
+    monkeypatch.setenv("CLAUDE_API_KEY", "sk-ant-test")
+    spec = AgentSpec(id="calc", label="Calculator", port=9103,
+                     llm=LlmSpec(provider="anthropic", temperature=0.0, max_tokens=321, max_tool_rounds=2))
+    monkeypatch.setattr(agent_spec, "_current", spec)
+    llm_options.reset_cache()
+
+    rejected = anthropic.BadRequestError(
+        "temperature is not supported", response=MagicMock(status_code=400), body=None,
+    )
+
+    class _RejectingCM:
+        async def __aenter__(self):
+            raise rejected
+
+        async def __aexit__(self, *exc):
+            return False
+
+    stream = Mock(side_effect=[_RejectingCM(), _stream_cm(["ok"])])
+    fake_client = SimpleNamespace(messages=SimpleNamespace(stream=stream))
+    with patch("src.llm.anthropic_provider._get_client", return_value=fake_client),          patch("src.llm.anthropic_provider.list_tools", return_value=[]):
+        result = asyncio.run(anthropic_provider.run_chat("hello", []))
+
+    assert result.response == "ok"
+    first, second = stream.call_args_list
+    assert first.kwargs["temperature"] == 0.0
+    assert first.kwargs["max_tokens"] == 321
+    assert "temperature" not in second.kwargs

@@ -27,8 +27,11 @@ def _reset_state(monkeypatch, tmp_path):
     # assume the default "gpt" gateway's GPT_API_KEY semantics.
     monkeypatch.delenv("AI_AGENT_GATEWAY", raising=False)
     cooldown.reset()
+    from src.llm import llm_options
+    llm_options.reset_cache()
     yield
     cooldown.reset()
+    llm_options.reset_cache()
 
 
 def _fake_tool():
@@ -301,3 +304,39 @@ def test_output_items_are_resent_without_sdk_only_fields():
 
     assert items[0] == {"type": "function_call", "call_id": "c1", "name": "t", "arguments": "{}", "extra": [{"text": "hi"}]}
     assert items[1] is plain
+
+
+def test_run_chat_sends_agent_llm_options_and_retries_without_a_rejected_one(monkeypatch):
+    import openai
+    from src import agent_spec
+    from src.agent_spec import AgentSpec, LlmSpec
+    from src.llm import llm_options
+
+    monkeypatch.setenv("GPT_API_KEY", "sk-test")
+    spec = AgentSpec(id="calc", label="Calculator", port=9103,
+                     llm=LlmSpec(provider="openai", temperature=0.0, max_tokens=321, max_tool_rounds=2))
+    monkeypatch.setattr(agent_spec, "_current", spec)
+    llm_options.reset_cache()
+
+    rejected = openai.BadRequestError(
+        "temperature is not supported", response=MagicMock(status_code=400), body=None,
+    )
+
+    class _RejectingCM:
+        async def __aenter__(self):
+            raise rejected
+
+        async def __aexit__(self, *exc):
+            return False
+
+    final_response = SimpleNamespace(usage=SimpleNamespace(total_tokens=2), output=[], output_text="ok")
+    stream = Mock(side_effect=[_RejectingCM(), _fake_stream(["ok"], final_response)])
+    fake_client = SimpleNamespace(responses=SimpleNamespace(stream=stream))
+    with patch("src.llm.openai_provider._get_client", return_value=fake_client),          patch("src.llm.openai_provider.list_tools", return_value=[]):
+        result = asyncio.run(openai_provider.run_chat("hello", []))
+
+    assert result.response == "ok"
+    first, second = stream.call_args_list
+    assert first.kwargs["temperature"] == 0.0
+    assert first.kwargs["max_output_tokens"] == 321
+    assert "temperature" not in second.kwargs

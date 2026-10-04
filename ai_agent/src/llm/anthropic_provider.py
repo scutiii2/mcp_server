@@ -39,11 +39,12 @@ from anthropic import (
     AsyncAnthropic,
     AsyncAnthropicBedrock,
     AsyncAnthropicVertex,
+    BadRequestError,
     RateLimitError,
 )
 
 from src import approvals, delegation, tool_selection
-from src.llm import cancellation, cooldown, llm_config, token_limits
+from src.llm import cancellation, cooldown, llm_config, llm_options, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
     BaseProvider, ChatCancelled, ChatResult, LiveUsage, OnEvent, ToolCallRecord, dispatch_with_progress, step_event,
@@ -278,6 +279,7 @@ async def run_chat(
     input_tokens = 0
     output_tokens = 0
     meter = LiveUsage(on_event)
+    options = llm_options.for_provider(PROVIDER_ID)
     # The full prompt just sent (all resent history + this round's tool
     # results), not a sum across rounds like total_tokens - this is what
     # the usage bar and the phase-5 auto-trigger need to know how close
@@ -286,7 +288,7 @@ async def run_chat(
     context_tokens = 0
 
     try:
-        for _ in range(token_limits.max_tool_rounds(PROVIDER_ID)):
+        for _ in range(options.max_tool_rounds(token_limits.max_tool_rounds(PROVIDER_ID))):
             if cancellation.is_cancelled(request_id):
                 raise ChatCancelled()
             token_limits.enforce_context_limit(PROVIDER_ID, [system_prompt, *messages])
@@ -294,20 +296,29 @@ async def run_chat(
             # it. A round that ends in tool_use may still have streamed some
             # text first; "token_reset" tells the client to drop it, since
             # the real answer is the text of the final (non-tool) round.
-            text_parts: list[str] = []
-            async with client.messages.stream(
-                model=model_name,
-                max_tokens=token_limits.max_output_tokens(PROVIDER_ID),
-                system=system_prompt,
-                messages=messages,
-                tools=schemas,
-            ) as stream:
-                async for chunk in stream.text_stream:
-                    text_parts.append(chunk)
-                    if on_event:
-                        await on_event(step_event("token", text=chunk))
-                    await meter.chars(len(chunk))
-                response = await stream.get_final_message()
+            while True:
+                text_parts: list[str] = []
+                try:
+                    async with client.messages.stream(
+                        model=model_name,
+                        max_tokens=options.max_tokens(token_limits.max_output_tokens(PROVIDER_ID)),
+                        system=system_prompt,
+                        messages=messages,
+                        tools=schemas,
+                        **options.extra_kwargs(),
+                    ) as stream:
+                        async for chunk in stream.text_stream:
+                            text_parts.append(chunk)
+                            if on_event:
+                                await on_event(step_event("token", text=chunk))
+                            await meter.chars(len(chunk))
+                        response = await stream.get_final_message()
+                    break
+                except BadRequestError as error:
+                    # A rejected per-agent option fails before any text
+                    # streams; drop it and retry this round once without it.
+                    if text_parts or not options.drop_rejected(str(error)):
+                        raise
             total_tokens += response.usage.input_tokens + response.usage.output_tokens
             input_tokens += response.usage.input_tokens
             output_tokens += response.usage.output_tokens

@@ -37,10 +37,10 @@ import json
 import os
 from typing import Any
 
-from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI, RateLimitError
+from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, BadRequestError, OpenAI, RateLimitError
 
 from src import approvals, delegation, tool_selection
-from src.llm import cancellation, cooldown, llm_config, token_limits
+from src.llm import cancellation, cooldown, llm_config, llm_options, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
     BaseProvider, ChatCancelled, ChatResult, LiveUsage, OnEvent, ToolCallRecord, dispatch_with_progress, step_event,
@@ -283,13 +283,14 @@ async def run_chat(
     input_tokens: int | None = None
     output_tokens: int | None = None
     meter = LiveUsage(on_event)
+    options = llm_options.for_provider(PROVIDER_ID)
     # The full prompt just sent (all resent history), not a sum across
     # rounds like total_tokens - overwritten each round rather than
     # accumulated, same reasoning as anthropic_provider.run_chat.
     context_tokens: int | None = None
 
     try:
-        for _ in range(token_limits.max_tool_rounds(PROVIDER_ID, _limit_gateway())):
+        for _ in range(options.max_tool_rounds(token_limits.max_tool_rounds(PROVIDER_ID, _limit_gateway()))):
             if cancellation.is_cancelled(request_id):
                 raise ChatCancelled()
             token_limits.enforce_context_limit(PROVIDER_ID, messages, _limit_gateway())
@@ -297,20 +298,29 @@ async def run_chat(
             # it. A round that ends in function calls may still have streamed
             # some text first; "token_reset" tells the client to drop it,
             # since the real answer is the text of the final (no-tool) round.
-            text_parts: list[str] = []
-            async with client.responses.stream(
-                model=model_name,
-                input=messages,
-                tools=schemas if schemas else None,
-                max_output_tokens=token_limits.max_output_tokens(PROVIDER_ID, _limit_gateway()),
-            ) as stream:
-                async for event in stream:
-                    if event.type == "response.output_text.delta":
-                        text_parts.append(event.delta)
-                        if on_event:
-                            await on_event(step_event("token", text=event.delta))
-                        await meter.chars(len(event.delta))
-                response = await stream.get_final_response()
+            while True:
+                text_parts: list[str] = []
+                try:
+                    async with client.responses.stream(
+                        model=model_name,
+                        input=messages,
+                        tools=schemas if schemas else None,
+                        max_output_tokens=options.max_tokens(token_limits.max_output_tokens(PROVIDER_ID, _limit_gateway())),
+                        **options.extra_kwargs(),
+                    ) as stream:
+                        async for event in stream:
+                            if event.type == "response.output_text.delta":
+                                text_parts.append(event.delta)
+                                if on_event:
+                                    await on_event(step_event("token", text=event.delta))
+                                await meter.chars(len(event.delta))
+                        response = await stream.get_final_response()
+                    break
+                except BadRequestError as error:
+                    # A rejected per-agent option fails before any text
+                    # streams; drop it and retry this round once without it.
+                    if text_parts or not options.drop_rejected(str(error)):
+                        raise
             usage = getattr(response, "usage", None)
             round_tokens = getattr(usage, "total_tokens", None) if usage is not None else None
             if round_tokens is not None:
