@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { RouterLink } from "vue-router";
+import OverviewTile from "../components/OverviewTile.vue";
 import { visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 
 /** Every page this account may open, as tiles (port of chat_app's Overview
  * start page). Reached from the Ember wordmark. */
+
+// A person, for the Account tile (it is not in the nav rail).
+const ACCOUNT_ICON = ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"];
 
 const auth = useAuthStore();
 const pages = computed(() => visiblePages((p) => auth.hasPermission(p)));
@@ -18,16 +21,8 @@ const pages = computed(() => visiblePages((p) => auth.hasPermission(p)));
       <p v-if="auth.account" class="muted">Logged in as {{ auth.account.username }}.</p>
       <p v-if="pages.length === 0" class="muted">Your role gives you no pages yet - ask an administrator.</p>
       <div class="tiles">
-        <RouterLink v-for="p in pages" :key="p.to" :to="p.to" class="tile">
-          <span class="icon" aria-hidden="true">{{ p.label[0] }}</span>
-          <span class="name">{{ p.label }}</span>
-          <span class="description">{{ p.description }}</span>
-        </RouterLink>
-        <RouterLink to="/account" class="tile">
-          <span class="icon" aria-hidden="true">A</span>
-          <span class="name">Account</span>
-          <span class="description">Your email, password and devices.</span>
-        </RouterLink>
+        <OverviewTile v-for="p in pages" :key="p.to" :to="p.to" :label="p.label" :description="p.description" :icon="p.icon" />
+        <OverviewTile to="/account" label="Account" description="Your email, password and devices." :icon="ACCOUNT_ICON" />
       </div>
     </div>
   </section>
@@ -54,40 +49,7 @@ h2 {
 }
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-}
-.tile {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto 1fr;
-  gap: 4px 12px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text);
-  background: var(--surface);
-  text-decoration: none;
-}
-.tile:hover {
-  border-color: var(--accent);
-}
-.icon {
-  grid-row: span 2;
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  font-weight: 700;
-  color: var(--accent-contrast);
-  background: var(--accent);
-}
-.name {
-  font-weight: 600;
-}
-.description {
-  font-size: 0.85em;
-  color: var(--muted);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
 }
 </style>
