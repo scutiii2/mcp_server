@@ -33,10 +33,10 @@ def test_change_email_unverifies_until_new_code(client: TestClient, email: FakeE
     assert (body["account"]["email"], body["account"]["email_verified"]) == ("new@example.com", False)
     assert email.sent[-1][:2] == ("verify", "new@example.com")
     # Permissions are off until the new address is verified.
-    assert client.get("/api/agents").status_code == 403
+    assert client.get("/api/agent").status_code == 403
 
     assert client.post("/api/auth/verify-email", json={"code": email.last_code("verify")}).status_code == 200
-    assert client.get("/api/agents").status_code == 200
+    assert client.get("/api/agent").status_code == 200
 
 
 def test_same_email_changes_nothing(client: TestClient, email: FakeEmailSender) -> None:

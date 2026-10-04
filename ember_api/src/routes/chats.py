@@ -29,7 +29,7 @@ from src.models import Account, Chat
 from src.routes.mcp import get_agent_directory
 from src.routes.server_info import EXTENSION_ID_PATTERN
 from src.services import summarization
-from src.services.agent_directory import AgentDirectory
+from src.services.agent_directory import NO_AGENT_RUNNING, AgentDirectory
 from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
 from src.services.log_service import LogWriter
 from src.services.chat_search import MAX_QUERY_CHARS, MIN_QUERY_CHARS, ChatSearch, SearchHit
@@ -168,7 +168,8 @@ class ImportRequest(BaseModel):
 
 class TurnRequest(BaseModel):
     question: str = Field(min_length=1, max_length=QUESTION_MAX)
-    agent_id: str = Field(min_length=1, max_length=120)
+    # Ignored: every question goes to the entry agent. Kept so older browsers still validate.
+    agent_id: str | None = Field(default=None, max_length=120)
     caveman: bool = False
     # mcp_server extension ids whose tools the agent may use.
     enabled_extensions: list[str] = Field(default_factory=list, max_length=50)
@@ -226,7 +227,7 @@ class AppendRequest(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
-    # Which agent writes the summary; defaults to the chat's own agent.
+    # Ignored, see TurnRequest.agent_id.
     agent_id: str | None = Field(default=None, max_length=120)
 
 
@@ -540,9 +541,9 @@ async def start_turn(
     """Saves the question and starts answering it in ember_api. The answer
     keeps going (and is saved) even if the browser leaves; watch it via
     /events."""
-    agent = await directory.get(body.agent_id)
+    agent = await directory.entry()
     if agent is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown agent")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, NO_AGENT_RUNNING)
     if turns.is_running(account.id, chat_id):
         raise _busy()
     block = await UsageService(session, settings.usage).check(account.id)
@@ -682,9 +683,9 @@ async def summarize_chat(
         chat = await chats.get(chat_id)
     except ChatNotFound as error:
         raise _not_found() from error
-    agent = await directory.get(body.agent_id or chat.agent_id or "")
+    agent = await directory.entry()
     if agent is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown agent")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, NO_AGENT_RUNNING)
     usage = UsageService(session, settings.usage)
     block = await usage.check(account.id)
     if block is not None:

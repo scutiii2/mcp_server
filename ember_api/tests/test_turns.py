@@ -90,7 +90,7 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
     assert asked["caller"].username == "root"
 
 
-def test_each_answer_saves_which_agent_wrote_it(client: TestClient, agent: FakeAgent) -> None:
+def test_the_entry_agent_answers_whatever_agent_the_browser_names(client: TestClient, agent: FakeAgent) -> None:
     as_admin(client)
     chat_id = new_id()
     other = AGENTS[1]["id"]
@@ -101,7 +101,33 @@ def test_each_answer_saves_which_agent_wrote_it(client: TestClient, agent: FakeA
     events(client, chat_id)
 
     answers = [m for m in chat(client, chat_id)["messages"] if m["role"] == "assistant"]
-    assert [m["agent"] for m in answers] == [AGENT_ID, other]
+    assert [m["agent"] for m in answers] == [AGENT_ID, AGENT_ID]
+    assert [a["url"] for a in agent.asks] == [AGENTS[0]["url"], AGENTS[0]["url"]]
+
+
+def test_a_turn_needs_no_agent_id(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = new_id()
+
+    response = client.post(f"/api/chats/{chat_id}/turns", json={"question": "no agent named"})
+
+    assert response.status_code == 202
+    events(client, chat_id)
+    assert chat(client, chat_id)["agent_id"] == AGENT_ID
+
+
+def test_an_old_chat_moves_to_the_entry_agent_on_its_next_turn(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    client.put(
+        f"/api/chats/{chat_id}",
+        json={"title": "Old", "agent_id": AGENTS[1]["id"], "messages": [{"role": "user", "content": "hi"}]},
+    )
+
+    assert start(client, chat_id, "again").status_code == 202
+    events(client, chat_id)
+
+    assert chat(client, chat_id)["agent_id"] == AGENT_ID
 
 
 def test_a_cancelled_answer_still_names_its_agent(client: TestClient, agent: FakeAgent) -> None:
@@ -342,11 +368,13 @@ def test_truncate_to_is_refused_while_answering(client: TestClient, agent: FakeA
     events(client, chat_id)
 
 
-def test_turn_needs_chat_use_and_a_known_agent(client: TestClient, email: FakeEmailSender) -> None:
+def test_turn_needs_chat_use_and_a_running_agent(client: TestClient, email: FakeEmailSender, tmp_path) -> None:
     assert start(client, new_id()).status_code == 401
     as_admin(client)
-    response = client.post(f"/api/chats/{new_id()}/turns", json={"question": "hi", "agent_id": "nope"})
-    assert response.status_code == 404
+    (tmp_path / "config_agents.json").write_text('{"agents": []}', encoding="utf-8")
+    response = start(client, new_id())
+    assert response.status_code == 503
+    assert response.json()["detail"] == "No agent is running"
     client.post("/api/auth/logout", json={})
 
     make_member(client, email, verify=False)
@@ -598,6 +626,18 @@ def test_manual_summarize(client: TestClient, agent: FakeAgent) -> None:
     # Nothing new since: no second agent call.
     client.post(f"/api/chats/{chat_id}/summarize", json={})
     assert len(agent.interprets) == 1
+
+
+def test_summarize_needs_a_running_agent(client: TestClient, tmp_path) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    seed(client, chat_id)
+    (tmp_path / "config_agents.json").write_text('{"agents": []}', encoding="utf-8")
+
+    response = client.post(f"/api/chats/{chat_id}/summarize", json={})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "No agent is running"
 
 
 def test_failed_summarize_changes_nothing(client: TestClient, agent: FakeAgent) -> None:
