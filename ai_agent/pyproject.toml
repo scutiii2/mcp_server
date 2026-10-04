@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+laya = ["laya"]
 
 [project.scripts]
 ai-agent = "src.server:main"

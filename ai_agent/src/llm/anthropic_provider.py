@@ -42,7 +42,7 @@ from anthropic import (
     RateLimitError,
 )
 
-from src import approvals, delegation
+from src import approvals, delegation, tool_selection
 from src.llm import cancellation, cooldown, llm_config, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
@@ -263,6 +263,7 @@ async def run_chat(
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
     schemas = _tool_schemas(enabled_extensions)
+    schemas = await tool_selection.shortlist_schemas(question, schemas, {delegation.TOOL_NAME})
     # display_label isn't a real Anthropic tools= field (see _tool_schemas) -
     # pop it into this name->label lookup here, once, rather than sending it
     # to the API or re-deriving it per tool_use block below.
