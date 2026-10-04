@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { usageClient, type AccountUsage, type MyUsage, type UsageGroupBy, type UsageRecordRow } from "../api/UsageClient";
+import SegmentedControl from "../components/SegmentedControl.vue";
 import UsageHeatmap from "../components/UsageHeatmap.vue";
 import { useAuthStore } from "../stores/auth";
 import { downloadText, exportFileName } from "../utils/chatExport";
@@ -20,6 +21,7 @@ const RANGES = [
   { key: "12m", label: "12 months", days: 365 },
 ] as const;
 type RangeKey = (typeof RANGES)[number]["key"];
+const RANGE_OPTIONS = RANGES.map((r) => ({ value: r.key, label: r.label }));
 
 const range = ref<RangeKey>("30d");
 const currentRange = computed(() => RANGES.find((r) => r.key === range.value)!);
@@ -129,16 +131,7 @@ onMounted(() => {
       <div class="head">
         <h2>Usage</h2>
         <div class="ranges" role="group" aria-label="Period">
-          <button
-            v-for="r in RANGES"
-            :key="r.key"
-            type="button"
-            :class="{ active: range === r.key }"
-            :aria-pressed="range === r.key"
-            @click="range = r.key"
-          >
-            {{ r.label }}
-          </button>
+          <SegmentedControl v-model="range" :options="RANGE_OPTIONS" />
           <button type="button" class="export" :disabled="!usage" title="Download this period as a Markdown file" @click="exportReport">
             Export .md
           </button>
@@ -309,9 +302,11 @@ h3 {
 }
 .ranges {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
-.ranges button {
+.ranges .export {
   padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -320,14 +315,7 @@ h3 {
   color: var(--muted);
   background: transparent;
 }
-.ranges button.active {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.ranges .export {
-  margin-left: 8px;
-}
-.ranges button:disabled {
+.ranges .export:disabled {
   cursor: default;
   opacity: 0.5;
 }
