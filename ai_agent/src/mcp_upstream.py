@@ -11,11 +11,12 @@ connection - not reconnected per call, unlike chat_app's mcp_client.py.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
-from src import internal_auth, tool_progress
+from src import agent_spec, internal_auth, tool_progress
 from src.sync_wrapper import SyncMcpClient
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "config_servers.json"
@@ -26,6 +27,8 @@ _CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "config_serv
 # NAMESPACE_SEPARATOR) even though there's only one upstream server today.
 _SERVER_ID = "main"
 _PREFIX = f"{_SERVER_ID}__"
+
+_log = logging.getLogger(__name__)
 
 client = SyncMcpClient()
 
@@ -77,18 +80,24 @@ def list_tools(enabled_extensions: list[str] | None = None) -> list[Any]:
     tool is only kept when its extension id is in enabled_extensions."""
     tools = client.list_tools()
     enabled = set(enabled_extensions or [])
+    scope = agent_spec.current().tools
     result = []
     for tool in tools:
         if not tool.name.startswith(_PREFIX):
             continue
-        unprefixed = tool.name[len(_PREFIX):]
-        if not _tool_is_enabled(unprefixed, enabled):
+        short = unprefixed(tool.name)
+        if not _tool_is_enabled(short, enabled):
+            continue
+        if not scope.allows(short):
             continue
         result.append(tool)
     return result
 
 
 def call_tool(name: str, arguments: dict[str, Any]) -> str:
+    if name.startswith(_PREFIX) and not agent_spec.current().tools.allows(unprefixed(name)):
+        # The model only sees in-scope tools, but may still name another one.
+        raise PermissionError(f"tool {name!r} is not available to this agent")
     on_progress = tool_progress.current()
     # The asking user rides in the call's _meta: the session is shared by
     # every user, so it can't go in a header (see internal_auth.py).
@@ -108,5 +117,15 @@ def close() -> None:
     client.close()
 
 
+def unprefixed(name: str) -> str:
+    """A tool name without this module's "main__" registry prefix - the
+    form agents/<id>.json "tools" globs are written against."""
+    return name[len(_PREFIX):] if name.startswith(_PREFIX) else name
+
+
 def warn_unmatched_tool_globs() -> None:
-    """Replaced in the tool-scope task."""
+    """One warning per tools.allow/deny glob that matches no mcp_server
+    tool - almost always a typo. Called once at startup, after connect()."""
+    names = [unprefixed(t.name) for t in client.list_tools() if t.name.startswith(_PREFIX)]
+    for glob in agent_spec.current().tools.unmatched(names):
+        _log.warning("agent %s: tools glob %r matches no mcp_server tool", agent_spec.current().id, glob)
