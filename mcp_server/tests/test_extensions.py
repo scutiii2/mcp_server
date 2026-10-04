@@ -142,7 +142,11 @@ def _skip_tcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _no_probe(url: str) -> None:
         return None
 
+    async def _no_handshake(url: str, headers: dict[str, str] | None) -> None:
+        return None
+
     monkeypatch.setattr(extensions, "_check_tcp_reachable", _no_probe)
+    monkeypatch.setattr(extensions, "_check_handshake_accepted", _no_handshake)
 
 
 def _install_fake_http_connection(monkeypatch: pytest.MonkeyPatch, session_or_error) -> None:
@@ -463,6 +467,83 @@ async def test_http_extension_without_headers_sends_none(monkeypatch: pytest.Mon
     await extensions.ExtensionRegistry().connect_all(Path("unused.json"))
 
     assert seen == [{"url": "http://127.0.0.1:9000/mcp", "headers": None}]
+
+
+def _mock_httpx(monkeypatch: pytest.MonkeyPatch, status: int, seen: list[Any] | None = None) -> None:
+    import httpx
+
+    real_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if seen is not None:
+            seen.append(request)
+        return httpx.Response(status)
+
+    monkeypatch.setattr(
+        extensions.httpx, "AsyncClient", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)
+    )
+
+
+@pytest.mark.anyio
+async def test_handshake_preflight_sends_headers_and_accepts_200(monkeypatch: pytest.MonkeyPatch):
+    seen: list[Any] = []
+    _mock_httpx(monkeypatch, 200, seen)
+
+    await extensions._check_handshake_accepted("http://127.0.0.1:8040/mcp", {"X-Internal-Token": "s3cret"})
+
+    [request] = seen
+    assert request.headers["X-Internal-Token"] == "s3cret"
+    assert json.loads(request.content)["method"] == "initialize"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", [401, 403, 404, 500])
+async def test_handshake_preflight_raises_on_http_error_without_leaking_headers(
+    monkeypatch: pytest.MonkeyPatch, status: int
+):
+    _mock_httpx(monkeypatch, status)
+
+    with pytest.raises(ConnectionError) as info:
+        await extensions._check_handshake_accepted("http://127.0.0.1:8040/mcp", {"X-Internal-Token": "s3cret"})
+
+    assert f"HTTP {status}" in str(info.value)
+    assert "s3cret" not in str(info.value)
+
+
+@pytest.mark.anyio
+async def test_rejected_http_handshake_is_an_error_status_and_never_reaches_streamablehttp_client(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls: list[str] = []
+
+    @contextlib.asynccontextmanager
+    async def _must_not_open(url: str, **kwargs: Any):
+        calls.append(url)
+        yield None  # pragma: no cover
+
+    async def _reachable(url: str) -> None:
+        return None
+
+    monkeypatch.setattr(extensions, "streamablehttp_client", _must_not_open)
+    monkeypatch.setattr(extensions, "_check_tcp_reachable", _reachable)
+    _mock_httpx(monkeypatch, 401)
+    monkeypatch.setattr(
+        extensions,
+        "load_extensions_config",
+        lambda path: {
+            "pdf_merger": _config(
+                id="pdf_merger", command="", transport="http", url="http://127.0.0.1:8040/mcp", headers={"X-Internal-Token": "bad"}
+            )
+        },
+    )
+
+    registry = extensions.ExtensionRegistry()
+    await registry.connect_all(Path("unused.json"))
+
+    [status] = registry.statuses()
+    assert status.status == "error"
+    assert "HTTP 401" in (status.error or "")
+    assert calls == []
 
 
 @pytest.mark.anyio

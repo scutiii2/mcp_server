@@ -82,6 +82,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpx
 from mcp import types
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -154,6 +155,44 @@ async def _check_tcp_reachable(url: str) -> None:
         await writer.wait_closed()
     except Exception:  # noqa: BLE001 - this was only ever a reachability probe
         pass
+
+
+async def _check_handshake_accepted(url: str, headers: dict[str, str] | None) -> None:
+    """Raise a plain exception if `url` answers an MCP ``initialize`` POST
+    with an HTTP error status (401 bad/missing token, 403, 404, 5xx).
+
+    Companion to _check_tcp_reachable: that probe only proves someone is
+    listening. A host that is up but rejects the handshake makes
+    streamablehttp_client's post_writer raise inside its own task group,
+    which hits the same cross-task cancel-scope bug and kills this whole
+    server (a CancelledError, which `except Exception` in _connect_one
+    can't catch). A plain httpx request creates no anyio task group, so
+    its failure is an ordinary exception that becomes an "error" status.
+
+    Only the status line is read; the body (possibly an SSE stream) is
+    never consumed. The message never includes headers, so a token can't
+    leak into a status or log line.
+    """
+    request_headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        **(headers or {}),
+    }
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": types.LATEST_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "mcp_server-preflight", "version": "0"},
+        },
+    }
+    async with httpx.AsyncClient(timeout=CONNECT_TIMEOUT_SECONDS) as client:
+        async with client.stream("POST", url, json=payload, headers=request_headers) as response:
+            if response.status_code >= 400:
+                hint = " (check the extension's token/headers)" if response.status_code in (401, 403) else ""
+                raise ConnectionError(f"Extension at {url} rejected the MCP handshake: HTTP {response.status_code}{hint}")
 
 
 @dataclass
@@ -442,6 +481,7 @@ class ExtensionRegistry:
         if config.transport == "http":
             assert config.url is not None  # guaranteed by _build_extension/the POST route
             await _check_tcp_reachable(config.url)
+            await _check_handshake_accepted(config.url, config.headers)
             read_stream, write_stream, _get_session_id = await local_stack.enter_async_context(
                 streamablehttp_client(config.url, headers=config.headers or None)
             )
