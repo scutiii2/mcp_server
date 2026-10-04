@@ -6,6 +6,8 @@ export interface Account {
   username: string;
   email: string;
   email_verified: boolean;
+  /** False when ember_api lets unverified accounts work. Absent counts as true. */
+  email_verification_required?: boolean;
   roles: string[];
   permissions: string[];
 }

@@ -118,12 +118,14 @@ router.beforeEach(async (to): Promise<true | RouteLocationRaw> => {
   if (!account) {
     return to.meta.guestOnly ? true : { name: "login", query: to.fullPath === "/" ? {} : { redirect: to.fullPath } };
   }
-  if (!account.email_verified) {
+  if (auth.needsVerification) {
     return to.name === "verify-email" || to.meta.anyAccount ? true : { name: "verify-email" };
   }
 
   const home = HOME_PAGES.find((p) => auth.hasPermission(p.permission));
-  if (to.meta.guestOnly || to.name === "verify-email") {
+  // The verify page stays open to an unverified account even when verification
+  // is optional (the Account page links to it).
+  if (to.meta.guestOnly || (to.name === "verify-email" && account.email_verified)) {
     return { name: home?.name ?? "no-access" };
   }
   const needed = to.meta.permission;

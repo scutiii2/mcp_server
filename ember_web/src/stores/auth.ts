@@ -21,9 +21,16 @@ export const useAuthStore = defineStore("auth", () => {
 
   const permissions = computed(() => new Set(account.value?.permissions ?? []));
 
+  /** True while the account must verify its email before it can do anything
+   * (ember_api's require_email_verification, on unless it says otherwise). */
+  const needsVerification = computed(
+    () => account.value !== null && !account.value.email_verified && account.value.email_verification_required !== false,
+  );
+
   function hasPermission(name: string): boolean {
-    // Mirrors ember_api: an unverified email holds no permissions.
-    return account.value?.email_verified === true && permissions.value.has(name);
+    // Mirrors ember_api: an unverified email holds no permissions, unless
+    // verification is switched off there.
+    return account.value !== null && !needsVerification.value && permissions.value.has(name);
   }
 
   /** Asks ember_api once per page load who is logged in (router guards await it). */
@@ -84,5 +91,5 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  return { account, hasPermission, ensureLoaded, refresh, login, register, verifyEmail, resendVerification, changeEmail, changePassword, logout };
+  return { account, needsVerification, hasPermission, ensureLoaded, refresh, login, register, verifyEmail, resendVerification, changeEmail, changePassword, logout };
 });

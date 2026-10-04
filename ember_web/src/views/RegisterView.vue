@@ -22,6 +22,10 @@ async function submit(): Promise<void> {
       invite_code: form.invite_code.trim(),
     });
     form.password = "";
+    if (result.account.email_verification_required === false) {
+      await router.replace({ name: "chat" });
+      return;
+    }
     // The verify page offers "resend" when the first email didn't go out.
     await router.replace({ name: "verify-email", query: result.verification_email_sent ? {} : { unsent: "1" } });
   } catch (err) {

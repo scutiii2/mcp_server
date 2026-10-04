@@ -30,9 +30,9 @@ async function logout(): Promise<void> {
 
 <template>
   <header class="topbar">
-    <RouterLink v-if="account?.email_verified" to="/overview" class="wordmark" title="Overview of every page">Ember</RouterLink>
+    <RouterLink v-if="account && !auth.needsVerification" to="/overview" class="wordmark" title="Overview of every page">Ember</RouterLink>
     <span v-else class="wordmark">Ember</span>
-    <nav v-if="account?.email_verified">
+    <nav v-if="account && !auth.needsVerification">
       <RouterLink v-for="p in pages" :key="p.to" :to="p.to" :class="{ current: p.to === '/' && route.name === 'chat-id' }">{{
         p.label
       }}</RouterLink>

@@ -11,13 +11,14 @@ const router = useRouter();
 // The router only opens this page with an account.
 const account = computed(() => auth.account!);
 
-const emailForm = reactive({ email: "", password: "", busy: false, error: "" });
+const emailForm = reactive({ email: "", password: "", busy: false, error: "", success: "" });
 const passwordForm = reactive({ next: "", confirm: "", current: "", busy: false, error: "", done: false });
 
 const passwordMismatch = computed(() => passwordForm.confirm !== "" && passwordForm.next !== passwordForm.confirm);
 
 async function changeEmail(): Promise<void> {
   emailForm.error = "";
+  emailForm.success = "";
   emailForm.busy = true;
   try {
     const result = await auth.changeEmail(emailForm.password, emailForm.email.trim());
@@ -25,6 +26,8 @@ async function changeEmail(): Promise<void> {
     emailForm.password = "";
     if (result.account.email_verified) {
       emailForm.error = "That is already your email.";
+    } else if (result.account.email_verification_required === false) {
+      emailForm.success = "Email changed. You can verify it any time from this page.";
     } else {
       // Permissions are off until the new address is verified.
       await router.replace({ name: "verify-email", query: result.verification_email_sent ? {} : { unsent: "1" } });
@@ -92,7 +95,9 @@ async function changePassword(): Promise<void> {
         <dd>
           {{ account.email }}
           <span v-if="account.email_verified" class="badge">verified</span>
-          <RouterLink v-else to="/verify-email" class="badge warn">unverified - verify now</RouterLink>
+          <RouterLink v-else to="/verify-email" class="badge warn">{{
+            auth.needsVerification ? "unverified - verify now" : "unverified - verify (optional)"
+          }}</RouterLink>
         </dd>
         <dt>Roles</dt>
         <dd>{{ account.roles.join(", ") || "None" }}</dd>
@@ -102,14 +107,17 @@ async function changePassword(): Promise<void> {
             <code v-for="p in account.permissions" :key="p">{{ p }}</code>
           </template>
           <span v-else class="muted">None</span>
-          <span v-if="!account.email_verified && account.permissions.length" class="muted">
+          <span v-if="auth.needsVerification && account.permissions.length" class="muted">
             (inactive until your email is verified)
           </span>
         </dd>
       </dl>
 
       <h3>Change email</h3>
-      <p class="muted hint">You'll get a code at the new address. Until you enter it, your permissions are paused.</p>
+      <p v-if="auth.account?.email_verification_required === false" class="muted hint">
+        You'll get a code at the new address. Verifying it is optional.
+      </p>
+      <p v-else class="muted hint">You'll get a code at the new address. Until you enter it, your permissions are paused.</p>
       <form class="stack" @submit.prevent="changeEmail">
         <label>
           New email
@@ -120,6 +128,7 @@ async function changePassword(): Promise<void> {
           <input v-model="emailForm.password" type="password" autocomplete="current-password" required />
         </label>
         <p v-if="emailForm.error" class="error">{{ emailForm.error }}</p>
+        <p v-else-if="emailForm.success" class="notice">{{ emailForm.success }}</p>
         <button class="primary" :disabled="emailForm.busy">Change email</button>
       </form>
 
