@@ -17,6 +17,7 @@ import type { CommandInfo } from "../api/CommandsClient";
 import type { JsonSchema } from "../api/types";
 import { useChatRoute } from "../composables/useChatRoute";
 import { useChatShortcuts } from "../composables/useChatShortcuts";
+import { useSidebarCollapse } from "../composables/useSidebarCollapse";
 import { notificationsSupported } from "../composables/useNotify";
 import { agentLabelFor } from "../utils/agentLabels";
 import { questionHistory } from "../utils/attachments";
@@ -121,6 +122,8 @@ function runCommandForm(text: string): void {
 
 // Narrow screens only: the sidebar is a drawer toggled by the menu button.
 const drawerOpen = ref(false);
+// Wider screens: the list can be folded away to give the chat the room.
+const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
 
 // The address bar follows the open chat (/chat/<id>) and the other way round.
 // The page is cached behind the other pages (KeepAlive): while it is, the
@@ -205,7 +208,7 @@ useChatShortcuts({
 <template>
   <section class="chat-view">
     <ConversationSidebar
-      :class="['sidebar', { open: drawerOpen }]"
+      :class="['sidebar', { open: drawerOpen, collapsed: sidebarCollapsed }]"
       :conversations="sortedConversations"
       :active-id="activeId"
       :locked="false"
@@ -225,6 +228,18 @@ useChatShortcuts({
       @delete-many="chat.deleteChats"
     />
     <div v-if="drawerOpen" class="backdrop" @click="drawerOpen = false" />
+    <button
+      type="button"
+      :class="['collapse', { collapsed: sidebarCollapsed }]"
+      :title="sidebarCollapsed ? 'Show chat list' : 'Hide chat list'"
+      :aria-label="sidebarCollapsed ? 'Show chat list' : 'Hide chat list'"
+      :aria-expanded="!sidebarCollapsed"
+      @click="toggleSidebar"
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+        <path :d="sidebarCollapsed ? 'M9 5l7 7-7 7' : 'M15 5l-7 7 7 7'" />
+      </svg>
+    </button>
 
     <div class="main">
       <button type="button" class="menu" title="Chats" @click="drawerOpen = true">
@@ -512,7 +527,65 @@ useChatShortcuts({
   display: none;
 }
 
+/* Wider screens: a handle on the list's edge folds it away and back. */
+.collapse {
+  position: absolute;
+  top: 50%;
+  left: 260px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  cursor: pointer;
+  color: var(--muted);
+  background: var(--surface);
+  transform: translateY(-50%);
+  transition: left 0.2s ease;
+}
+.collapse:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.collapse.collapsed {
+  left: 0;
+}
+.collapse svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+@media (min-width: 768px) {
+  .sidebar {
+    transition:
+      width 0.2s ease,
+      padding 0.2s ease,
+      visibility 0s;
+  }
+  /* Out of sight and out of the tab order once it has folded. */
+  .sidebar.collapsed {
+    width: 0;
+    padding-inline: 0;
+    overflow: hidden;
+    border-right-width: 0;
+    visibility: hidden;
+    transition:
+      width 0.2s ease,
+      padding 0.2s ease,
+      visibility 0s 0.2s;
+  }
+}
+
 @media (max-width: 767px) {
+  .collapse {
+    display: none;
+  }
   .sidebar {
     position: absolute;
     inset: 0 auto 0 0;
