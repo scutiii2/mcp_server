@@ -147,3 +147,42 @@ def test_old_entries_without_new_keys_still_load(monkeypatch, tmp_path):
 
     assert agent["url"] == "http://x/mcp"
     assert agent.get("orchestrator", False) is False
+
+
+def test_write_is_atomic_and_leaves_no_temp_file(tmp_path):
+    target = tmp_path / "config_agents.json"
+
+    agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
+
+    assert json.loads(target.read_text(encoding="utf-8"))["agents"][0]["id"] == "a"
+    assert [p.name for p in tmp_path.iterdir()] == ["config_agents.json"]
+
+
+def test_reload_keeps_previous_agents_when_the_file_is_corrupt(monkeypatch, tmp_path):
+    agents = [{"id": "claude-agent", "label": "Claude Agent", "url": "http://x/mcp"}]
+    config_path, _ = _configure(monkeypatch, tmp_path, agents)
+    config_path.write_text('{"agents": [{"id": "cla', encoding="utf-8")
+
+    agent_registry.reload()
+
+    assert agent_registry.all_agents() == agents
+    assert agent_registry.get_agent("claude-agent") == agents[0]
+
+
+def test_roster_and_specialists_survive_a_corrupt_registry_file(monkeypatch, tmp_path):
+    import asyncio
+
+    from src import agent_routing, agent_spec
+    from src.agent_spec import AgentSpec, LlmSpec
+
+    agents = [
+        {"id": "orchestrator", "label": "Ember", "url": "u", "orchestrator": True},
+        {"id": "calc", "label": "Calculator", "url": "u", "focus": "arithmetic"},
+    ]
+    config_path, _ = _configure(monkeypatch, tmp_path, agents)
+    spec = AgentSpec(id="orchestrator", label="Ember", port=9100, llm=LlmSpec(provider="anthropic"), orchestrator=True)
+    monkeypatch.setattr(agent_spec, "_current", spec)
+    config_path.write_text("{", encoding="utf-8")
+
+    assert [r.id for r in agent_routing.specialists()] == ["calc"]
+    assert [r.id for r in asyncio.run(agent_routing.roster_for("q"))] == ["calc"]

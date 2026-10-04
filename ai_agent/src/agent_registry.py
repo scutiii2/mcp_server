@@ -5,14 +5,17 @@ below. Identical in shape to chat_app/src/services/agent_registry.py;
 copied rather than shared cross-project, same convention as everything
 else in this project.
 
-Deliberately includes this instance's own entry (self-delegation is
-allowed - see delegation.py's module docstring for why).
+Includes this instance's own entry, but an agent never lists itself in
+its roster (see agent_routing.specialists()): orchestrators delegate to
+specialists only.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -36,6 +39,8 @@ _CHAT_APP_CONFIG_PATH = (
 # already reference "claude-agent" - deriving straight from PROVIDER_ID
 # would silently rename that out from under them.
 _AGENT_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
+
+_log = logging.getLogger(__name__)
 
 _LOCK_TIMEOUT_SECONDS = 5.0
 _LOCK_POLL_SECONDS = 0.05
@@ -106,9 +111,16 @@ def reload() -> None:
     """Re-reads _CONFIG_PATH into this process's in-memory registry -
     called by register()/deregister() below so this instance's own
     delegate_to_agent sees the change immediately, without needing a
-    restart."""
+    restart.
+
+    If the file cannot be read or parsed (e.g. caught mid-write by another
+    process), keeps the last good in-memory registry and logs a warning."""
     global _AGENTS, _AGENTS_BY_ID
-    _AGENTS = _load()
+    try:
+        _AGENTS = _load()
+    except (ValueError, OSError):
+        _log.warning("could not read %s; keeping the last good agent registry", _CONFIG_PATH, exc_info=True)
+        return
     _AGENTS_BY_ID = {agent["id"]: agent for agent in _AGENTS}
 
 
