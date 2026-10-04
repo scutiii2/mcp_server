@@ -25,9 +25,6 @@ vi.mock("../api/ChatsClient", () => ({
 vi.mock("../services/turnStream", () => ({ watchTurn: vi.fn() }));
 vi.mock("../composables/useNotify", () => ({
   chimeIfAway: vi.fn(),
-  notifyIfAway: vi.fn(),
-  notificationsSupported: vi.fn(() => false),
-  requestNotifyPermission: vi.fn(),
 }));
 
 const client = vi.mocked(chatsClient);

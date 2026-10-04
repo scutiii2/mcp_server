@@ -18,7 +18,6 @@ import type { JsonSchema } from "../api/types";
 import { useChatRoute } from "../composables/useChatRoute";
 import { useChatShortcuts } from "../composables/useChatShortcuts";
 import { useSidebarCollapse } from "../composables/useSidebarCollapse";
-import { notificationsSupported } from "../composables/useNotify";
 import { agentLabelFor } from "../utils/agentLabels";
 import { questionHistory } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
@@ -48,8 +47,6 @@ const {
   askBeforeTools,
   forceToolApproval,
   chime,
-  notify,
-  notifyError,
   clockStart,
   allowedTools,
   pendingApprovals,
@@ -61,14 +58,6 @@ const {
   searchError,
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
-const notifySupported = notificationsSupported();
-
-/** The checkbox flips by itself; when the browser refuses, put it back to what the store says. */
-async function onNotifyChange(event: Event): Promise<void> {
-  const box = event.target as HTMLInputElement;
-  await chat.setNotify(box.checked);
-  box.checked = chat.notify;
-}
 const entryAgent = useEntryAgentStore();
 const agentLabels = computed(() => entryAgent.labels);
 const templates = useTemplatesStore();
@@ -252,16 +241,12 @@ useChatShortcuts({
         :ask-before-tools="askBeforeTools"
         :force-tool-approval="forceToolApproval"
         :chime="chime"
-        :notify="notify"
-        :notify-supported="notifySupported"
-        :notify-error="notifyError"
         :allowed-count="allowedCount"
         :enabled-extensions="enabledExtensions"
         :attention="pendingApprovals.length > 0"
         @update:caveman="chat.setCaveman"
         @update:ask-before-tools="chat.setAskBeforeTools"
         @update:chime="chat.setChime"
-        @notify="onNotifyChange"
         @clear-allowed="chat.clearAllowedTools()"
       />
       <div v-if="saveError || loadError" class="banner" role="alert">

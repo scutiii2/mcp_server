@@ -10,9 +10,6 @@ defineProps<{
   /** An administrator requires approval before every tool: not changeable. */
   forceToolApproval: boolean;
   chime: boolean;
-  notify: boolean;
-  notifySupported: boolean;
-  notifyError: string;
   /** Tools already allowed for this chat. */
   allowedCount: number;
   enabledExtensions: string[];
@@ -24,8 +21,6 @@ const emit = defineEmits<{
   "update:caveman": [value: boolean];
   "update:askBeforeTools": [value: boolean];
   "update:chime": [value: boolean];
-  /** The raw change event: the parent reverts the box if permission is refused. */
-  notify: [event: Event];
   "clear-allowed": [];
 }>();
 
@@ -105,14 +100,6 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
         <input type="checkbox" :checked="chime" @change="emit('update:chime', checked($event))" />
         Chime when done
       </label>
-      <label
-        v-if="notifySupported"
-        title="Show a browser notification when an answer arrives while this tab is in the background"
-      >
-        <input type="checkbox" :checked="notify" @change="emit('notify', $event)" />
-        Notify when done
-      </label>
-      <p v-if="notifyError" class="notify-error" role="status">{{ notifyError }}</p>
       <RouterLink to="/extensions" class="extensions" title="Which extensions' tools the agent may use in your chats">
         Extensions: {{ enabledExtensions.length ? enabledExtensions.join(", ") : "off" }}
       </RouterLink>
@@ -200,11 +187,6 @@ label:has(input:disabled) {
 .allowed:hover {
   color: var(--text);
   border-color: var(--accent);
-}
-.notify-error {
-  margin: 0;
-  font-size: 0.85em;
-  color: var(--danger);
 }
 .extensions {
   font-size: 0.85em;

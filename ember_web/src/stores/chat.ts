@@ -19,7 +19,7 @@ import {
   ServerConversationStorage,
   type ConversationStorage,
 } from "../services/ConversationStorage";
-import { chimeIfAway, notificationsSupported, notifyIfAway, requestNotifyPermission } from "../composables/useNotify";
+import { chimeIfAway } from "../composables/useNotify";
 import { SlashCommandRunner } from "../services/slashCommands";
 import { watchTurn } from "../services/turnStream";
 import { splitAttachments, withAttachments } from "../utils/attachments";
@@ -58,10 +58,6 @@ function cavemanKey(accountId: number): string {
 
 function chimeKey(accountId: number): string {
   return `ember_web.chime.${accountId}`;
-}
-
-function notifyKey(accountId: number): string {
-  return `ember_web.notify.${accountId}`;
 }
 
 function askBeforeToolsKey(accountId: number): string {
@@ -173,10 +169,6 @@ export const useChatStore = defineStore("chat", () => {
   // A short chime when an answer arrives while the page is out of sight. On
   // by default; remembered per account.
   const chime = ref(true);
-  // A browser notification for the same moment. Off by default: turning it on asks
-  // the browser for permission. Remembered per account.
-  const notify = ref(false);
-  const notifyError = ref("");
   // When the running answer (or command) began, for the clock; null otherwise.
   const clockStart = ref<number | null>(null);
   // How the watched turn ended, from its final event: only an answer chimes.
@@ -384,13 +376,6 @@ export const useChatStore = defineStore("chat", () => {
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
       askBeforeTools.value = accountId !== null && readPreference(askBeforeToolsKey(accountId)) === "1";
       chime.value = accountId === null || readPreference(chimeKey(accountId)) !== "0";
-      notifyError.value = "";
-      // Kept only while the browser still allows it (the person may have blocked it since).
-      notify.value =
-        accountId !== null &&
-        readPreference(notifyKey(accountId)) === "1" &&
-        notificationsSupported() &&
-        Notification.permission === "granted";
       allowedTools.value = accountId !== null ? readAllowedTools(accountId) : {};
       enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
       forceToolApproval.value = false;
@@ -541,14 +526,6 @@ export const useChatStore = defineStore("chat", () => {
       .then(async (end) => {
         if (end === "aborted" || started !== generation) return;
         if (end === "done" && turnOutcome === "answered" && chime.value) chimeIfAway();
-        if (end === "done" && turnOutcome === "answered" && notify.value) {
-          notifyIfAway({
-            chatId: id,
-            title: find(id)?.title ?? "",
-            silent: chime.value,
-            onOpen: () => void selectChat(id),
-          });
-        }
         const conversation = find(id);
         if (conversation) conversation.running = false;
         if (watcher === controller) unfollow();
@@ -888,27 +865,6 @@ export const useChatStore = defineStore("chat", () => {
     if (accountId !== undefined) writePreference(chimeKey(accountId), on ? "1" : "0");
   }
 
-  /** Switches the notification on or off. Switching on asks the browser for permission and
-   * stays off, with the reason in `notifyError`, when it is refused. */
-  async function setNotify(on: boolean): Promise<void> {
-    notifyError.value = "";
-    const accountId = auth.account?.id;
-    if (on) {
-      const permission = await requestNotifyPermission();
-      if (permission !== "granted") {
-        notify.value = false;
-        notifyError.value =
-          permission === "unsupported"
-            ? "This browser cannot show notifications."
-            : "Notifications are blocked for this site. Allow them in the browser's site settings, then try again.";
-        if (accountId !== undefined) writePreference(notifyKey(accountId), "0");
-        return;
-      }
-    }
-    notify.value = on;
-    if (accountId !== undefined) writePreference(notifyKey(accountId), on ? "1" : "0");
-  }
-
   function persistAllowedTools(): void {
     const accountId = auth.account?.id;
     if (accountId !== undefined) writePreference(allowedToolsKey(accountId), JSON.stringify(allowedTools.value));
@@ -1104,9 +1060,6 @@ export const useChatStore = defineStore("chat", () => {
     setAskBeforeTools,
     chime,
     setChime,
-    notify,
-    notifyError,
-    setNotify,
     clockStart,
     allowedTools,
     clearAllowedTools,

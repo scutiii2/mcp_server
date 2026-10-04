@@ -7,9 +7,6 @@ const BASE = {
   askBeforeTools: false,
   forceToolApproval: false,
   chime: true,
-  notify: false,
-  notifySupported: true,
-  notifyError: "",
   allowedCount: 0,
   enabledExtensions: [] as string[],
   attention: false,
@@ -84,10 +81,9 @@ describe("ChatSettingsMenu", () => {
       "Terse replies",
       "Ask before tools",
       "Chime when done",
-      "Notify when done",
     ]);
     const boxes = w.findAll("input[type=checkbox]");
-    expect(boxes.map((b) => (b.element as HTMLInputElement).checked)).toEqual([false, false, true, false]);
+    expect(boxes.map((b) => (b.element as HTMLInputElement).checked)).toEqual([false, false, true]);
 
     await boxes[0]!.setValue(true);
     await boxes[1]!.setValue(true);
@@ -96,13 +92,6 @@ describe("ChatSettingsMenu", () => {
     expect(w.emitted("update:caveman")).toEqual([[true]]);
     expect(w.emitted("update:askBeforeTools")).toEqual([[true]]);
     expect(w.emitted("update:chime")).toEqual([[false]]);
-  });
-
-  it("hides the notification setting where the browser can't notify", async () => {
-    const w = open({ notifySupported: false });
-    await gear(w).trigger("click");
-
-    expect(w.findAll("label").map((l) => l.text())).not.toContain("Notify when done");
   });
 
   it("locks 'Ask before tools' on when an administrator forces it", async () => {
@@ -139,13 +128,6 @@ describe("ChatSettingsMenu", () => {
     await gear(w).trigger("click");
 
     expect(w.get("a.extensions").text()).toBe("Extensions: off");
-  });
-
-  it("shows a notification error", async () => {
-    const w = open({ notifyError: "Blocked by the browser" });
-    await gear(w).trigger("click");
-
-    expect(w.get(".notify-error").text()).toBe("Blocked by the browser");
   });
 
   it("marks the gear only when something needs attention", () => {
