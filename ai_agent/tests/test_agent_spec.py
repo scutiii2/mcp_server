@@ -5,6 +5,7 @@ env-var hand-off a child does before importing agent_config."""
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -82,6 +83,14 @@ def test_load_file_reads_every_field(tmp_path):
         ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"top_k": 0}}, "routing.top_k"),
         ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"min_score": 2}}, "routing.min_score"),
         ({"port": 9100, "llm": {"provider": "anthropic"}, "entry": "yes"}, "entry"),
+        ({"port": None, "llm": {"provider": "anthropic"}}, "port"),
+        ({"port": 9100, "llm": {"provider": "anthropic"}, "enabled": None}, "enabled"),
+        ({"port": 9100, "llm": {"provider": "anthropic"}, "entry": None}, "entry"),
+        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": None}, "orchestrator"),
+        ({"port": 9100, "llm": {"provider": "anthropic", "reasoning_effort": None}}, "llm.reasoning_effort"),
+        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"top_k": None}}, "routing.top_k"),
+        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"laya": None}}, "routing.laya"),
+        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"allow_auto": None}}, "routing.allow_auto"),
     ],
 )
 def test_load_file_rejects_bad_fields(tmp_path, data, message):
@@ -165,6 +174,14 @@ def test_from_env_builds_a_legacy_orchestrator(monkeypatch):
     assert spec.effective_gateway() == "azure"
 
 
+@pytest.mark.parametrize("value", ["abc", "9x", "1.5"])
+def test_from_env_rejects_a_non_numeric_port(monkeypatch, value):
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "openai")
+    monkeypatch.setenv("AI_AGENT_PORT", value)
+    with pytest.raises(AgentSpecError, match="AI_AGENT_PORT must be a whole number from 1 to 65535"):
+        agent_spec.from_env()
+
+
 def test_effective_gateway_for_a_file_spec_ignores_the_env(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_AGENT_GATEWAY", "openrouter")
     spec = agent_spec.load_file(_write(tmp_path, "calc", {"port": 9103, "llm": {"provider": "anthropic"}}))
@@ -190,7 +207,6 @@ def test_apply_to_environ_sets_provider_gateway_model_and_port(tmp_path, monkeyp
 
     agent_spec.apply_to_environ(spec)
 
-    import os
     assert os.environ["AI_AGENT_PROVIDER"] == "openai"
     # No gateway in the file: pin the provider default so secret_llm.env's
     # AI_AGENT_GATEWAY (loaded later with setdefault) cannot override it.

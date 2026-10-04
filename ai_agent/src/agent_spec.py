@@ -150,6 +150,8 @@ class _Checker:
     def integer(self, data: dict[str, Any], key: str, default: int | None, low: int, high: int, prefix: str = "") -> int | None:
         value = data.get(key, default)
         if value is None:
+            if default is not None:
+                raise self.fail(f"{prefix}{key}", f"must be a whole number from {low} to {high}, not null")
             return None
         if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
             raise self.fail(f"{prefix}{key}", f"must be a whole number from {low} to {high}")
@@ -193,6 +195,8 @@ def load_file(path: Path) -> AgentSpec:
     if "port" not in data:
         raise check.fail("port", "is required")
     port = check.integer(data, "port", None, 1, 65535)
+    if port is None:
+        raise check.fail("port", "must be a whole number from 1 to 65535, not null")
     if "llm" not in data:
         raise check.fail("llm", "is required")
     llm_data = check.section(data, "llm")
@@ -273,10 +277,15 @@ def from_env() -> AgentSpec:
     with AI_AGENT_PROVIDER/AI_AGENT_PORT/...). It is an orchestrator so it
     still gets delegate_to_agent; persona None means "use the role"."""
     provider = os.getenv("AI_AGENT_PROVIDER") or ""
+    raw_port = os.getenv("AI_AGENT_PORT", "9100")
+    try:
+        port = int(raw_port)
+    except ValueError:
+        raise AgentSpecError(f"AI_AGENT_PORT must be a whole number from 1 to 65535 (got {raw_port!r})") from None
     return AgentSpec(
         id=f"{_LEGACY_ID_PREFIX.get(provider, provider)}-agent",
         label="",
-        port=int(os.getenv("AI_AGENT_PORT", "9100")),
+        port=port,
         llm=LlmSpec(
             provider=provider,
             gateway=os.getenv("AI_AGENT_GATEWAY") or None,
