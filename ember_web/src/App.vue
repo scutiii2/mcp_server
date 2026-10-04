@@ -25,7 +25,7 @@ watch(account, (now) => {
            flight) intact. Keyed by account so a different user never gets the
            previous user's cached pages. -->
       <RouterView v-slot="{ Component }">
-        <KeepAlive :key="account?.id ?? 'guest'" include="ChatView,ToolsView">
+        <KeepAlive :key="account?.id ?? 'guest'" include="ChatView,CapabilitiesView">
           <component :is="Component" />
         </KeepAlive>
       </RouterView>

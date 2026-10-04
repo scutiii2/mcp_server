@@ -17,12 +17,11 @@ export interface NavPage {
 
 export const NAV_PAGES: NavPage[] = [
   { to: "/", label: "Chat", icon: ["M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"], description: "Ask an AI agent; it can use mcp_server's tools.", permission: "chat.use" },
-  { to: "/tools", label: "Tools", icon: ["M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"], description: "Run mcp_server's tools and browse its resources.", permission: "tools.use" },
   {
     to: "/capabilities",
     label: "Capabilities",
     icon: ["m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z", "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65", "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"],
-    description: "What each built-in capability offers; admins switch them on and off.",
+    description: "What mcp_server offers, by capability: run its tools, read its resources; admins switch capabilities on and off.",
     permission: "tools.use",
   },
   {

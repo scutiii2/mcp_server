@@ -20,7 +20,7 @@ declare module "vue-router" {
 // Pages a logged-in, verified user may land on, in order of preference.
 const HOME_PAGES: { name: string; permission: string }[] = [
   { name: "chat", permission: "chat.use" },
-  { name: "tools", permission: "tools.use" },
+  { name: "capabilities", permission: "tools.use" },
   { name: "admin", permission: "admin.manage" },
 ];
 
@@ -32,12 +32,8 @@ export const router = createRouter({
     { path: "/chat/:id", name: "chat-id", component: ChatView, meta: { permission: "chat.use" } },
     // Lazy: each of these loads its own chunk only when first opened.
     { path: "/overview", name: "overview", component: () => import("../views/OverviewView.vue") },
-    {
-      path: "/tools",
-      name: "tools",
-      component: () => import("../views/ToolsView.vue"),
-      meta: { permission: "tools.use" },
-    },
+    // The Tools page was merged into Capabilities; old links and bookmarks still work.
+    { path: "/tools", redirect: (to) => ({ path: "/capabilities", query: to.query }) },
     {
       path: "/capabilities",
       name: "capabilities",

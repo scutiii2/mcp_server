@@ -115,7 +115,8 @@ URL, token or key.
   The sidebar search (2+ characters) looks through titles and message text
   (not attached files) and highlights the match; opening a result scrolls to
   the first matching message and flashes it.
-- Tools page: list and run `mcp_server` tools from forms generated from their
+- Capabilities page (the old Tools and Capabilities pages in one; `/tools` redirects here): each capability is a
+  collapsed card, opened by clicking it or while a filter is typed. Its tools run in place from forms generated from their
   JSON Schema (the same form as the command form). Tools show readable titles (`tool_srv_startApp` -> "Start App")
   and JSON results render as fields and tables, with the raw JSON a click away.
 - "Ask before tools" toggle (off by default, remembered per account): each
@@ -138,8 +139,7 @@ URL, token or key.
   The busiest hour is shown in your time zone by shifting the UTC hours by your
   current offset rounded to a whole hour, so a half-hour zone can be off by an
   hour and a daylight-saving change inside the period is ignored.
-- Capabilities page: mcp_server's capabilities with their tools and
-  resources, reading resources, and (admins) switching capabilities on/off.
+  The page also reads each capability's resources and lets admins switch capabilities on/off.
 - Extensions page: mcp_server's extensions (other MCP servers) with their
   status and tools; switch on the ones the agent may use in your chats
   (remembered per account, shown in the chat header). Admins add and
@@ -263,7 +263,7 @@ src/
   views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, AuthCard
+                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, NavRail, ChatSettingsMenu, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)

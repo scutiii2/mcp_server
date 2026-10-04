@@ -1,57 +1,91 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { RouterLink } from "vue-router";
+import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue";
+import { useRoute } from "vue-router";
 import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
 import { McpServerClient } from "../api/McpServerClient";
-import type { ResourceInfo } from "../api/types";
+import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
+import CapabilitySection from "../components/CapabilitySection.vue";
 import MarkdownContent from "../components/MarkdownContent.vue";
+import ToolCard from "../components/ToolCard.vue";
 import { useAuthStore } from "../stores/auth";
+import { groupTools } from "../utils/capabilityGroups";
 import { errorMessage } from "../utils/errors";
 import { formatToolResult } from "../utils/toolResultFormat";
-import { toolTitle } from "../utils/toolTitles";
 
-/** mcp_server's built-in capabilities: which tools and resources each
- * brings, their resources to read, and (admins) switching one on or off
- * for every mcp_server client (port of chat_app's Capabilities page). */
+/** mcp_server's built-in capabilities, each with the tools it brings (run
+ * them in place) and its resources to read; admins can switch a capability on
+ * or off for every mcp_server client. The old Tools and Capabilities pages in
+ * one: collapsed by default, opened while a filter is typed. */
 
 const auth = useAuthStore();
 const server = new McpServerClient();
 
 const capabilities = ref<CapabilityInfo[]>([]);
+const tools = ref<ToolInfo[]>([]);
 const resources = ref<ResourceInfo[]>([]);
 const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
 const switching = ref<string | null>(null);
 
+// ?q= prefills the filter (links to a single tool use it).
+const initialQuery = useRoute().query.q;
+const query = ref(typeof initialQuery === "string" ? initialQuery : "");
+const filtering = computed(() => query.value.trim() !== "");
+
+/** Which sections the user opened; while filtering, every shown one is open. */
+const openSections = ref(new Set<string>());
+const OTHER = "\0other";
+function isOpen(key: string): boolean {
+  return filtering.value || openSections.value.has(key);
+}
+function toggleSection(key: string): void {
+  const next = new Set(openSections.value);
+  if (!next.delete(key)) next.add(key);
+  openSections.value = next;
+}
+
+// One tool card open at a time; its last result stays until re-run or closed.
+const openTool = ref<string | null>(null);
+const running = ref(false);
+const result = ref<ToolRunResult | null>(null);
+
 // The resource being read and what came back.
 const reading = ref<string | null>(null);
 const readUri = ref("");
 const readResult = ref<{ uri: string; text: string } | null>(null);
 const readError = ref("");
+const reader = useTemplateRef<HTMLElement>("reader");
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
+const grouped = computed(() => groupTools(capabilities.value, tools.value, query.value));
 
-/** Resources no capability claims (from extensions), shown on their own. */
+/** Resources no capability claims (from extensions). */
 const otherResources = computed(() => {
   const claimed = new Set(capabilities.value.flatMap((c) => c.resources));
   return resources.value.filter((r) => !claimed.has(r.name) && !claimed.has(r.uri));
 });
+const showOther = computed(() => grouped.value.otherTools.length > 0 || (!filtering.value && otherResources.value.length > 0));
+const otherCapability: CapabilityInfo = { name: "extensions", label: "Other tools", enabled: true, tools: [], resources: [] };
 
 function resourcesOf(capability: CapabilityInfo): ResourceInfo[] {
   const names = new Set(capability.resources);
   return resources.value.filter((r) => names.has(r.name) || names.has(r.uri));
 }
 
+const nothingShown = computed(() => grouped.value.groups.length === 0 && !showOther.value);
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    const [caps, res] = await Promise.all([
+    const [caps, toolList, res] = await Promise.all([
       commandsClient.capabilities(),
+      server.listTools(),
       server.listResources().catch(() => [] as ResourceInfo[]),
     ]);
     capabilities.value = caps;
+    tools.value = [...toolList].sort((a, b) => a.title.localeCompare(b.title));
     resources.value = res;
   } catch (err) {
     loadError.value = errorMessage(err);
@@ -60,7 +94,7 @@ async function load(): Promise<void> {
   }
 }
 
-async function toggle(capability: CapabilityInfo): Promise<void> {
+async function toggleCapability(capability: CapabilityInfo): Promise<void> {
   const next = !capability.enabled;
   const verb = next ? "Turn on" : "Turn off";
   if (!confirm(`${verb} "${capability.label ?? capability.name}" for every mcp_server client (chat_app, agents, ember)?`)) {
@@ -71,11 +105,36 @@ async function toggle(capability: CapabilityInfo): Promise<void> {
   try {
     const updated = await commandsClient.setCapability(capability.name, next);
     capabilities.value = capabilities.value.map((c) => (c.name === updated.name ? updated : c));
-    resources.value = await server.listResources().catch(() => resources.value);
+    // Switching changes which tools and resources the server offers.
+    const [toolList, res] = await Promise.all([
+      server.listTools().catch(() => tools.value),
+      server.listResources().catch(() => resources.value),
+    ]);
+    tools.value = [...toolList].sort((a, b) => a.title.localeCompare(b.title));
+    resources.value = res;
   } catch (err) {
     actionError.value = errorMessage(err);
   } finally {
     switching.value = null;
+  }
+}
+
+function toggleTool(name: string): void {
+  if (running.value) return; // keep the running tool's card (and its result) in place
+  openTool.value = openTool.value === name ? null : name;
+  result.value = null;
+}
+
+async function run(name: string, args: Record<string, unknown>): Promise<void> {
+  running.value = true;
+  result.value = null;
+  try {
+    result.value = await server.runTool(name, args);
+  } catch (err) {
+    // Transport/protocol failure - shown the same way as a tool-side error.
+    result.value = { text: String(err), isError: true };
+  } finally {
+    running.value = false;
   }
 }
 
@@ -85,6 +144,8 @@ function startRead(resource: ResourceInfo): void {
   readUri.value = resource.uri;
   if (!resource.template) void read(resource.uri);
   else reading.value = resource.uri; // fill in the {placeholders} first
+  // The reader sits below the list: bring it into view.
+  void nextTick(() => reader.value?.scrollIntoView?.({ block: "nearest" }));
 }
 
 async function read(uri: string): Promise<void> {
@@ -107,72 +168,108 @@ onMounted(load);
 <template>
   <section class="caps-view">
     <div class="column">
-      <h2>Capabilities</h2>
+      <div class="head">
+        <h2>
+          Capabilities <span v-if="tools.length" class="count">{{ tools.length }} tools</span>
+        </h2>
+        <input v-if="!loading && !loadError" v-model="query" type="search" class="search" placeholder="Filter tools" />
+      </div>
       <p class="muted intro">
-        What mcp_server can do, grouped by capability. Run tools on the
-        <RouterLink to="/tools">Tools</RouterLink> page or with <code>/</code> commands in the chat.
+        What mcp_server can do, grouped by capability. Open one to run its tools and read its resources. You can also
+        run tools with <code>/</code> commands in the chat.
       </p>
 
       <p v-if="loading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
       <p v-if="actionError" class="error">{{ actionError }}</p>
 
-      <article v-for="c in capabilities" :key="c.name" :class="['card', { off: !c.enabled }]">
-        <header class="card-head">
-          <div>
-            <h3>{{ c.label ?? c.name }}</h3>
-            <code class="name">{{ c.name }}</code>
-          </div>
-          <label v-if="isAdmin" class="switch" :title="c.enabled ? 'Turn off' : 'Turn on'">
-            <input type="checkbox" :checked="c.enabled" :disabled="switching === c.name" @click.prevent="toggle(c)" />
-            {{ c.enabled ? "On" : "Off" }}
-          </label>
-          <span v-else class="badge">{{ c.enabled ? "On" : "Off" }}</span>
-        </header>
+      <template v-if="!loading && !loadError">
+        <p v-if="nothingShown && filtering" class="muted">Nothing matches "{{ query.trim() }}".</p>
+        <p v-else-if="nothingShown" class="muted">No capabilities or tools exposed.</p>
 
-        <template v-if="c.enabled">
-          <p v-if="c.tools.length === 0 && c.resources.length === 0" class="muted">Nothing registered.</p>
-          <ul v-if="c.tools.length" class="tools">
-            <li v-for="t in c.tools" :key="t">
-              <RouterLink :to="{ path: '/tools', query: { q: t } }">{{ toolTitle(t) }}</RouterLink>
-              <code class="name">{{ t }}</code>
-            </li>
+        <CapabilitySection
+          v-for="g in grouped.groups"
+          :key="g.capability.name"
+          :capability="g.capability"
+          :open="isOpen(g.capability.name)"
+          :tool-count="g.tools.length"
+          :resource-count="resourcesOf(g.capability).length"
+          :is-admin="isAdmin"
+          :switching="switching === g.capability.name"
+          @toggle="toggleSection(g.capability.name)"
+          @switch="toggleCapability(g.capability)"
+        >
+          <p v-if="!g.capability.enabled" class="muted">Turned off: its tools and resources aren't offered to anyone.</p>
+          <template v-else>
+            <p v-if="g.tools.length === 0 && resourcesOf(g.capability).length === 0" class="muted">Nothing registered.</p>
+            <ul v-if="g.tools.length" class="cards">
+              <ToolCard
+                v-for="t in g.tools"
+                :key="t.name"
+                :tool="t"
+                :open="openTool === t.name"
+                :running="running"
+                :result="openTool === t.name ? result : null"
+                @toggle="toggleTool(t.name)"
+                @run="(args) => run(t.name, args)"
+              />
+            </ul>
+            <ul v-if="resourcesOf(g.capability).length" class="resources">
+              <li v-for="r in resourcesOf(g.capability)" :key="r.uri">
+                <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
+                <code class="name">{{ r.uri }}</code>
+                <span v-if="r.description" class="muted">{{ r.description }}</span>
+              </li>
+            </ul>
+          </template>
+        </CapabilitySection>
+
+        <CapabilitySection
+          v-if="showOther"
+          :capability="otherCapability"
+          :open="isOpen(OTHER)"
+          :tool-count="grouped.otherTools.length"
+          :resource-count="filtering ? 0 : otherResources.length"
+          :is-admin="false"
+          :switching="false"
+          hide-state
+          @toggle="toggleSection(OTHER)"
+        >
+          <ul v-if="grouped.otherTools.length" class="cards">
+            <ToolCard
+              v-for="t in grouped.otherTools"
+              :key="t.name"
+              :tool="t"
+              :open="openTool === t.name"
+              :running="running"
+              :result="openTool === t.name ? result : null"
+              @toggle="toggleTool(t.name)"
+              @run="(args) => run(t.name, args)"
+            />
           </ul>
-          <ul v-if="resourcesOf(c).length" class="resources">
-            <li v-for="r in resourcesOf(c)" :key="r.uri">
+          <ul v-if="!filtering && otherResources.length" class="resources">
+            <li v-for="r in otherResources" :key="r.uri">
               <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
               <code class="name">{{ r.uri }}</code>
-              <span v-if="r.description" class="muted">{{ r.description }}</span>
             </li>
           </ul>
-        </template>
-        <p v-else class="muted">Turned off: its tools and resources aren't offered to anyone.</p>
-      </article>
+        </CapabilitySection>
 
-      <article v-if="otherResources.length" class="card">
-        <header class="card-head"><h3>Other resources</h3></header>
-        <ul class="resources">
-          <li v-for="r in otherResources" :key="r.uri">
-            <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
-            <code class="name">{{ r.uri }}</code>
-          </li>
-        </ul>
-      </article>
-
-      <section v-if="reading || readResult || readError" class="reader">
-        <form v-if="reading" class="uri" @submit.prevent="read(readUri)">
-          <label>
-            URI
-            <input v-model="readUri" type="text" spellcheck="false" />
-          </label>
-          <button class="primary">Read</button>
-        </form>
-        <p v-if="readError" class="error">{{ readError }}</p>
-        <template v-if="readResult">
-          <h3><code>{{ readResult.uri }}</code></h3>
-          <MarkdownContent :text="readShown" />
-        </template>
-      </section>
+        <section v-if="reading || readResult || readError" ref="reader" class="reader">
+          <form v-if="reading" class="uri" @submit.prevent="read(readUri)">
+            <label>
+              URI
+              <input v-model="readUri" type="text" spellcheck="false" />
+            </label>
+            <button class="primary">Read</button>
+          </form>
+          <p v-if="readError" class="error">{{ readError }}</p>
+          <template v-if="readResult">
+            <h3><code>{{ readResult.uri }}</code></h3>
+            <MarkdownContent :text="readShown" />
+          </template>
+        </section>
+      </template>
     </div>
   </section>
 </template>
@@ -188,70 +285,75 @@ onMounted(load);
   margin: 0 auto;
   padding: 24px 16px;
 }
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
 h2 {
-  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
   font-size: 1.2em;
 }
 h3 {
   margin: 0;
   font-size: 1em;
 }
+.count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7em;
+  font-weight: 400;
+  color: var(--muted);
+  background: var(--surface);
+}
+.search {
+  flex: 0 1 260px;
+  min-width: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 .intro {
   margin: 0 0 16px;
   font-size: 0.9em;
 }
-.card {
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-}
-.card.off {
-  opacity: 0.75;
-}
-.card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.name {
-  font-family: var(--mono);
-  font-size: 0.8em;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-.switch {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85em;
-  cursor: pointer;
-}
-.badge {
-  padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.75em;
-  color: var(--muted);
-}
-.tools,
-.resources {
+.cards {
   display: grid;
-  gap: 4px;
-  margin: 8px 0 0;
+  gap: 8px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
-.tools li,
+.resources {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .resources li {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 10px;
   font-size: 0.9em;
+}
+.name {
+  font-family: var(--mono);
+  font-size: 0.8em;
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 .link {
   padding: 0;

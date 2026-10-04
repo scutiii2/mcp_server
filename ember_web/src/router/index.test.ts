@@ -134,3 +134,25 @@ describe("email verification", () => {
     expect(router.currentRoute.value.name).toBe("chat");
   });
 });
+
+const ACCOUNT_WITH_TOOLS = { ...ACCOUNT, permissions: ["chat.use", "tools.use"] };
+
+describe("the merged Capabilities page", () => {
+  it("sends the old Tools address to Capabilities, keeping the filter", async () => {
+    me.mockResolvedValue(ACCOUNT_WITH_TOOLS);
+
+    await router.push("/tools?q=merge");
+
+    expect(router.currentRoute.value.name).toBe("capabilities");
+    expect(router.currentRoute.value.path).toBe("/capabilities");
+    expect(router.currentRoute.value.query.q).toBe("merge");
+  });
+
+  it("still needs the tools.use permission", async () => {
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use"] });
+
+    await router.push("/capabilities");
+
+    expect(router.currentRoute.value.name).not.toBe("capabilities");
+  });
+});

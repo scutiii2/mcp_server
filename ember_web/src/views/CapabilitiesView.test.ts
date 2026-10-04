@@ -1,0 +1,232 @@
+import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMemoryHistory, createRouter } from "vue-router";
+import type { Account } from "../api/AuthClient";
+import type { CapabilityInfo } from "../api/CommandsClient";
+import type { ResourceInfo, ToolInfo } from "../api/types";
+import { useAuthStore } from "../stores/auth";
+import CapabilitiesView from "./CapabilitiesView.vue";
+
+const mocks = vi.hoisted(() => ({
+  capabilities: vi.fn(),
+  setCapability: vi.fn(),
+  listTools: vi.fn(),
+  listResources: vi.fn(),
+  readResource: vi.fn(),
+  runTool: vi.fn(),
+}));
+
+vi.mock("../api/CommandsClient", () => ({
+  commandsClient: { capabilities: mocks.capabilities, setCapability: mocks.setCapability },
+}));
+vi.mock("../api/McpServerClient", () => ({
+  McpServerClient: class {
+    listTools = mocks.listTools;
+    listResources = mocks.listResources;
+    readResource = mocks.readResource;
+    runTool = mocks.runTool;
+  },
+}));
+
+const tool = (name: string, title: string, description = ""): ToolInfo => ({
+  name,
+  title,
+  description,
+  inputSchema: { type: "object", properties: {} },
+});
+
+const CAPS: CapabilityInfo[] = [
+  { name: "pdf", enabled: true, label: "PDF files", tools: ["tool_pdf_merge", "tool_pdf_split"], resources: ["pdf_help"] },
+  { name: "services", enabled: true, label: null, tools: ["tool_srv_restart"], resources: [] },
+  { name: "legacy", enabled: false, label: "Legacy", tools: [], resources: [] },
+];
+const TOOLS = [
+  tool("tool_pdf_merge", "Merge", "Join PDFs"),
+  tool("tool_pdf_split", "Split"),
+  tool("tool_srv_restart", "Restart Service"),
+  tool("ext__echo", "Echo"),
+];
+const RESOURCES: ResourceInfo[] = [{ uri: "help://pdf", name: "pdf_help", description: "How to merge", template: false }];
+
+const ACCOUNT: Account = {
+  id: 1,
+  username: "lex",
+  email: "lex@example.com",
+  email_verified: true,
+  roles: [],
+  permissions: ["tools.use"],
+};
+
+async function show(options: { admin?: boolean; query?: string } = {}) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  useAuthStore().account = {
+    ...ACCOUNT,
+    permissions: options.admin ? ["tools.use", "admin.manage"] : ["tools.use"],
+  };
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: "/capabilities", component: CapabilitiesView }],
+  });
+  await router.push(options.query ? `/capabilities?q=${options.query}` : "/capabilities");
+  const wrapper = mount(CapabilitiesView, { global: { plugins: [pinia, router] } });
+  await flushPromises();
+  return wrapper;
+}
+
+type Wrapper = Awaited<ReturnType<typeof show>>;
+const sections = (w: Wrapper) => w.findAll("article.card");
+const sectionNames = (w: Wrapper) => sections(w).map((s) => s.find("h3").text());
+const head = (w: Wrapper, name: string) =>
+  w.findAll("article.card .head-button").find((b) => b.find("h3").text() === name)!;
+const toolTitles = (w: Wrapper) => w.findAll("li.card .title").map((t) => t.text());
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.capabilities.mockResolvedValue(CAPS);
+  mocks.listTools.mockResolvedValue(TOOLS);
+  mocks.listResources.mockResolvedValue(RESOURCES);
+  mocks.runTool.mockResolvedValue({ text: "merged ok", isError: false });
+  mocks.readResource.mockResolvedValue("# Help text");
+  vi.stubGlobal("confirm", vi.fn(() => true));
+});
+
+describe("CapabilitiesView", () => {
+  it("lists every capability collapsed, with what it brings", async () => {
+    const w = await show();
+
+    expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "Other tools"]);
+    expect(toolTitles(w)).toEqual([]);
+    expect(head(w, "PDF files").attributes("aria-expanded")).toBe("false");
+    expect(head(w, "PDF files").text()).toContain("2 tools · 1 resource");
+    expect(head(w, "services").text()).toContain("1 tool");
+    expect(head(w, "Legacy").text()).toContain("off");
+  });
+
+  it("opens and closes a capability from its header", async () => {
+    const w = await show();
+
+    await head(w, "PDF files").trigger("click");
+    expect(toolTitles(w)).toEqual(["Merge", "Split"]);
+    expect(head(w, "PDF files").attributes("aria-expanded")).toBe("true");
+
+    await head(w, "PDF files").trigger("click");
+    expect(toolTitles(w)).toEqual([]);
+  });
+
+  it("lists the tools no capability claims under 'Other tools'", async () => {
+    const w = await show();
+
+    await head(w, "Other tools").trigger("click");
+
+    expect(toolTitles(w)).toEqual(["Echo"]);
+  });
+
+  it("explains a capability that is switched off", async () => {
+    const w = await show();
+
+    await head(w, "Legacy").trigger("click");
+
+    expect(w.text()).toContain("Turned off");
+  });
+
+  it("opens the matching capabilities while a filter is typed, and shows only matching tools", async () => {
+    const w = await show();
+
+    await w.get("input[type=search]").setValue("split");
+
+    expect(sectionNames(w)).toEqual(["PDF files"]);
+    expect(toolTitles(w)).toEqual(["Split"]);
+
+    await w.get("input[type=search]").setValue("");
+    expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "Other tools"]);
+    expect(toolTitles(w)).toEqual([]);
+  });
+
+  it("prefills the filter from ?q=", async () => {
+    const w = await show({ query: "restart" });
+
+    expect((w.get("input[type=search]").element as HTMLInputElement).value).toBe("restart");
+    expect(toolTitles(w)).toEqual(["Restart Service"]);
+  });
+
+  it("says so when nothing matches the filter", async () => {
+    const w = await show();
+
+    await w.get("input[type=search]").setValue("zzz");
+
+    expect(sections(w)).toHaveLength(0);
+    expect(w.text()).toContain('Nothing matches "zzz"');
+  });
+
+  it("runs a tool in place and shows its result", async () => {
+    const w = await show();
+    await head(w, "PDF files").trigger("click");
+
+    await w.findAll("li.card .card-head")[0]!.trigger("click");
+    await w.get("form.tool-form").trigger("submit");
+    await flushPromises();
+
+    expect(mocks.runTool).toHaveBeenCalledWith("tool_pdf_merge", {});
+    expect(w.text()).toContain("merged ok");
+  });
+
+  it("keeps one tool open at a time", async () => {
+    const w = await show();
+    await head(w, "PDF files").trigger("click");
+
+    const heads = () => w.findAll("li.card .card-head");
+    await heads()[0]!.trigger("click");
+    await heads()[1]!.trigger("click");
+
+    expect(heads().map((h) => h.attributes("aria-expanded"))).toEqual(["false", "true"]);
+  });
+
+  it("reads a resource of an open capability", async () => {
+    const w = await show();
+    await head(w, "PDF files").trigger("click");
+
+    await w.get("button.link").trigger("click");
+    await flushPromises();
+
+    expect(mocks.readResource).toHaveBeenCalledWith("help://pdf");
+    expect(w.text()).toContain("Help text");
+  });
+
+  it("gives admins an on/off switch that asks first and then switches", async () => {
+    mocks.setCapability.mockResolvedValue({ ...CAPS[2]!, enabled: true });
+    const w = await show({ admin: true });
+
+    await w.findAll("input[type=checkbox]")[2]!.trigger("click");
+    await flushPromises();
+
+    expect(confirm).toHaveBeenCalled();
+    expect(mocks.setCapability).toHaveBeenCalledWith("legacy", true);
+    expect(head(w, "Legacy").text()).toContain("0 tools");
+  });
+
+  it("does not switch anything when the admin declines", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    const w = await show({ admin: true });
+
+    await w.findAll("input[type=checkbox]")[0]!.trigger("click");
+
+    expect(mocks.setCapability).not.toHaveBeenCalled();
+  });
+
+  it("shows other users a plain On/Off badge and no switch", async () => {
+    const w = await show();
+
+    expect(w.findAll("input[type=checkbox]")).toHaveLength(0);
+    expect(w.findAll(".badge").map((b) => b.text())).toEqual(["On", "On", "Off"]);
+  });
+
+  it("reports a load failure", async () => {
+    mocks.capabilities.mockRejectedValue(new Error("server down"));
+    const w = await show();
+
+    expect(w.text()).toContain("server down");
+    expect(sections(w)).toHaveLength(0);
+  });
+});
