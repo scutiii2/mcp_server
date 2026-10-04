@@ -80,9 +80,19 @@ const sections = (w: Wrapper) => w.findAll("article.card");
 const sectionNames = (w: Wrapper) => sections(w).map((s) => s.find("h3").text());
 const head = (w: Wrapper, name: string) =>
   w.findAll("article.card .head-button").find((b) => b.find("h3").text() === name)!;
-const toolTitles = (w: Wrapper) => w.findAll("li.card .title").map((t) => t.text());
+const toolTitles = (w: Wrapper) => w.findAll("li.tool .title").map((t) => t.text());
+const toolRows = (w: Wrapper) => w.findAll("li.tool .row");
+const modal = (w: Wrapper) => w.get("dialog.modal");
 
 beforeEach(() => {
+  // jsdom has no modal dialogs.
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute("open");
+    this.dispatchEvent(new Event("close"));
+  };
   vi.clearAllMocks();
   mocks.capabilities.mockResolvedValue(CAPS);
   mocks.listTools.mockResolvedValue(TOOLS);
@@ -160,27 +170,58 @@ describe("CapabilitiesView", () => {
     expect(w.text()).toContain('Nothing matches "zzz"');
   });
 
-  it("runs a tool in place and shows its result", async () => {
+  it("shows a tool as just its label and name", async () => {
     const w = await show();
     await head(w, "PDF files").trigger("click");
 
-    await w.findAll("li.card .card-head")[0]!.trigger("click");
-    await w.get("form.tool-form").trigger("submit");
+    const row = toolRows(w)[0]!;
+    expect(row.text()).toContain("Merge");
+    expect(row.text()).toContain("tool_pdf_merge");
+    expect(row.text()).not.toContain("Join PDFs");
+    expect(modal(w).attributes("open")).toBeUndefined();
+  });
+
+  it("opens a modal with the tool's description and parameters when its row is pressed", async () => {
+    const w = await show();
+    await head(w, "PDF files").trigger("click");
+
+    await toolRows(w)[0]!.trigger("click");
+    await flushPromises();
+
+    expect(modal(w).attributes("open")).toBeDefined();
+    expect(modal(w).text()).toContain("Merge");
+    expect(modal(w).text()).toContain("Join PDFs");
+    expect(modal(w).find("form.tool-form").exists()).toBe(true);
+  });
+
+  it("runs the tool from the modal and shows its result there", async () => {
+    const w = await show();
+    await head(w, "PDF files").trigger("click");
+    await toolRows(w)[0]!.trigger("click");
+    await flushPromises();
+
+    await modal(w).get("form.tool-form").trigger("submit");
     await flushPromises();
 
     expect(mocks.runTool).toHaveBeenCalledWith("tool_pdf_merge", {});
-    expect(w.text()).toContain("merged ok");
+    expect(modal(w).text()).toContain("merged ok");
   });
 
-  it("keeps one tool open at a time", async () => {
+  it("closes the modal from its close button and forgets the result", async () => {
     const w = await show();
     await head(w, "PDF files").trigger("click");
+    await toolRows(w)[0]!.trigger("click");
+    await flushPromises();
+    await modal(w).get("form.tool-form").trigger("submit");
+    await flushPromises();
 
-    const heads = () => w.findAll("li.card .card-head");
-    await heads()[0]!.trigger("click");
-    await heads()[1]!.trigger("click");
+    await modal(w).get("button.close").trigger("click");
+    await flushPromises();
+    expect(modal(w).attributes("open")).toBeUndefined();
 
-    expect(heads().map((h) => h.attributes("aria-expanded"))).toEqual(["false", "true"]);
+    await toolRows(w)[0]!.trigger("click");
+    await flushPromises();
+    expect(modal(w).text()).not.toContain("merged ok");
   });
 
   it("reads a resource of an open capability", async () => {

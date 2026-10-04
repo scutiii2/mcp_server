@@ -7,6 +7,7 @@ import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
 import CapabilitySection from "../components/CapabilitySection.vue";
 import MarkdownContent from "../components/MarkdownContent.vue";
 import ToolCard from "../components/ToolCard.vue";
+import ToolRunModal from "../components/ToolRunModal.vue";
 import { useAuthStore } from "../stores/auth";
 import { groupTools } from "../utils/capabilityGroups";
 import { errorMessage } from "../utils/errors";
@@ -15,7 +16,8 @@ import { formatToolResult } from "../utils/toolResultFormat";
 /** mcp_server's built-in capabilities, each with the tools it brings (run
  * them in place) and its resources to read; admins can switch a capability on
  * or off for every mcp_server client. The old Tools and Capabilities pages in
- * one: collapsed by default, opened while a filter is typed. */
+ * one: collapsed by default, opened while a filter is typed. A tool is a row
+ * (label and name); a click opens its description and run form in a modal. */
 
 const auth = useAuthStore();
 const server = new McpServerClient();
@@ -45,7 +47,7 @@ function toggleSection(key: string): void {
   openSections.value = next;
 }
 
-// One tool card open at a time; its last result stays until re-run or closed.
+// The tool whose modal is open; its last result stays until re-run or closed.
 const openTool = ref<string | null>(null);
 const running = ref(false);
 const result = ref<ToolRunResult | null>(null);
@@ -59,6 +61,7 @@ const reader = useTemplateRef<HTMLElement>("reader");
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 const grouped = computed(() => groupTools(capabilities.value, tools.value, query.value));
+const selectedTool = computed(() => tools.value.find((t) => t.name === openTool.value) ?? null);
 
 /** Resources no capability claims (from extensions). */
 const otherResources = computed(() => {
@@ -119,9 +122,8 @@ async function toggleCapability(capability: CapabilityInfo): Promise<void> {
   }
 }
 
-function toggleTool(name: string): void {
-  if (running.value) return; // keep the running tool's card (and its result) in place
-  openTool.value = openTool.value === name ? null : name;
+function openToolModal(name: string): void {
+  openTool.value = name;
   result.value = null;
 }
 
@@ -129,10 +131,12 @@ async function run(name: string, args: Record<string, unknown>): Promise<void> {
   running.value = true;
   result.value = null;
   try {
-    result.value = await server.runTool(name, args);
+    const outcome = await server.runTool(name, args);
+    // The modal was closed (or another tool opened) while it ran: drop the result.
+    if (openTool.value === name) result.value = outcome;
   } catch (err) {
     // Transport/protocol failure - shown the same way as a tool-side error.
-    result.value = { text: String(err), isError: true };
+    if (openTool.value === name) result.value = { text: String(err), isError: true };
   } finally {
     running.value = false;
   }
@@ -203,16 +207,7 @@ onMounted(load);
           <template v-else>
             <p v-if="g.tools.length === 0 && resourcesOf(g.capability).length === 0" class="muted">Nothing registered.</p>
             <ul v-if="g.tools.length" class="cards">
-              <ToolCard
-                v-for="t in g.tools"
-                :key="t.name"
-                :tool="t"
-                :open="openTool === t.name"
-                :running="running"
-                :result="openTool === t.name ? result : null"
-                @toggle="toggleTool(t.name)"
-                @run="(args) => run(t.name, args)"
-              />
+              <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
             </ul>
             <ul v-if="resourcesOf(g.capability).length" class="resources">
               <li v-for="r in resourcesOf(g.capability)" :key="r.uri">
@@ -236,16 +231,7 @@ onMounted(load);
           @toggle="toggleSection(OTHER)"
         >
           <ul v-if="grouped.otherTools.length" class="cards">
-            <ToolCard
-              v-for="t in grouped.otherTools"
-              :key="t.name"
-              :tool="t"
-              :open="openTool === t.name"
-              :running="running"
-              :result="openTool === t.name ? result : null"
-              @toggle="toggleTool(t.name)"
-              @run="(args) => run(t.name, args)"
-            />
+            <ToolCard v-for="t in grouped.otherTools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
           </ul>
           <ul v-if="!filtering && otherResources.length" class="resources">
             <li v-for="r in otherResources" :key="r.uri">
@@ -271,6 +257,14 @@ onMounted(load);
         </section>
       </template>
     </div>
+
+    <ToolRunModal
+      :tool="selectedTool"
+      :running="running"
+      :result="result"
+      @close="openTool = null"
+      @run="(args) => selectedTool && run(selectedTool.name, args)"
+    />
   </section>
 </template>
 

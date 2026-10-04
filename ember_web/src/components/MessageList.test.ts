@@ -262,6 +262,12 @@ describe("save as a prompt", () => {
     expect(saveButtons(wrapper).map((b) => b.text())).toEqual(["Saved"]);
   });
 
+  it("is not on a question that is only attached files", () => {
+    const wrapper = mountList({ messages: [user(withAttachments("", [FILE])), assistant("ok")], savedPrompts: [] });
+
+    expect(saveButtons(wrapper)).toHaveLength(0);
+  });
+
   it("asks to save the question's text when clicked", async () => {
     const wrapper = mountList({ savedPrompts: [] });
 

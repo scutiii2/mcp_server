@@ -19,10 +19,13 @@ export function attachmentBlock(a: AttachmentBlock): string {
   return `[[ATTACHMENT filename="${name}" chars="${a.chars}" truncated="${a.truncated}"]]\n${a.text}\n[[/ATTACHMENT]]`;
 }
 
+/** What stands in for the typed text when a question is only attached files. */
+export const FILE_ONLY_QUESTION = "Please review the attached file(s).";
+
 /** The question as sent: the typed text, then every attachment. */
 export function withAttachments(question: string, attachments: AttachmentBlock[]): string {
   if (!attachments.length) return question;
-  const typed = question || "Please review the attached file(s).";
+  const typed = question || FILE_ONLY_QUESTION;
   return [typed, ...attachments.map(attachmentBlock)].join("\n\n");
 }
 

@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { ApprovalDecision, ChatMessage, PendingApproval, ToolStep } from "../api/types";
 import type { CommandInfo } from "../api/CommandsClient";
 import { agentLabelFor } from "../utils/agentLabels";
-import { splitAttachments } from "../utils/attachments";
+import { FILE_ONLY_QUESTION, splitAttachments } from "../utils/attachments";
 import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
 import { toolTitle } from "../utils/toolTitles";
 import AgentActivity from "./AgentActivity.vue";
@@ -67,6 +67,14 @@ function agentLabel(m: ChatMessage): string | undefined {
 
 function isSavedPrompt(text: string): boolean {
   return props.savedPrompts?.includes(text.trim()) ?? false;
+}
+
+/** Typed text worth saving as a prompt: not empty, and not the stand-in text of a question that is only files. */
+function savableText(index: number): string {
+  const part = userParts.value[index];
+  if (!part) return "";
+  const text = part.text.trim();
+  return part.attachments.length > 0 && text === FILE_ONLY_QUESTION ? "" : text;
 }
 
 function isDeciding(id: string): boolean {
@@ -243,11 +251,11 @@ onBeforeUnmount(() => {
           <div class="actions user-actions">
             <CopyButton :text="userParts[i]?.text || m.content" label="Copy message" />
             <SaveButton
-              v-if="savedPrompts && userParts[i]?.text?.trim()"
+              v-if="savedPrompts && savableText(i)"
               small
-              :saved="isSavedPrompt(userParts[i]!.text)"
-              :title="isSavedPrompt(userParts[i]!.text) ? 'Already one of your saved prompts' : 'Save as a prompt'"
-              @click="emit('save-prompt', userParts[i]!.text)"
+              :saved="isSavedPrompt(savableText(i))"
+              :title="isSavedPrompt(savableText(i)) ? 'Already one of your saved prompts' : 'Save as a prompt'"
+              @click="emit('save-prompt', savableText(i))"
             />
             <button v-if="canChange" type="button" class="action" title="Edit and resend" aria-label="Edit and resend" @click="startEdit(i)">
               <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
