@@ -1,0 +1,81 @@
+{
+  "Main Group": {
+    "members": [
+      {
+        "template_key": "mcp_server",
+        "port": 8010,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "ai_agent",
+        "port": 9100,
+        "extra_env": {
+          "AI_AGENT_PROVIDER": "anthropic"
+        },
+        "extra_args": "--gateway openrouter",
+        "preset_name": "OpenRouter"
+      }
+    ]
+  },
+  "Ember": {
+    "members": [
+      {
+        "template_key": "ai_agent",
+        "port": 9100,
+        "extra_env": {
+          "AI_AGENT_PROVIDER": "anthropic"
+        },
+        "extra_args": "--gateway openrouter",
+        "preset_name": "OpenRouter"
+      },
+      {
+        "template_key": "ember_api",
+        "port": 8030,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "ember_web",
+        "port": 5173,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "pdf_merger",
+        "port": 8040,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "mcp_server",
+        "port": 8010,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      }
+    ]
+  },
+  "PDF Merger": {
+    "members": [
+      {
+        "template_key": "pdf_merger",
+        "port": 8040,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "pdf_merger_web",
+        "port": 5174,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      }
+    ]
+  }
+}

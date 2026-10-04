@@ -57,6 +57,8 @@ registered by `__index__.py` at app-boot time (see `register_pages()`).
 - [`Auth/`](Auth/README.md) — the merged login/registration/logout flow.
 - [`Admin/`](Admin/README.md) — role/permission/account administration
   and invite generation. Reached via the account menu, not `nav_pages`.
+- [`ConfigIssues/`](ConfigIssues/README.md) — lists invalid or placeholder
+  config/secret values; every page redirects here while any exist.
 - [`Logs/`](Logs/README.md) — server and per-account activity/error
   log viewer. Visible in `nav_pages` to any account holding
   `logs.view` and/or `logs.errors.view`.
@@ -64,11 +66,14 @@ registered by `__index__.py` at app-boot time (see `register_pages()`).
   picker.
 - [`Account/`](Account/README.md) — self-service profile view/edit.
   Reached via the account menu, not `nav_pages`.
-- [`Sample/`](Sample/README.md) — minimal example page, kept so
-  `nav_pages` / the Overview grid always has at least one real card and
-  so new pages have something to copy.
 - [`Chat/`](Chat/README.md) — LLM conversation UI, provider/extension
   selection, and per-user chat history. Gated by `chat.access`.
 - [`Capabilities/`](Capabilities/README.md) — live MCP tool/resource
   browser and try-it console. Gated by `capabilities.view` /
   `capabilities.try`.
+- [`Watchers/`](Watchers/README.md) — read-only status of background
+  watchers of any mcp_server capability (discovered live), with
+  filters and read-only recipients. Gated by `watchers.view`.
+- [`Usage/`](Usage/README.md) — token usage tracker: stat cards, a 12-month
+  heatmap, per-agent breakdown and Markdown export. Own usage needs
+  `chat.access`; other users' usage needs `usage.view_all`.

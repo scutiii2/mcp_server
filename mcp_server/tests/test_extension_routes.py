@@ -3,7 +3,7 @@
 The property that matters here is the JSON shape: another agent is
 building chat_app's sidebar against this contract concurrently, so a
 field renamed or a status value spelled differently breaks that work
-silently. Same Starlette TestClient pattern as test_approval_routes.py.
+silently. Same Starlette TestClient pattern as test_command_routes.py.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 from starlette.testclient import TestClient  # noqa: E402
 
 from src.extension_routes import install_extension_routes  # noqa: E402
-from src.infra import extensions  # noqa: E402
+from src.services import extensions  # noqa: E402
 
 
 @pytest.fixture

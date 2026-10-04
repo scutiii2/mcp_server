@@ -47,6 +47,12 @@
   flex: 1 1 auto;
 }
 
+.log-entry-actor {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
 .log-entry-details {
   flex-basis: 100%;
 }

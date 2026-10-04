@@ -16,21 +16,30 @@ The `src` package - installed under that literal name (see
     network-security pipeline (rate limiting, IP filtering, headers,
     fingerprinting, cross-site rejection).
   - **[`services/llm/`](services/llm/README.md)** - the LLM
-    provider/router layer behind the Chat page.
+    settings and MCP-client wrappers behind the Chat page (LLM providers
+    and the tool-calling loop now live in the standalone `ai_agent/`
+    project - see its README).
 - **[`models/`](models/README.md)** - SQLAlchemy models, one file per
   table.
 - **[`utils/`](utils/README.md)** - small, single-purpose helpers.
 - `run.py` - `create_app()`, the Flask application factory. Loads
   secrets/configs, wires the DB, security pipeline, login manager,
   mail, and every page blueprint.
+- `internal_routes.py` - non-user-facing HTTP routes for calls *from*
+  `mcp_server` (not a page - deliberately excluded from `pages/`'s
+  auto-discovery), authenticated with a shared static token instead of
+  a login session. No routes registered today.
 
 ## Runtime data (not code)
 
-- **[`configs/`](configs/README.md)** - structured settings, mostly
-  committed.
-- **[`secrets/`](secrets/README.md)** - credential values, gitignored.
-- **[`data/`](data/README.md)** - SQLite databases, gitignored.
-- **[`instance/`](instance/README.md)** - Flask's own default instance
-  folder.
+None of the runtime-data folders live under `src/` - they all sit one
+level up, at the project root, since nothing in them is package code:
+
+- **[`../configs/`](../configs/README.md)** - structured settings,
+  mostly committed.
+- **[`../secrets/`](../secrets/README.md)** - credential values,
+  gitignored.
+- **[`../data/`](../data/README.md)** - SQLite databases, gitignored.
+- `../logs/` - daily-rotating text logs, gitignored.
 
 See the root [`../README.md`](../README.md) for setup instructions.

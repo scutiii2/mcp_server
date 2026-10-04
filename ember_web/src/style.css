@@ -1,0 +1,58 @@
+/* ember_web theme: tokens first, then a full-height app shell. Each token is
+   light-dark(light, dark), resolved by the page's `color-scheme`: "light dark"
+   follows the system; useTheme.ts forces one by setting it on <html>. */
+:root {
+  --bg: light-dark(#ffffff, #17171a);
+  --surface: light-dark(#f6f6f7, #1f1f23);
+  --text: light-dark(#1c1c1f, #e8e8ea);
+  --muted: light-dark(#6b6b73, #9a9aa3);
+  --border: light-dark(#e3e3e6, #2f2f35);
+  --accent: light-dark(#e8590c, #ff7a33); /* ember orange */
+  --accent-contrast: light-dark(#ffffff, #17171a);
+  --user-bubble: light-dark(#f1efe9, #2a2a30);
+  --code-bg: light-dark(#f3f3f4, #232328);
+  --danger: light-dark(#d9480f, #ff8a4c);
+
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  color-scheme: light dark;
+  font: 15px/1.55 var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+/* The page itself never scrolls; each view scrolls its own content area. */
+body {
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--accent);
+}
+
+button,
+textarea,
+input {
+  font: inherit;
+  color: inherit;
+}

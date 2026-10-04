@@ -1,58 +1,66 @@
+> **Retired on 2026-10-03.** chat_app is replaced by `ember_web` (the browser app) and
+> `ember_api` (its backend). Accounts, chats and token usage were moved with
+> `ember_api/scripts/import_chat_app.py`. This folder, its `data/` and its `secrets/` are kept
+> as a reference and a way back, and because `chat_cli` (see `_TODO.md`) plans to reuse
+> `src/services/ai_agent_client.py` and `mcp_client.py`. It is no longer started with the
+> Ember group in `server_launcher`. To run it again, add the `chat_app` template back to a
+> group there.
+
 # AuthTemplate
 
 A Flask app template that merges network-level security (rate limiting,
 IP filtering, security headers, device fingerprinting) with a single
 invite-only account, role/permission-based authorization, and an LLM
-chat interface (OpenAI, Claude, and local Ollama models, with MCP
-tool-calling).
+chat interface backed by one or more standalone `ai_agent` instances
+(see the repo-root `ai_agent/README.md`), with MCP tool-calling.
 
 ## Requirements
 
 - Python >= 3.11
-- (optional) an MCP server reachable at `MCP_SERVER_URL` — enables tool
-  calling from the Chat/Capabilities pages
-- (optional) [Ollama](https://ollama.com) running locally — enables the
-  local-model chat provider
+- (optional) an MCP server reachable at `MCP_SERVER_URL` — enables slash
+  commands and the Capabilities page's "try it" console
+- (optional) one or more `ai_agent` instances (repo root) — enables the
+  Chat page's LLM Q&A; each configured in `configs/config_agents.json`
 
 ## Setup
 
-1. From `chat_app/`, install dependencies:
-
-   ```
-   pip install -e ".[dev]"
-   ```
-
-2. Copy the `.example` files under `src/secrets/` and `src/configs/` and
+1. Copy the `.example` files under `secrets/` and `configs/` and
    fill in real values — see [Configuration](#configuration).
 
-3. Run the app:
+2. Run the app:
 
    ```
    run.bat
    ```
 
-   (`run.bat` activates `.venv` and runs `py -m run`; the editable
-   install puts `src/` on `sys.path` so `run` resolves to `src/run.py`.)
+   (from `chat_app/` - creates `.venv_chat` and installs this project
+   into it in editable mode on first run, then runs `py -m src.run` -
+   see `src/README.md` for `run.py`'s `create_app()`.)
 
 ## Configuration
 
 Both loaded once at boot by `src/run.py` (see
 [`src/utils/README.md`](src/utils/README.md) for the loader itself):
 
-- **`src/secrets/*.env`** — credentials, gitignored. Copy each
+- **`secrets/*.env`** — credentials, gitignored. Copy each
   `*.env.example` to the matching `*.env`:
   - `secret_app.env` — Flask `SECRET_KEY`.
   - `secret_db.env` — `DATABASE_URL` (SQLite under `data/app.db` if left blank).
   - `secret_bootstrap_admin.env` — the one admin account created on first boot.
   - `secret_smtp.env` — outbound mail for invite emails (optional; invites
     still work without it, just no auto-email delivery).
-  - `secret_llm.env` — `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (blank
-    disables that provider), model names, `MCP_SERVER_URL`, `OLLAMA_BASE_URL`.
-- **`src/configs/*.json`** — non-secret feature toggles, tracked in git.
+  - `secret_mcp.env` — `MCP_SERVER_URL`; LLM API keys and model
+    choice live in each `ai_agent` instance's own secrets instead (see
+    `ai_agent/README.md`).
+  - `secret_internal_api.env` — `INTERNAL_API_TOKEN`, shared with
+    mcp_server's own `secret_internal_api.env` (same value both sides);
+    authenticates internal calls between the two services (see
+    `src/README.md`'s `internal_routes.py` entry).
+- **`configs/*.json`** — non-secret feature toggles, tracked in git.
   Copy each `.json.example` for the documented shape/defaults:
-  - `config_chat.json` — `providers.ollama.models`: the locally-pulled
-    Ollama models to offer in the chat provider dropdown (empty by
-    default — Ollama shows no models until some are listed here).
+  - `config_agents.json` — the configured `ai_agent` instances the Chat
+    page's provider dropdown can send questions to (`{id, label, url}`
+    each; no `.example` twin, see `configs/README.md`).
   - `config_security_fingerprint.json`, `config_security_ip_filter.json`,
     `config_security_rate_limit.json`, `config_security_headers.json` —
     tuning for each stage of the security pipeline (see

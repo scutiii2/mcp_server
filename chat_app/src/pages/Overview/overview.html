@@ -1,10 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Overview{% endblock %}
+{% block title %}{{ app_name }}{% endblock %}
 {% block content %}
 <header class="overview-header">
   {% include "account_menu.html" %}
 </header>
-<h1 class="overview-title">Overview</h1>
+{% if app_logo_url %}<img src="{{ app_logo_url }}" alt="" class="overview-logo">{% endif %}
+<h1 class="overview-title">{{ app_name }}</h1>
 <div class="tiles">
   {% for page in nav_pages %}
   <a class="tile" href="{{ page.url_prefix }}">

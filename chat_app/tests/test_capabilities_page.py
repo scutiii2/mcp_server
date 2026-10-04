@@ -236,15 +236,24 @@ def _resource(name):
 
 
 def test_group_tools_by_capability_carries_id_label_and_enabled_state():
-    groups = _group_tools_by_capability([_tool("get_host_health_tool")], {"host_health": False})
+    # tool_capabilities.py no longer hand-maintains a tool->capability map -
+    # it derives one from mcp_server's live GET /capabilities response
+    # (see refresh_from()) - so this patches the lookup to exercise the
+    # grouping mechanism itself, same reasoning as the resource-group
+    # tests below.
+    with patch("src.pages.Capabilities.__index__.capability_for_tool", return_value="role"), \
+         patch("src.pages.Capabilities.__index__.label_for_capability", return_value="Server Manager"):
+        groups = _group_tools_by_capability(
+            [_tool("parse_excel_input_tool")], {"role": False}
+        )
 
     assert groups == [
         {
-            "id": "host_health",
-            "label": "Host Health",
+            "id": "role",
+            "label": "Server Manager",
             "enabled": False,
             "toggleable": True,
-            "tools": [_tool("get_host_health_tool")],
+            "tools": [_tool("parse_excel_input_tool")],
         }
     ]
 
@@ -259,7 +268,8 @@ def test_group_tools_by_capability_defaults_to_enabled_when_mcp_server_state_is_
     """mcp_server unreachable (empty capability_states) must not read as
     every capability being off - same "absent means enabled" default
     app_config.capability_enabled() uses on the mcp_server side."""
-    groups = _group_tools_by_capability([_tool("get_host_health_tool")], {})
+    with patch("src.pages.Capabilities.__index__.capability_for_tool", return_value="role"):
+        groups = _group_tools_by_capability([_tool("parse_excel_input_tool")], {})
 
     assert groups[0]["enabled"] is True
     assert groups[0]["toggleable"] is False  # unknown state -> no switch, would just 404
@@ -273,15 +283,22 @@ def test_group_tools_by_capability_fallback_group_is_never_toggleable():
 
 
 def test_group_resources_by_capability_carries_id_label_and_enabled_state():
-    groups = _group_resources_by_capability([_resource("host_health")], {"host_health": True})
+    # No built-in capability currently owns a resource (mcp_server's
+    # GET /capabilities always reports an empty "resources" list today -
+    # see tool_capabilities.py's refresh_from()), so this patches the
+    # lookup to exercise the grouping mechanism itself rather than
+    # depending on one existing for real.
+    with patch("src.pages.Capabilities.__index__.capability_for_resource", return_value="example"), \
+         patch("src.pages.Capabilities.__index__.resource_capability_ids", return_value={"example"}):
+        groups = _group_resources_by_capability([_resource("example")], {"example": True})
 
     assert groups == [
         {
-            "id": "host_health",
-            "label": "Host Health",
+            "id": "example",
+            "label": "example",
             "enabled": True,
             "toggleable": True,
-            "resources": [_resource("host_health")],
+            "resources": [_resource("example")],
         }
     ]
 
@@ -292,25 +309,37 @@ def test_group_tools_by_capability_keeps_a_disabled_capabilitys_group_with_no_to
     purely from the live tool list would make a disabled capability's
     group vanish - taking the only switch that could turn it back on
     with it."""
-    groups = _group_tools_by_capability([], {"host_health": False})
+    with patch("src.pages.Capabilities.__index__.label_for_capability", return_value="Server Manager"):
+        groups = _group_tools_by_capability([], {"role": False})
 
     assert groups == [
-        {"id": "host_health", "label": "Host Health", "enabled": False, "toggleable": True, "tools": []}
+        {
+            "id": "role",
+            "label": "Server Manager",
+            "enabled": False,
+            "toggleable": True,
+            "tools": [],
+        }
     ]
 
 
 def test_group_resources_by_capability_keeps_a_disabled_capabilitys_group_with_no_resources():
-    groups = _group_resources_by_capability([], {"host_health": False})
+    # See test_group_resources_by_capability_carries_id_label_and_enabled_state
+    # above - no built-in capability currently owns a resource for real.
+    with patch("src.pages.Capabilities.__index__.resource_capability_ids", return_value={"example"}):
+        groups = _group_resources_by_capability([], {"example": False})
 
     assert groups == [
-        {"id": "host_health", "label": "Host Health", "enabled": False, "toggleable": True, "resources": []}
+        {"id": "example", "label": "example", "enabled": False, "toggleable": True, "resources": []}
     ]
 
 
 def test_group_resources_by_capability_does_not_seed_a_group_for_a_tool_only_capability():
     """"otp" owns no resource, so it must not get an empty, pointless
     resource-section group just because it's a known, enabled
-    capability - only "host_health" (which owns one) should seed here."""
-    groups = _group_resources_by_capability([], {"host_health": True, "otp": True})
+    capability - only a capability that actually owns one should seed
+    here."""
+    with patch("src.pages.Capabilities.__index__.resource_capability_ids", return_value={"example"}):
+        groups = _group_resources_by_capability([], {"example": True, "otp": True})
 
-    assert [group["id"] for group in groups] == ["host_health"]
+    assert [group["id"] for group in groups] == ["example"]

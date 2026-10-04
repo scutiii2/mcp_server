@@ -1,0 +1,7 @@
+{
+  "label": "OpenAI Agent",
+  "port": 9102,
+  "llm": { "provider": "openai" },
+  "persona": "",
+  "focus": "A second opinion from a different model family."
+}

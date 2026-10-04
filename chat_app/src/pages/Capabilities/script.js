@@ -104,8 +104,7 @@ function initCapabilitySections() {
 initCapabilitySections();
 
 // --- Per-capability accordion groups (built-in tools/resources) ---------
-// Groups built-in tools/resources by capability (e.g. "Host Health",
-// "OTP") - see tool_capabilities.py. Same open/closed mechanics as
+// Groups built-in tools/resources by capability (e.g. "Server Manager") - see tool_capabilities.py. Same open/closed mechanics as
 // .ext-group above (toggle .open on header click), collapsed by default
 // for visual consistency with the extension groups sitting right below
 // them in the Tools section. The toggle switch (only rendered for an
@@ -201,16 +200,67 @@ function initToolForms() {
 
 initToolForms();
 
+// Every card's raw-JSON toggle is static markup (result_panel.html),
+// present whether or not that card has been run yet - so these can all
+// be wired once up front, same as initToolCardToggles above, rather than
+// re-wired per response inside renderResult().
+function initResultRawToggles() {
+  const toggles = document.querySelectorAll('.result-raw-toggle');
+  for (const toggle of toggles) {
+    toggle.addEventListener('click', () => {
+      const panel = toggle.closest('.result-panel');
+      const raw = panel.querySelector('.result-raw');
+      const showing = raw.style.display === 'block';
+      raw.style.display = showing ? 'none' : 'block';
+      toggle.textContent = showing ? 'Show raw JSON' : 'Hide raw JSON';
+    });
+  }
+}
+
+initResultRawToggles();
+
+// Renders one /api/try or /api/read-resource response into a card's
+// result panel: Markdown (via marked+DOMPurify, same pipeline Chat's
+// renderMarkdown() uses for "/" command replies) in `.result-formatted`,
+// the untouched raw text in `.result-raw` behind its toggle. `ok` picks
+// which of `text`/`formatted` is trustworthy Markdown - an error message
+// is plain text (see try_tool's exception branch, which never sets
+// `formatted`), so it's shown as-is rather than parsed.
+function renderResult(panel, { ok, text, formatted }) {
+  panel.style.display = 'block';
+  const formattedEl = panel.querySelector('.result-formatted');
+  const rawEl = panel.querySelector('.result-raw');
+  const toggle = panel.querySelector('.result-raw-toggle');
+
+  rawEl.textContent = text;
+  rawEl.style.display = 'none';
+  toggle.textContent = 'Show raw JSON';
+  toggle.style.display = ok ? '' : 'none'; // an error string has no separate raw form worth toggling to
+
+  if (!ok) {
+    formattedEl.textContent = `Error: ${text}`;
+    formattedEl.classList.add('result-error');
+    return;
+  }
+  formattedEl.classList.remove('result-error');
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    // Same CDN-blocked fallback as Chat/script.js's renderMarkdown - fall
+    // back to the raw text rather than leaving the panel blank.
+    formattedEl.textContent = text;
+    return;
+  }
+  formattedEl.innerHTML = DOMPurify.sanitize(marked.parse(formatted || text));
+}
+
 async function runTool(event, toolName) {
   event.preventDefault();
   const form = event.target;
   const container = form.closest('.tool');
-  const pre = container.querySelector('.result');
+  const panel = container.querySelector('.result-panel');
   const args = {};
   new FormData(form).forEach((value, key) => { if (value !== '') args[key] = value; });
 
-  pre.style.display = 'block';
-  pre.textContent = 'Running...';
+  renderResult(panel, { ok: true, text: 'Running...', formatted: 'Running...' });
   try {
     const res = await fetch(`/capabilities/api/try/${encodeURIComponent(toolName)}`, {
       method: 'POST',
@@ -218,9 +268,13 @@ async function runTool(event, toolName) {
       body: JSON.stringify(args),
     });
     const data = await res.json();
-    pre.textContent = data.status === 'ok' ? data.result : `Error: ${data.message}`;
+    if (data.status === 'ok') {
+      renderResult(panel, { ok: true, text: data.result, formatted: data.formatted });
+    } else {
+      renderResult(panel, { ok: false, text: data.message });
+    }
   } catch (err) {
-    pre.textContent = `Request failed: ${err}`;
+    renderResult(panel, { ok: false, text: `Request failed: ${err}` });
   }
   return false;
 }
@@ -229,7 +283,7 @@ async function readResourceForm(event, uriTemplate, params) {
   event.preventDefault();
   const form = event.target;
   const container = form.closest('.tool');
-  const pre = container.querySelector('.result');
+  const panel = container.querySelector('.result-panel');
 
   // Substitute each {param} placeholder with the matching form field's
   // value, building a concrete URI from the template - the resource
@@ -240,8 +294,7 @@ async function readResourceForm(event, uriTemplate, params) {
     uri = uri.replace(`{${p}}`, encodeURIComponent(field ? field.value : ''));
   }
 
-  pre.style.display = 'block';
-  pre.textContent = 'Reading...';
+  renderResult(panel, { ok: true, text: 'Reading...', formatted: 'Reading...' });
   try {
     const res = await fetch('/capabilities/api/read-resource', {
       method: 'POST',
@@ -249,9 +302,13 @@ async function readResourceForm(event, uriTemplate, params) {
       body: JSON.stringify({ uri }),
     });
     const data = await res.json();
-    pre.textContent = data.status === 'ok' ? data.result : `Error: ${data.message}`;
+    if (data.status === 'ok') {
+      renderResult(panel, { ok: true, text: data.result, formatted: data.formatted });
+    } else {
+      renderResult(panel, { ok: false, text: data.message });
+    }
   } catch (err) {
-    pre.textContent = `Request failed: ${err}`;
+    renderResult(panel, { ok: false, text: `Request failed: ${err}` });
   }
   return false;
 }

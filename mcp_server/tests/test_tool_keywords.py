@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.capabilities.host_health import tool as host_health_tool  # noqa: F401
-from src.capabilities.otp import tool as otp_tool  # noqa: F401
+from src.capabilities.server_manager import tool as server_manager_tool  # noqa: F401
 from src.server import mcp
 
 
@@ -20,7 +19,7 @@ async def test_every_built_in_tool_declares_keywords():
     tools = await mcp.list_tools()
     by_name = {t.name: t for t in tools}
 
-    for name in ("get_host_health_tool", "request_otp_tool", "verify_otp_tool"):
-        assert name in by_name, f"{name} not registered"
-        meta = by_name[name].meta
+    assert by_name, "no tools registered"
+    for name, tool in by_name.items():
+        meta = tool.meta
         assert meta is not None and meta.get("keywords"), f"{name} has no declared keywords"

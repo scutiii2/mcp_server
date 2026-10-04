@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Catalog</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #f5f5f7;
+    color: #1a1a1a;
+  }
+  header {
+    padding: 16px 24px;
+    background: #1a1a2e;
+    color: #fff;
+  }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  #status { font-size: 12px; opacity: 0.8; }
+  #status.scanning { color: #ffd166; }
+  .controls {
+    display: flex;
+    gap: 12px;
+    padding: 16px 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  #search {
+    flex: 1;
+    min-width: 200px;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  .tag-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 0 24px 16px;
+  }
+  .tag-filters .tag-sep {
+    width: 1px;
+    background: #ddd;
+    margin: 2px 4px;
+  }
+  .tag-chip {
+    padding: 5px 12px;
+    border: 1px solid #ccc;
+    border-radius: 14px;
+    background: #fff;
+    font-size: 12.5px;
+    cursor: pointer;
+    color: #444;
+  }
+  .tag-chip:hover { border-color: #999; }
+  .tag-chip.active {
+    background: #1a1a2e;
+    border-color: #1a1a2e;
+    color: #fff;
+  }
+  .section-heading {
+    padding: 8px 24px 4px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #666;
+  }
+  .breadcrumbs {
+    padding: 0 24px 12px;
+    font-size: 13px;
+    color: #555;
+  }
+  .breadcrumbs span {
+    cursor: pointer;
+    color: #3355dd;
+  }
+  .breadcrumbs span:hover { text-decoration: underline; }
+  .breadcrumbs .sep { color: #999; margin: 0 6px; cursor: default; }
+  .breadcrumbs .sep:hover { text-decoration: none; }
+  .type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    padding: 0 24px 24px;
+  }
+  .tile {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 14px;
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+  }
+  .tile:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+  .tile-name {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 4px;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  .tile-badges { display: flex; gap: 6px; margin-bottom: 8px; }
+  .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #eef1ff;
+    color: #3344aa;
+  }
+  .badge.project { background: #eafaf0; color: #1a7a3f; }
+  .tile-desc {
+    font-size: 13px;
+    color: #555;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  #empty { padding: 24px; color: #777; }
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  .modal {
+    background: #fff;
+    border-radius: 10px;
+    max-width: 640px;
+    width: 100%;
+    max-height: 85vh;
+    overflow: hidden;
+    padding: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    border: none;
+    background: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #777;
+  }
+  .modal h2 { margin: 0 0 4px; font-size: 18px; }
+  .modal-header {
+    flex: 0 0 auto;
+    padding: 24px 24px 16px;
+    border-bottom: 1px solid #eee;
+    background: #fff;
+  }
+  .modal-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 16px 24px 24px;
+  }
+  .modal .id { font-size: 12px; color: #888; margin: 2px 0; word-break: break-all; }
+  .modal-header .meta { margin: 2px 0 8px; }
+  .modal-header .tile-badges { margin-bottom: 0; }
+  .desc-details { margin-bottom: 16px; }
+  .desc-details summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    padding: 4px 0;
+  }
+  .desc-details summary:hover { color: #1a1a1a; }
+  .modal .desc { margin-top: 8px; white-space: pre-wrap; }
+  .modal h3 { font-size: 13px; text-transform: uppercase; color: #666; margin: 16px 0 6px; }
+  table.params { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.params th, table.params td {
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid #eee;
+  }
+  .methods-list { font-size: 13px; margin: 0; padding-left: 18px; }
+  .meta { font-size: 12px; color: #888; }
+  .show-code-btn {
+    margin-top: 4px;
+    padding: 6px 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #f5f5f7;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .show-code-btn:hover { background: #ececf0; }
+  .show-code-btn:disabled { cursor: default; opacity: 0.6; }
+  .snippet-toolbar {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .copy-btn {
+    padding: 4px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #f5f5f7;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .copy-btn:hover { background: #ececf0; }
+  pre.snippet {
+    margin-top: 6px;
+    padding: 12px;
+    background: #1e1e2e;
+    color: #e0e0e0;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .snippet-error { margin-top: 10px; font-size: 13px; color: #b3261e; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Catalog</h1>
+  <div id="status">loading…</div>
+</header>
+
+<div class="controls">
+  <input id="search" type="text" placeholder="Search name or description…">
+</div>
+
+<div class="tag-filters" id="tag-filters">
+  <span class="tag-chip" data-facet="project" data-value="chat_app">chat_app</span>
+  <span class="tag-chip" data-facet="project" data-value="mcp_server">mcp_server</span>
+  <span class="tag-chip" data-facet="project" data-value="ai_agent">ai_agent</span>
+  <span class="tag-sep"></span>
+  <span class="tag-chip" data-facet="type" data-value="function">function</span>
+  <span class="tag-chip" data-facet="type" data-value="method">method</span>
+  <span class="tag-chip" data-facet="type" data-value="class">class</span>
+</div>
+
+<div class="breadcrumbs" id="breadcrumbs"></div>
+
+<div id="results"></div>
+<div id="empty" hidden>No entries match.</div>
+
+<div class="modal-backdrop" id="modal-backdrop" hidden>
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+let allEntries = [];
+let state = { search: "", projects: new Set(), types: new Set() };
+
+const TYPE_LABELS = { function: "Functions", method: "Methods", class: "Classes" };
+
+const searchInput = document.getElementById("search");
+const tagFilters = document.getElementById("tag-filters");
+const results = document.getElementById("results");
+const empty = document.getElementById("empty");
+const breadcrumbs = document.getElementById("breadcrumbs");
+const statusEl = document.getElementById("status");
+const modalBackdrop = document.getElementById("modal-backdrop");
+const modal = document.getElementById("modal");
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+async function load() {
+  const res = await fetch("/catalog");
+  const data = await res.json();
+  statusEl.textContent = "status: " + data.status;
+  statusEl.className = data.status === "scanning" ? "scanning" : "";
+  allEntries = data.entries || [];
+  render();
+}
+
+function render() {
+  const search = state.search.trim().toLowerCase();
+  const filtered = allEntries.filter(e => {
+    if (state.projects.size && !state.projects.has(e.project)) return false;
+    if (state.types.size && !state.types.has(e.type)) return false;
+    if (search && !(e.name.toLowerCase().includes(search) ||
+                     (e.description || "").toLowerCase().includes(search))) return false;
+    return true;
+  });
+
+  renderTagFilters();
+  renderBreadcrumbs();
+
+  results.innerHTML = "";
+  empty.hidden = filtered.length > 0;
+
+  const byType = new Map();
+  for (const entry of filtered) {
+    if (!byType.has(entry.type)) byType.set(entry.type, []);
+    byType.get(entry.type).push(entry);
+  }
+
+  for (const [type, entries] of [...byType.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const heading = document.createElement("div");
+    heading.className = "section-heading";
+    heading.textContent = `${TYPE_LABELS[type] || type} (${entries.length})`;
+    results.appendChild(heading);
+
+    const sectionGrid = document.createElement("div");
+    sectionGrid.className = "type-grid";
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      tile.innerHTML = `
+        <div class="tile-name">${escapeHtml(entry.name)}</div>
+        <div class="tile-badges">
+          <span class="badge">${escapeHtml(entry.type)}</span>
+          <span class="badge project">${escapeHtml(entry.project)}</span>
+        </div>
+        <div class="tile-desc">${escapeHtml(entry.description || "")}</div>
+      `;
+      tile.addEventListener("click", () => openModal(entry));
+      sectionGrid.appendChild(tile);
+    }
+    results.appendChild(sectionGrid);
+  }
+}
+
+function renderTagFilters() {
+  for (const chip of tagFilters.querySelectorAll(".tag-chip")) {
+    const facetSet = chip.dataset.facet === "project" ? state.projects : state.types;
+    chip.classList.toggle("active", facetSet.has(chip.dataset.value));
+  }
+}
+
+tagFilters.addEventListener("click", (ev) => {
+  const chip = ev.target.closest(".tag-chip");
+  if (!chip) return;
+  const facetSet = chip.dataset.facet === "project" ? state.projects : state.types;
+  const value = chip.dataset.value;
+  if (facetSet.has(value)) facetSet.delete(value);
+  else facetSet.add(value);
+  render();
+});
+
+function renderBreadcrumbs() {
+  const parts = [];
+  parts.push(`<span data-action="clear-all">All</span>`);
+  for (const value of [...state.projects, ...state.types]) {
+    parts.push(`<span class="sep">/</span>`);
+    parts.push(`<span data-action="clear-tag" data-value="${escapeHtml(value)}">${escapeHtml(value)}</span>`);
+  }
+  if (state.search) {
+    parts.push(`<span class="sep">/</span>`);
+    parts.push(`<span data-action="clear-search">"${escapeHtml(state.search)}"</span>`);
+  }
+  breadcrumbs.innerHTML = parts.join("");
+}
+
+breadcrumbs.addEventListener("click", (ev) => {
+  const action = ev.target.dataset.action;
+  if (action === "clear-all") {
+    state.search = "";
+    state.projects.clear();
+    state.types.clear();
+    searchInput.value = "";
+    render();
+  } else if (action === "clear-search") {
+    state.search = "";
+    searchInput.value = "";
+    render();
+  } else if (action === "clear-tag") {
+    const value = ev.target.dataset.value;
+    state.projects.delete(value);
+    state.types.delete(value);
+    render();
+  }
+});
+
+function openModal(entry) {
+  const params = entry.parameters || [];
+  const paramsHtml = params.length
+    ? `<table class="params">
+        <tr><th>name</th><th>annotation</th><th>default</th></tr>
+        ${params.map(p => `<tr>
+          <td>${escapeHtml(p.name)}</td>
+          <td>${p.annotation ? escapeHtml(p.annotation) : "&mdash;"}</td>
+          <td>${p.default !== null && p.default !== undefined ? escapeHtml(p.default) : "&mdash;"}</td>
+        </tr>`).join("")}
+       </table>`
+    : `<div class="meta">No parameters.</div>`;
+
+  const methodsHtml = entry.methods
+    ? `<h3>Methods</h3><ul class="methods-list">${entry.methods.map(m => `<li>${escapeHtml(m)}</li>`).join("")}</ul>`
+    : "";
+
+  modal.innerHTML = `
+    <button class="modal-close" aria-label="Close">&times;</button>
+    <div class="modal-header">
+      <h2>${escapeHtml(entry.name)}</h2>
+      <div class="id">${escapeHtml(entry.id)}</div>
+      <div class="meta">${escapeHtml(entry.file)}:${entry.line}</div>
+      <div class="tile-badges">
+        <span class="badge">${escapeHtml(entry.type)}</span>
+        <span class="badge project">${escapeHtml(entry.project)}</span>
+      </div>
+    </div>
+    <div class="modal-body">
+      <details class="desc-details">
+        <summary>Description</summary>
+        <div class="desc">${escapeHtml(entry.description || "No description.")}</div>
+      </details>
+      <h3>Parameters</h3>
+      ${paramsHtml}
+      ${methodsHtml}
+      <button class="show-code-btn" id="show-code-btn">Show code</button>
+      <div id="snippet-container"></div>
+    </div>
+  `;
+  modal.querySelector(".modal-close").addEventListener("click", closeModal);
+  modal.querySelector("#show-code-btn").addEventListener("click", (ev) => loadSnippet(entry.id, ev.target));
+  modalBackdrop.hidden = false;
+}
+
+async function loadSnippet(entryId, button) {
+  const container = document.getElementById("snippet-container");
+  button.disabled = true;
+  button.textContent = "Loading…";
+  try {
+    const res = await fetch(`/catalog/${encodeURIComponent(entryId)}/snippet`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      container.innerHTML = `<div class="snippet-error">${escapeHtml(body.error || "Snippet unavailable.")}</div>`;
+      button.remove();
+      return;
+    }
+    const data = await res.json();
+    container.innerHTML = `
+      <div class="snippet-toolbar">
+        <button class="copy-btn" id="copy-snippet-btn">Copy</button>
+      </div>
+      <pre class="snippet">${escapeHtml(data.snippet)}</pre>
+    `;
+    container.querySelector("#copy-snippet-btn").addEventListener("click", (ev) => copySnippet(data.snippet, ev.target));
+    button.remove();
+  } catch (err) {
+    container.innerHTML = `<div class="snippet-error">Failed to load snippet.</div>`;
+    button.disabled = false;
+    button.textContent = "Show code";
+  }
+}
+
+async function copySnippet(snippet, button) {
+  try {
+    await navigator.clipboard.writeText(snippet);
+    const original = button.textContent;
+    button.textContent = "Copied!";
+    setTimeout(() => { button.textContent = original; }, 1500);
+  } catch (err) {
+    button.textContent = "Copy failed";
+  }
+}
+
+function closeModal() {
+  modalBackdrop.hidden = true;
+}
+
+modalBackdrop.addEventListener("click", (ev) => {
+  if (ev.target === modalBackdrop) closeModal();
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") closeModal();
+});
+
+searchInput.addEventListener("input", () => {
+  state.search = searchInput.value;
+  render();
+});
+
+load();
+</script>
+</body>
+</html>

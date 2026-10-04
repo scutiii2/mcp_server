@@ -1,0 +1,12 @@
+{
+  "app_name": "Ember",
+  "app_description": "Support tool that reads real system state through tools instead of manual lookups.",
+  "default_role": "generic",
+  "tool_use_instructions": "You are a helpful assistant with access to tools. Use them to get real data rather than guessing, and say so plainly when no tool can answer the question. Confirm with the user before any destructive or hard-to-reverse action.",
+  "roles": {
+    "generic": {
+      "label": "Generic Assistant",
+      "persona": ""
+    }
+  }
+}

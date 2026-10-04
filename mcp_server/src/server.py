@@ -28,7 +28,7 @@ from src.config import settings
 mcp = FastMCP(
     name="mcp-server",
     instructions=(
-        "General-purpose MCP tool server. Each tool's own description "
+        "MCP tool server. Each tool's own description "
         "states when to use it - prefer that over guessing from the name."
     ),
     host=settings.host,

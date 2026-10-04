@@ -1,0 +1,292 @@
+"""ai_agent entry point - a FastMCP server exposing ask/status/cancel
+tools to chat_app, backed by one pinned LLM provider (agent_config.py)
+that itself talks to mcp_server as an MCP client (mcp_upstream.py).
+
+Run with:
+    python -m src.server
+    python -m src.server --gateway openrouter
+    python -m src.server --role ops_specialist
+    python -m src.server --mcp-url http://127.0.0.1:8010/mcp
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from typing import Any
+
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument(
+    "--gateway",
+    help=(
+        "Override this run's gateway block (configs/config_llms.json), "
+        "e.g. openrouter/bedrock/vertex/litellm/helicone/portkey for "
+        "anthropic, or azure/together/groq/fireworks/deepinfra/"
+        "perplexity/ollama/vllm for openai. Takes precedence over "
+        "AI_AGENT_GATEWAY. Set before importing "
+        "agent_config, since the provider resolves its client/default "
+        "model from the gateway at import time."
+    ),
+)
+_parser.add_argument(
+    "--role",
+    help=(
+        "Override this run's persona role (configs/config_ai_agent_roles.json), "
+        "e.g. ops_specialist. Takes precedence over AI_AGENT_ROLE. Set "
+        "before importing agent_config, since agent_roles resolves "
+        "SYSTEM_PROMPT from the role at import time, same as --gateway "
+        "above."
+    ),
+)
+_parser.add_argument(
+    "--mcp-url",
+    help=(
+        "Override the mcp_server URL this agent connects to as an MCP "
+        "client (configs/config_servers.json's 'main' entry), e.g. "
+        "http://127.0.0.1:8010/mcp to point at a different host/port. "
+        "Takes precedence over MCP_SERVER_URL. Set before mcp_upstream.connect() "
+        "runs in main() below."
+    ),
+)
+_args, _ = _parser.parse_known_args()
+if _args.gateway:
+    os.environ["AI_AGENT_GATEWAY"] = _args.gateway
+if _args.role:
+    os.environ["AI_AGENT_ROLE"] = _args.role
+if _args.mcp_url:
+    os.environ["MCP_SERVER_URL"] = _args.mcp_url
+
+# A supervised child (see supervisor.py) gets its agent file in
+# AI_AGENT_FILE. Its provider/gateway/model must reach the env vars before
+# agent_config is imported (the providers resolve them at import time), so
+# this runs first. agent_spec imports nothing from this project.
+from src import agent_spec
+
+if os.getenv("AI_AGENT_FILE"):
+    try:
+        agent_spec.apply_to_environ(agent_spec.current())
+    except agent_spec.AgentSpecError as _exc:
+        sys.stderr.write(f"\nai_agent cannot start - agent file error:\n  {_exc}\n\n")
+        sys.exit(1)
+
+import uvicorn
+from mcp.server.fastmcp import Context, FastMCP
+
+# agent_config resolves provider/key/role/config files at import time and
+# raises on a bad value; show that as one clean line instead of a traceback.
+# Anything else (a real bug, ImportError...) still propagates untouched.
+_CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError", "AgentSpecError"}
+try:
+    from src import agent_config, agent_events, agent_registry, approvals, internal_auth, mcp_upstream, usage_log
+    from src.llm.base_provider import ChatCancelled
+except Exception as _exc:
+    if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
+        raise
+    sys.stderr.write(f"\nai_agent cannot start - configuration error:\n  {_exc}\n\n")
+    sys.exit(1)
+
+HOST = os.getenv("AI_AGENT_HOST", "127.0.0.1")
+PORT = int(os.getenv("AI_AGENT_PORT", "9100"))
+
+# HOST may be a bind-all address (0.0.0.0) that isn't itself reachable -
+# the URL this instance registers under (see register()/deregister()
+# below) needs an address a peer on the same machine can actually
+# connect to, so it falls back to loopback rather than publishing 0.0.0.0.
+SPEC = agent_spec.current()
+_AGENT_ID = SPEC.id
+# An env-var instance has no label of its own: keep today's "<vendor> Agent".
+_AGENT_LABEL = SPEC.label or f"{agent_config.status()['vendor_label']} Agent"
+_AGENT_URL = f"http://{HOST if HOST not in ('0.0.0.0', '') else '127.0.0.1'}:{PORT}/mcp"
+
+mcp = FastMCP(
+    name=f"ai-agent-{_AGENT_ID}",
+    instructions=(
+        f"Chat agent backed by {agent_config.PROVIDER_ID} "
+        f"({agent_config.MODEL or 'provider default'}), with tool access to "
+        "mcp_server. Call ask() with a question."
+    ),
+    host=HOST,
+    port=PORT,
+)
+
+
+def _request_headers(ctx: Context | None) -> Any:
+    """The HTTP headers of the request this tool call arrived on, or None
+    (no ctx, or a transport without HTTP requests)."""
+    if ctx is None:
+        return None
+    try:
+        request = ctx.request_context.request
+    except ValueError:
+        return None
+    return getattr(request, "headers", None)
+
+
+def _cancelled_result() -> dict[str, Any]:
+    """Same shape ask() returns for a normal turn, so chat_app's client
+    doesn't need a separate code path - just a "⏹️ Cancelled." response
+    with no tool activity. This is a normal (non-error) structured
+    result: the user hitting Stop is an expected action, not a failure,
+    matching chat_app's own pre-migration ChatCancelled handling."""
+    return {
+        "response": "⏹️ Cancelled.",
+        "tools_used": [],
+        "tool_calls": [],
+        "total_tokens": None,
+        "context_tokens": None,
+        "context_window": agent_config.status()["context_window"],
+        "provider_id": agent_config.PROVIDER_ID,
+        "model": agent_config.MODEL or agent_config.status()["model"],
+        "cancelled": True,
+    }
+
+
+@mcp.tool()
+async def ask(
+    question: str,
+    history: list[dict[str, Any]] | None = None,
+    enabled_extensions: list[str] | None = None,
+    request_id: str | None = None,
+    depth: int = 0,
+    caveman: bool = False,
+    approval_mode: str = "off",
+    allowed_tools: list[str] | None = None,
+    delegated_by: str | None = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Ask this agent a question. Runs its own tool-calling loop against
+    mcp_server (up to max_tool_rounds from config_token_limits.json) before returning a final answer.
+    request_id, if given, can be passed to cancel() to stop this turn
+    cooperatively before its next round. depth is set only by a
+    delegating peer's own delegate_to_agent call (see delegation.py) -
+    chat_app never sets it, so it defaults to 0 for every top-level call.
+    caveman appends terse-reply instructions to the system prompt for this
+    turn only.
+    approval_mode: "off" (default), "ask" (the user answers, through
+    decide(), before each tool not in allowed_tools runs) or "deny" (such
+    tools are refused; a delegating agent's sub-agent gets this).
+    delegated_by: the orchestrator's agent id when another agent delegated
+    this question (see delegation.py); recorded in usage rows.
+    ctx, if the MCP client requested it, is FastMCP's injected Context -
+    used below only to relay run_chat's live step/token events as MCP
+    progress notifications; chat_app's own tool call never needs to pass
+    it explicitly, FastMCP supplies it automatically per request."""
+
+    async def on_event(event: dict[str, Any]) -> None:
+        # progress/total are left at 0/None - chat_app's client reads
+        # only the message string (a JSON-encoded event dict), not a
+        # percentage, so there's nothing meaningful to report there.
+        # ctx is None when this agent is called directly (tests, or an
+        # MCP client that didn't request progress) - a no-op then,
+        # since run_chat's on_event is always invoked either way.
+        if ctx is not None:
+            await ctx.report_progress(0, None, json.dumps(agent_events.stamp(event, _AGENT_ID, _AGENT_LABEL)))
+
+    # The asking user, from ember_api's / chat_app's identity headers; every
+    # mcp_server tool this turn calls carries it on (see internal_auth.py).
+    started_at = agent_events.now_iso()
+    requester_token = internal_auth.bind_requester(internal_auth.Requester.from_headers(_request_headers(ctx)))
+    try:
+        result = await agent_config.run_chat(
+            question, history or [], enabled_extensions or [], request_id, depth,
+            on_event=on_event, caveman=caveman, approval_mode=approval_mode, allowed_tools=allowed_tools,
+        )
+    except ChatCancelled:
+        return _cancelled_result()
+    finally:
+        internal_auth.reset_requester(requester_token)
+    own_usage = usage_log.own_row(
+        result, agent_id=_AGENT_ID, agent_label=_AGENT_LABEL, gateway=SPEC.effective_gateway(),
+        started_at=started_at, finished_at=agent_events.now_iso(), delegated_by=delegated_by,
+    )
+    await usage_log.append({**own_usage, "request_id": request_id, "depth": depth})
+    return {
+        "response": result.response,
+        "tools_used": result.tools_used,
+        "tool_calls": [
+            {"name": c.name, "arguments": c.arguments, "result": c.result} for c in result.tool_calls
+        ],
+        "total_tokens": result.total_tokens,
+        # Own usage first, then every delegated agent's, so callers can
+        # break tokens down per agent (who, which provider/gateway, when).
+        "agent_usage": [own_usage, *result.delegated_usage],
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
+        "context_tokens": result.context_tokens,
+        "context_window": agent_config.status()["context_window"],
+        "provider_id": result.provider_id,
+        "model": result.model,
+        "cancelled": False,
+    }
+
+
+@mcp.tool()
+def interpret(text: str) -> dict[str, Any]:
+    """One completion over `text` - no tool-calling loop, no tool calls
+    offered. Used by chat_app's summarization (see services/summarization.py)
+    for a plain prompt-in, text-out step; `ask()` remains what a free-form
+    chat question goes through, tool selection and all."""
+    result = agent_config.run_interpret(text)
+    return {
+        "response": result.response,
+        "provider_id": result.provider_id,
+        "model": result.model,
+        "total_tokens": result.total_tokens,
+        "context_tokens": result.context_tokens,
+        "context_window": agent_config.status()["context_window"],
+    }
+
+
+@mcp.tool()
+def status() -> dict[str, Any]:
+    """Live availability of this agent's pinned provider. `tool_approval`
+    says ask() understands approval_mode, so a caller that needs tools asked
+    about can refuse an agent that would ignore it."""
+    return {**agent_config.status(), "tool_approval": True}
+
+
+@mcp.tool()
+async def decide(request_id: str, step_id: str, decision: str) -> dict[str, Any]:
+    """Answers a tool-approval request an ask() call in "ask" mode raised
+    (an `approval_request` event): decision is "allow", "always" (allow, and
+    stop asking for this tool for the rest of the turn) or "deny". Returns
+    {"decided": False} when nothing is waiting for that request and step -
+    unknown, already answered, or the turn ended."""
+    return {"decided": approvals.BROKER.decide(request_id, step_id, decision)}
+
+
+@mcp.tool()
+def cancel(request_id: str) -> dict[str, Any]:
+    """Cooperatively cancel an in-flight ask() call with this request_id
+    on this agent instance. Best-effort: an unknown/already-finished id
+    is not an error, just a no-op (cancelled: False)."""
+    return {"cancelled": agent_config.cancel(request_id)}
+
+
+def main() -> None:
+    mcp_upstream.connect()
+    mcp_upstream.warn_unmatched_tool_globs()
+    agent_registry.register(
+        _AGENT_ID, _AGENT_LABEL, _AGENT_URL,
+        entry=SPEC.entry, orchestrator=SPEC.orchestrator, focus=SPEC.focus,
+    )
+    try:
+        # Same app, host, port and log level mcp.run(transport="streamable-http")
+        # would use, built explicitly so middleware can be added here. No CORS:
+        # only servers call this agent (chat_app directly, ember_web's browser
+        # via ember_api's proxy), never a browser - which is also why /mcp
+        # can require the shared internal token (once one is configured).
+        app = mcp.streamable_http_app()
+        app.add_middleware(internal_auth.InternalTokenMiddleware, token=internal_auth.TOKEN)
+        if not internal_auth.TOKEN:
+            print("ai_agent: /mcp has no auth - set INTERNAL_API_TOKEN in secrets/secret_internal_api.env", flush=True)
+        uvicorn.run(app, host=HOST, port=PORT, log_level=mcp.settings.log_level.lower())
+    finally:
+        agent_registry.deregister(_AGENT_ID)
+        mcp_upstream.close()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,7 @@
+{
+  "smtp_server": "smtp.gmail.com",
+  "smtp_port": 465,
+  "security": "ssl",
+  "from": "you@gmail.com",
+  "password": "${SMTP_PASSWORD}"
+}

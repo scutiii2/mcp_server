@@ -1,7 +1,7 @@
 from flask import Flask
 
 from src.models import Account, db
-from src.run import BASE_DIR, create_app
+from src.run import DATA_DIR, create_app
 
 
 def test_create_app_returns_flask_app(tmp_path):
@@ -44,4 +44,4 @@ def test_create_app_ensures_data_dir_exists(tmp_path):
         "TESTING": True,
     })
 
-    assert (BASE_DIR / "data").is_dir()
+    assert DATA_DIR.is_dir()

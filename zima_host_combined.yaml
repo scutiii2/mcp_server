@@ -1,0 +1,164 @@
+# ZimaOS "Install a customized app" - combined Docker Compose for
+# mcp_server + chat_app as ONE app install.
+#
+# This merges mcp_server/zima_host.yaml and chat_app/zima_host.yaml. Use
+# this instead of the two separate files if you'd rather manage both
+# containers as a single ZimaOS app (one entry to start/stop/redeploy).
+# Downside: redeploying one service (e.g. to pick up a code change)
+# restarts both, since ZimaOS treats the whole file as one app. If you
+# want independent lifecycles, use the two separate files instead.
+#
+# Setup:
+#   1) Copy mcp_server/'s contents (everything EXCEPT venv_mcp/, .env,
+#      __pycache__, *.egg-info) to one folder on your ZimaOS storage,
+#      and chat_app/'s contents (everything EXCEPT venv_chat/, .env,
+#      __pycache__, *.egg-info) to a second folder. *.egg-info is a
+#      `pip install -e .` byproduct from local dev - gitignored, so a
+#      plain file copy (unlike `git clone`) brings it along anyway if
+#      you don't exclude it by hand. Doesn't just waste space: pip
+#      inside the container tries to re-stamp that already-existing
+#      directory's mtime as part of `pip install .`, and on some
+#      filesystems that update fails outright - "Cannot update time
+#      stamp of directory '.../*.egg-info'" - which loops forever under
+#      `restart: always` since the container never gets past install.
+#      Fix on an already-affected NAS: delete the copied *.egg-info
+#      directory and restart the container; pip regenerates it fresh.
+#   2) Edit both volume paths below to point at those folders.
+#   3) chat_app's own secrets DON'T come from this file - see the big
+#      comment in its `environment:` block below for why, and create
+#      the *.env files it names inside the folder you copied in step 1.
+#   4) Fill in every [PLACE ... HERE] placeholder below.
+#   5) App Store -> Install a customized app -> paste this whole file ->
+#      Install.
+#
+# MCP_SERVER_URL below points at your NAS's LAN hostname/IP and the
+# published port (8010:8010), NOT the compose service name
+# (http://mcp_server:8010). In principle "Install a customized app"
+# runs every service in the pasted file as one Compose project, which
+# would put them on one auto-created network and make the service name
+# resolve - in practice ZimaOS has been observed silently deploying
+# each service as its own project/network instead (confirmed via
+# `docker inspect <container> --format '{{json .Config.Labels}}'` -
+# look for mismatched `com.docker.compose.project` values), which
+# breaks that DNS name with no obvious error beyond "unhandled errors
+# in a TaskGroup" wherever chat_app tries to use it. The LAN
+# hostname/port route works either way since it goes through the
+# `ports:` mapping instead of relying on that shared network.
+
+version: '3.8'
+services:
+  mcp_server:
+    # slim (glibc), not alpine (musl) - paramiko pulls in `cryptography`,
+    # a compiled dependency that reliably has prebuilt wheels for glibc
+    # but not always for musl, which means a from-source build (needing
+    # a C/Rust toolchain nothing here installs) instead of a plain
+    # `pip install`.
+    image: python:3.13-slim
+    container_name: mcp-server
+    volumes:
+      # EDIT THIS: wherever you copied mcp_server's contents to on the NAS.
+      - "/media/YOUR-HDD/mcp_server:/app"
+      # Only needed if you enable server_manager in
+      # config_capabilities.json (disabled by default) - it lets that
+      # capability control sibling containers on this same Docker
+      # daemon via docker.from_env(). Uncomment if/when you turn it on;
+      # see capabilities/server_manager/README.md for the tradeoff
+      # (this grants whoever can reach port 8010 full control over
+      # every container on the NAS, since this server has no auth).
+      # - "/var/run/docker.sock:/var/run/docker.sock"
+    working_dir: /app
+    entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
+    restart: always
+    ports:
+      - "8010:8010"
+    environment:
+      # mcp_server reads all of its secrets straight from process env
+      # (src/config.py's Settings calls os.getenv() directly), so every
+      # key below works exactly as set here - unlike chat_app, see that
+      # service's comment.
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8010"
+      # Only needed if config_email.json actually references
+      # ${SMTP_PASSWORD} (it does by default) - an app-specific
+      # password, not your account password. See
+      # src/configs/README.md for Gmail/Outlook/Proton examples. Delete
+      # this line if you don't use email at all - a ${VAR} that
+      # resolves to empty fails startup on purpose.
+      SMTP_PASSWORD: "[PLACE YOUR SMTP APP PASSWORD HERE]"
+      # host_health is disabled by default in config_capabilities.json -
+      # these three only matter once you enable it.
+      SSH_HOST_KEY_POLICY: "reject"
+      SSH_KNOWN_HOSTS: "/app/known_hosts"
+      # Name matches config_hosts.json's "zima" entry
+      # (`"password": "${ZIMA_SSH_PASSWORD}"`) - only used as a fallback
+      # if that entry's "key" path doesn't resolve. Speaking of which:
+      # that "key" is currently a Windows path
+      # (C:/Users/User/.ssh/id_ed25519), which won't exist inside this
+      # Linux container - fix config_hosts.json itself (point "key" at
+      # a path under /app that you've mounted a real Linux private key
+      # into, or drop "key" and rely on this password) before enabling
+      # host_health.
+      ZIMA_SSH_PASSWORD: "[PLACE YOUR SSH PASSWORD HERE]"
+
+  chat_app:
+    # slim (glibc), not alpine (musl) - same reasoning as mcp_server:
+    # pydantic_core is a compiled dependency, and glibc has more
+    # reliable prebuilt-wheel coverage than musl.
+    image: python:3.13-slim
+    container_name: chat-app
+    depends_on:
+      # Starts mcp_server's container first. Not a readiness wait (pip
+      # install still has to finish inside it), so chat_app's extension
+      # sidebar may show empty for the first several seconds after a
+      # fresh install/restart - it degrades gracefully and doesn't crash.
+      - mcp_server
+    volumes:
+      # EDIT THIS: wherever you copied chat_app's contents to on the NAS.
+      - "/media/YOUR-HDD/chat_app:/app"
+    working_dir: /app
+    entrypoint: ["sh", "-c", "pip install . && python -m src.run"]
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      # Flask's dev server defaults to host=127.0.0.1 (loopback INSIDE
+      # this container - the ports: mapping above can't reach it
+      # without this) and debug=true (Werkzeug's debugger is a code-exec
+      # risk on anything reachable off your own machine, and its
+      # auto-reloader is why a plain `docker logs` shows "Restarting
+      # with stat"). See src/run.py's __main__ block.
+      CHAT_HOST: "0.0.0.0"
+      CHAT_PORT: "5000"
+      CHAT_DEBUG: "false"
+      # Unlike mcp_server, chat_app's SECRET_KEY, bootstrap-admin, and
+      # SMTP settings are read ONLY from *.env files under
+      # src/secrets/ (create_app() calls load_env_secrets(), which
+      # opens a literal file - it never looks at os.environ). Setting
+      # them here as compose `environment:` entries silently does
+      # nothing: SECRET_KEY falls back to a well-known insecure dev
+      # default, the bootstrap admin gets a random auto-generated
+      # password printed to `docker logs chat-app` once, and SMTP
+      # settings fall back to a localhost relay that isn't there (mail
+      # just fails quietly - invites still work without it).
+      #
+      # Fix: in the folder you copied chat_app's contents into (step 1
+      # above), copy these three under src/secrets/ and fill them in
+      # there instead of below:
+      #   secret_app.env.example            -> secret_app.env            (SECRET_KEY)
+      #   secret_bootstrap_admin.env.example -> secret_bootstrap_admin.env (BOOTSTRAP_ADMIN_*)
+      #   secret_smtp.env.example           -> secret_smtp.env           (SMTP_*, MAIL_FROM_ADDRESS)
+      # See chat_app/src/secrets/README.md.
+      #
+      # These four ARE read from process env directly (settings.py /
+      # each provider module calls os.getenv() itself), so they work
+      # exactly as set here:
+      OPENAI_MODEL: "gpt-5.6-sol"
+      CLAUDE_MODEL: "claude-sonnet-5"
+      # See the note atop this file on why this is a LAN hostname/port,
+      # not the compose service name.
+      MCP_SERVER_URL: "http://[YOUR NAS LAN IP OR HOSTNAME]:8010/mcp"
+      OLLAMA_BASE_URL: "http://scutiserver1.local:11434/v1"
+      # Leave blank to grey out that provider in the chat page's
+      # dropdown instead of erroring - fill in whichever you use.
+      OPENAI_API_KEY: "[PLACE YOUR OPENAI API KEY HERE]"
+      ANTHROPIC_API_KEY: "[PLACE YOUR ANTHROPIC API KEY HERE]"

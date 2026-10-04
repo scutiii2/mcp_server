@@ -18,6 +18,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user
 
 from src.services.authz import has_permission, register_permission, require_login, require_permission
+from src.services.command_formatting import format_command_result
 from src.services.mcp_client import (
     call_tool,
     fetch_capabilities,
@@ -32,6 +33,7 @@ from src.services.tool_capabilities import (
     capability_for_tool,
     is_real_capability,
     label_for_capability,
+    refresh_from,
     resource_capability_ids,
 )
 from src.services.tool_titles import title_for
@@ -64,16 +66,24 @@ def _fetch_extensions_or_empty() -> list[dict]:
 
 
 def _fetch_capability_states_or_empty() -> dict[str, bool]:
-    """{"host_health": True, "otp": False, ...} - live from mcp_server,
+    """{"server": True, ...} - live from mcp_server,
     not the config file, so a change made from another tab/user shows up
     on the next page load. Same degrade-gracefully reasoning as
     _fetch_extensions_or_empty(): an unreachable mcp_server shouldn't
     blank the whole page, it should just mean no toggle state (and no
-    switches, see capabilities.html) is shown."""
+    switches, see capabilities.html) is shown.
+
+    Also refreshes tool_capabilities.py's tool/resource -> capability
+    cache from this same response on every success - this is the "just
+    reconnected" moment that module's docstring refers to, and reusing
+    this call means no second round-trip to mcp_server just to learn the
+    same thing twice."""
     try:
-        return {status["name"]: status["enabled"] for status in fetch_capabilities()}
+        capabilities = fetch_capabilities()
     except Exception:  # noqa: BLE001
         return {}
+    refresh_from(capabilities)
+    return {status["name"]: status["enabled"] for status in capabilities}
 
 
 def _serialize_tools(extensions: list[dict] | None = None) -> list[dict]:
@@ -159,7 +169,7 @@ def _group_resources_by_capability(resources: list[dict], capability_states: dic
     # Same "seed before populating" reasoning as _group_tools_by_capability
     # above, scoped to capabilities that actually own a resource - seeding
     # from every known capability would also produce an empty, pointless
-    # resource group for a tool-only capability like "otp".
+    # resource group for a tool-only capability like a tool-only one.
     seed_ids = capability_states.keys() & resource_capability_ids()
     grouped: dict[str, list[dict]] = {name: [] for name in seed_ids}
     for resource in resources:
@@ -257,7 +267,12 @@ def try_tool(tool_name: str):
     arguments = request.get_json(silent=True) or {}
     try:
         result = call_tool(tool_name, arguments)
-        return jsonify({"status": "ok", "result": result})
+        # `formatted` is the same Markdown rendering the chat page's "/"
+        # commands already get (see command_formatting.py) - `result`
+        # stays the raw JSON text underneath for the "Show raw JSON"
+        # toggle (script.js's runTool), same as chat keeps the raw tool
+        # result in tool_calls even though the bubble shows Markdown.
+        return jsonify({"status": "ok", "result": result, "formatted": format_command_result(result)})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"status": "error", "message": str(exc)}), 500
 
@@ -271,7 +286,7 @@ def read_resource_route():
         return jsonify({"status": "error", "message": "Missing uri"}), 400
     try:
         result = read_resource(uri)
-        return jsonify({"status": "ok", "result": result})
+        return jsonify({"status": "ok", "result": result, "formatted": format_command_result(result)})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"status": "error", "message": str(exc)}), 500
 

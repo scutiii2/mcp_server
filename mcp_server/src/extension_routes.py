@@ -2,7 +2,7 @@
 add/remove.
 
 Mounted onto the Starlette app that ``mcp.streamable_http_app()`` returns,
-the same technique approval_routes.py uses (see ``run.py``): plain HTTP
+the same technique command_routes.py uses (see ``run.py``): plain HTTP
 routes alongside the MCP surface, not tools - there's nothing here a model
 needs to call, only something a human-facing UI (chat_app's sidebar,
 being built concurrently against these routes) polls and drives.
@@ -42,8 +42,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from src.config import settings
-from src.infra import extensions
-from src.infra.app_config import ExtensionConfig
+from src.services import extensions
+from src.services.app_config import ExtensionConfig
 
 # Anything that isn't a lowercase letter or digit collapses to a single
 # "_". That alone guarantees the result never contains "__"

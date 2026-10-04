@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src import commands
-from src.infra import capability_registry
+from src.services import capability_registry
 
 
 def _spec_json(spec: commands.CommandSpec) -> dict[str, str]:

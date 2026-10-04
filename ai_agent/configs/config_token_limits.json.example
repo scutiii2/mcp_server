@@ -1,0 +1,15 @@
+{
+  "default": {
+    "max_output_tokens": 2048,
+    "max_context_tokens": 100000,
+    "max_tool_rounds": 15
+  },
+  "anthropic": {},
+  "openai": {
+    "gateways": {
+      "ollama": {
+        "max_context_tokens": 16384
+      }
+    }
+  }
+}

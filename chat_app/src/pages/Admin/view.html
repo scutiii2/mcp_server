@@ -3,16 +3,39 @@
 {% block sidebar %}{% include "sidebar.html" %}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('admin.static', filename='style.css') }}">
+
+{% macro grant_combobox(action, field_name, options, placeholder) %}
+<form method="post" action="{{ action }}" class="entity-grant">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+  <button type="submit">Grant</button>
+  <div class="combobox" data-combobox>
+    <input type="text" class="combobox-input" placeholder="{{ placeholder }}" autocomplete="off">
+    <input type="hidden" name="{{ field_name }}" class="combobox-value">
+    <div class="combobox-options" hidden>
+      {% for value, label in options %}
+      <div class="combobox-option" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</div>
+      {% endfor %}
+    </div>
+  </div>
+</form>
+{% endmacro %}
+
 <h1>Admin</h1>
+
+<div class="search-bar">
+  <input type="search" id="admin-search" placeholder="Search accounts, roles, permissions…" autocomplete="off">
+</div>
 
 <div data-tabs>
   <div class="tabs" role="tablist">
     <button type="button" class="tab-btn{% if active_tab == 'roles' %} active{% endif %}" data-tab="roles">Roles</button>
     <button type="button" class="tab-btn{% if active_tab == 'accounts' %} active{% endif %}" data-tab="accounts">Accounts</button>
+    <button type="button" class="tab-btn{% if active_tab == 'permissions' %} active{% endif %}" data-tab="permissions">Permissions</button>
     <button type="button" class="tab-btn{% if active_tab == 'invites' %} active{% endif %}" data-tab="invites">Invites</button>
   </div>
 
   <section class="tab-panel" data-tab-panel="roles"{% if active_tab != 'roles' %} hidden{% endif %}>
+    <h2>Roles</h2>
     <form method="post" action="{{ url_for('admin.create_role') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
       <input type="text" name="name" placeholder="Role name" required>
@@ -21,69 +44,152 @@
     </form>
 
     {% for role in roles %}
-    <div class="role">
-      <div class="role-header">
-        <form method="post" action="{{ url_for('admin.update_role', role_id=role.id) }}" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
-          <input type="text" name="name" value="{{ role.name }}" required>
-          <input type="text" name="description" value="{{ role.description or '' }}" placeholder="Description">
-          <button type="submit">Save</button>
-        </form>
-        <form method="post" action="{{ url_for('admin.delete_role', role_id=role.id) }}" class="inline" data-confirm="Delete role '{{ role.name }}'? This removes it from every account and cannot be undone.">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
-          <button type="submit">Delete</button>
-        </form>
+    <div class="role" data-search="{{ role.name }} {{ role.description or '' }}">
+      <form id="role-edit-{{ role.id }}" class="form-shell" method="post" action="{{ url_for('admin.update_role', role_id=role.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+      </form>
+      <form id="role-delete-{{ role.id }}" class="form-shell" method="post" action="{{ url_for('admin.delete_role', role_id=role.id) }}" data-confirm="Delete role '{{ role.name }}'? This removes it from every account and cannot be undone.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+      </form>
+
+      <div class="entity-top">
+        <input type="text" name="name" form="role-edit-{{ role.id }}" value="{{ role.name }}" required>
+        <input type="text" name="description" form="role-edit-{{ role.id }}" value="{{ role.description or '' }}" placeholder="Description">
       </div>
-      <ul>
+
+      <div class="entity-list">
         {% for permission in role.permissions %}
-        <li>
-          {{ permission.name }}
-          <form method="post" action="{{ url_for('admin.remove_permission', role_id=role.id) }}" class="inline" data-confirm="Revoke '{{ permission.name }}' from role '{{ role.name }}'?">
+        <div class="entity-list-row">
+          <input type="text" value="{{ permission.name }}" readonly>
+          <form method="post" action="{{ url_for('admin.remove_permission', role_id=role.id) }}" data-confirm="Revoke '{{ permission.name }}' from role '{{ role.name }}'?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
             <input type="hidden" name="permission_name" value="{{ permission.name }}">
-            <button type="submit">Revoke</button>
+            <button type="submit" class="btn-danger">Revoke</button>
           </form>
-        </li>
+        </div>
+        {% else %}
+        <p class="entity-empty">No permissions granted.</p>
         {% endfor %}
-      </ul>
-      <form method="post" action="{{ url_for('admin.assign_permission', role_id=role.id) }}" class="inline">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
-        <select name="permission_name">
-          {% for permission_name in available_permissions %}
-          <option value="{{ permission_name }}">{{ permission_name }}</option>
-          {% endfor %}
-        </select>
-        <button type="submit">Grant Permission</button>
-      </form>
+      </div>
+
+      <div class="entity-footer">
+        {{ grant_combobox(url_for('admin.assign_permission', role_id=role.id), 'permission_name', permission_options, 'Permission name') }}
+        <div class="entity-actions">
+          <button type="submit" form="role-edit-{{ role.id }}" class="btn-save">Save</button>
+          <button type="submit" form="role-delete-{{ role.id }}" class="btn-danger">Delete</button>
+        </div>
+      </div>
     </div>
     {% endfor %}
   </section>
 
   <section class="tab-panel" data-tab-panel="accounts"{% if active_tab != 'accounts' %} hidden{% endif %}>
+    <h2>Accounts</h2>
     {% for account in accounts %}
-    <div class="account">
-      <h3>{{ account.username }}{% if account.is_protected %} (protected){% endif %}</h3>
-      <p>
-        Roles:
-        {% for role in account.roles %}
-        {{ role.name }}
-        <form method="post" action="{{ url_for('admin.remove_role', account_id=account.id) }}" class="inline" data-confirm="Remove role '{{ role.name }}' from '{{ account.username }}'?">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
-          <input type="hidden" name="role_id" value="{{ role.id }}">
-          <button type="submit" {% if account.is_protected %}disabled{% endif %}>Remove</button>
-        </form>
-        {% endfor %}
-      </p>
-      <form method="post" action="{{ url_for('admin.assign_role', account_id=account.id) }}" class="inline">
+    <div class="account" data-search="{{ account.username }} {{ account.email }}">
+      {% if not account.is_protected %}
+      <form id="account-edit-{{ account.id }}" class="form-shell" method="post" action="{{ url_for('admin.update_account', account_id=account.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
-        <select name="role_id">
-          {% for role in roles %}
-          <option value="{{ role.id }}">{{ role.name }}</option>
-          {% endfor %}
-        </select>
-        <button type="submit">Assign Role</button>
       </form>
+      <form id="account-delete-{{ account.id }}" class="form-shell" method="post" action="{{ url_for('admin.delete_account', account_id=account.id) }}" data-confirm="Delete account '{{ account.username }}'? This cannot be undone.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+      </form>
+      {% endif %}
+
+      <div class="entity-top">
+        {% if account.is_protected %}
+        <input type="text" value="{{ account.username }}" readonly>
+        <input type="text" value="{{ account.email }}" readonly>
+        {% else %}
+        <input type="text" name="username" form="account-edit-{{ account.id }}" value="{{ account.username }}" required>
+        <input type="email" name="email" form="account-edit-{{ account.id }}" value="{{ account.email }}" required>
+        {% endif %}
+        {% if account.email_verified %}
+        <span class="protected-badge" title="Verified">
+          <svg viewBox="0 0 20 20" width="20" height="20" fill="none" aria-hidden="true">
+            <path d="M10 2 3 5v5c0 4.2 3 7.4 7 8 4-0.6 7-3.8 7-8V5l-7-3Z" fill="currentColor"/>
+            <path d="M7 10.2 9.2 12.4 13.2 8" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        {% else %}
+        <form method="post" action="{{ url_for('admin.send_verification', account_id=account.id) }}" class="verify-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+          <button type="submit" class="btn-verify">Verify</button>
+        </form>
+        {% endif %}
+      </div>
+
+      <div class="entity-list">
+        {% for role in account.roles %}
+        <div class="entity-list-row">
+          <input type="text" value="{{ role.name }}" readonly>
+          <form method="post" action="{{ url_for('admin.remove_role', account_id=account.id) }}" data-confirm="Revoke role '{{ role.name }}' from '{{ account.username }}'?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+            <input type="hidden" name="role_id" value="{{ role.id }}">
+            <button type="submit" class="btn-danger" {% if account.is_protected %}disabled{% endif %}>Revoke</button>
+          </form>
+        </div>
+        {% else %}
+        <p class="entity-empty">No roles assigned.</p>
+        {% endfor %}
+      </div>
+
+      <div class="entity-footer">
+        {{ grant_combobox(url_for('admin.assign_role', account_id=account.id), 'role_id', role_options, 'Role name') }}
+        {% if not account.is_protected %}
+        <div class="entity-actions">
+          <button type="submit" form="account-edit-{{ account.id }}" class="btn-save">Save</button>
+          <button type="submit" form="account-delete-{{ account.id }}" class="btn-danger">Delete</button>
+        </div>
+        {% endif %}
+      </div>
     </div>
+    {% endfor %}
+  </section>
+
+  <section class="tab-panel" data-tab-panel="permissions"{% if active_tab != 'permissions' %} hidden{% endif %}>
+    <h2>Permissions</h2>
+    <p>Permissions are created automatically when granted to a role. Deleting one here revokes it from every role that currently holds it.</p>
+    {% for permission in permissions %}
+    <div class="permission" data-search="{{ permission.name }} {{ permission.description or '' }}">
+      <form id="permission-edit-{{ permission.id }}" class="form-shell" method="post" action="{{ url_for('admin.update_permission', permission_id=permission.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+      </form>
+      <form id="permission-delete-{{ permission.id }}" class="form-shell" method="post" action="{{ url_for('admin.delete_permission', permission_id=permission.id) }}" data-confirm="Delete permission '{{ permission.name }}'? This revokes it from every role that has it.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+      </form>
+
+      <div class="entity-top">
+        <span class="entity-name">{{ permission.name }}</span>
+        <input type="text" name="description" form="permission-edit-{{ permission.id }}" value="{{ permission.description or '' }}" placeholder="Description">
+      </div>
+
+      <p class="entity-sublabel">Granted to:</p>
+      <div class="entity-list">
+        {% for role in permission.roles %}
+        <div class="entity-list-row">
+          <input type="text" value="{{ role.name }}" readonly>
+          <form method="post" action="{{ url_for('admin.remove_permission', role_id=role.id) }}" data-confirm="Revoke '{{ permission.name }}' from role '{{ role.name }}'?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+            <input type="hidden" name="permission_name" value="{{ permission.name }}">
+            <button type="submit" class="btn-danger">Revoke</button>
+          </form>
+        </div>
+        {% else %}
+        <p class="entity-empty">Not granted to any role.</p>
+        {% endfor %}
+      </div>
+
+      <div class="entity-footer">
+        {{ grant_combobox(url_for('admin.grant_permission', permission_id=permission.id), 'role_id', role_options, 'Role name') }}
+        <div class="entity-actions">
+          <button type="submit" form="permission-edit-{{ permission.id }}" class="btn-save">Save</button>
+          <button type="submit" form="permission-delete-{{ permission.id }}" class="btn-danger">Delete</button>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p class="empty">No permissions registered yet.</p>
     {% endfor %}
   </section>
 
@@ -115,4 +221,6 @@
     </ul>
   </section>
 </div>
+
+<script src="{{ url_for('admin.static', filename='script.js') }}"></script>
 {% endblock %}

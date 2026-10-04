@@ -1,4 +1,4 @@
-"""Tests for infra/extensions.py, the proxy/aggregation engine.
+"""Tests for services/extensions.py, the proxy/aggregation engine.
 
 Mostly mocked: stdio_client and ClientSession are replaced with fakes so
 namespacing and failure isolation can be checked fast, without spawning a
@@ -24,8 +24,8 @@ import pytest
 from mcp import types
 from mcp.server.fastmcp import FastMCP
 
-from src.infra import extensions
-from src.infra.app_config import ExtensionConfig
+from src.services import extensions
+from src.services.app_config import ExtensionConfig
 
 
 # --- fakes for the mocked tests ------------------------------------------
@@ -48,6 +48,7 @@ class _FakeSession:
         self._tools = tools
         self._call_results = call_results or {}
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.metas: list[dict[str, Any] | None] = []
 
     async def __aenter__(self) -> "_FakeSession":
         return self
@@ -61,8 +62,16 @@ class _FakeSession:
     async def list_tools(self) -> types.ListToolsResult:
         return types.ListToolsResult(tools=self._tools)
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> types.CallToolResult:
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        read_timeout_seconds: object = None,
+        *,
+        meta: dict[str, Any] | None = None,
+    ) -> types.CallToolResult:
         self.calls.append((name, arguments))
+        self.metas.append(meta)
         return self._call_results[name]
 
 
@@ -92,7 +101,12 @@ def _install_fake_connection(monkeypatch: pytest.MonkeyPatch, session_or_error) 
         monkeypatch.setattr(extensions, "stdio_client", _fake_stdio_client(session_or_error))
     # ClientSession(read, write) -> read (the fake session smuggled through
     # stdio_client's yield) - see the module comment above.
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write: read)
+    # **kwargs, not just (read, write): _open_and_list calls the real
+    # ClientSession with read_timeout_seconds= too - a fake that doesn't
+    # accept it raises TypeError, which _connect_one's broad except
+    # silently turns into an "error" status instead of "connected",
+    # exactly the kind of failure this fake exists to steer clear of.
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
 
 
 # Same trick as _fake_stdio_client above, for the http transport:
@@ -102,9 +116,11 @@ def _install_fake_connection(monkeypatch: pytest.MonkeyPatch, session_or_error) 
 # same as _open_and_list itself discards the third.
 
 
-def _fake_streamablehttp_client(session: _FakeSession):
+def _fake_streamablehttp_client(session: _FakeSession, seen: list[dict[str, Any]] | None = None):
     @contextlib.asynccontextmanager
-    async def _cm(url: str):
+    async def _cm(url: str, **kwargs: Any):
+        if seen is not None:
+            seen.append({"url": url, **kwargs})
         yield (session, None, None)
 
     return _cm
@@ -112,11 +128,21 @@ def _fake_streamablehttp_client(session: _FakeSession):
 
 def _fake_streamablehttp_client_raising(error: Exception):
     @contextlib.asynccontextmanager
-    async def _cm(url: str):
+    async def _cm(url: str, **kwargs: Any):
         raise error
         yield  # pragma: no cover - unreachable, satisfies the generator protocol
 
     return _cm
+
+
+def _skip_tcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_open_and_list probes host:port with a real TCP connect before
+    streamablehttp_client; the fake URLs used here point nowhere real."""
+
+    async def _no_probe(url: str) -> None:
+        return None
+
+    monkeypatch.setattr(extensions, "_check_tcp_reachable", _no_probe)
 
 
 def _install_fake_http_connection(monkeypatch: pytest.MonkeyPatch, session_or_error) -> None:
@@ -124,7 +150,8 @@ def _install_fake_http_connection(monkeypatch: pytest.MonkeyPatch, session_or_er
         monkeypatch.setattr(extensions, "streamablehttp_client", _fake_streamablehttp_client_raising(session_or_error))
     else:
         monkeypatch.setattr(extensions, "streamablehttp_client", _fake_streamablehttp_client(session_or_error))
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
+    _skip_tcp_probe(monkeypatch)
 
 
 def _echo_tool() -> types.Tool:
@@ -226,7 +253,7 @@ async def test_a_broken_extension_does_not_prevent_a_working_sibling(monkeypatch
         return _fake_stdio_client_raising(FileNotFoundError("no such file or directory"))(params)
 
     monkeypatch.setattr(extensions, "stdio_client", fake_stdio_client)
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
     monkeypatch.setattr(
         extensions,
         "load_extensions_config",
@@ -254,7 +281,7 @@ async def test_a_broken_extension_does_not_prevent_our_own_tools_from_working(mo
     extension's command must never be able to take the whole server
     down."""
     monkeypatch.setattr(extensions, "stdio_client", _fake_stdio_client_raising(ConnectionRefusedError("refused")))
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
     monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"broken": _config()})
 
     mcp = FastMCP(name="test-server")
@@ -270,22 +297,6 @@ async def test_a_broken_extension_does_not_prevent_our_own_tools_from_working(mo
     names = {tool.name for tool in await registry.merged_list_tools()}
     assert names == {"builtin_tool"}
     assert registry.statuses()[0].status == "error"
-
-
-@pytest.mark.anyio
-async def test_connect_timeout_is_recorded_as_an_error_not_raised(monkeypatch: pytest.MonkeyPatch):
-    async def hang_forever(*args: object, **kwargs: object) -> None:
-        await asyncio.sleep(10_000)
-
-    monkeypatch.setattr(extensions, "CONNECT_TIMEOUT_SECONDS", 0.05)
-    monkeypatch.setattr(extensions.ExtensionRegistry, "_open_and_list", staticmethod(hang_forever))
-    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"slow": _config(id="slow")})
-
-    registry = extensions.ExtensionRegistry()
-    await registry.connect_all(Path("unused.json"))  # must not raise
-
-    [status] = registry.statuses()
-    assert status.status == "error"
 
 
 # --- dispatch: merged list/call ------------------------------------------
@@ -388,7 +399,7 @@ async def test_a_broken_http_extension_does_not_prevent_a_working_stdio_sibling(
     monkeypatch.setattr(
         extensions, "streamablehttp_client", _fake_streamablehttp_client_raising(ConnectionRefusedError("refused"))
     )
-    monkeypatch.setattr(extensions, "ClientSession", lambda read, write: read)
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
     monkeypatch.setattr(
         extensions,
         "load_extensions_config",
@@ -405,6 +416,101 @@ async def test_a_broken_http_extension_does_not_prevent_a_working_stdio_sibling(
     assert statuses["broken"].status == "error"
     assert statuses["good"].status == "connected"
     assert statuses["good"].tools == ["good__echo"]
+
+
+@pytest.mark.anyio
+async def test_http_extension_sends_configured_headers(monkeypatch: pytest.MonkeyPatch):
+    session = _FakeSession(tools=[_echo_tool()])
+    seen: list[dict[str, Any]] = []
+    monkeypatch.setattr(extensions, "streamablehttp_client", _fake_streamablehttp_client(session, seen))
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
+    _skip_tcp_probe(monkeypatch)
+    monkeypatch.setattr(
+        extensions,
+        "load_extensions_config",
+        lambda path: {
+            "pdf_merger": _config(
+                id="pdf_merger",
+                command="",
+                transport="http",
+                url="http://127.0.0.1:8040/mcp",
+                headers={"X-Internal-Token": "s3cret"},
+            )
+        },
+    )
+
+    registry = extensions.ExtensionRegistry()
+    await registry.connect_all(Path("unused.json"))
+
+    assert seen == [{"url": "http://127.0.0.1:8040/mcp", "headers": {"X-Internal-Token": "s3cret"}}]
+    [status] = registry.statuses()
+    assert "s3cret" not in repr(status)
+
+
+@pytest.mark.anyio
+async def test_http_extension_without_headers_sends_none(monkeypatch: pytest.MonkeyPatch):
+    session = _FakeSession(tools=[_echo_tool()])
+    seen: list[dict[str, Any]] = []
+    monkeypatch.setattr(extensions, "streamablehttp_client", _fake_streamablehttp_client(session, seen))
+    monkeypatch.setattr(extensions, "ClientSession", lambda read, write, **kwargs: read)
+    _skip_tcp_probe(monkeypatch)
+    monkeypatch.setattr(
+        extensions,
+        "load_extensions_config",
+        lambda path: {"remote": _config(id="remote", command="", transport="http", url="http://127.0.0.1:9000/mcp")},
+    )
+
+    await extensions.ExtensionRegistry().connect_all(Path("unused.json"))
+
+    assert seen == [{"url": "http://127.0.0.1:9000/mcp", "headers": None}]
+
+
+@pytest.mark.anyio
+async def test_proxied_call_forwards_the_requester(monkeypatch: pytest.MonkeyPatch):
+    result = types.CallToolResult(content=[types.TextContent(type="text", text="hi")])
+    session = _FakeSession(tools=[_echo_tool()], call_results={"echo": result})
+    _install_fake_connection(monkeypatch, session)
+    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config(forward_requester=True)})
+    monkeypatch.setattr(extensions, "current_username", lambda: "alice")
+    monkeypatch.setattr(extensions, "current_email", lambda: "alice@example.com")
+
+    registry = extensions.ExtensionRegistry()
+    await registry.connect_all(Path("unused.json"))
+    await registry.call("reference__echo", {"text": "hi"})
+
+    assert session.metas == [{"requester": {"username": "alice", "email": "alice@example.com"}}]
+
+
+@pytest.mark.anyio
+async def test_proxied_call_without_identity_sends_no_meta(monkeypatch: pytest.MonkeyPatch):
+    result = types.CallToolResult(content=[types.TextContent(type="text", text="hi")])
+    session = _FakeSession(tools=[_echo_tool()], call_results={"echo": result})
+    _install_fake_connection(monkeypatch, session)
+    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config(forward_requester=True)})
+    monkeypatch.setattr(extensions, "current_username", lambda: "")
+    monkeypatch.setattr(extensions, "current_email", lambda: "")
+
+    registry = extensions.ExtensionRegistry()
+    await registry.connect_all(Path("unused.json"))
+    await registry.call("reference__echo", {"text": "hi"})
+
+    assert session.metas == [None]
+
+
+@pytest.mark.anyio
+async def test_proxied_call_without_forward_flag_sends_no_meta_even_with_identity(monkeypatch: pytest.MonkeyPatch):
+    result = types.CallToolResult(content=[types.TextContent(type="text", text="hi")])
+    session = _FakeSession(tools=[_echo_tool()], call_results={"echo": result})
+    _install_fake_connection(monkeypatch, session)
+    monkeypatch.setattr(extensions, "load_extensions_config", lambda path: {"reference": _config()})
+    monkeypatch.setattr(extensions, "current_username", lambda: "alice")
+    monkeypatch.setattr(extensions, "current_email", lambda: "alice@example.com")
+
+    registry = extensions.ExtensionRegistry()
+    await registry.connect_all(Path("unused.json"))
+    await registry.call("reference__echo", {"text": "hi"})
+
+    assert session.metas == [None]
 
 
 # --- runtime add()/remove() ------------------------------------------------

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Watchers{% endblock %}
+{% block sidebar %}{% include "sidebar.html" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('watchers.static', filename='style.css') }}">
+<h1>Watchers</h1>
+
+<p id="watchers-error" class="error hidden"></p>
+
+<div class="watchers-filters">
+  <div class="filter-group">
+    <span class="filter-label">Capability</span>
+    <div id="watchers-filter-capability" class="chip-group"></div>
+  </div>
+  <div class="filter-group">
+    <span class="filter-label">Status</span>
+    <div id="watchers-filter-status" class="chip-group">
+      <button type="button" class="chip active" data-status="running">Running</button>
+      <button type="button" class="chip active" data-status="completed">Success</button>
+      <button type="button" class="chip active" data-status="failed">Failed</button>
+    </div>
+  </div>
+  <div class="filter-group">
+    <label class="filter-label" for="watchers-filter-start">Started from</label>
+    <input type="datetime-local" id="watchers-filter-start">
+  </div>
+  <div class="filter-group">
+    <label class="filter-label" for="watchers-filter-end">Started until</label>
+    <input type="datetime-local" id="watchers-filter-end">
+  </div>
+  <div class="filter-group">
+    <label class="filter-label" for="watchers-filter-search">Search</label>
+    <input type="search" id="watchers-filter-search" placeholder="Search&hellip;">
+  </div>
+  <button type="button" id="watchers-filter-clear" class="chip">Clear filters</button>
+</div>
+
+<table class="watchers-table">
+  <thead>
+    <tr>
+      <th>Watcher</th>
+      <th>Status</th>
+      <th>Duration</th>
+      <th>Recipients</th>
+    </tr>
+  </thead>
+  <tbody id="watchers-body" data-empty-message="No watchers are running.">
+    <tr><td colspan="4" class="notice">Loading&hellip;</td></tr>
+  </tbody>
+</table>
+<script src="{{ url_for('watchers.static', filename='script.js') }}"></script>
+{% endblock %}

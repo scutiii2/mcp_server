@@ -11,9 +11,10 @@ from __future__ import annotations
 import json
 import urllib.error
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from flask import Flask
 
 from src.services import mcp_client
 
@@ -148,6 +149,53 @@ def test_fetch_commands_builds_url_from_mcp_server_base_and_returns_parsed_json(
 
     assert result == fake_payload
     assert captured_url["url"] == "http://127.0.0.1:8010/commands"
+
+
+def test_fetch_help_index_builds_url_from_mcp_server_base_and_returns_parsed_json():
+    """GET /commands/help (no capability segment) is a sibling of
+    /commands on the same origin - same reasoning as
+    test_fetch_commands_builds_url_from_mcp_server_base_and_returns_parsed_json
+    above."""
+    fake_payload = {"message": "...", "capabilities": [{"capability": "/server", "label": "Server Manager"}]}
+    captured_url = {}
+
+    def _fake_urlopen(url, timeout=None):
+        captured_url["url"] = url
+        return _fake_response(fake_payload)
+
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+        result = mcp_client.fetch_help_index()
+
+    assert result == fake_payload
+    assert captured_url["url"] == "http://127.0.0.1:8010/commands/help"
+
+
+def test_fetch_help_builds_url_with_target_and_command_query_params():
+    fake_payload = {"message": "...", "tools": []}
+    captured_url = {}
+
+    def _fake_urlopen(url, timeout=None):
+        captured_url["url"] = url
+        return _fake_response(fake_payload)
+
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+        result = mcp_client.fetch_help("server", target="tools")
+
+    assert result == fake_payload
+    assert captured_url["url"] == "http://127.0.0.1:8010/commands/help/server?target=tools"
+
+
+def test_fetch_help_includes_command_query_param_when_given():
+    captured_url = {}
+
+    def _fake_urlopen(url, timeout=None):
+        captured_url["url"] = url
+        return _fake_response({"message": "..."})
+
+    with patch("src.services.mcp_client.urlopen", side_effect=_fake_urlopen):
+        mcp_client.fetch_help("server", target="all", command="list")
+
+    assert captured_url["url"] == "http://127.0.0.1:8010/commands/help/server?target=all&command=list"
 
 
 def _fake_response(payload):
@@ -306,3 +354,78 @@ def test_set_capability_enabled_propagates_http_error_with_status_code_intact():
             mcp_client.set_capability_enabled("nonexistent", True)
 
     assert exc_info.value.code == 404
+
+
+def _app_context_with_token(token: str):
+    app = Flask(__name__)
+    app.config["INTERNAL_API_TOKEN"] = token
+    return app.app_context()
+
+
+def test_upload_file_posts_multipart_to_mcp_server_with_internal_token():
+    """upload_file() is the one mcp_client.py call that isn't stdlib
+    urllib - see its own docstring for why. Needs a Flask app context
+    since it's the first function here that reads current_app.config."""
+    fake_response = MagicMock()
+    fake_response.json.return_value = {"path": "/srv/uploads/abc123.xlsx"}
+    fake_response.raise_for_status.return_value = None
+
+    with _app_context_with_token("shared-secret"):
+        with patch("src.services.mcp_client.httpx.post", return_value=fake_response) as fake_post:
+            result = mcp_client.upload_file("input.xlsx", b"binary content", "application/vnd.ms-excel")
+
+    assert result == {"path": "/srv/uploads/abc123.xlsx"}
+    args, kwargs = fake_post.call_args
+    assert args[0] == "http://127.0.0.1:8010/upload"
+    assert kwargs["files"] == {"file": ("input.xlsx", b"binary content", "application/vnd.ms-excel")}
+    assert kwargs["headers"] == {"X-Internal-Token": "shared-secret"}
+
+
+def test_upload_file_raises_on_a_non_2xx_response():
+    """raise_for_status() propagating is what lets the /api/upload route
+    forward mcp_server's own error body to the browser."""
+    import httpx
+
+    fake_response = MagicMock()
+    fake_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "400", request=MagicMock(), response=MagicMock(status_code=400)
+    )
+
+    with _app_context_with_token("shared-secret"):
+        with patch("src.services.mcp_client.httpx.post", return_value=fake_response):
+            with pytest.raises(httpx.HTTPStatusError):
+                mcp_client.upload_file("input.txt", b"data", "text/plain")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"server": "Server Manager"},
+        ["server"],
+        [{"value": "server", "label": "Server Manager"}],
+    ],
+)
+def test_fetch_options_normalizes_every_accepted_shape(payload):
+    label = "Server Manager" if not payload == ["server"] else "server"
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+
+    with patch.object(mcp_client, "urlopen", return_value=_Resp()) as fake:
+        options = mcp_client.fetch_options("/system/check-capabilities")
+
+    assert options == [{"value": "server", "label": label}]
+    assert fake.call_args.args[0].endswith("/system/check-capabilities")
+
+
+@pytest.mark.parametrize("path", ["http://evil.example/x", "//evil.example/x", "no-leading-slash"])
+def test_fetch_options_rejects_anything_but_a_same_origin_path(path):
+    with pytest.raises(ValueError):
+        mcp_client.fetch_options(path)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from src.services import chats_store as store
@@ -43,6 +45,23 @@ def test_save_chat_truncates_a_long_first_message_for_the_title(db_path):
 
     chat = store.get_chat(db_path, "alice", chat_id)
     assert chat["title"] == "x" * 57 + "..."
+
+
+def test_save_chat_title_excludes_a_folded_in_attachment_block(db_path):
+    # Matches Chat/script.js's buildAttachmentBlocks() format - a file
+    # attached to a chat message folds its extracted text into `content`
+    # this way so ai_agent still gets it as context, but it must never
+    # leak into the derived title (see chats_store._ATTACHMENT_BLOCK_RE).
+    content = (
+        "Summarize this file\n\n"
+        '[[ATTACHMENT filename="notes.txt" chars="11" truncated="false"]]\n'
+        "hello world\n"
+        "[[/ATTACHMENT]]"
+    )
+    chat_id = store.save_chat(db_path, "alice", None, [{"role": "user", "content": content}])
+
+    chat = store.get_chat(db_path, "alice", chat_id)
+    assert chat["title"] == "Summarize this file"
 
 
 def test_save_chat_falls_back_to_new_chat_title_when_no_user_message(db_path):
@@ -131,7 +150,72 @@ def test_list_chats_returns_only_the_given_users_chats_newest_first(db_path):
     assert "messages" not in chats[0]  # list view is cheap - no transcript
 
 
+def test_list_chats_prioritizes_running_activity_and_returns_response_timestamp(db_path):
+    first_chat = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "first"}])
+    second_chat = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "second"}])
+    response_timestamp = "2026-09-16T10:00:00+00:00"
+    running_activity = {"status": "running", "started_at": "2026-09-16T10:01:00+00:00"}
+
+    store.record_last_response(db_path, "alice", first_chat, response_timestamp)
+
+    chats = store.list_chats(
+        db_path,
+        "alice",
+        activity_by_chat={second_chat: running_activity},
+    )
+
+    assert [chat["id"] for chat in chats] == [second_chat, first_chat]
+    assert chats[0]["activity"]["status"] == "running"
+    assert chats[1]["last_response_at"] == response_timestamp
+
+
+def test_list_chats_keeps_new_chat_response_timestamp_empty_after_reconnecting(db_path):
+    chat_id = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "hello"}])
+
+    chats = store.list_chats(db_path, "alice")
+
+    assert chats[0]["id"] == chat_id
+    assert chats[0]["last_response_at"] is None
+
+
+def test_connect_backfills_response_timestamp_when_migrating_legacy_chats(db_path):
+    legacy_timestamp = "2026-09-16T09:00:00+00:00"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE chats (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            title TEXT NOT NULL,
+            messages TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO chats VALUES (?, ?, ?, ?, ?, ?)",
+        ("legacy-chat", "alice", "Legacy", "[]", legacy_timestamp, legacy_timestamp),
+    )
+    conn.commit()
+    conn.close()
+
+    chats = store.list_chats(db_path, "alice")
+
+    assert chats[0]["last_response_at"] == legacy_timestamp
+
+
 # --- get_chat ----------------------------------------------------------
+
+
+def test_get_chat_returns_the_last_response_timestamp(db_path):
+    chat_id = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "hi"}])
+    response_timestamp = "2026-09-17T10:00:00+00:00"
+    store.record_last_response(db_path, "alice", chat_id, response_timestamp)
+
+    chat = store.get_chat(db_path, "alice", chat_id)
+
+    assert chat["last_response_at"] == response_timestamp
 
 
 def test_get_chat_returns_none_for_unknown_id(db_path):
@@ -198,3 +282,18 @@ def test_delete_chat_owned_by_another_user_raises_unknown_chat(db_path):
 
     # Still there - bob's failed attempt must not have deleted alice's chat.
     assert store.get_chat(db_path, "alice", chat_id) is not None
+
+
+def test_delete_chats_removes_only_the_requested_chats_owned_by_the_user(db_path):
+    first = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "first"}])
+    second = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "second"}])
+    keep = store.save_chat(db_path, "alice", None, [{"role": "user", "content": "keep"}])
+    other_user = store.save_chat(db_path, "bob", None, [{"role": "user", "content": "private"}])
+
+    deleted = store.delete_chats(db_path, "alice", [first, second, other_user])
+
+    assert deleted == 2
+    assert store.get_chat(db_path, "alice", first) is None
+    assert store.get_chat(db_path, "alice", second) is None
+    assert store.get_chat(db_path, "alice", keep) is not None
+    assert store.get_chat(db_path, "bob", other_user) is not None

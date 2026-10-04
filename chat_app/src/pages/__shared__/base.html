@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{% block title %}AuthTemplate{% endblock %}</title>
+  <title>{{ app_name }} - {% block title %}{% endblock %}</title>
+  {% if app_logo_url %}<link rel="icon" href="{{ app_logo_url }}">{% endif %}
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="{{ url_for('static', filename='shared.css') }}">
 </head>

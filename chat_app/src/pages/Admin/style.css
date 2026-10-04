@@ -1,3 +1,9 @@
+:root {
+  --color-success: #1a7f37;
+  --color-success-hover: #166a2f;
+  --color-danger-hover: #8f0018;
+}
+
 section {
   margin-bottom: 2rem;
 }
@@ -26,54 +32,225 @@ section > form button {
   align-self: auto;
 }
 
-.role-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-}
-
 .role,
-.account {
+.account,
+.permission {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: 1rem;
-  margin-bottom: 0.75rem;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
-.role h3,
-.account h3 {
-  margin: 0 0 0.35rem;
+.form-shell {
+  display: none;
 }
 
-.role p,
-.account p {
-  margin: 0.25rem 0;
+.entity-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.entity-top input {
+  width: auto;
+  flex: 1;
+  min-width: 160px;
+}
+
+.entity-name {
+  font-weight: 700;
+  flex: 1;
+  min-width: 160px;
+}
+
+.protected-badge {
+  color: var(--color-success);
+  flex: none;
+  display: inline-flex;
+}
+
+.verify-form {
+  display: inline-flex;
+  flex: none;
+}
+
+.btn-verify {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.entity-sublabel {
+  margin: 0;
   color: var(--color-text-muted);
   font-size: 0.85rem;
 }
 
-.role ul {
-  list-style: none;
-  margin: 0.5rem 0;
-  padding: 0;
+.entity-list {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }
 
-.role li {
+.entity-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.entity-list-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.entity-list-row input[readonly] {
+  flex: 1;
+  width: auto;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+.entity-list-row form {
+  display: inline-flex;
+  flex-direction: row;
+  flex: none;
+}
+
+.entity-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.entity-grant {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.entity-grant button {
+  flex: none;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.combobox {
+  position: relative;
+  display: inline-block;
+}
+
+.combobox-input {
+  width: 160px;
+}
+
+.combobox-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.combobox-option {
+  padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.combobox-option:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.entity-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.btn-save {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.btn-save:hover {
+  background: var(--color-success-hover);
+  border-color: var(--color-success-hover);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.btn-danger:hover {
+  background: var(--color-danger-hover);
+  border-color: var(--color-danger-hover);
+}
+
+.search-hidden {
+  display: none;
+}
+
+.search-bar {
+  margin-bottom: 1rem;
+}
+
+.search-bar input {
+  width: 100%;
+  max-width: 480px;
 }
 
 form.inline {
   display: inline-flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+form.inline input[type="text"],
+form.inline input[type="email"],
+form.inline select {
+  width: auto;
+  flex: 1;
+  min-width: 120px;
+}
+
+form.inline input[type="checkbox"] {
+  width: auto;
+  flex: none;
+  padding: 0;
+  border: none;
+}
+
+form.inline label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0;
+  white-space: nowrap;
 }
 
 form.inline button {

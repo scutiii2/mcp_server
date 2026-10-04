@@ -1,0 +1,336 @@
+"""One ai_agent instance's definition: an `agents/<id>.json` file, or the
+same shape built from today's env vars when no file is given.
+
+Pure on purpose (stdlib only, no provider imports): server.py loads the
+file and calls apply_to_environ() BEFORE importing agent_config, because
+the provider modules resolve their gateway/default model from env vars at
+their own import time (see agent_config.py's long comment). Everything
+read later - persona, tool scope, LLM knobs, orchestrator/routing - comes
+from current().
+
+The supervisor (supervisor.py) validates every file with load_dir() before
+it starts any child, so a typo fails once, loudly, naming the file.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
+from pathlib import Path
+from typing import Any, Iterable
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+AGENTS_DIR = PROJECT_ROOT / "agents"
+EXAMPLE_DIR = PROJECT_ROOT / "agents.example"
+
+PROVIDERS = ("anthropic", "openai")
+REASONING_EFFORTS = ("off", "low", "medium", "high")
+# The gateway each provider uses when a file names none - pinned in the env
+# so secret_llm.env's AI_AGENT_GATEWAY cannot silently re-point the agent.
+_DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt"}
+# Same mapping as agent_registry.agent_id_for (kept here so this module
+# stays import-free): the legacy ids predate the "claude" -> "anthropic" rename.
+_LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
+
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+_TOP_KEYS = {"label", "port", "enabled", "entry", "llm", "persona", "focus", "tools", "orchestrator", "routing"}
+_LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds"}
+_TOOLS_KEYS = {"allow", "deny"}
+_ROUTING_KEYS = {"laya", "top_k", "allow_auto", "min_score"}
+
+
+class AgentSpecError(Exception):
+    """An agent file is missing, unreadable, or invalid - the message names
+    the file and the field."""
+
+
+@dataclass(frozen=True)
+class LlmSpec:
+    provider: str
+    gateway: str | None = None
+    model: str | None = None
+    temperature: float | None = None
+    reasoning_effort: str = "off"
+    max_tokens: int | None = None
+    max_tool_rounds: int | None = None
+
+
+@dataclass(frozen=True)
+class ToolScope:
+    """Which mcp_server tools an agent may see and call, as fnmatch globs on
+    the tool name without the "main__" prefix. Empty allow = every tool;
+    deny always wins."""
+
+    allow: tuple[str, ...] = ()
+    deny: tuple[str, ...] = ()
+
+    def allows(self, name: str) -> bool:
+        if self.allow and not any(fnmatchcase(name, glob) for glob in self.allow):
+            return False
+        return not any(fnmatchcase(name, glob) for glob in self.deny)
+
+    def unmatched(self, names: Iterable[str]) -> list[str]:
+        """Globs that match none of `names` - almost always a typo."""
+        names = list(names)
+        return [glob for glob in (*self.allow, *self.deny) if not any(fnmatchcase(n, glob) for n in names)]
+
+
+@dataclass(frozen=True)
+class RoutingSpec:
+    laya: bool = False
+    top_k: int = 3
+    allow_auto: bool = False
+    min_score: float | None = None
+
+
+@dataclass(frozen=True)
+class RosterEntry:
+    """One specialist as the orchestrator sees it."""
+
+    id: str
+    label: str
+    focus: str
+
+
+@dataclass(frozen=True)
+class AgentSpec:
+    id: str
+    label: str
+    port: int
+    llm: LlmSpec
+    enabled: bool = True
+    entry: bool = False
+    # None = no persona in a file: use config_ai_agent_roles.json's role
+    # (the env-var path). A file spec always has a string, "" included.
+    persona: str | None = ""
+    focus: str = ""
+    tools: ToolScope = field(default_factory=ToolScope)
+    orchestrator: bool = False
+    routing: RoutingSpec = field(default_factory=RoutingSpec)
+    source: Path | None = None
+
+    def effective_gateway(self) -> str | None:
+        """The gateway to report in usage rows: the file's own gateway (None
+        = the provider used directly), or AI_AGENT_GATEWAY on the env path."""
+        if self.source is not None:
+            return self.llm.gateway
+        return os.getenv("AI_AGENT_GATEWAY") or None
+
+
+class _Checker:
+    """Validation helpers that name the file and the field in every error."""
+
+    def __init__(self, path: Path) -> None:
+        self._name = path.name
+
+    def fail(self, where: str, message: str) -> AgentSpecError:
+        return AgentSpecError(f"{self._name}: {where} {message}")
+
+    def keys(self, data: dict[str, Any], allowed: set[str], prefix: str = "") -> None:
+        for key in data:
+            if key not in allowed:
+                raise self.fail(f"{prefix}{key}", "is not a known field")
+
+    def boolean(self, data: dict[str, Any], key: str, default: bool, prefix: str = "") -> bool:
+        value = data.get(key, default)
+        if not isinstance(value, bool):
+            raise self.fail(f"{prefix}{key}", "must be true or false")
+        return value
+
+    def text(self, data: dict[str, Any], key: str, default: str | None, prefix: str = "") -> str | None:
+        value = data.get(key, default)
+        if value is not None and not isinstance(value, str):
+            raise self.fail(f"{prefix}{key}", "must be a string")
+        return value
+
+    def integer(self, data: dict[str, Any], key: str, default: int | None, low: int, high: int, prefix: str = "") -> int | None:
+        value = data.get(key, default)
+        if value is None:
+            if default is not None:
+                raise self.fail(f"{prefix}{key}", f"must be a whole number from {low} to {high}, not null")
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            raise self.fail(f"{prefix}{key}", f"must be a whole number from {low} to {high}")
+        return value
+
+    def number(self, data: dict[str, Any], key: str, low: float, high: float, prefix: str = "") -> float | None:
+        value = data.get(key)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+            raise self.fail(f"{prefix}{key}", f"must be a number from {low:g} to {high:g}")
+        return float(value)
+
+    def section(self, data: dict[str, Any], key: str) -> dict[str, Any]:
+        value = data.get(key, {})
+        if not isinstance(value, dict):
+            raise self.fail(key, "must be an object")
+        return value
+
+    def globs(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
+        value = data.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+            raise self.fail(f"tools.{key}", "must be a list of non-empty strings")
+        return tuple(value)
+
+
+def load_file(path: Path) -> AgentSpec:
+    """Read and validate one agent file. The id is the file name stem."""
+    check = _Checker(path)
+    agent_id = path.stem
+    if not _ID_RE.match(agent_id):
+        raise check.fail("id", f"{agent_id!r} must be lowercase letters, digits and dashes (from the file name)")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise check.fail("file", f"cannot be read as JSON ({error})") from error
+    if not isinstance(data, dict):
+        raise check.fail("file", "must contain a JSON object")
+    check.keys(data, _TOP_KEYS)
+
+    if "port" not in data:
+        raise check.fail("port", "is required")
+    port = check.integer(data, "port", None, 1, 65535)
+    if port is None:
+        raise check.fail("port", "must be a whole number from 1 to 65535, not null")
+    if "llm" not in data:
+        raise check.fail("llm", "is required")
+    llm_data = check.section(data, "llm")
+    check.keys(llm_data, _LLM_KEYS, "llm.")
+    provider = llm_data.get("provider")
+    if provider not in PROVIDERS:
+        raise check.fail("llm.provider", f"must be one of: {', '.join(PROVIDERS)}")
+    effort = llm_data.get("reasoning_effort", "off")
+    if effort not in REASONING_EFFORTS:
+        raise check.fail("llm.reasoning_effort", f"must be one of: {', '.join(REASONING_EFFORTS)}")
+    llm = LlmSpec(
+        provider=provider,
+        gateway=check.text(llm_data, "gateway", None, "llm.") or None,
+        model=check.text(llm_data, "model", None, "llm.") or None,
+        temperature=check.number(llm_data, "temperature", 0.0, 2.0, "llm."),
+        reasoning_effort=effort,
+        max_tokens=check.integer(llm_data, "max_tokens", None, 1, 1_000_000, "llm."),
+        max_tool_rounds=check.integer(llm_data, "max_tool_rounds", None, 1, 100, "llm."),
+    )
+
+    tools_data = check.section(data, "tools")
+    check.keys(tools_data, _TOOLS_KEYS, "tools.")
+    tools = ToolScope(allow=check.globs(tools_data, "allow"), deny=check.globs(tools_data, "deny"))
+
+    orchestrator = check.boolean(data, "orchestrator", False)
+    if "routing" in data and not orchestrator:
+        raise check.fail("routing", "is only allowed when orchestrator is true")
+    routing_data = check.section(data, "routing")
+    check.keys(routing_data, _ROUTING_KEYS, "routing.")
+    routing = RoutingSpec(
+        laya=check.boolean(routing_data, "laya", False, "routing."),
+        top_k=check.integer(routing_data, "top_k", 3, 1, 50, "routing."),
+        allow_auto=check.boolean(routing_data, "allow_auto", False, "routing."),
+        min_score=check.number(routing_data, "min_score", -1.0, 1.0, "routing."),
+    )
+
+    return AgentSpec(
+        id=agent_id,
+        label=check.text(data, "label", None) or agent_id,
+        port=port,
+        llm=llm,
+        enabled=check.boolean(data, "enabled", True),
+        entry=check.boolean(data, "entry", False),
+        persona=check.text(data, "persona", "") or "",
+        focus=check.text(data, "focus", "") or "",
+        tools=tools,
+        orchestrator=orchestrator,
+        routing=routing,
+        source=path,
+    )
+
+
+def load_dir(directory: Path) -> list[AgentSpec]:
+    """Every agent file in `directory`, validated one by one and as a set:
+    enabled agents need distinct ports and exactly one entry agent."""
+    paths = sorted(directory.glob("*.json"))
+    if not paths:
+        raise AgentSpecError(f"{directory}: no agent files found")
+    specs = [load_file(path) for path in paths]
+    enabled = [s for s in specs if s.enabled]
+
+    by_port: dict[int, list[str]] = {}
+    for spec in enabled:
+        by_port.setdefault(spec.port, []).append(f"{spec.id}.json")
+    for port, names in by_port.items():
+        if len(names) > 1:
+            raise AgentSpecError(f"port {port} is used by more than one enabled agent: {', '.join(names)}")
+
+    entries = [f"{s.id}.json" for s in enabled if s.entry]
+    if len(entries) != 1:
+        found = ", ".join(entries) if entries else "none"
+        raise AgentSpecError(f"exactly one enabled agent must set entry: true (found: {found})")
+    return specs
+
+
+def from_env() -> AgentSpec:
+    """The spec of an instance started the old way (python -m src.server
+    with AI_AGENT_PROVIDER/AI_AGENT_PORT/...). It is an orchestrator so it
+    still gets delegate_to_agent; persona None means "use the role"."""
+    provider = os.getenv("AI_AGENT_PROVIDER") or ""
+    raw_port = os.getenv("AI_AGENT_PORT", "9100")
+    try:
+        port = int(raw_port)
+    except ValueError:
+        raise AgentSpecError(f"AI_AGENT_PORT must be a whole number from 1 to 65535 (got {raw_port!r})") from None
+    return AgentSpec(
+        id=f"{_LEGACY_ID_PREFIX.get(provider, provider)}-agent",
+        label="",
+        port=port,
+        llm=LlmSpec(
+            provider=provider,
+            gateway=os.getenv("AI_AGENT_GATEWAY") or None,
+            model=os.getenv("AI_AGENT_MODEL") or None,
+        ),
+        persona=None,
+        orchestrator=True,
+    )
+
+
+_current: AgentSpec | None = None
+
+
+def current() -> AgentSpec:
+    """This process's spec: AI_AGENT_FILE when set, else from_env(). Read
+    once and cached - an agent's definition never changes while it runs."""
+    global _current
+    if _current is None:
+        file = os.getenv("AI_AGENT_FILE")
+        _current = load_file(Path(file)) if file else from_env()
+    return _current
+
+
+def reset_cache() -> None:
+    global _current
+    _current = None
+
+
+def apply_to_environ(spec: AgentSpec) -> None:
+    """Hand a file spec's provider/gateway/model/port to the env vars the
+    existing import-time code reads. Set (not setdefault) so they win over
+    secret_llm.env, which agent_config loads with setdefault."""
+    os.environ["AI_AGENT_PROVIDER"] = spec.llm.provider
+    os.environ["AI_AGENT_GATEWAY"] = spec.llm.gateway or _DEFAULT_GATEWAY[spec.llm.provider]
+    # "" (not unset): agent_config reads `os.getenv("AI_AGENT_MODEL") or None`,
+    # and an existing key stops secret_llm.env's setdefault from filling it.
+    os.environ["AI_AGENT_MODEL"] = spec.llm.model or ""
+    os.environ["AI_AGENT_PORT"] = str(spec.port)
+
+
+def ensure_agents_dir(agents_dir: Path = AGENTS_DIR, example_dir: Path = EXAMPLE_DIR) -> None:
+    """First run: copy agents.example/*.json into agents/ when agents/ is
+    missing or has no agent files (same idea as seed_from_example)."""
+    if agents_dir.exists() and any(agents_dir.glob("*.json")):
+        return
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    for example in example_dir.glob("*.json"):
+        shutil.copyfile(example, agents_dir / example.name)

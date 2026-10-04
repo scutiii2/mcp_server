@@ -8,7 +8,18 @@ able to do to itself.
 
 GET /capabilities returns a JSON array shaped exactly like::
 
-    { "name": "host_health", "enabled": true }
+    {
+        "name": "server",
+        "enabled": true,
+        "label": "Server Manager",
+        "tools": ["tool_srv_listApps", ...],
+        "resources": []
+    }
+
+``label``/``tools``/``resources`` let chat_app derive its Capabilities
+page grouping (which tool belongs to which capability, and what to call
+it) entirely from this one live response, instead of hand-maintaining
+its own copy - see chat_app's ``services/tool_capabilities.py``.
 
 PATCH /capabilities/{name} takes ``{"enabled": bool}`` and returns that
 same shape for the capability just changed - 404 for an unknown name,
@@ -30,13 +41,19 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src.config import settings
-from src.infra import capability_registry
-from src.infra.app_config import save_capabilities_config
+from src.services import capability_registry
+from src.services.app_config import save_capabilities_config
 from src.server import mcp
 
 
 def _status_json(name: str) -> dict[str, object]:
-    return {"name": name, "enabled": capability_registry.is_enabled(name)}
+    return {
+        "name": name,
+        "enabled": capability_registry.is_enabled(name),
+        "label": capability_registry.label(name),
+        "tools": capability_registry.tool_names(name),
+        "resources": capability_registry.resource_names(name),
+    }
 
 
 async def list_capabilities(request: Request) -> JSONResponse:

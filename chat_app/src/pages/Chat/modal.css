@@ -56,3 +56,96 @@
 
 .chat-modal-btn-danger { background: #d9534f; color: #fff; }
 .chat-modal-btn-danger:hover { background: #c9302c; }
+
+/* Command-form modal - see command_form_modal.js's openCommandFormModal().
+   Same "chat-modal-" prefix rule as above, for the same reason. */
+
+.chat-modal-dialog--form {
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.chat-modal-form-row { margin-bottom: 14px; }
+.chat-modal-form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+.chat-modal-form-required { color: #d9534f; margin-left: 2px; }
+.chat-modal-form-hint { font-size: 11px; color: #888; margin-top: 3px; }
+
+.chat-modal-form-row input[type="text"],
+.chat-modal-form-row input[type="number"],
+.chat-modal-form-row select {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.chat-modal-form-row input[type="checkbox"] { width: auto; }
+
+.chat-modal-form-embed {
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: -6px 0 14px;
+  font-size: 12px;
+}
+.chat-modal-form-embed-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.chat-modal-form-embed-key { color: #888; }
+.chat-modal-form-embed-value { color: #333; font-family: monospace; }
+
+.chat-modal-dropzone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.chat-modal-dropzone--dragover { border-color: #185fa5; background: #eef4fb; color: #185fa5; }
+
+.chat-modal-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.chat-modal-attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0f0ee;
+  border-radius: 12px;
+  padding: 3px 6px 3px 10px;
+  font-size: 12px;
+  color: #333;
+}
+.chat-modal-attachment-chip button {
+  border: none;
+  background: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+}
+.chat-modal-attachment-chip button:hover { color: #d9534f; }
+
+.chat-modal-form-error {
+  font-size: 12px;
+  color: #d9534f;
+  margin: -8px 0 12px;
+}
+.chat-modal-form-error.hidden { display: none; }

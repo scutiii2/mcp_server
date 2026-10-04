@@ -1,0 +1,14 @@
+{
+  "agents": [
+    {
+      "id": "claude-agent",
+      "label": "Claude Agent",
+      "url": "http://127.0.0.1:9100/mcp"
+    },
+    {
+      "id": "openai-agent",
+      "label": "OpenAI Agent",
+      "url": "http://127.0.0.1:9101/mcp"
+    }
+  ]
+}

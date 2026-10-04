@@ -1,0 +1,40 @@
+[project]
+name = "ember_api"
+description = "Backend for ember_web: accounts, sessions and (later) the MCP proxy to ai_agent/mcp_server"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn>=0.30,<1.0",
+    "sqlalchemy[asyncio]>=2.0,<3.0",
+    "aiosqlite>=0.20,<1.0",
+    # Same password hashing as chat_app (generate/check_password_hash), so
+    # both apps store hashes in one format.
+    "werkzeug>=3.0,<4.0",
+    "python-dotenv>=1.0",
+    # EmailStr validation on registration/invite requests.
+    "email-validator>=2.0,<3.0",
+    # The MCP proxy's upstream client (streams SSE through to the browser).
+    "httpx>=0.27,<1.0",
+    # MCP client for chat turns ember_api runs itself (ask/interpret/cancel
+    # on ai_agent), same SDK chat_app uses.
+    "mcp>=1.30.0,<2.0.0",
+    # Text from files attached to a chat question (same libraries as
+    # chat_app's text_extraction).
+    "pypdf>=4.0",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    # Schema migrations (run at startup).
+    "alembic>=1.13,<2.0",
+]
+
+[project.optional-dependencies]
+# httpx2: what starlette.testclient wants now (plain httpx is deprecated there).
+dev = ["pytest>=8.0", "httpx2"]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

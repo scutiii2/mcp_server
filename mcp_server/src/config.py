@@ -26,11 +26,11 @@ def _env(name: str, default: str) -> str:
 
 @dataclass(frozen=True)
 class Settings:
-    # Where the four config_*.json files (see infra/app_config.py) live.
+    # Where the four config_*.json files (see services/app_config.py) live.
     # Relative to CWD by default, same fragile-by-default convention as
     # every path below - mcp_server is always run from its own directory
-    # (run_mcp_server.bat cd's there first), so "src/configs" resolves.
-    configs_dir: Path = Path(_env("MCP_CONFIGS_DIR", "src/configs"))
+    # (run_mcp_server.bat cd's there first), so "configs" resolves.
+    configs_dir: Path = Path(_env("MCP_CONFIGS_DIR", "configs"))
     # Loopback by default, deliberately. This server has no authentication
     # of its own: anything that can reach the port can call every
     # registered tool with arbitrary arguments, and the Flask app is not
@@ -41,30 +41,6 @@ class Settings:
     # (reverse proxy, VPN, firewall) is doing the authenticating.
     host: str = _env("MCP_HOST", "127.0.0.1")
     port: int = int(_env("MCP_PORT", "8010"))
-    # SQLite file backing infra/pending_requests.py - relative to CWD by
-    # default (kept fragile-by-default rather than fixed only here).
-    # Backs any approval-gated / resumable capability, not tied to any
-    # specific one, so it lives under the general src/data/ rather than
-    # inside any single capabilities/<name>/ folder.
-    pending_requests_path: Path = Path(_env("PENDING_REQUESTS_PATH", "src/data/pending_requests.db"))
-    # SQLite file backing infra/otp.py - relative to CWD by default, same
-    # as pending_requests_path above. Defaults inside capabilities/otp/,
-    # the one capability that owns this file - unlike
-    # pending_requests_path, nothing else ever reads or writes it. Only
-    # the path is a setting: code length, TTL and the attempt limit stay
-    # constants in infra/otp.py, because they are what makes a six-digit
-    # secret safe and an env var is too easy a place to weaken them from.
-    otp_path: Path = Path(
-        _env("OTP_PATH", "src/capabilities/otp/data/otp.db")
-    )
-    # The URL an approval email's link points at. Deliberately NOT derived
-    # from host/port above - `host` is a bind address (127.0.0.1 and
-    # 0.0.0.0 are both meaningless from someone else's inbox), while this
-    # needs to be whatever address actually resolves for an approver (a
-    # VPN hostname, a reverse-proxy address, etc). Defaults to localhost
-    # so this works out of the box for local testing; override for any
-    # real deployment.
-    public_base_url: str = _env("MCP_PUBLIC_BASE_URL", "http://127.0.0.1:8010")
     # known_hosts file used to verify SSH host keys. Defaults to the same
     # one the ssh command-line client uses, so hosts you've already
     # connected to from this machine are trusted without extra setup.
@@ -81,12 +57,23 @@ class Settings:
     # Where logging_setup.configure_logging() writes server.log and
     # errors.report() writes per-reference error files. Relative to CWD by
     # default, same convention as the paths above.
-    log_dir: Path = Path(_env("MCP_LOG_DIR", "src/logs"))
-
-    @property
-    def hosts_config_path(self) -> Path:
-        return self.configs_dir / "config_hosts.json"
-
+    log_dir: Path = Path(_env("MCP_LOG_DIR", ".logs"))
+    # Shared secret, same value both directions. Most chat_app -> mcp_server
+    # calls (fetch_capabilities, ...)
+    # carry no credential of their own because they're all read/administrative
+    # actions a trusting deployment accepts from its own chat_app. One call
+    # needs real auth, though: this server's own POST /upload (see upload_routes.py) checks the
+    # same token on the way IN, since chat_app's Chat/api/upload proxies a
+    # user's dropped file here and the receiving end shouldn't accept that
+    # from anything else reachable on the network. Blank by default (from
+    # secret_internal_api.env, unset until someone configures it) so it
+    # fails loudly rather than silently accepting an unauthenticated request.
+    internal_api_token: str = _env("INTERNAL_API_TOKEN", "")
+    # Where POST /upload (upload_routes.py) writes files a chat_app user
+    # dropped into a command-form modal, before a tool param
+    # that expects a real server-side path gets one.
+    # Relative to CWD by default, same convention as every path above.
+    uploads_dir: Path = Path(_env("MCP_UPLOADS_DIR", ".data/uploads"))
     @property
     def email_config_path(self) -> Path:
         return self.configs_dir / "config_email.json"

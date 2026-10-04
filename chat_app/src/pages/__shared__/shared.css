@@ -318,6 +318,13 @@ a {
 
 main {
   flex-grow: 1;
+  /* min-width: 0 overrides the flex item default (min-width: auto), which
+     otherwise sizes main's shrink floor off its widest descendant's
+     content - e.g. a wide table many levels down in Chat's #log - even
+     through #log's own overflow-x: hidden. Without this, main (and so the
+     whole body flex row) gets pushed wider than the viewport instead of
+     letting that descendant scroll within its own bounds. */
+  min-width: 0;
   width: 100%;
   padding: 2rem;
 }
@@ -556,6 +563,15 @@ button:disabled {
 
 .overview-title {
   text-align: center;
+}
+
+.overview-logo {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 0.75rem;
+  border-radius: 14px;
+  object-fit: contain;
 }
 
 .tiles {

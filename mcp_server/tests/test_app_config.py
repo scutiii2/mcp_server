@@ -1,4 +1,4 @@
-"""Tests for infra/app_config.py.
+"""Tests for services/app_config.py.
 
 The point of this module is that it fails loudly, so most of these assert
 on the *error*, not the happy path - a config loader that returns ``{}``
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src.infra.app_config import (
+from src.services.app_config import (
     EmailConfig,
     ExtensionConfig,
     capability_enabled,
@@ -22,8 +22,6 @@ from src.infra.app_config import (
     load_email_config,
     load_extension_config,
     load_extensions_config,
-    load_host_config,
-    load_hosts_config,
     resolve_section,
     save_capabilities_config,
     save_extension_config,
@@ -49,11 +47,6 @@ VALID_EMAIL = {
     "from": "notifications@example.com",
     "password": "changeme",
     "to": ["team@example.com"],
-}
-
-VALID_HOSTS = {
-    "zima": {"hostname": "192.168.1.10", "user": "root", "os": "linux", "key": "/root/.ssh/id"},
-    "desktop": {"hostname": "192.168.1.20", "user": "User", "os": "windows", "password": "pw"},
 }
 
 VALID_EXTENSIONS = {
@@ -174,63 +167,6 @@ def test_placeholder_value_is_not_itself_expanded(tmp_path: Path, monkeypatch):
     assert _resolve(path, "note") == "${NOT_A_VAR}"
 
 
-# --- lazy, per-entry resolution -----------------------------------------
-# Resolving a whole file up front meant one unset variable anywhere broke
-# every unrelated entry in it. These pin the fix down for the cases that
-# still share one file: several hosts, or several extensions.
-
-
-def test_a_broken_host_does_not_break_a_sibling_host(tmp_path: Path, monkeypatch):
-    """Resolution is per *entry*, not per file. Loading every host and
-    then indexing would read the same and pass every other test here,
-    while leaving one unreachable machine able to lock you out of the
-    others - which is precisely when you need them."""
-    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
-    path = _write(
-        tmp_path,
-        {
-            "zima": VALID_HOSTS["zima"],
-            "desktop": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"},
-        },
-    )
-
-    assert load_host_config(path, "zima").key == "/root/.ssh/id"
-
-    # ...and the broken one still fails, loudly, when it is the one asked for.
-    with pytest.raises(KeyError, match="DESKTOP_SSH_PASSWORD"):
-        load_host_config(path, "desktop")
-
-
-def test_loading_all_hosts_still_fails_when_any_host_is_broken(tmp_path: Path, monkeypatch):
-    """The one caller that legitimately needs every secret: it returns the
-    whole inventory, so skipping the entry it couldn't resolve would hand
-    back a silently short list and read as 'that host isn't configured'."""
-    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
-    path = _write(
-        tmp_path,
-        {
-            "zima": VALID_HOSTS["zima"],
-            "desktop": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"},
-        },
-    )
-
-    with pytest.raises(KeyError, match="DESKTOP_SSH_PASSWORD"):
-        load_hosts_config(path)
-
-
-def test_a_host_error_names_the_entry_and_the_key(tmp_path: Path, monkeypatch):
-    """The operator's next move is to open config_hosts.json and find the
-    line, so the message has to name the entry, not just the bare key -
-    'password' alone could be any host's password."""
-    monkeypatch.delenv("DESKTOP_SSH_PASSWORD", raising=False)
-    path = _write(tmp_path, {"desktop": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"}})
-
-    with pytest.raises(KeyError) as error:
-        load_host_config(path, "desktop")
-
-    assert "desktop.password" in str(error.value)
-
-
 def test_load_config_leaves_placeholders_unresolved(tmp_path: Path, monkeypatch):
     """load_config is parse-and-validate only. If it resolved anything it
     would demand every secret in the file regardless of which loader
@@ -282,29 +218,7 @@ def test_load_email_config_maps_from_to_from_address(tmp_path: Path):
         from_address="notifications@example.com",
         password="changeme",
         to=["team@example.com"],
-        approver_emails=["team@example.com"],
     )
-
-
-def test_approver_emails_default_to_the_general_recipients(tmp_path: Path):
-    """Splitting the two audiences should be available without being
-    mandatory - a config that never gates anything shouldn't have to
-    think about it."""
-    path = _write(tmp_path, VALID_EMAIL)
-
-    assert load_email_config(path).approver_emails == ["team@example.com"]
-
-
-def test_approver_emails_override_the_general_recipients(tmp_path: Path):
-    """When set, approvers are a *different* list, not an addition to it -
-    an approval link is authority to run something irreversible, and
-    everyone on the general notification list shouldn't inherit that."""
-    path = _write(tmp_path, {**VALID_EMAIL, "approver_emails": ["boss@example.com"]})
-
-    config = load_email_config(path)
-
-    assert config.approver_emails == ["boss@example.com"]
-    assert config.to == ["team@example.com"]
 
 
 def test_missing_required_key_names_the_key(tmp_path: Path):
@@ -320,15 +234,14 @@ def test_to_may_be_omitted_entirely(tmp_path: Path):
     invented address into the config - which then also joins the OTP
     allowlist, quietly widening exactly the thing it feeds."""
     no_to = {k: v for k, v in VALID_EMAIL.items() if k != "to"}
-    path = _write(tmp_path, {**no_to, "approver_emails": ["boss@example.com"]})
+    path = _write(tmp_path, no_to)
 
     config = load_email_config(path)
 
     assert config.to == []
-    assert config.approver_emails == ["boss@example.com"]
 
 
-def test_to_and_approver_emails_may_both_be_absent(tmp_path: Path):
+def test_to_and_domains_may_be_absent(tmp_path: Path):
     """Load time is the wrong place to reject this: send_email raises "No
     recipients" and the OTP capability raises its own KeyError naming the
     keys to add, both at the moment it matters. A load-time failure would
@@ -339,7 +252,6 @@ def test_to_and_approver_emails_may_both_be_absent(tmp_path: Path):
     config = load_email_config(path)
 
     assert config.to == []
-    assert config.approver_emails == []
     assert config.allowed_recipient_domains == ["example.com"]
 
 
@@ -479,80 +391,10 @@ def test_domains_resolve_placeholders_and_are_still_normalized(tmp_path: Path):
         assert load_email_config(path).allowed_recipient_domains == ["staff.example"]
 
 
-# --- hosts -------------------------------------------------------------
-
-
-def test_hosts_are_keyed_by_name(tmp_path: Path):
-    path = _write(tmp_path, VALID_HOSTS)
-
-    hosts = load_hosts_config(path)
-
-    assert set(hosts) == {"zima", "desktop"}
-    assert hosts["zima"].name == "zima"
-    assert hosts["desktop"].os == "windows"
-
-
-def test_port_defaults_to_22(tmp_path: Path):
-    path = _write(tmp_path, VALID_HOSTS)
-
-    assert load_hosts_config(path)["zima"].port == 22
-
-
-def test_os_is_normalized(tmp_path: Path):
-    path = _write(tmp_path, {"a": {**VALID_HOSTS["zima"], "os": "  Linux "}})
-
-    assert load_hosts_config(path)["a"].os == "linux"
-
-
-def test_unsupported_os_is_rejected(tmp_path: Path):
-    """The OS picks the entire command set, so a typo would otherwise
-    surface as a pile of 'command not found'."""
-    path = _write(tmp_path, {"a": {**VALID_HOSTS["zima"], "os": "darwin"}})
-
-    with pytest.raises(ValueError, match="expected one of"):
-        load_hosts_config(path)
-
-
-def test_host_without_key_or_password_is_rejected(tmp_path: Path):
-    """Failing here beats failing at connect time, where it looks like a
-    wrong password rather than a missing one."""
-    path = _write(tmp_path, {"a": {"hostname": "h", "user": "u", "os": "linux"}})
-
-    with pytest.raises(KeyError, match="needs a 'key' or a 'password'"):
-        load_hosts_config(path)
-
-
-def test_host_secrets_resolve_from_the_environment(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("DESKTOP_SSH_PASSWORD", "hunter2")
-    path = _write(tmp_path, {"a": {**VALID_HOSTS["desktop"], "password": "${DESKTOP_SSH_PASSWORD}"}})
-
-    assert load_hosts_config(path)["a"].password == "hunter2"
-
-
-def test_unknown_host_names_the_ones_that_exist(tmp_path: Path):
-    """The caller is usually a model that guessed a name; the fix is
-    knowing what it could have said."""
-    path = _write(tmp_path, VALID_HOSTS)
-
-    with pytest.raises(KeyError, match="desktop, zima"):
-        load_host_config(path, "nas")
-
-
-def test_empty_hosts_file_means_zero_hosts_configured(tmp_path: Path):
-    """A fresh config_hosts.json (just "{}") is a normal "nothing
-    configured yet" state now that the file *is* the hosts map - not an
-    error the way an entirely absent "hosts" key inside a shared document
-    used to be."""
-    path = _write(tmp_path, {})
-
-    assert load_hosts_config(path) == {}
-    with pytest.raises(KeyError, match="none configured"):
-        load_host_config(path, "zima")
-
-
 # --- extensions ----------------------------------------------------------
-# Mirrors the "hosts" tests above - same per-entry resolution, same
-# broken-sibling isolation.
+# Per-entry resolution, and broken-sibling isolation: one unset variable
+# in one extension's args must not break every other extension sharing
+# this file.
 
 
 def test_extensions_are_keyed_by_id(tmp_path: Path):
@@ -750,6 +592,42 @@ def test_http_extension_empty_url_is_rejected(tmp_path: Path):
         load_extensions_config(path)
 
 
+def test_http_extension_headers_resolve_placeholders(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "s3cret")
+    path = _write(
+        tmp_path,
+        {
+            "pdf_merger": {
+                "label": "PDF Merger",
+                "url": "http://127.0.0.1:8040/mcp",
+                "headers": {"X-Internal-Token": "${INTERNAL_API_TOKEN}"},
+            }
+        },
+    )
+
+    assert load_extensions_config(path)["pdf_merger"].headers == {"X-Internal-Token": "s3cret"}
+
+
+def test_http_extension_without_headers_has_none(tmp_path: Path):
+    path = _write(tmp_path, {"remote": {"label": "Remote", "url": "http://127.0.0.1:9000/mcp"}})
+
+    assert load_extensions_config(path)["remote"].headers == {}
+
+
+def test_http_extension_headers_must_be_strings(tmp_path: Path):
+    path = _write(tmp_path, {"remote": {"label": "Remote", "url": "http://127.0.0.1:9000/mcp", "headers": {"X-Count": 3}}})
+
+    with pytest.raises(ValueError, match="'remote.headers' must be an object of string values"):
+        load_extensions_config(path)
+
+
+def test_stdio_extension_with_headers_is_rejected(tmp_path: Path):
+    path = _write(tmp_path, {"local": {"label": "Local", "command": "python", "headers": {"X": "y"}}})
+
+    with pytest.raises(ValueError, match="'local.headers' only applies to an http extension"):
+        load_extensions_config(path)
+
+
 # --- save_extension_config / delete_extension_config ----------------------
 # The runtime add/remove routes (extension_routes.py) persist through
 # these, so a successful HTTP response and config_extensions.json agreeing
@@ -897,3 +775,45 @@ def test_save_capabilities_config_preserves_other_capabilities(tmp_path: Path):
     data = load_capabilities_config(path)
     assert data["host_health"] == {"enabled": True}
     assert data["otp"] == {"enabled": False}
+
+
+def test_save_extension_config_never_writes_headers_and_repr_hides_them(tmp_path: Path):
+    path = _write(tmp_path, {})
+    config = ExtensionConfig(
+        id="remote",
+        label="Remote",
+        description="desc",
+        transport="http",
+        url="http://x/mcp",
+        headers={"X-Internal-Token": "s3cret"},
+    )
+
+    save_extension_config(path, config)
+
+    assert "headers" not in load_config(path)["remote"]
+    assert "s3cret" not in path.read_text(encoding="utf-8")
+    assert "s3cret" not in repr(config)
+
+
+def test_forward_requester_defaults_false_and_parses_true(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "plain": {"label": "P", "url": "http://127.0.0.1:9000/mcp"},
+            "http": {"label": "H", "url": "http://127.0.0.1:9001/mcp", "forward_requester": True},
+            "local": {"label": "L", "command": "python", "forward_requester": True},
+        },
+    )
+
+    loaded = load_extensions_config(path)
+
+    assert loaded["plain"].forward_requester is False
+    assert loaded["http"].forward_requester is True
+    assert loaded["local"].forward_requester is True
+
+
+def test_forward_requester_must_be_a_bool(tmp_path: Path):
+    path = _write(tmp_path, {"remote": {"label": "R", "url": "http://x/mcp", "forward_requester": "yes"}})
+
+    with pytest.raises(ValueError, match=r"'remote\.forward_requester' must be true or false"):
+        load_extensions_config(path)

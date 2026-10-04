@@ -1,0 +1,132 @@
+/* Shared look of the Admin page's panels (AccountsPanel, RolesPanel,
+   InvitesPanel). Plain CSS scoped by the .admin-panel class, since each
+   panel's own <style scoped> can't reach the others. */
+
+.admin-panel h3 {
+  margin: 24px 0 10px;
+  font-size: 1em;
+}
+.admin-panel input[type="text"],
+.admin-panel input[type="email"],
+.admin-panel select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.admin-panel .row-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.admin-panel .row-form input[type="text"],
+.admin-panel .row-form input[type="email"] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.admin-panel .primary {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.admin-panel .small {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--text);
+  background: transparent;
+}
+.admin-panel .small.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.admin-panel button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.admin-panel .card {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.admin-panel .card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+.admin-panel .card-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.admin-panel .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.admin-panel .badge {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.75em;
+  color: var(--muted);
+}
+.admin-panel .badge.warn {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.admin-panel .chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.admin-panel .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  background: var(--code-bg);
+}
+.admin-panel .chip.fixed {
+  padding-right: 10px;
+}
+.admin-panel .chip-x {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+}
+.admin-panel .chip-x:hover:not(:disabled) {
+  color: var(--danger);
+}
+.admin-panel .muted {
+  color: var(--muted);
+}
+.admin-panel .error {
+  color: var(--danger);
+}
+.admin-panel .notice {
+  color: var(--muted);
+  font-size: 0.9em;
+}

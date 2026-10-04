@@ -1,0 +1,132 @@
+/* Shared look of the single-column information pages (Extensions,
+   Watchers, Logs, Config issues). Plain CSS scoped by the .info-page class,
+   like admin/admin.css, since each view's <style scoped> can't share. */
+
+.info-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.info-page .column {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+.info-page h2 {
+  margin: 0 0 6px;
+  font-size: 1.2em;
+}
+.info-page h3 {
+  margin: 0;
+  font-size: 1em;
+}
+.info-page .intro {
+  margin: 0 0 16px;
+  font-size: 0.9em;
+}
+.info-page .card {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.info-page .card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.info-page .name {
+  font-family: var(--mono);
+  font-size: 0.8em;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.info-page .switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.info-page input:not([type="checkbox"]),
+.info-page select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.info-page .primary {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.info-page .danger,
+.info-page .chip {
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--muted);
+  background: transparent;
+}
+.info-page .danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.info-page .chip.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--bg);
+}
+.info-page button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.info-page .muted {
+  color: var(--muted);
+}
+.info-page .error {
+  color: var(--danger);
+}
+.info-page table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.info-page th,
+.info-page td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.info-page th {
+  font-weight: 600;
+  color: var(--muted);
+}
+.info-page pre {
+  max-height: 320px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg);
+}
+/* Wide tables scroll sideways instead of widening the page. */
+.info-page .table-wrap {
+  overflow-x: auto;
+}

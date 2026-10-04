@@ -7,6 +7,7 @@ from src.models import Account, LogEntry, LoginAttempt, SecurityEvent, db
 from src.pages.__index__ import register_pages
 from src.services import otp_service
 from src.services.auth_service import init_login_manager
+from src.services.email_service import init_mail, mail
 
 _SHARED_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "src" / "pages" / "__shared__"
 
@@ -23,6 +24,13 @@ def _build_auth_test_app(tmp_path):
         db.create_all()
 
     init_login_manager(app)
+    # Registration now sends a verification email (see auth.register) -
+    # TESTING=True makes Flask-Mail suppress the actual send, but the
+    # extension still has to be registered or Message() raises KeyError.
+    # A nonexistent secrets dir is fine: load_env_secrets degrades to {},
+    # same default-localhost config init_mail already tolerates in prod.
+    init_mail(app, tmp_path / "no-secrets-here")
+
     register_pages(app)
 
     return app
@@ -69,9 +77,11 @@ def test_register_with_valid_invite_creates_account(tmp_path):
     )
 
     assert response.status_code == 302
+    assert response.headers["Location"] == "/auth/verify-email"
     with app.app_context():
         created = db.session.query(Account).filter_by(username="newperson").one()
         assert created.roles == []
+        assert created.email_verified is False
 
 
 def test_register_with_invalid_invite_fails(tmp_path):
@@ -256,3 +266,157 @@ def test_register_logs_action(tmp_path):
         created = db.session.query(Account).filter_by(username="regnewperson").one()
         assert len(entries) == 1
         assert entries[0].account_id == created.id
+
+
+def _register(client, db_session=None, username="verifyme", email="verifyme@example.com", app=None):
+    with app.app_context():
+        inviter = Account(username=f"{username}-inviter", email=f"{username}-inviter@example.com", password_hash="hashed")
+        db.session.add(inviter)
+        db.session.commit()
+        _, code = otp_service.create_invite(db.session, inviter.id, email, "manual")
+
+    client.post(
+        "/auth/register",
+        data={"username": username, "email": email, "password": "s3cret!", "invite_code": code},
+    )
+
+
+def test_verify_email_with_correct_code_marks_account_verified(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _register(client, app=app)
+
+    with app.app_context():
+        account = db.session.query(Account).filter_by(username="verifyme").one()
+        verification, code = otp_service.create_email_verification(db.session, account)
+
+    response = client.post("/auth/verify-email", data={"code": code})
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
+    with app.app_context():
+        assert db.session.query(Account).filter_by(username="verifyme").one().email_verified is True
+
+
+def test_verify_email_with_wrong_code_fails(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _register(client, app=app)
+
+    response = client.post("/auth/verify-email", data={"code": "not-the-code"})
+
+    assert response.status_code == 400
+    with app.app_context():
+        assert db.session.query(Account).filter_by(username="verifyme").one().email_verified is False
+
+
+def test_verify_email_page_requires_login(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+
+    response = client.get("/auth/verify-email")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/auth/login"
+
+
+def test_resend_verification_issues_a_new_code(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _register(client, app=app)
+
+    with app.app_context():
+        account = db.session.query(Account).filter_by(username="verifyme").one()
+        before = db.session.query(otp_service.EmailVerificationOtp).filter_by(account_id=account.id).count()
+
+    response = client.post("/auth/verify-email/resend")
+
+    assert response.status_code == 200
+    with app.app_context():
+        after = db.session.query(otp_service.EmailVerificationOtp).filter_by(account_id=account.id).count()
+        assert after == before + 1
+
+
+def test_login_and_register_redirect_home_when_already_logged_in(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+
+    with app.app_context():
+        db.session.add(
+            Account(
+                username="loggedin",
+                email="loggedin@example.com",
+                password_hash=generate_password_hash("correct-password"),
+            )
+        )
+        db.session.commit()
+
+    client = app.test_client()
+    client.post("/auth/login", data={"username": "loggedin", "password": "correct-password"})
+
+    for path in ("/auth/login", "/auth/register"):
+        for response in (client.get(path), client.post(path, data={})):
+            assert response.status_code == 302
+            assert response.headers["Location"] == "/"
+
+
+def test_verify_email_and_resend_redirect_home_when_already_verified(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _register(client, app=app)
+
+    with app.app_context():
+        account = db.session.query(Account).filter_by(username="verifyme").one()
+        account.email_verified = True
+        db.session.commit()
+
+    for response in (
+        client.get("/auth/verify-email"),
+        client.post("/auth/verify-email", data={"code": "x"}),
+        client.post("/auth/verify-email/resend"),
+    ):
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/"
+
+
+def _refuse_smtp(monkeypatch):
+    def refuse(message):
+        raise ConnectionRefusedError(10061, "actively refused")
+
+    monkeypatch.setattr(mail, "send", refuse)
+
+
+def test_register_still_logs_in_when_verification_email_fails(tmp_path, monkeypatch):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _refuse_smtp(monkeypatch)
+
+    _register(client, app=app)
+
+    with client.session_transaction() as flask_session:
+        assert "_user_id" in flask_session
+    response = client.get("/auth/verify-email")
+    assert response.status_code == 200
+    assert b"could not be sent" in response.data
+
+
+def test_resend_verification_shows_error_when_email_fails(tmp_path, monkeypatch):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+    _register(client, app=app)
+    _refuse_smtp(monkeypatch)
+
+    response = client.post("/auth/verify-email/resend")
+
+    assert response.status_code == 503
+    assert b"could not be sent" in response.data
+    assert b"A new code was sent" not in response.data
+
+
+def test_resend_verification_requires_login(tmp_path):
+    app = _build_auth_test_app(tmp_path)
+    client = app.test_client()
+
+    response = client.post("/auth/verify-email/resend")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/auth/login"

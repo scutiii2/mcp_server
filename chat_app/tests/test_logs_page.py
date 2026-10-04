@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+from unittest.mock import patch
 
 from flask import Flask
 from werkzeug.security import generate_password_hash
@@ -237,6 +239,30 @@ def test_logs_page_shows_only_chat_traces_tab_with_that_permission(tmp_path):
     assert b'data-tab="chat_traces"' in response.data
     assert b'data-tab="logs"' not in response.data
     assert b'data-tab="errors"' not in response.data
+
+
+def test_chat_traces_tab_defaults_to_current_account(tmp_path):
+    app = _build_logs_test_app(tmp_path)
+    account_id = _create_account(app, "chattracedefault", ["logs.chat.view"])
+    other_id = _create_account(app, "chattraceother", [])
+
+    with app.app_context():
+        db.session.add(
+            LogEntry(kind="chat_trace", account_id=account_id, source="chat.turn", message="my own turn", details="{}")
+        )
+        db.session.add(
+            LogEntry(kind="chat_trace", account_id=other_id, source="chat.turn", message="someone else's turn", details="{}")
+        )
+        db.session.commit()
+
+    client = app.test_client()
+    _login_as(client, account_id)
+
+    response = client.get("/logs/")
+
+    assert response.status_code == 200
+    assert b"my own turn" in response.data
+    assert b"someone else's turn" not in response.data
 
 
 def test_chat_traces_tab_shows_entries_for_selected_account(tmp_path):

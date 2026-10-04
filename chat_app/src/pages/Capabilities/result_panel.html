@@ -1,0 +1,13 @@
+<!-- Shared markup for a tool/resource card's result area. Two views over
+     the same response: `.result-formatted` (Markdown, rendered by
+     script.js's renderResult() using the same marked/DOMPurify pipeline
+     Chat/script.js uses for "/" command replies - see
+     command_formatting.py) shown by default, and `.result-raw` (the
+     untouched JSON text) behind a "Show raw JSON" toggle for anyone who
+     needs the exact wire response. Both start empty/hidden; runTool()/
+     readResourceForm() in script.js fill them in per-response. -->
+<div class="result-panel">
+  <div class="result-formatted"></div>
+  <button type="button" class="result-raw-toggle">Show raw JSON</button>
+  <pre class="result-raw"></pre>
+</div>

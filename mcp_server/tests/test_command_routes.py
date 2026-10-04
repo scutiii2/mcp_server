@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 from src import commands
 from src.command_routes import install_command_routes
-from src.infra import capability_registry
+from src.services import capability_registry
 
 
 @pytest.fixture

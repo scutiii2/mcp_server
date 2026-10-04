@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv_ember_api/
+
+# Real config/secrets/runtime data stay local; only .example twins and
+# READMEs are committed (same pattern as chat_app).
+configs/*
+!configs/*.example
+!configs/README.md
+secrets/*
+!secrets/*.example
+!secrets/README.md
+data/*
+!data/README.md

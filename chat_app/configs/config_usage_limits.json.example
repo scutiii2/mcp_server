@@ -1,0 +1,5 @@
+{
+  "six_hour_token_limit": 1000000,
+  "weekly_token_limit": 5000000,
+  "max_context_tokens_per_chat": 150000
+}

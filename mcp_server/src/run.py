@@ -12,19 +12,28 @@ from pathlib import Path
 # os.getenv() at class-definition time (i.e. at import time), so every
 # secrets/*.env file needs to be loaded into the environment first or
 # those defaults never see it. Loaded from every *.env file in
-# src/secrets/ rather than one fixed name, mirroring src/configs/'s
+# secrets/ rather than one fixed name, mirroring configs/'s
 # one-file-per-concern split (secret_app.env, secret_smtp.env,
 # secret_ssh.env today; a future capability that owns a real secret adds
 # its own file here with zero changes to this loop).
+import shutil
+
 from dotenv import load_dotenv
 
-_SECRETS_DIR = Path("src/secrets")
+_SECRETS_DIR = Path(".secrets")
+# Auto-create any missing secret_*.env from its .env.example twin.
+for _example in sorted(_SECRETS_DIR.glob("*.env.example")):
+    _target = _example.with_suffix("")
+    if not _target.exists():
+        shutil.copyfile(_example, _target)
 for _env_file in sorted(_SECRETS_DIR.glob("*.env")):
     load_dotenv(_env_file)
 
 from src.config import settings  # noqa: E402
-from src.infra import capability_registry  # noqa: E402
-from src.infra.app_config import capability_enabled, load_capabilities_config  # noqa: E402
+from src.services import capability_registry  # noqa: E402
+from src.services.app_config import capability_enabled, load_capabilities_config  # noqa: E402
+from src.services.identity_context import IdentityContextMiddleware  # noqa: E402
+from src.services.internal_token import InternalTokenMiddleware  # noqa: E402
 from src.utils.logging_setup import configure_logging  # noqa: E402
 from src.server import mcp  # noqa: E402
 
@@ -49,18 +58,18 @@ _capabilities_config = load_capabilities_config(settings.capabilities_config_pat
 # modules, so a second import wouldn't re-run the @mcp.tool() decorators
 # anyway). Disabled state is applied immediately below, via the same
 # registry a live PATCH /capabilities/{name} request uses later - see
-# capability_routes.py and infra/capability_registry.py.
-#
-# host_health appears twice on purpose: the resource serves clients that
-# read a URI, the capability serves models that can only see tools. Same
-# domain logic underneath, same toggle entry (and the same `capturing`
-# block) governs both - see capabilities/host_health/domain.py.
-with capability_registry.capturing(mcp, "host_health"):
-    from src.capabilities.host_health import tool as host_health_tool  # noqa: E402,F401
-    from src.resources.host_health import resource as host_health_resource  # noqa: E402,F401
+# capability_routes.py and services/capability_registry.py.
 
-with capability_registry.capturing(mcp, "otp"):
-    from src.capabilities.otp import tool as otp_tool  # noqa: E402,F401
+# Each `import src.capabilities.<name>` below runs only that package's
+# __init__.py (its META = capability_meta.register(...) declaration) -
+# not its tool.py, so this is safe to do before opening the capturing()
+# block that actually registers tools. See capability_meta.py's
+# docstring for why the id/label live there instead of being typed again
+# here.
+from src.capabilities import server_manager  # noqa: E402
+
+with capability_registry.capturing(mcp, server_manager.META.id, label=server_manager.META.label):
+    from src.capabilities.server_manager import tool as server_manager_tool  # noqa: E402,F401
 
 for _name in capability_registry.names():
     if not capability_enabled(_capabilities_config, _name):
@@ -72,7 +81,7 @@ async def _serve() -> None:
     runs inside this one coroutine, under a single asyncio.run() (see
     main()) - not, as a first pass at this had it, several independent
     asyncio.run() calls followed by a separate uvicorn.run(). That
-    mattered in practice, not just in theory: infra/extensions.py's
+    mattered in practice, not just in theory: services/extensions.py's
     upstream connections (stdio subprocess pipes, anyio task groups,
     cancel scopes) are bound to the event loop they were opened in.
     asyncio.run() tears its loop down when it returns, so connecting
@@ -88,12 +97,12 @@ async def _serve() -> None:
     """
     import uvicorn
 
-    from src.infra import extensions
+    from src.services import extensions
 
     try:
         # Before the tool_names line below, on purpose: extensions
         # register their proxied tools onto `mcp` itself (see
-        # infra/extensions.py), so connecting first is what makes the
+        # services/extensions.py), so connecting first is what makes the
         # merged list below - and therefore the "Tools" count and bullet
         # list - include them.
         extension_statuses = await extensions.install_extensions(mcp, settings.extensions_config_path)
@@ -119,11 +128,12 @@ async def _serve() -> None:
         except Exception as error:  # noqa: BLE001 - a banner line must never block startup
             resource_count = f"unknown ({error})"
 
-        from src.approval_routes import install_approval_routes
         from src.capability_routes import install_capability_routes
         from src.command_routes import install_command_routes
+        from src.download_routes import install_download_routes
         from src.extension_routes import install_extension_routes
-        from src.infra import approvals
+        from src.help_routes import install_help_routes
+        from src.upload_routes import install_upload_routes
 
         enabled_capabilities = [
             name for name in capability_registry.names() if capability_registry.is_enabled(name)
@@ -136,10 +146,14 @@ async def _serve() -> None:
             f"  Tools    : {len(tool_names)}",
             *(f"    - {name}" for name in tool_names),
             f"  Resources: {resource_count}",
-            f"  Gated    : {', '.join(approvals.registered_names()) or 'none'}",
             f"  Extensions: {', '.join(f'{s.id} ({s.status})' for s in extension_statuses) or 'none'}",
         ]
-        if settings.host not in {"127.0.0.1", "localhost", "::1"}:
+        banner.append(
+            "  /mcp auth : X-Internal-Token required"
+            if settings.internal_api_token
+            else "  /mcp auth : none (set INTERNAL_API_TOKEN in .secrets/secret_internal_api.env)"
+        )
+        if settings.host not in {"127.0.0.1", "localhost", "::1"} and not settings.internal_api_token:
             # Worth shouting about: there is no authentication on this
             # server, so a non-loopback bind means anything that can
             # route to this port can call every tool above with arguments
@@ -158,10 +172,17 @@ async def _serve() -> None:
         print("\n".join(banner), flush=True)
 
         app = mcp.streamable_http_app()
-        # Where a human approves anything gated - deliberately a plain
-        # HTTP route rather than a tool, so the model can't approve its
-        # own requests. See approval_routes.py.
-        install_approval_routes(app)
+        # Reads chat_app's X-Requester-Username/X-Requester-Email headers
+        # (see services/commands.py's _IDENTITY_INJECTED_TOOLS) into
+        # per-request contextvars, so an identity-gated capability's
+        # domain function can read current_username()/current_email()
+        # instead of taking the caller's identity as a tool argument -
+        # see services/identity_context.py's module docstring for why.
+        app.add_middleware(IdentityContextMiddleware)
+        # Added last, so it runs first: a request to /mcp without the
+        # shared internal token never reaches the transport (only when a
+        # token is configured). See services/internal_token.py.
+        app.add_middleware(InternalTokenMiddleware, token=settings.internal_api_token)
         # Where a human (or chat_app's sidebar) checks what's connected -
         # also a plain HTTP route, same reasoning: nothing here is
         # something a model needs to call. See extension_routes.py.
@@ -170,12 +191,29 @@ async def _serve() -> None:
         # "/" commands - also a plain HTTP route, same reasoning. See
         # command_routes.py.
         install_command_routes(app)
+        # Where chat_app answers "/<capability> help ..." - also a plain
+        # HTTP route, same reasoning as install_command_routes above: not
+        # a real tool call, just structured data about one capability's
+        # tools/commands/workflow for chat_app to render. See
+        # help_routes.py.
+        install_help_routes(app)
         # Where a human (chat_app's Capabilities page) turns a built-in
         # capability on/off live - also a plain HTTP route, same
-        # reasoning as install_approval_routes above: this changes what
+        # reasoning as install_command_routes: this changes what
         # every caller of this server can do, not something a model
         # should be able to do to itself. See capability_routes.py.
         install_capability_routes(app)
+        # Where chat_app proxies a file a user dropped into a command-form
+        # modal, so a tool param that expects a real server-side path can
+        # be filled with one - also a plain HTTP route, checked against
+        # the same internal shared secret chat_app itself checks in the
+        # other direction. See upload_routes.py.
+        install_upload_routes(app)
+        # Where a caller fetches a file a tool offered it (a download card's
+        # link, through ember_api): a plain HTTP route for the same reason as
+        # /upload, checked against the internal token and the requester. See
+        # download_routes.py.
+        install_download_routes(app)
 
         # uvicorn.Server(...).serve() rather than the uvicorn.run()
         # convenience function: run() calls asyncio.run() itself, which

@@ -10,12 +10,11 @@ blueprint = Blueprint(
 )
 
 PAGE_PERMISSION = ("logs.view", "logs.errors.view", "logs.chat.view")
-PAGE_DESCRIPTION = "View server and per-account activity, error, and chat-turn logs."
+PAGE_DESCRIPTION = "View server and per-account activity, error, chat-turn, and add-on audit logs."
 
 register_permission("logs.view")
 register_permission("logs.errors.view")
 register_permission("logs.chat.view")
-
 _ROW_LIMIT = 200
 
 
@@ -49,13 +48,21 @@ def index():
     if active_tab not in allowed_tabs:
         active_tab = allowed_tabs[0]
     logs_actor = request.args.get("logs_actor", "server")
-    errors_actor = request.args.get("errors_actor", "server")
-    # "Server" (account_id=None) always yields zero rows for this tab - a
-    # chat turn always belongs to a specific account - but the dropdown
-    # keeps the same Server-first shape as the other two tabs for UI
-    # consistency (see docs/superpowers/specs/2026-08-22-chat-
-    # capabilities-port-design.md's "Defaults Flagged for Review").
-    chat_traces_actor = request.args.get("chat_traces_actor", "server")
+    # Chat-originated errors are logged under the acting account, not
+    # "Server" (account_id=None) - only truly unauthenticated exceptions
+    # (see run.py's handle_unexpected_error) use None. Defaulting this to
+    # "server" meant a user's own chat errors never showed up here by
+    # default, even though they were being logged correctly - same
+    # reasoning as chat_traces_actor below (see docs/superpowers/specs/
+    # 2026-08-22-chat-capabilities-port-design.md's "Defaults Flagged for
+    # Review").
+    errors_actor = request.args.get("errors_actor", str(current_user.id))
+    # A chat turn always belongs to a specific account, so "Server"
+    # (account_id=None) would always yield zero rows here - default to
+    # the current user's own account instead (see docs/superpowers/specs/
+    # 2026-08-22-chat-capabilities-port-design.md's "Defaults Flagged for
+    # Review").
+    chat_traces_actor = request.args.get("chat_traces_actor", str(current_user.id))
 
     log_entries = None
     error_entries = None

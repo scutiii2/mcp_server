@@ -4,7 +4,7 @@ Same Starlette TestClient pattern as test_extension_routes.py. Each test
 builds its own real FastMCP instance and registers one or two fake
 capabilities onto it via capability_registry.capturing(), then
 monkeypatches capability_routes.mcp to point at that instance instead of
-the real src.server.mcp - the same reasoning test_approval_routes.py's
+the real src.server.mcp - the same reasoning test_command_routes.py's
 `db` fixture gives for swapping in a throwaway settings object.
 """
 
@@ -24,7 +24,7 @@ from starlette.testclient import TestClient  # noqa: E402
 
 from src import config  # noqa: E402
 from src.capability_routes import install_capability_routes  # noqa: E402
-from src.infra import capability_registry  # noqa: E402
+from src.services import capability_registry  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -73,16 +73,30 @@ def test_get_lists_every_registered_capability(client):
 
     assert response.status_code == 200
     assert response.json() == [
-        {"name": "gadgets", "enabled": True},
-        {"name": "widgets", "enabled": True},
+        {"name": "gadgets", "enabled": True, "label": "gadgets", "tools": ["make_gadget"], "resources": []},
+        {"name": "widgets", "enabled": True, "label": "widgets", "tools": ["make_widget"], "resources": []},
     ]
+
+
+def test_get_reports_a_registered_label(monkeypatch, client):
+    monkeypatch.setitem(
+        capability_registry._REGISTRY, "widgets",
+        replace(capability_registry._REGISTRY["widgets"], label="Widgets"),
+    )
+
+    response = client.get("/capabilities")
+
+    widgets = next(entry for entry in response.json() if entry["name"] == "widgets")
+    assert widgets["label"] == "Widgets"
 
 
 def test_patch_disables_a_capability(client, test_mcp):
     response = client.patch("/capabilities/widgets", json={"enabled": False})
 
     assert response.status_code == 200
-    assert response.json() == {"name": "widgets", "enabled": False}
+    assert response.json() == {
+        "name": "widgets", "enabled": False, "label": "widgets", "tools": ["make_widget"], "resources": [],
+    }
     assert "make_widget" not in {t.name for t in test_mcp._tool_manager.list_tools()}
     # The sibling capability is untouched.
     assert "make_gadget" in {t.name for t in test_mcp._tool_manager.list_tools()}
@@ -94,7 +108,9 @@ def test_patch_re_enables_a_capability(client, test_mcp):
     response = client.patch("/capabilities/widgets", json={"enabled": True})
 
     assert response.status_code == 200
-    assert response.json() == {"name": "widgets", "enabled": True}
+    assert response.json() == {
+        "name": "widgets", "enabled": True, "label": "widgets", "tools": ["make_widget"], "resources": [],
+    }
     assert "make_widget" in {t.name for t in test_mcp._tool_manager.list_tools()}
 
 

@@ -2,6 +2,7 @@ import secrets as secrets_module
 
 from flask import Flask
 from flask_login import LoginManager
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from src.models import Account, LoginAttempt, Permission, Role, db
@@ -39,12 +40,33 @@ def record_login_attempt(
     return attempt
 
 
+class RegistrationError(ValueError):
+    """Registration rejected for a reason safe to show the registrant."""
+
+
+def _duplicate_account_message(db_session, username: str, email: str) -> str | None:
+    if db_session.query(Account.id).filter_by(username=username).first() is not None:
+        return "Username is already taken"
+    if db_session.query(Account.id).filter_by(email=email).first() is not None:
+        return "Email is already registered"
+    return None
+
+
 def register_account(
     db_session, username: str, email: str, password: str, invite_code: str
 ) -> Account | None:
+    """Returns None for a bad invite; raises RegistrationError for a duplicate username/email.
+
+    The invite is checked first so account existence is only revealed to invite holders,
+    and it is left unconsumed when registration is rejected.
+    """
     invite = otp_service.find_valid_invite(db_session, invite_code)
     if invite is None:
         return None
+
+    duplicate = _duplicate_account_message(db_session, username, email)
+    if duplicate is not None:
+        raise RegistrationError(duplicate)
 
     account = Account(
         username=username,
@@ -52,8 +74,15 @@ def register_account(
         password_hash=generate_password_hash(password),
     )
     db_session.add(account)
-    otp_service.consume_invite(db_session, invite)
-    db_session.commit()
+    try:
+        otp_service.consume_invite(db_session, invite)
+    except IntegrityError as error:
+        # Lost a race with a concurrent registration; rollback also restores the invite.
+        db_session.rollback()
+        raise RegistrationError(
+            _duplicate_account_message(db_session, username, email)
+            or "Username or email is already registered"
+        ) from error
     return account
 
 
@@ -70,6 +99,21 @@ def _sync_administrator_role_permissions(db_session, role: Role) -> None:
     db_session.commit()
 
 
+def _sync_bootstrap_admin(db_session, admin: Account, username, email, password) -> None:
+    taken = {
+        row.username: row.email
+        for row in db_session.query(Account).filter(Account.id != admin.id)
+    }
+    if username not in taken:
+        admin.username = username
+    if email not in taken.values():
+        admin.email = email
+    # No configured password: leave the existing hash alone rather than rotating it.
+    if password and not check_password_hash(admin.password_hash, password):
+        admin.password_hash = generate_password_hash(password)
+    db_session.commit()
+
+
 def ensure_bootstrap_admin(db_session, secrets_dir) -> None:
     role = db_session.query(Role).filter_by(name="Administrator").first()
     if role is None:
@@ -79,13 +123,18 @@ def ensure_bootstrap_admin(db_session, secrets_dir) -> None:
 
     _sync_administrator_role_permissions(db_session, role)
 
-    if db_session.query(Account).count() > 0:
-        return
-
     bootstrap_secrets = load_env_secrets(secrets_dir / "secret_bootstrap_admin.env")
     username = bootstrap_secrets.get("BOOTSTRAP_ADMIN_USERNAME") or "admin"
     email = bootstrap_secrets.get("BOOTSTRAP_ADMIN_EMAIL") or "admin@example.com"
     password = bootstrap_secrets.get("BOOTSTRAP_ADMIN_PASSWORD")
+
+    existing = db_session.query(Account).filter_by(is_protected=True).first()
+    if existing is not None:
+        _sync_bootstrap_admin(db_session, existing, username, email, password)
+        return
+
+    if db_session.query(Account).count() > 0:
+        return
 
     generated = False
     if not password:

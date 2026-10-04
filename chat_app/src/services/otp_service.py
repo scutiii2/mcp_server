@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from src.models import InviteOTP
+from src.models import Account, EmailVerificationOtp, InviteOTP
 from src.utils.tokens import generate_otp_code, hash_token, verify_token
 
 OTP_EXPIRY_MINUTES = 15
@@ -44,4 +44,40 @@ def consume_invite(db_session, invite: InviteOTP) -> None:
 
 def delete_invite(db_session, invite: InviteOTP) -> None:
     db_session.delete(invite)
+    db_session.commit()
+
+
+def create_email_verification(db_session, account: Account) -> tuple[EmailVerificationOtp, str]:
+    """Issue a fresh verification code for `account`. Older unused codes
+    for the same account are left in place (not revoked) - find_valid_
+    email_verification checks every unused, unexpired one, so an earlier
+    "resend" click doesn't invalidate a code the user already has open in
+    their inbox."""
+    code = generate_otp_code()
+    verification = EmailVerificationOtp(
+        code_hash=hash_token(code),
+        account_id=account.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
+    )
+    db_session.add(verification)
+    db_session.commit()
+    return verification, code
+
+
+def find_valid_email_verification(db_session, account: Account, code: str) -> EmailVerificationOtp | None:
+    now = datetime.now(timezone.utc)
+    candidates = (
+        db_session.query(EmailVerificationOtp)
+        .filter(EmailVerificationOtp.account_id == account.id, EmailVerificationOtp.used_at.is_(None))
+        .all()
+    )
+    for candidate in candidates:
+        if verify_token(code, candidate.code_hash) and _as_utc(candidate.expires_at) > now:
+            return candidate
+    return None
+
+
+def consume_email_verification(db_session, verification: EmailVerificationOtp) -> None:
+    verification.used_at = datetime.now(timezone.utc)
+    verification.account.email_verified = True
     db_session.commit()

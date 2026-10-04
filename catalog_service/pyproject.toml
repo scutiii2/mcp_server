@@ -1,0 +1,22 @@
+[project]
+name = "catalog_service"
+version = "0.1.0"
+description = "Cross-project reuse catalog for chat_app, mcp_server, and ai_agent"
+requires-python = ">=3.11"
+dependencies = [
+    "starlette>=0.37,<1.0",
+    "uvicorn==0.49.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[project.scripts]
+catalog-service = "src.run:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

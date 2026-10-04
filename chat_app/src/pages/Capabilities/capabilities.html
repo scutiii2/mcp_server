@@ -33,16 +33,33 @@
       {% set props = (tool.input_schema or {}).get('properties', {}) %}
       {% if props %}
         {% for field_name, field_schema in props.items() %}
+        {# A parameter typed `X | None` has no top-level `type` - pydantic
+           emits `anyOf: [{type: X}, {type: null}]` instead (see
+           check_compliance_tool's policy_name) - so the placeholder falls
+           back to the first anyOf branch's type before giving up on 'string'. #}
+        {% set field_type = field_schema.type or (field_schema.anyOf[0].type if field_schema.anyOf else 'string') %}
+        {% set examples = field_schema.examples or [] %}
         <label for="{{ tool.name }}-{{ field_name }}">{{ field_name }}{% if field_schema.description %} &mdash; {{ field_schema.description }}{% endif %}</label>
         <input type="text" id="{{ tool.name }}-{{ field_name }}" name="{{ field_name }}"
-               placeholder="{{ field_schema.type or 'string' }}">
+               placeholder="{{ field_type }}"
+               {% if examples %}list="{{ tool.name }}-{{ field_name }}-suggestions"{% endif %}>
+        {% if examples %}
+        {# A <datalist> only suggests - it never blocks typing a value
+           that isn't listed, matching what JSON Schema `examples` means
+           (non-binding), unlike `enum` which would actually constrain it. #}
+        <datalist id="{{ tool.name }}-{{ field_name }}-suggestions">
+          {% for value in examples %}
+          <option value="{{ value }}"></option>
+          {% endfor %}
+        </datalist>
+        {% endif %}
         {% endfor %}
       {% else %}
         <p class="tool-desc">No input parameters.</p>
       {% endif %}
       <button type="submit">Run</button>
     </form>
-    <pre class="result"></pre>
+    {% include "result_panel.html" %}
   </div>
 </div>
 {% endmacro %}
@@ -131,7 +148,7 @@
       {% endif %}
       <button type="submit">Read</button>
     </form>
-    <pre class="result"></pre>
+    {% include "result_panel.html" %}
   </div>
 </div>
 {% endmacro %}
@@ -167,5 +184,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/16.3.0/lib/marked.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.13/purify.min.js"></script>
 <script src="{{ url_for('capabilities.static', filename='script.js') }}"></script>
 {% endblock %}
