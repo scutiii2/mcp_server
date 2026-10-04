@@ -5,6 +5,9 @@ startup/shutdown (see server.py's main())."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import pytest
 
 from src import agent_registry
 
@@ -149,13 +152,90 @@ def test_old_entries_without_new_keys_still_load(monkeypatch, tmp_path):
     assert agent.get("orchestrator", False) is False
 
 
-def test_write_is_atomic_and_leaves_no_temp_file(tmp_path):
+def test_write_writes_the_file_and_leaves_no_temp_file(tmp_path):
     target = tmp_path / "config_agents.json"
 
     agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
 
     assert json.loads(target.read_text(encoding="utf-8"))["agents"][0]["id"] == "a"
     assert [p.name for p in tmp_path.iterdir()] == ["config_agents.json"]
+
+
+def test_write_swaps_a_temp_file_in_with_os_replace(monkeypatch, tmp_path):
+    target = tmp_path / "config_agents.json"
+    target.write_text('{"agents": []}', encoding="utf-8")
+    real_replace = agent_registry.os.replace
+    calls = []
+
+    def spy(source, destination):
+        # The new content is complete in the temp file BEFORE the swap, and
+        # the target still holds the old content until it happens.
+        calls.append((Path(source).parent, Path(destination)))
+        assert json.loads(Path(source).read_text(encoding="utf-8"))["agents"][0]["id"] == "a"
+        assert json.loads(target.read_text(encoding="utf-8"))["agents"] == []
+        real_replace(source, destination)
+
+    monkeypatch.setattr(agent_registry.os, "replace", spy)
+
+    agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
+
+    assert calls == [(tmp_path, target)]
+    assert json.loads(target.read_text(encoding="utf-8"))["agents"][0]["id"] == "a"
+
+
+def test_failed_swap_keeps_the_old_file_and_removes_the_temp_file(monkeypatch, tmp_path):
+    target = tmp_path / "config_agents.json"
+    target.write_text('{"agents": []}', encoding="utf-8")
+
+    def boom(source, destination):
+        raise OSError("disk gone")
+
+    monkeypatch.setattr(agent_registry.os, "replace", boom)
+
+    with pytest.raises(OSError, match="disk gone"):
+        agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
+
+    assert json.loads(target.read_text(encoding="utf-8"))["agents"] == []
+    assert [p.name for p in tmp_path.iterdir()] == ["config_agents.json"]
+
+
+def test_swap_is_retried_when_a_reader_holds_the_file(monkeypatch, tmp_path):
+    target = tmp_path / "config_agents.json"
+    real_replace = agent_registry.os.replace
+    attempts = []
+
+    def flaky(source, destination):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise PermissionError("in use")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(agent_registry.os, "replace", flaky)
+    monkeypatch.setattr(agent_registry.time, "sleep", lambda seconds: None)
+
+    agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
+
+    assert len(attempts) == 3
+    assert json.loads(target.read_text(encoding="utf-8"))["agents"][0]["id"] == "a"
+    assert [p.name for p in tmp_path.iterdir()] == ["config_agents.json"]
+
+
+def test_swap_gives_up_after_the_last_attempt(monkeypatch, tmp_path):
+    target = tmp_path / "config_agents.json"
+    attempts = []
+
+    def locked(source, destination):
+        attempts.append(1)
+        raise PermissionError("in use")
+
+    monkeypatch.setattr(agent_registry.os, "replace", locked)
+    monkeypatch.setattr(agent_registry.time, "sleep", lambda seconds: None)
+
+    with pytest.raises(PermissionError):
+        agent_registry._write(target, [{"id": "a", "label": "A", "url": "u"}])
+
+    assert len(attempts) == agent_registry._REPLACE_ATTEMPTS
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_reload_keeps_previous_agents_when_the_file_is_corrupt(monkeypatch, tmp_path):
