@@ -5,7 +5,6 @@ import { chatsClient, type ChatSummary } from "../api/ChatsClient";
 import { ApiError } from "../api/http";
 import type { ChatMessage, TurnEvent } from "../api/types";
 import { watchTurn } from "../services/turnStream";
-import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 import { useChatStore } from "./chat";
 
@@ -61,7 +60,6 @@ const fire = (event: Record<string, unknown>) => emit({ sequence: (sequence += 1
 async function storeWith(chats: Record<string, ChatMessage[]>) {
   setActivePinia(createPinia());
   useAuthStore().account = ACCOUNT;
-  useAgentsStore().agents = [{ id: "a1", label: "Agent" }];
   client.list.mockResolvedValue(Object.entries(chats).map(([id, m]) => summary(id, m.length)));
   client.get.mockImplementation(async (id: string) => ({ ...summary(id, chats[id]!.length), messages: structuredClone(chats[id]!) }));
   const chat = useChatStore();

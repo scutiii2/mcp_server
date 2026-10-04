@@ -24,7 +24,6 @@ import { watchTurn } from "../services/turnStream";
 import { splitAttachments, withAttachments } from "../utils/attachments";
 import { errorMessage } from "../utils/errors";
 import { toolTitle } from "../utils/toolTitles";
-import { useAgentsStore } from "./agents";
 import { useAuthStore } from "./auth";
 
 const TITLE_MAX_CHARS = 60;
@@ -131,7 +130,6 @@ type SaveOp = () => Promise<void>;
  * queue, in order. A failed one stops the queue and shows `saveError`;
  * retrySave() resends it and everything behind it. */
 export const useChatStore = defineStore("chat", () => {
-  const agents = useAgentsStore();
   const auth = useAuthStore();
   const storage: ConversationStorage = new ServerConversationStorage();
 
@@ -570,7 +568,7 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
-  /** Asks the selected agent. ember_api saves the question and runs the
+  /** Asks the main agent. ember_api saves the question and runs the
    * turn; this page shows it arriving. A leading "/" runs a command instead.
    *
    * `truncateTo` (regenerate / edit): the index of the open chat's question
@@ -586,11 +584,6 @@ export const useChatStore = defineStore("chat", () => {
     if (truncateTo === undefined && question.startsWith("/")) return runCommand(question);
     // The administrator may have changed what is required since the page loaded.
     void refreshSettings();
-    const agent = agents.selected;
-    if (!agent) {
-      sendError.value = "No ai_agent is available.";
-      return;
-    }
 
     let conversation = active.value;
     const isNew = conversation === null;
@@ -601,7 +594,6 @@ export const useChatStore = defineStore("chat", () => {
         title: titleFrom(question),
         messages: [],
         messagesLoaded: true,
-        agentId: agent.id,
         createdAt: now,
         updatedAt: now,
       });
@@ -612,7 +604,6 @@ export const useChatStore = defineStore("chat", () => {
     const previous = conversation.messages;
     conversation.messages =
       truncateTo === undefined ? [...previous, { role: "user", content: question }] : [...previous.slice(0, truncateTo), { role: "user", content: question }];
-    conversation.agentId = agent.id;
     starting.value = true;
     const began = Date.now();
     clockStart.value = began;
@@ -620,7 +611,6 @@ export const useChatStore = defineStore("chat", () => {
     try {
       const turn = await chatsClient.startTurn(id, {
         question,
-        agent_id: agent.id,
         caveman: caveman.value,
         enabled_extensions: enabledExtensions.value,
         title: conversation.title,
@@ -630,6 +620,7 @@ export const useChatStore = defineStore("chat", () => {
           : {}),
       });
       if (started !== generation) return;
+      conversation.agentId = turn.chat.agent_id ?? undefined;
       conversation.running = true;
       conversation.updatedAt = Date.parse(`${turn.chat.updated_at}Z`);
       if (activeId.value === id) follow(id, turn.sequence, began);
@@ -720,7 +711,6 @@ export const useChatStore = defineStore("chat", () => {
       unfollow();
       jumpIndex.value = null;
       activeId.value = chat.id;
-      if (chat.agent_id) agents.select(chat.agent_id);
       scheduleBackgroundPoll();
     } catch (err) {
       if (started === generation) sendError.value = errorMessage(err);
@@ -800,8 +790,6 @@ export const useChatStore = defineStore("chat", () => {
     unfollow();
     sendError.value = "";
     activeId.value = id;
-    // Reopening a chat switches back to the agent it was last talking to.
-    if (conversation.agentId) agents.select(conversation.agentId);
     scheduleBackgroundPoll();
     if (conversation.messagesLoaded === false || conversation.running) await loadChat(id);
   }
@@ -983,7 +971,7 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Condenses the history into a summary the agent keeps as its memory. */
   function summarizeChat(): Promise<void> {
-    return rewrite("Summarizing ...", (id) => chatsClient.summarize(id, agents.selected?.id ?? null));
+    return rewrite("Summarizing ...", (id) => chatsClient.summarize(id));
   }
 
   /** Starts the conversation afresh; old messages stay as a collapsed log. */

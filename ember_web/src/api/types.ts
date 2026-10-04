@@ -157,8 +157,8 @@ export interface Conversation {
   updatedAt: number;
 }
 
-/** One registered ai_agent instance, as ember_api's GET /api/agents lists
- * it. No URL: the browser only reaches agents through ember_api's proxy. */
+/** The main agent, as ember_api's GET /api/agent returns it. No URL: the
+ * browser only reaches agents through ember_api's proxy. */
 export interface AgentInfo {
   id: string;
   label: string;

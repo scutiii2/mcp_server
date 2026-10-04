@@ -32,7 +32,6 @@ export interface ChatImportItem extends ChatWrite {
 
 export interface TurnStart {
   question: string;
-  agent_id: string;
   caveman: boolean;
   /** mcp_server extensions whose tools the agent may use. */
   enabled_extensions: string[];
@@ -94,8 +93,7 @@ export const chatsClient = {
     apiRequest<{ decided: boolean }>("POST", `${path(id)}/approvals`, { step_id: stepId, decision }),
   cancel: (id: string) => apiRequest<{ cancelled: boolean }>("POST", `${path(id)}/cancel`),
   /** Replaces the history with a summary plus the raw log (asks an agent). */
-  summarize: (id: string, agentId: string | null) =>
-    apiRequest<ChatDetail>("POST", `${path(id)}/summarize`, { agent_id: agentId }),
+  summarize: (id: string) => apiRequest<ChatDetail>("POST", `${path(id)}/summarize`, {}),
   /** A new chat holding the messages up to and including answer `upto`. */
   branch: (id: string, upto: number) => apiRequest<ChatDetail>("POST", `${path(id)}/branch`, { upto }),
   /** Starts afresh, keeping the old messages as one raw log. */

@@ -15,6 +15,9 @@ export const ACCOUNT = {
   permissions: ["chat.use"],
 };
 
+/** The agent GET /api/agent returns, and the one every new chat is stored with. */
+const ENTRY_AGENT = { id: "agent-1", label: "Test Agent" };
+
 export const PASSWORD = "correct horse battery";
 
 export interface StoredChat {
@@ -93,7 +96,7 @@ export async function installFakeApi(page: Page): Promise<FakeApi> {
       return json(route, ACCOUNT);
     }
     if (method === "GET" && path === "/api/settings") return json(route, { force_tool_approval: false });
-    if (method === "GET" && path === "/api/agents") return json(route, [{ id: "agent-1", label: "Test Agent" }]);
+    if (method === "GET" && path === "/api/agent") return json(route, ENTRY_AGENT);
     if (method === "GET" && path === "/api/chats") return json(route, [...api.chats.values()].map(summary));
 
     // No limits are set, so the sidebar shows no usage gauge.
@@ -123,12 +126,12 @@ export async function installFakeApi(page: Page): Promise<FakeApi> {
 }
 
 function startTurn(route: Route, api: FakeApi, id: string) {
-  const body = route.request().postDataJSON() as { question: string; agent_id: string; title?: string };
+  const body = route.request().postDataJSON() as { question: string; title?: string };
   api.turns.push(body);
   api.chats.set(id, {
     id,
     title: body.title ?? body.question,
-    agent_id: body.agent_id,
+    agent_id: ENTRY_AGENT.id, // what ember_api reports: the browser sends no agent
     messages: [{ role: "user", content: body.question }],
     running: true,
   });

@@ -2,7 +2,7 @@
 import { storeToRefs } from "pinia";
 import { computed, onActivated, onDeactivated, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
-import AgentPicker from "../components/AgentPicker.vue";
+import EntryAgentTag from "../components/EntryAgentTag.vue";
 import ChatInput from "../components/ChatInput.vue";
 import CommandFormModal from "../components/CommandFormModal.vue";
 import ElapsedTime from "../components/ElapsedTime.vue";
@@ -10,7 +10,7 @@ import ConversationSidebar from "../components/ConversationSidebar.vue";
 import MessageList from "../components/MessageList.vue";
 import ShareDialog from "../components/ShareDialog.vue";
 import TemplatesModal from "../components/TemplatesModal.vue";
-import { useAgentsStore } from "../stores/agents";
+import { useEntryAgentStore } from "../stores/entryAgent";
 import { useChatStore } from "../stores/chat";
 import { useTemplatesStore } from "../stores/templates";
 import type { CommandInfo } from "../api/CommandsClient";
@@ -18,6 +18,7 @@ import type { JsonSchema } from "../api/types";
 import { useChatRoute } from "../composables/useChatRoute";
 import { useChatShortcuts } from "../composables/useChatShortcuts";
 import { notificationsSupported } from "../composables/useNotify";
+import { agentLabelFor } from "../utils/agentLabels";
 import { questionHistory } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
@@ -67,8 +68,8 @@ async function onNotifyChange(event: Event): Promise<void> {
   await chat.setNotify(box.checked);
   box.checked = chat.notify;
 }
-const agentsStore = useAgentsStore();
-const agentLabels = computed(() => Object.fromEntries(agentsStore.agents.map((a) => [a.id, a.label])));
+const entryAgent = useEntryAgentStore();
+const agentLabels = computed(() => entryAgent.labels);
 const templates = useTemplatesStore();
 
 // The saved-prompts dialog; `templatesDraft` is typed text offered as a new prompt.
@@ -147,7 +148,7 @@ function onNew(): void {
 function exportActive(): void {
   const conversation = active.value;
   if (!conversation) return;
-  const agentLabel = agentsStore.agents.find((a) => a.id === conversation.agentId)?.label ?? conversation.agentId ?? null;
+  const agentLabel = agentLabelFor(conversation.agentId, entryAgent.labels) ?? null;
   downloadText(
     exportFileName(conversation.title, "md"),
     conversationToMarkdown(conversation, agentLabel),
@@ -269,7 +270,7 @@ useChatShortcuts({
       />
       <div class="composer-area">
         <div class="toolbar">
-          <AgentPicker :locked="busy" />
+          <EntryAgentTag />
           <label class="terse" title="Ask the agent for short, terse answers">
             <input
               type="checkbox"

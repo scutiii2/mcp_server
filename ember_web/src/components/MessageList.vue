@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { ApprovalDecision, ChatMessage, PendingApproval, ToolStep } from "../api/types";
 import type { CommandInfo } from "../api/CommandsClient";
+import { agentLabelFor } from "../utils/agentLabels";
 import { splitAttachments } from "../utils/attachments";
 import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
 import { toolTitle } from "../utils/toolTitles";
@@ -55,7 +56,7 @@ function formatArguments(args: Record<string, unknown>): string {
 
 function agentLabel(m: ChatMessage): string | undefined {
   // Without a label the chip shows the saved id.
-  return m.agent ? props.agentLabels?.[m.agent] : undefined;
+  return agentLabelFor(m.agent, props.agentLabels ?? {});
 }
 
 function isDeciding(id: string): boolean {
