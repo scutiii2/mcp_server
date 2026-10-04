@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed, onActivated, onDeactivated, onMounted, ref } from "vue";
-import { RouterLink } from "vue-router";
 import EntryAgentTag from "../components/EntryAgentTag.vue";
 import ChatInput from "../components/ChatInput.vue";
+import ChatSettingsMenu from "../components/ChatSettingsMenu.vue";
 import CommandFormModal from "../components/CommandFormModal.vue";
 import ElapsedTime from "../components/ElapsedTime.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
@@ -247,6 +247,23 @@ useChatShortcuts({
           <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
       </button>
+      <ChatSettingsMenu
+        :caveman="caveman"
+        :ask-before-tools="askBeforeTools"
+        :force-tool-approval="forceToolApproval"
+        :chime="chime"
+        :notify="notify"
+        :notify-supported="notifySupported"
+        :notify-error="notifyError"
+        :allowed-count="allowedCount"
+        :enabled-extensions="enabledExtensions"
+        :attention="pendingApprovals.length > 0"
+        @update:caveman="chat.setCaveman"
+        @update:ask-before-tools="chat.setAskBeforeTools"
+        @update:chime="chat.setChime"
+        @notify="onNotifyChange"
+        @clear-allowed="chat.clearAllowedTools()"
+      />
       <div v-if="saveError || loadError" class="banner" role="alert">
         <template v-if="saveError">
           Couldn't save your chats: {{ saveError }}
@@ -292,59 +309,6 @@ useChatShortcuts({
       <div class="composer-area">
         <div class="toolbar">
           <EntryAgentTag />
-          <label class="terse" title="Ask the agent for short, terse answers">
-            <input
-              type="checkbox"
-              :checked="caveman"
-              @change="chat.setCaveman(($event.target as HTMLInputElement).checked)"
-            />
-            Terse replies
-          </label>
-          <label
-            class="terse"
-            :title="
-              forceToolApproval
-                ? 'Your administrator requires approval before every tool'
-                : 'Ask you before the agent runs each tool'
-            "
-          >
-            <input
-              type="checkbox"
-              :checked="askBeforeTools || forceToolApproval"
-              :disabled="forceToolApproval"
-              @change="chat.setAskBeforeTools(($event.target as HTMLInputElement).checked)"
-            />
-            Ask before tools
-          </label>
-          <label class="terse" title="Play a short chime when an answer arrives while this tab is in the background">
-            <input type="checkbox" :checked="chime" @change="chat.setChime(($event.target as HTMLInputElement).checked)" />
-            Chime when done
-          </label>
-          <label
-            v-if="notifySupported"
-            class="terse"
-            title="Show a browser notification when an answer arrives while this tab is in the background"
-          >
-            <input type="checkbox" :checked="notify" @change="onNotifyChange" />
-            Notify when done
-          </label>
-          <span v-if="notifyError" class="notify-error" role="status">{{ notifyError }}</span>
-          <button
-            v-if="askBeforeTools && allowedCount && !forceToolApproval"
-            type="button"
-            class="allowed"
-            title="Ask again about the tools you allowed for this chat"
-            @click="chat.clearAllowedTools()"
-          >
-            {{ allowedCount }} tool{{ allowedCount === 1 ? "" : "s" }} allowed - reset
-          </button>
-          <RouterLink
-            to="/extensions"
-            class="extensions"
-            title="Which extensions' tools the agent may use in your chats"
-          >
-            Extensions: {{ enabledExtensions.length ? enabledExtensions.join(", ") : "off" }}
-          </RouterLink>
           <span
             v-if="contextPercent !== null"
             :class="['context', { high: contextPercent >= 50 }]"
@@ -452,44 +416,9 @@ useChatShortcuts({
   margin: 0 auto;
   padding: 0 24px;
 }
-.terse {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+/* Status and chat actions sit to the right of the agent tag. */
+.toolbar > :first-child {
   margin-right: auto;
-  font-size: 0.85em;
-  color: var(--muted);
-  cursor: pointer;
-}
-.notify-error {
-  flex-basis: 100%;
-  font-size: 0.85em;
-  color: var(--danger);
-}
-.allowed {
-  padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  cursor: pointer;
-  font-size: 0.75em;
-  color: var(--muted);
-  background: transparent;
-}
-.allowed:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.extensions {
-  max-width: 220px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 0.8em;
-  color: var(--muted);
-  text-decoration: none;
-}
-.extensions:hover {
-  color: var(--text);
 }
 .context,
 .working {
