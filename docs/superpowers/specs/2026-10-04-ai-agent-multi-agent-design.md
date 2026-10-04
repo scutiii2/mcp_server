@@ -71,8 +71,7 @@ run when `agents/` is missing or empty, matching the `.example` convention in
   "persona": "You are a precise mathematician. Show every step and check results.",
   "focus": "Arithmetic, algebra, percentages, unit conversion, compound interest.",
   "tools": { "allow": ["calc_*", "convert_*"], "deny": [] },
-  "orchestrator": false,
-  "routing": { "laya": false, "top_k": 3, "allow_auto": false }
+  "orchestrator": false
 }
 ```
 
@@ -96,10 +95,24 @@ run when `agents/` is missing or empty, matching the `.example` convention in
 | `tools.allow` | no | `[]` (all) | fnmatch globs on mcp_server tool names without the `main__` prefix. Empty means all tools. |
 | `tools.deny` | no | `[]` | Globs removed after `allow`. Deny wins. |
 | `orchestrator` | no | `false` | Gets `delegate_to_agent` and the roster. |
-| `routing.laya` | no | `false` | Use Laya to shortlist the roster and resolve `"auto"`. Orchestrators only. |
+| `routing.laya` | no | `false` | Use Laya to shortlist the roster each turn. Orchestrators only. |
 | `routing.top_k` | no | `3` | Roster size after the Laya shortlist. |
-| `routing.allow_auto` | no | `false` | Offer `agent_id: "auto"` on `delegate_to_agent`. |
+| `routing.allow_auto` | no | `false` | Offer `agent_id: "auto"` on `delegate_to_agent`. `"auto"` always uses Laya to pick, regardless of `routing.laya`. |
 | `routing.min_score` | no | unset | Signed cosine similarity (-1..1). `"auto"` errors when the best match scores below it; skipped when Laya returns no scores (only one specialist). |
+
+The `routing.*` fields are only allowed when `orchestrator` is true; `agent_spec` rejects a file that sets them on a non-orchestrator.
+
+An orchestrator file adds the routing block:
+
+```json
+{
+  "port": 9100,
+  "entry": true,
+  "llm": { "provider": "anthropic" },
+  "orchestrator": true,
+  "routing": { "laya": true, "top_k": 3, "allow_auto": true, "min_score": 0.2 }
+}
+```
 
 Unknown keys are an error, so typos are caught at startup.
 
