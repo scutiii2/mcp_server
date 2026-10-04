@@ -80,8 +80,8 @@ const sections = (w: Wrapper) => w.findAll("article.card");
 const sectionNames = (w: Wrapper) => sections(w).map((s) => s.find("h3").text());
 const head = (w: Wrapper, name: string) =>
   w.findAll("article.card .head-button").find((b) => b.find("h3").text() === name)!;
-const toolTitles = (w: Wrapper) => w.findAll("li.tool .title").map((t) => t.text());
-const toolRows = (w: Wrapper) => w.findAll("li.tool .row");
+const toolTitles = (w: Wrapper) => w.findAll("li.tool .label").map((t) => t.text());
+const toolRows = (w: Wrapper) => w.findAll("li.tool button.tile");
 const modal = (w: Wrapper) => w.get("dialog.modal");
 
 beforeEach(() => {

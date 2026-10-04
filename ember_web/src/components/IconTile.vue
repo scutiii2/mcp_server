@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
 
-/** One tile of the Overview page: a card with the page's icon over a soft
- * accent blob and bubbles, and its name underneath. The description is the
- * hover / long-press tooltip. `icon` is SVG path data (24x24). */
-defineProps<{ to: string; label: string; description: string; icon: string[] }>();
+/** A card with an icon over a soft accent blob and bubbles, a label and an
+ * optional small line (e.g. a tool name) underneath. A link when `to` is given,
+ * else a button (the parent listens for @click). `description` is the hover /
+ * long-press tooltip; `icon` is SVG path data (24x24). */
+defineProps<{ label: string; icon: string[]; to?: string; subtitle?: string; description?: string }>();
 </script>
 
 <template>
-  <RouterLink :to="to" class="tile" :title="description">
+  <component :is="to ? RouterLink : 'button'" v-bind="to ? { to } : { type: 'button' }" class="tile" :title="description">
     <span class="art" aria-hidden="true">
       <svg class="blob" viewBox="0 0 120 80">
         <path d="M18 44c-6-16 8-32 28-34 14-2 22 6 36 4 18-3 30 12 24 28-5 14-20 22-38 20-12-1-18 5-30 0-10-4-16-9-20-18z" />
@@ -23,7 +24,8 @@ defineProps<{ to: string; label: string; description: string; icon: string[] }>(
       </svg>
     </span>
     <span class="label">{{ label }}</span>
-  </RouterLink>
+    <code v-if="subtitle" class="subtitle">{{ subtitle }}</code>
+  </component>
 </template>
 
 <style scoped>
@@ -34,10 +36,13 @@ defineProps<{ to: string; label: string; description: string; icon: string[] }>(
   justify-content: center;
   gap: 10px;
   padding: 18px 10px 16px;
+  border: none;
   border-radius: 12px;
+  cursor: pointer;
   color: var(--text);
   background: var(--surface);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  font: inherit;
   text-align: center;
   text-decoration: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -83,5 +88,12 @@ defineProps<{ to: string; label: string; description: string; icon: string[] }>(
 .label {
   font-size: 0.9em;
   font-weight: 500;
+}
+.subtitle {
+  max-width: 100%;
+  font-family: var(--mono);
+  font-size: 0.72em;
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 </style>

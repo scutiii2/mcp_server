@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import OverviewTile from "../components/OverviewTile.vue";
+import IconTile from "../components/IconTile.vue";
 import { visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 
@@ -21,8 +21,8 @@ const pages = computed(() => visiblePages((p) => auth.hasPermission(p)));
       <p v-if="auth.account" class="muted">Logged in as {{ auth.account.username }}.</p>
       <p v-if="pages.length === 0" class="muted">Your role gives you no pages yet - ask an administrator.</p>
       <div class="tiles">
-        <OverviewTile v-for="p in pages" :key="p.to" :to="p.to" :label="p.label" :description="p.description" :icon="p.icon" />
-        <OverviewTile to="/account" label="Account" description="Your email, password and devices." :icon="ACCOUNT_ICON" />
+        <IconTile v-for="p in pages" :key="p.to" :to="p.to" :label="p.label" :description="p.description" :icon="p.icon" />
+        <IconTile to="/account" label="Account" description="Your email, password and devices." :icon="ACCOUNT_ICON" />
       </div>
     </div>
   </section>

@@ -10,6 +10,7 @@ import ToolCard from "../components/ToolCard.vue";
 import ToolRunModal from "../components/ToolRunModal.vue";
 import { useAuthStore } from "../stores/auth";
 import { groupTools } from "../utils/capabilityGroups";
+import { capabilityIcon, EXTENSION_ICON } from "../utils/capabilityIcons";
 import { errorMessage } from "../utils/errors";
 import { formatToolResult } from "../utils/toolResultFormat";
 
@@ -207,7 +208,13 @@ onMounted(load);
           <template v-else>
             <p v-if="g.tools.length === 0 && resourcesOf(g.capability).length === 0" class="muted">Nothing registered.</p>
             <ul v-if="g.tools.length" class="cards">
-              <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
+              <ToolCard
+                v-for="t in g.tools"
+                :key="t.name"
+                :tool="t"
+                :icon="capabilityIcon(g.capability.name, g.capability.label)"
+                @open="openToolModal(t.name)"
+              />
             </ul>
             <ul v-if="resourcesOf(g.capability).length" class="resources">
               <li v-for="r in resourcesOf(g.capability)" :key="r.uri">
@@ -231,7 +238,7 @@ onMounted(load);
           @toggle="toggleSection(OTHER)"
         >
           <ul v-if="grouped.otherTools.length" class="cards">
-            <ToolCard v-for="t in grouped.otherTools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
+            <ToolCard v-for="t in grouped.otherTools" :key="t.name" :tool="t" :icon="EXTENSION_ICON" @open="openToolModal(t.name)" />
           </ul>
           <ul v-if="!filtering && otherResources.length" class="resources">
             <li v-for="r in otherResources" :key="r.uri">
@@ -324,7 +331,8 @@ h3 {
 }
 .cards {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
