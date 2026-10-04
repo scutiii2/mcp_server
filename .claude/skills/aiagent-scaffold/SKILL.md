@@ -71,9 +71,9 @@ block before designing the interface from scratch.
    registry (so a specialist that starts or stops appears without a restart).
    Only one enabled file may set `"entry": true`; ember sends **every** turn
    there (`GET /api/agent`).
-6. The two shipped files (`claude-agent` port 9100 entry+orchestrator,
-   `openai-agent` port 9102) keep the old registry ids so stored chat turns
-   still resolve. Do not rename them.
+6. Name an agent for its job (`ember`, `server-ops`), never for its LLM
+   (`claude-agent`). Only instances started the old way derive a
+   provider-based id.
 
 ## Path 2 - Make an agent the entry or an orchestrator
 

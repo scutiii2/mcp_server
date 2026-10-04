@@ -97,10 +97,9 @@ An orchestrator file adds the routing block:
 }
 ```
 
-`agents/agents.json.template` shows every field. The two ids the stored chat
-turns use are `claude-agent` (port 9100, anthropic, `entry: true`,
-`orchestrator: true`) and `openai-agent` (port 9102, openai); keep those names
-when you create them. Add
+`agents/agents.json.template` shows every field. Name an agent for its job,
+not its model (`ember`, `server-ops`, `reviewer`). Exactly one enabled file
+sets `entry: true`. Add
 more specialists as extra files.
 
 The gateway for a supervised agent comes from `llm.gateway` in
@@ -134,8 +133,8 @@ set AI_AGENT_PORT=9101
 An instance started this way is an orchestrator, and `--gateway` takes
 precedence over `AI_AGENT_GATEWAY`. Because `specialists()` excludes
 orchestrators, two instances started the old way cannot delegate to each
-other. The example above registers `openai-agent`, the same id as the shipped
-`agents/openai-agent.json` - don't run both.
+other. The example above registers `openai-agent`; don't run it next to an
+agent file that uses the `openai` provider and the same id.
 
 ## Orchestrator and routing
 
