@@ -98,6 +98,9 @@ class StepIn(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     ok: bool | None = None
     result: str = Field(default="", max_length=STEP_RESULT_MAX)
+    # Which agent ran it, when a delegated agent did.
+    agent_id: str | None = Field(default=None, max_length=120)
+    agent_label: str | None = Field(default=None, max_length=120)
 
 
 class AgentUsageIn(BaseModel):
