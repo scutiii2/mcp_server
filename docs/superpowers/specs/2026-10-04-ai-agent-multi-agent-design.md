@@ -99,6 +99,7 @@ run when `agents/` is missing or empty, matching the `.example` convention in
 | `routing.laya` | no | `false` | Use Laya to shortlist the roster and resolve `"auto"`. Orchestrators only. |
 | `routing.top_k` | no | `3` | Roster size after the Laya shortlist. |
 | `routing.allow_auto` | no | `false` | Offer `agent_id: "auto"` on `delegate_to_agent`. |
+| `routing.min_score` | no | unset | Signed cosine similarity (-1..1). `"auto"` errors when the best match scores below it; skipped when Laya returns no scores (only one specialist). |
 
 Unknown keys are an error, so typos are caught at startup.
 
@@ -211,6 +212,8 @@ reused.
   `"auto"` when `routing.allow_auto` is true. The tool description lists the
   roster.
 - An orchestrator may still answer directly when no specialist fits.
+- An instance started from env vars (no agent file) is an orchestrator, so it
+  still gets `delegate_to_agent`. The roster never includes the agent itself.
 
 ## Laya routing (`src/agent_routing.py`)
 
@@ -226,10 +229,9 @@ shared ranker instance), with options `{agent_id: focus}`. Agents with an empty
   registered specialists against the sub-question and delegates to the top one.
   The tool result begins with `Delegated to <id> (<label>).` so the model and
   the user can see the choice.
-- **Score threshold:** before implementation, check whether Laya exposes
-  similarity scores. If it does, add `routing.min_score` (default unset), and
-  `"auto"` returns a tool error below it. If it does not, this field is not
-  added.
+- **Score threshold:** `routing.min_score` (signed cosine similarity, -1..1,
+  default unset). `"auto"` returns a tool error when the best match scores below
+  it. The check is skipped when Laya returns no scores (only one specialist).
 - **Failures:** Laya not installed, model load error, or ranking error → the
   roster falls back to all specialists, and `"auto"` returns a tool error asking
   the model to pick an explicit id. A turn is never blocked.
@@ -261,10 +263,14 @@ New event types:
   `src/tool_progress.py`) into the orchestrator's `on_event`. The sink hops from
   the delegation worker thread back to the orchestrator's event loop with
   `anyio.from_thread.run`.
-- A specialist's `token` and `token_reset` events are re-emitted as
-  `agent_token` (with the text) so they never mix into the orchestrator's answer
-  stream. Its `step_*` and `usage` events pass through with their own
-  `agent_id`.
+- A specialist's `token` events are re-emitted as `agent_token` (with the text)
+  so they never mix into the orchestrator's answer stream; `token_reset`
+  becomes `agent_token` with `"reset": true`. Its `step_*` events pass through
+  with their own `agent_id`. Its `usage` events are dropped: the specialist's
+  final usage still arrives in `agent_usage`.
+- A specialist's step ids are its own, so a nested id can collide with one of
+  the orchestrator's. Consumers must key steps on `(agent_id, id)`, never on
+  `id` alone.
 - Nested events from a second hop keep the innermost agent's `agent_id`.
 - `at` is UTC ISO-8601 with milliseconds.
 
@@ -309,8 +315,8 @@ above plus `request_id` and `depth`. This makes usage visible for callers that
 bypass ember (chat_cli, direct MCP calls, tests).
 
 - One file per agent per day, so no two processes write the same file. Within a
-  child, appends are serialized with an `asyncio.Lock` and run on a worker
-  thread.
+  child, appends are serialized with a `threading.Lock` around a write on a
+  worker thread.
 - A write failure logs a warning and never fails the turn.
 - `ai_agent/data/usage/` is gitignored.
 
