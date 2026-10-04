@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { extensionsClient, EXTENSION_SEPARATOR, type ExtensionInfo } from "../api/ExtensionsClient";
+import AddExtensionModal from "../components/AddExtensionModal.vue";
+import BaseModal from "../components/BaseModal.vue";
 import "../components/infoPage.css";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useAuthStore } from "../stores/auth";
@@ -9,8 +11,10 @@ import { useChatStore } from "../stores/chat";
 import { errorMessage } from "../utils/errors";
 
 /** mcp_server's extensions: other MCP servers whose tools it passes on
- * (port of chat_app's Extensions panel). Each user picks which ones the
- * agent and slash commands may use; admins add and remove them. */
+ * (port of chat_app's Extensions panel). Each extension is a tile with its
+ * on/off switch and, for admins, Remove; a click on the tile opens its details
+ * in a modal. Each user picks which ones the agent and slash commands may
+ * use; admins add (modal from the button on top) and remove them. */
 
 const auth = useAuthStore();
 const chat = useChatStore();
@@ -21,12 +25,14 @@ const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
 const removing = ref<string | null>(null);
-const adding = ref(false);
-const form = reactive({ label: "", url: "", description: "" });
+const addOpen = ref(false);
+const selectedId = ref<string | null>(null);
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 const canChat = computed(() => auth.hasPermission("chat.use"));
 const enabled = computed(() => new Set(enabledExtensions.value));
+// Gone from the list (removed) closes the details with it.
+const selected = computed(() => extensions.value.find((e) => e.id === selectedId.value) ?? null);
 
 function toolName(tool: string): string {
   const at = tool.indexOf(EXTENSION_SEPARATOR);
@@ -45,19 +51,10 @@ async function load(): Promise<void> {
   }
 }
 
-async function add(): Promise<void> {
-  actionError.value = "";
-  adding.value = true;
-  try {
-    const created = await extensionsClient.add({ ...form });
-    extensions.value = [...extensions.value.filter((e) => e.id !== created.id), created];
-    form.label = form.url = form.description = "";
-    chat.refreshCommands();
-  } catch (err) {
-    actionError.value = errorMessage(err);
-  } finally {
-    adding.value = false;
-  }
+function onAdded(created: ExtensionInfo): void {
+  extensions.value = [...extensions.value.filter((e) => e.id !== created.id), created];
+  addOpen.value = false;
+  chat.refreshCommands();
 }
 
 async function remove(extension: ExtensionInfo): Promise<void> {
@@ -82,10 +79,13 @@ onMounted(load);
 <template>
   <section class="info-page">
     <div class="column">
-      <h2>Extensions</h2>
+      <div class="page-head">
+        <h2>Extensions</h2>
+        <button v-if="isAdmin" type="button" class="primary" @click="addOpen = true">Add extension</button>
+      </div>
       <p class="muted intro">
         Other MCP servers mcp_server connects to. Their tools are only used in your chats when you switch them on
-        here - by the agent, and as <code>/&lt;extension&gt; &lt;tool&gt;</code> commands.
+        here - by the agent, and as <code>/&lt;extension&gt; &lt;tool&gt;</code> commands. Click a tile for its details.
       </p>
 
       <p v-if="loading" class="muted">loading ...</p>
@@ -93,53 +93,107 @@ onMounted(load);
       <p v-else-if="extensions.length === 0" class="muted">No extensions are configured.</p>
       <p v-if="actionError" class="error">{{ actionError }}</p>
 
-      <article v-for="e in extensions" :key="e.id" class="card">
-        <header class="card-head">
-          <div>
-            <h3>
+      <div class="tiles">
+        <article v-for="e in extensions" :key="e.id" class="tile">
+          <button type="button" class="tile-main" @click="selectedId = e.id">
+            <span class="title">
               <span :class="['dot', e.status === 'connected' ? 'ok' : 'bad']" :title="e.error ?? e.status" />
               {{ e.label }}
-            </h3>
+            </span>
             <code class="name">{{ e.id }}</code>
-          </div>
-          <div class="actions">
+            <span class="summary muted">
+              <template v-if="e.status !== 'connected'">Not connected</template>
+              <template v-else>{{ e.tools.length }} tool{{ e.tools.length === 1 ? "" : "s" }}</template>
+            </span>
+          </button>
+          <footer v-if="canChat || isAdmin">
             <ToggleSwitch
               v-if="canChat"
               title="Let the agent and slash commands use its tools in your chats"
               :checked="enabled.has(e.id)"
               @change="chat.setExtensionEnabled(e.id, ($event.target as HTMLInputElement).checked)"
-            >
-              Use in my chats
-            </ToggleSwitch>
+            />
             <button v-if="isAdmin" type="button" class="danger" :disabled="removing === e.id" @click="remove(e)">
               Remove
             </button>
-          </div>
-        </header>
-        <p v-if="e.description" class="muted">{{ e.description }}</p>
-        <p v-if="e.status !== 'connected'" class="error">Not connected{{ e.error ? `: ${e.error}` : "" }}</p>
-        <ul v-if="e.tools.length" class="tools">
-          <li v-for="t in e.tools" :key="t"><code>{{ toolName(t) }}</code></li>
-        </ul>
-        <p v-else-if="e.status === 'connected'" class="muted">No tools.</p>
-      </article>
-
-      <form v-if="isAdmin" class="card add" @submit.prevent="add">
-        <h3>Add an extension</h3>
-        <p class="muted">
-          The URL of a running MCP server (Streamable HTTP). mcp_server connects to it and offers its tools to every
-          client, so only add servers you trust.
-        </p>
-        <label>Label <input v-model="form.label" required maxlength="80" /></label>
-        <label>URL <input v-model="form.url" required type="url" maxlength="500" placeholder="http://host:port/mcp" /></label>
-        <label>Description <input v-model="form.description" maxlength="500" /></label>
-        <button class="primary" :disabled="adding">{{ adding ? "Adding ..." : "Add" }}</button>
-      </form>
+          </footer>
+        </article>
+      </div>
     </div>
+
+    <BaseModal :open="selected !== null" :title="selected?.label ?? ''" @close="selectedId = null">
+      <template v-if="selected">
+        <code class="name">{{ selected.id }}</code>
+        <p v-if="selected.description" class="muted">{{ selected.description }}</p>
+        <p v-if="selected.status !== 'connected'" class="error">
+          Not connected{{ selected.error ? `: ${selected.error}` : "" }}
+        </p>
+        <ul v-if="selected.tools.length" class="tools">
+          <li v-for="t in selected.tools" :key="t"><code>{{ toolName(t) }}</code></li>
+        </ul>
+        <p v-else-if="selected.status === 'connected'" class="muted">No tools.</p>
+      </template>
+    </BaseModal>
+
+    <AddExtensionModal v-if="isAdmin" :open="addOpen" @close="addOpen = false" @added="onAdded" />
   </section>
 </template>
 
 <style scoped>
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.page-head h2 {
+  margin: 0;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.tile:hover,
+.tile:focus-within {
+  border-color: var(--accent);
+}
+.tile-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 14px 10px;
+  border: none;
+  border-radius: 12px 12px 0 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+.title {
+  font-weight: 600;
+}
+.summary {
+  margin-top: 6px;
+  font-size: 0.85em;
+}
+.tile footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px 12px;
+}
 .dot {
   display: inline-block;
   width: 8px;
@@ -154,11 +208,6 @@ onMounted(load);
 .dot.bad {
   background: var(--danger);
 }
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 .tools {
   display: flex;
   flex-wrap: wrap;
@@ -167,17 +216,5 @@ onMounted(load);
   padding: 0;
   list-style: none;
   font-size: 0.85em;
-}
-.add {
-  display: grid;
-  gap: 8px;
-}
-.add label {
-  display: grid;
-  gap: 4px;
-  font-size: 0.85em;
-}
-.add .primary {
-  justify-self: start;
 }
 </style>

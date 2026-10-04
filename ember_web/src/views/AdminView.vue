@@ -5,6 +5,7 @@ import AccountsPanel from "../components/admin/AccountsPanel.vue";
 import InvitesPanel from "../components/admin/InvitesPanel.vue";
 import RolesPanel from "../components/admin/RolesPanel.vue";
 import SettingsPanel from "../components/admin/SettingsPanel.vue";
+import SegmentedControl from "../components/SegmentedControl.vue";
 
 const TABS = [
   { id: "accounts", label: "Accounts" },
@@ -13,6 +14,7 @@ const TABS = [
   { id: "settings", label: "Settings" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
+const TAB_OPTIONS = TABS.map((t) => ({ value: t.id, label: t.label }));
 
 const route = useRoute();
 const router = useRouter();
@@ -29,19 +31,7 @@ function select(id: TabId): void {
   <section class="admin-view">
     <div class="column">
       <h2>Admin</h2>
-      <nav class="tabs" role="tablist">
-        <button
-          v-for="t in TABS"
-          :key="t.id"
-          type="button"
-          role="tab"
-          :aria-selected="tab === t.id"
-          :class="{ active: tab === t.id }"
-          @click="select(t.id)"
-        >
-          {{ t.label }}
-        </button>
-      </nav>
+      <SegmentedControl class="tabs" :model-value="tab" :options="TAB_OPTIONS" aria-label="Admin section" @update:model-value="select" />
 
       <!-- v-if, not v-show: each panel reloads its data when opened, so a
            role created on one tab shows up in the Accounts dropdown. -->
@@ -69,24 +59,6 @@ h2 {
   font-size: 1.2em;
 }
 .tabs {
-  display: flex;
-  gap: 4px;
   margin-bottom: 18px;
-  border-bottom: 1px solid var(--border);
-}
-.tabs button {
-  padding: 8px 14px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  cursor: pointer;
-  color: var(--muted);
-  background: transparent;
-  font: inherit;
-}
-.tabs button.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-  font-weight: 600;
 }
 </style>

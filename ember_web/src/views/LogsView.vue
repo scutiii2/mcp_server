@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { logsClient, type LogActor, type LogEntry, type LogKind } from "../api/LogsClient";
 import "../components/infoPage.css";
+import SegmentedControl from "../components/SegmentedControl.vue";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage } from "../utils/errors";
 
@@ -21,6 +22,13 @@ const actors = ref<Record<LogKind, LogActor>>({ action: "server", error: "server
 const entries = ref<LogEntry[]>([]);
 const loading = ref(false);
 const error = ref("");
+
+const tabOptions = computed(() => kinds.value.map((k) => ({ value: k, label: TAB_LABELS[k] })));
+// The segmented control needs a chosen kind; the tabs only show once there are kinds.
+const tabChoice = computed<LogKind>({
+  get: () => tab.value ?? kinds.value[0]!,
+  set: (kind) => (tab.value = kind),
+});
 
 const actorOptions = computed(() => [
   ...(tab.value === "chat_trace" ? [] : [{ value: "server" as LogActor, label: "Server" }]),
@@ -71,19 +79,7 @@ watch(
     <div class="column">
       <h2>Logs</h2>
       <div v-if="kinds.length" class="head">
-        <div class="tabs" role="tablist">
-          <button
-            v-for="k in kinds"
-            :key="k"
-            type="button"
-            role="tab"
-            :aria-selected="tab === k"
-            :class="['chip', { active: tab === k }]"
-            @click="tab = k"
-          >
-            {{ TAB_LABELS[k] }}
-          </button>
-        </div>
+        <SegmentedControl v-model="tabChoice" :options="tabOptions" aria-label="Log" />
         <label v-if="tab" class="actor">
           Entries for
           <select v-model="actors[tab]">
@@ -121,10 +117,6 @@ watch(
   align-items: center;
   gap: 10px 16px;
   margin: 12px 0 14px;
-}
-.tabs {
-  display: flex;
-  gap: 6px;
 }
 .actor {
   display: flex;
