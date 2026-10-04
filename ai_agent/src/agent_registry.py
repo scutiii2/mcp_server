@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -44,6 +45,8 @@ _log = logging.getLogger(__name__)
 
 _LOCK_TIMEOUT_SECONDS = 5.0
 _LOCK_POLL_SECONDS = 0.05
+_REPLACE_ATTEMPTS = 10
+_REPLACE_POLL_SECONDS = 0.05
 
 
 def agent_id_for(provider_id: str) -> str:
@@ -57,8 +60,43 @@ def _read(path: Path) -> list[dict[str, Any]]:
     return data.get("agents", [])
 
 
+def _replace_with_retry(source: str, target: Path) -> None:
+    """os.replace, retried briefly on PermissionError: on Windows a reader
+    holding the target open (another instance's _read) makes the swap fail
+    for a few milliseconds."""
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_POLL_SECONDS)
+
+
 def _write(path: Path, agents: list[dict[str, Any]]) -> None:
-    path.write_text(json.dumps({"agents": agents}, indent=2) + "\n", encoding="utf-8")
+    """Writes a temp file in the same directory, then swaps it over `path`
+    in one step, so a concurrent reader (another instance, or this one's
+    per-turn reload) sees the old file or the new one - never a truncated
+    half. The temp file is removed if anything fails."""
+    payload = json.dumps({"agents": agents}, indent=2) + "\n"
+    fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(payload)
+        # mkstemp creates the file 0600; keep the target's mode, or use a
+        # normal 0644 for a new file. Best effort - modes mean little on Windows.
+        try:
+            if path.exists():
+                shutil.copymode(path, temp_name)
+            else:
+                os.chmod(temp_name, 0o644)
+        except OSError:
+            pass
+        _replace_with_retry(temp_name, path)
+    except BaseException:
+        Path(temp_name).unlink(missing_ok=True)
+        raise
 
 
 def _acquire_lock(lock_path: Path) -> bool:
