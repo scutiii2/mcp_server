@@ -16,6 +16,7 @@ Run with:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 import time
@@ -30,6 +31,7 @@ MAX_CRASHES = 5
 CRASH_WINDOW_SECONDS = 300.0
 BACKOFF_CAP_SECONDS = 60.0
 STOP_GRACE_SECONDS = 10.0
+LINE_LIMIT = 1024 * 1024  # longest child output line relayed whole
 
 CommandFor = Callable[[AgentSpec], Sequence[str]]
 Deregister = Callable[[str], None]
@@ -100,41 +102,90 @@ class AgentProcess:
 
     async def run(self) -> None:
         while not self._stopping:
-            self._proc = await asyncio.create_subprocess_exec(
-                *self._command_for(self.spec),
-                cwd=PROJECT_ROOT,
-                env=child_env(self.spec),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            await self._relay()
-            code = await self._proc.wait()
-            if self._stopping:
-                return
-            await asyncio.to_thread(self._deregister, self.spec.id)
+            try:
+                code = await self._run_once()
+                if self._stopping:
+                    return
+                await asyncio.to_thread(self._deregister, self.spec.id)
+                what = f"exited with code {code}"
+            except Exception as error:  # this child only; the others keep running
+                if self._stopping:
+                    return
+                self._out(f"[supervisor] {self.spec.id} failed: {error}")
+                what = "failed"
             delay = self._policy.record()
             if delay is None:
                 self.failed = True
                 self._out(f"[supervisor] {self.spec.id} crashed {MAX_CRASHES} times in 5 minutes - not restarting")
                 return
-            self._out(f"[supervisor] {self.spec.id} exited with code {code} - restarting in {delay:g}s")
+            self._out(f"[supervisor] {self.spec.id} {what} - restarting in {delay:g}s")
             await self._sleep(delay)
 
+    async def _run_once(self) -> int | None:
+        proc = await asyncio.create_subprocess_exec(
+            *self._command_for(self.spec),
+            cwd=PROJECT_ROOT,
+            env=child_env(self.spec),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            limit=LINE_LIMIT,
+        )
+        self._proc = proc
+        if self._stopping:  # stop() ran while the spawn was in flight
+            await self._terminate(proc, STOP_GRACE_SECONDS)
+            return proc.returncode
+        await self._relay()
+        return await proc.wait()
+
+    def _emit(self, raw: bytes) -> None:
+        too_long = len(raw) > LINE_LIMIT
+        text = raw[:LINE_LIMIT].decode(errors="replace").rstrip()
+        self._out(f"[{self.spec.id}] {text}")
+        if too_long:
+            self._out(f"[{self.spec.id}] <line too long, truncated>")
+
     async def _relay(self) -> None:
+        """Relay output line by line; a line longer than LINE_LIMIT is cut
+        (with a notice) instead of crashing the reader."""
         assert self._proc is not None and self._proc.stdout is not None
-        async for raw in self._proc.stdout:
-            self._out(f"[{self.spec.id}] {raw.decode(errors='replace').rstrip()}")
+        stream = self._proc.stdout
+        buf = b""
+        skipping = False  # inside the tail of an over-long line
+        while True:
+            chunk = await stream.read(65536)
+            if not chunk:
+                break
+            buf += chunk
+            while (i := buf.find(b"\n")) >= 0:
+                line, buf = buf[:i], buf[i + 1:]
+                if skipping:
+                    skipping = False
+                else:
+                    self._emit(line)
+            if len(buf) > LINE_LIMIT:
+                if not skipping:
+                    self._emit(buf)
+                    skipping = True
+                buf = b""
+        if buf and not skipping:
+            self._emit(buf)
 
     async def stop(self, grace: float = STOP_GRACE_SECONDS) -> None:
         self._stopping = True
         proc = self._proc
         if proc is None or proc.returncode is not None:
             return
-        proc.terminate()
+        await self._terminate(proc, grace)
+
+    @staticmethod
+    async def _terminate(proc: asyncio.subprocess.Process, grace: float) -> None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), grace)
         except asyncio.TimeoutError:
-            proc.kill()
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
             await proc.wait()
 
 

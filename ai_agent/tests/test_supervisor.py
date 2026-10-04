@@ -88,3 +88,82 @@ def test_stop_terminates_a_running_child_quickly(tmp_path):
 
     asyncio.run(scenario())
     assert "[calc] up" in lines
+
+
+def test_overlong_output_line_is_truncated_and_supervisor_survives(tmp_path, monkeypatch):
+    monkeypatch.setattr(supervisor, "LINE_LIMIT", 4096)
+    lines = []
+    code = "import sys; sys.stdout.write('x' * 200000 + '\\n'); print('after', flush=True)"
+    sup = supervisor.Supervisor(
+        [_spec("calc", tmp_path=tmp_path)],
+        command_for=lambda spec: [sys.executable, "-c", code],
+        deregister=lambda agent_id: None,
+        out=lines.append,
+        policy_factory=lambda: supervisor.CrashPolicy(max_crashes=1),
+    )
+    asyncio.run(asyncio.wait_for(sup.run(), timeout=30))
+    assert "[calc] <line too long, truncated>" in lines
+    assert "[calc] after" in lines
+    assert not any(len(line) > 5000 for line in lines)
+
+
+def test_spawn_failure_only_fails_that_child(tmp_path):
+    lines, sleeps = [], []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    def command_for(spec):
+        if spec.id == "broken":
+            return [str(tmp_path / "no-such-executable")]
+        return [sys.executable, "-c", "import time; print('up', flush=True); time.sleep(60)"]
+
+    async def scenario():
+        sup = supervisor.Supervisor(
+            [_spec("broken", tmp_path=tmp_path), _spec("ok", tmp_path=tmp_path)],
+            command_for=command_for,
+            deregister=lambda agent_id: None,
+            out=lines.append,
+            policy_factory=lambda: supervisor.CrashPolicy(max_crashes=2),
+            sleep=fake_sleep,
+        )
+        task = asyncio.create_task(sup.run())
+        for _ in range(200):
+            if "[ok] up" in lines and sup._children[0].failed:
+                break
+            await asyncio.sleep(0.05)
+        assert not task.done()
+        assert sup._children[0].failed
+        assert not sup._children[1].failed
+        await sup.stop()
+        await asyncio.wait_for(task, timeout=15)
+
+    asyncio.run(scenario())
+    assert any(line.startswith("[supervisor] broken failed:") for line in lines)
+    assert any("not restarting" in line for line in lines)
+    assert sleeps == [1.0]
+
+
+def test_stop_during_spawn_does_not_orphan_the_child(tmp_path):
+    holder = []
+
+    def command_for(spec):
+        # stop() runs while create_subprocess_exec is still awaiting.
+        asyncio.get_running_loop().create_task(holder[0].stop())
+        return [sys.executable, "-c", "import time; time.sleep(60)"]
+
+    async def scenario():
+        child = supervisor.AgentProcess(
+            _spec("calc", tmp_path=tmp_path), command_for, lambda agent_id: None,
+            lambda line: None, supervisor.CrashPolicy(), asyncio.sleep,
+        )
+        holder.append(child)
+        try:
+            await asyncio.wait_for(child.run(), timeout=5)
+        finally:
+            if child._proc is not None and child._proc.returncode is None:
+                child._proc.kill()
+        return child
+
+    child = asyncio.run(scenario())
+    assert child._proc.returncode is not None
