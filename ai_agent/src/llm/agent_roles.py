@@ -53,7 +53,7 @@ def _resolve() -> tuple[str, dict[str, Any]]:
     # instances started the old way, whose spec has persona None).
     spec = agent_spec.current()
     if spec.persona is not None:
-        return spec.id, {"persona": spec.persona}
+        return spec.id, {"persona": spec.persona, "instructions": spec.instructions}
     config = _load()
     try:
         roles = config["roles"]
@@ -81,10 +81,12 @@ def roster_block(roster: Sequence[RosterEntry]) -> str:
 
 
 def _compose_system_prompt(config: dict[str, Any], role: dict[str, Any], roster_text: str = "") -> str:
-    try:
-        tool_use_instructions = config["tool_use_instructions"]
-    except KeyError as exc:
-        raise AgentRoleError(f"{_CONFIG_PATH} is missing required key {exc}") from exc
+    tool_use_instructions = role.get("instructions") or ""
+    if not tool_use_instructions:
+        try:
+            tool_use_instructions = config["tool_use_instructions"]
+        except KeyError as exc:
+            raise AgentRoleError(f"{_CONFIG_PATH} is missing required key {exc}") from exc
     app_name = config.get("app_name") or ""
     app_description = config.get("app_description") or ""
     identity = ""

@@ -35,7 +35,7 @@ _DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt"}
 _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-_TOP_KEYS = {"label", "port", "enabled", "entry", "llm", "persona", "focus", "tools", "orchestrator", "routing"}
+_TOP_KEYS = {"label", "port", "enabled", "entry", "llm", "persona", "instructions", "focus", "tools", "orchestrator", "routing"}
 _LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds"}
 _TOOLS_KEYS = {"allow", "deny"}
 _ROUTING_KEYS = {"laya", "top_k", "allow_auto", "min_score"}
@@ -105,6 +105,9 @@ class AgentSpec:
     # None = no persona in a file: use config_ai_agent_roles.json's role
     # (the env-var path). A file spec always has a string, "" included.
     persona: str | None = ""
+    # Replaces config_ai_agent_roles.json's shared tool_use_instructions for
+    # this agent; "" = use the shared text.
+    instructions: str = ""
     focus: str = ""
     tools: ToolScope = field(default_factory=ToolScope)
     orchestrator: bool = False
@@ -239,6 +242,7 @@ def load_file(path: Path) -> AgentSpec:
         enabled=check.boolean(data, "enabled", True),
         entry=check.boolean(data, "entry", False),
         persona=check.text(data, "persona", "") or "",
+        instructions=check.text(data, "instructions", "") or "",
         focus=check.text(data, "focus", "") or "",
         tools=tools,
         orchestrator=orchestrator,

@@ -131,7 +131,20 @@ def test_resolve_uses_the_agent_file_persona(monkeypatch):
     role_id, role = agent_roles._resolve()
 
     assert role_id == "calc"
-    assert role == {"persona": "You are a precise mathematician."}
+    assert role == {"persona": "You are a precise mathematician.", "instructions": ""}
+
+
+def test_agent_file_instructions_replace_the_shared_tool_instructions(monkeypatch):
+    spec = AgentSpec(id="calc", label="Calculator", port=9103, llm=LlmSpec(provider="anthropic"),
+                     persona="P.", instructions="Only use calc tools.")
+    monkeypatch.setattr(agent_spec, "_current", spec)
+    role = agent_roles._resolve()[1]
+    shared = agent_roles._load()["tool_use_instructions"]
+
+    prompt = agent_roles._compose_system_prompt(agent_roles._load(), role)
+
+    assert prompt.endswith("Only use calc tools.")
+    assert shared not in prompt
 
 
 def test_system_prompt_for_adds_the_roster_before_tool_instructions(monkeypatch):

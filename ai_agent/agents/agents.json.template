@@ -13,6 +13,7 @@
     "max_tool_rounds": 6
   },
   "persona": "You are a precise mathematician. Show every step and check results.",
+  "instructions": "Use the calculator tools for every computation; never do arithmetic in your head.",
   "focus": "Arithmetic, algebra, percentages, unit conversion, compound interest.",
   "tools": { "allow": ["calc_*", "convert_*"], "deny": [] },
   "orchestrator": false

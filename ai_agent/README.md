@@ -52,6 +52,7 @@ typos are caught at startup.
     "max_tool_rounds": 6
   },
   "persona": "You are a precise mathematician. Show every step and check results.",
+  "instructions": "Use the calculator tools for every computation; never do arithmetic in your head.",
   "focus": "Arithmetic, algebra, percentages, unit conversion, compound interest.",
   "tools": { "allow": ["calc_*", "convert_*"], "deny": [] },
   "orchestrator": false
@@ -72,6 +73,7 @@ typos are caught at startup.
 | `llm.max_tokens` | no | today's hard-coded value | Output token cap per model call. |
 | `llm.max_tool_rounds` | no | `6` | Cap on the tool loop. |
 | `persona` | no | `""` | Persona text placed in the system prompt. |
+| `instructions` | no | `""` (shared text) | Replaces `tool_use_instructions` from `configs/config_ai_agent_roles.json` for this agent only. Empty uses the shared text. |
 | `focus` | no | `""` | One-line summary of what the agent is good at. Used for the orchestrator roster and for Laya routing. Should be concrete. |
 | `tools.allow` | no | `[]` (all) | fnmatch globs on mcp_server tool names without the `main__` prefix. Empty means all tools. |
 | `tools.deny` | no | `[]` | Globs removed after `allow`. Deny wins. |
