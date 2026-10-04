@@ -24,7 +24,7 @@ function local(date: Date): string {
 }
 
 /** The report as a Markdown document, like chat_app's usage export: a summary
- * table, then tokens by agent and by day. Built in the browser. */
+ * table, then tokens by agent, by the chosen grouping and by day. Built in the browser. */
 export function usageToMarkdown(report: UsageReport, options: UsageExportOptions): string {
   const n = (value: number) => value.toLocaleString("en-US");
   const peak = peakHour(report.hourly, options.utcOffsetMinutes);
@@ -56,6 +56,16 @@ export function usageToMarkdown(report: UsageReport, options: UsageExportOptions
   } else {
     lines.push("| Agent | Model | Tokens |", "|---|---|---|");
     for (const row of report.by_agent) lines.push(`| ${cell(row.agent)} | ${cell(row.model || "-")} | ${n(row.tokens)} |`);
+  }
+  if (report.group_by !== "agent") {
+    const heading = report.group_by[0]!.toUpperCase() + report.group_by.slice(1);
+    lines.push("", `## By ${report.group_by}`, "");
+    if (report.groups.length === 0) {
+      lines.push("None.");
+    } else {
+      lines.push(`| ${heading} | Tokens | Turns |`, "|---|---|---|");
+      for (const g of report.groups) lines.push(`| ${cell(g.key)} | ${n(g.tokens)} | ${n(g.turns)} |`);
+    }
   }
   lines.push("", "## Per day (UTC)", "");
   if (report.daily.length === 0) {

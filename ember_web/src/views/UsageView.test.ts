@@ -1,12 +1,12 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usageClient, type MyUsage } from "../api/UsageClient";
+import { usageClient, type MyUsage, type UsageRecordRow } from "../api/UsageClient";
 import { useAuthStore } from "../stores/auth";
 import { downloadText } from "../utils/chatExport";
 import UsageView from "./UsageView.vue";
 
-vi.mock("../api/UsageClient", () => ({ usageClient: { mine: vi.fn(), allAccounts: vi.fn() } }));
+vi.mock("../api/UsageClient", () => ({ usageClient: { mine: vi.fn(), allAccounts: vi.fn(), records: vi.fn() } }));
 vi.mock("../utils/chatExport", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/chatExport")>()),
   downloadText: vi.fn(),
@@ -14,6 +14,7 @@ vi.mock("../utils/chatExport", async (importOriginal) => ({
 
 const mine = vi.mocked(usageClient.mine);
 const allAccounts = vi.mocked(usageClient.allAccounts);
+const records = vi.mocked(usageClient.records);
 const download = vi.mocked(downloadText);
 
 const hourly = (hour: number, tokens: number): number[] => {
@@ -38,6 +39,8 @@ function usage(extra: Partial<MyUsage["report"]> = {}): MyUsage {
       by_agent: [{ agent: "claude", model: "opus", tokens: 1500 }],
       daily: [{ date: "2026-10-01", tokens: 1500 }],
       hourly: hourly(14, 1500),
+      group_by: "agent",
+      groups: [],
       ...extra,
     },
   };
@@ -65,6 +68,7 @@ beforeEach(() => {
   vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
   mine.mockResolvedValue(usage());
   allAccounts.mockResolvedValue([]);
+  records.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -84,7 +88,7 @@ describe("the period buttons", () => {
   it("loads the last 30 days to begin with", async () => {
     await mountView();
 
-    expect(mine).toHaveBeenCalledWith(30, undefined);
+    expect(mine).toHaveBeenCalledWith(30, undefined, { groupBy: "agent" });
   });
 
   it("This month asks from the 1st", async () => {
@@ -93,7 +97,7 @@ describe("the period buttons", () => {
     await rangeButton(wrapper, "This month").trigger("click");
     await flushPromises();
 
-    expect(mine).toHaveBeenLastCalledWith(30, "2026-10-01");
+    expect(mine).toHaveBeenLastCalledWith(30, "2026-10-01", { groupBy: "agent" });
     expect(rangeButton(wrapper, "This month").attributes("aria-pressed")).toBe("true");
   });
 
@@ -107,7 +111,7 @@ describe("the period buttons", () => {
     await rangeButton(wrapper, label).trigger("click");
     await flushPromises();
 
-    expect(mine).toHaveBeenLastCalledWith(days, undefined);
+    expect(mine).toHaveBeenLastCalledWith(days, undefined, { groupBy: "agent" });
   });
 
   it("asks for every account's totals with the same period, for an admin", async () => {
@@ -204,6 +208,103 @@ describe("the 12-month heatmap", () => {
     expect(wrapper.find(".heatmap").exists()).toBe(false);
     expect(wrapper.find(".stats").exists()).toBe(true);
     expect(wrapper.find(".error").exists()).toBe(false);
+  });
+});
+
+function row(extra: Partial<UsageRecordRow> = {}): UsageRecordRow {
+  return {
+    id: 1,
+    turn_id: "t",
+    kind: "chat",
+    chat_id: "c",
+    agent: "calc",
+    agent_id: "calc",
+    provider_id: "openai",
+    gateway: "azure",
+    model: "gpt-x",
+    input_tokens: 20,
+    output_tokens: 5,
+    total_tokens: 25,
+    started_at: "2026-10-04T09:12:04",
+    finished_at: "2026-10-04T09:12:05",
+    delegated_by: "main",
+    created_at: "2026-10-04T09:12:06",
+    ...extra,
+  };
+}
+
+describe("group by", () => {
+  it("groups the report by the chosen field", async () => {
+    mine.mockResolvedValue(
+      usage({ group_by: "agent", groups: [{ key: "calc", tokens: 30, input_tokens: 20, output_tokens: 10, turns: 1 }] }),
+    );
+    const wrapper = await mountView();
+
+    await wrapper.find("select.group-by").setValue("provider");
+    await flushPromises();
+
+    expect(mine).toHaveBeenLastCalledWith(30, undefined, expect.objectContaining({ groupBy: "provider" }));
+  });
+
+  it("lists the groups under a heading for the field", async () => {
+    mine.mockResolvedValue(
+      usage({ group_by: "agent", groups: [{ key: "calc", tokens: 30, input_tokens: 20, output_tokens: 10, turns: 1 }] }),
+    );
+    const wrapper = await mountView();
+
+    expect(wrapper.find("table.groups th").text()).toBe("Agent");
+    expect(wrapper.find("table.groups tbody tr").text()).toContain("calc");
+    await wrapper.find("select.group-by").setValue("gateway");
+    expect(wrapper.find("table.groups th").text()).toBe("Gateway");
+  });
+
+  it("says None when there are no groups", async () => {
+    const wrapper = await mountView();
+
+    expect(wrapper.find("table.groups").exists()).toBe(false);
+  });
+});
+
+describe("the records table", () => {
+  it("asks for the latest 100 rows of the period", async () => {
+    await mountView();
+
+    expect(records).toHaveBeenLastCalledWith(30, undefined, { limit: 100 });
+  });
+
+  it("lists each row with its provider, gateway and time", async () => {
+    records.mockResolvedValue([row()]);
+    const wrapper = await mountView();
+
+    const text = wrapper.find("table.records tbody tr").text();
+    expect(text).toContain("calc");
+    expect(text).toContain("← main");
+    expect(text).toContain("openai");
+    expect(text).toContain("azure");
+    expect(text).toContain("gpt-x");
+    expect(text).toContain("25");
+    expect(text).toContain(new Date("2026-10-04T09:12:04Z").toLocaleString());
+  });
+
+  it("shows a dash for what an older row lacks", async () => {
+    records.mockResolvedValue([
+      row({ agent_id: null, agent: null, provider_id: null, gateway: null, model: null, input_tokens: null, output_tokens: null, delegated_by: null, started_at: null }),
+    ]);
+    const wrapper = await mountView();
+
+    const cells = wrapper.findAll("table.records tbody tr td").map((c) => c.text());
+    expect(cells[0]).toBe(new Date("2026-10-04T09:12:06Z").toLocaleString());
+    expect(cells.slice(1)).toEqual(["unknown", "-", "-", "-", "-", "-", "25"]);
+  });
+
+  it("is left out, and the report still shows, when its request fails", async () => {
+    records.mockRejectedValue(new Error("boom"));
+
+    const wrapper = await mountView();
+
+    expect(wrapper.find(".error").exists()).toBe(false);
+    expect(wrapper.find(".stats").exists()).toBe(true);
+    expect(wrapper.find("table.records").exists()).toBe(false);
   });
 });
 

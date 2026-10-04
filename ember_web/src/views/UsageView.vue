@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { usageClient, type AccountUsage, type MyUsage } from "../api/UsageClient";
+import { usageClient, type AccountUsage, type MyUsage, type UsageGroupBy, type UsageRecordRow } from "../api/UsageClient";
 import UsageHeatmap from "../components/UsageHeatmap.vue";
 import { useAuthStore } from "../stores/auth";
 import { downloadText, exportFileName } from "../utils/chatExport";
 import { errorMessage, formatUtc } from "../utils/errors";
 import { usageToMarkdown } from "../utils/usageExport";
-import { usagePercent as percent } from "../utils/usageFormat";
+import { parseServerTime, usagePercent as percent } from "../utils/usageFormat";
 import { favoriteAgent, hourLabel, monthStart, peakHour, utcDay } from "../utils/usageStats";
 
 const auth = useAuthStore();
@@ -35,6 +35,8 @@ const today = utcDay(new Date());
 const year = ref<MyUsage | null>(null);
 const usage = ref<MyUsage | null>(null);
 const accounts = ref<AccountUsage[]>([]);
+const groupBy = ref<UsageGroupBy>("agent");
+const records = ref<UsageRecordRow[]>([]);
 const loading = ref(false);
 const error = ref("");
 
@@ -45,17 +47,27 @@ async function load(): Promise<void> {
   error.value = "";
   try {
     const { days, since } = period();
-    const [mine, all] = await Promise.all([
-      usageClient.mine(days, since),
+    const [mine, all, rows] = await Promise.all([
+      usageClient.mine(days, since, { groupBy: groupBy.value }),
       isAdmin.value ? usageClient.allAccounts(days, since) : Promise.resolve([]),
+      usageClient.records(days, since, { limit: 100 }).catch(() => []), // the table is extra: the report still shows
     ]);
     usage.value = mine;
     accounts.value = all;
+    records.value = rows;
   } catch (err) {
     error.value = errorMessage(err);
   } finally {
     loading.value = false;
   }
+}
+
+const GROUP_HEADINGS: Record<UsageGroupBy, string> = { agent: "Agent", provider: "Provider", gateway: "Gateway", model: "Model" };
+const groupHeading = computed(() => GROUP_HEADINGS[groupBy.value]);
+
+/** A naive-UTC API time as the viewer's local date and time. */
+function localTime(value: string): string {
+  return new Date(parseServerTime(value)).toLocaleString();
 }
 
 function tokens(n: number): string {
@@ -91,7 +103,7 @@ function exportReport(): void {
   downloadText(exportFileName(`usage-${range.value}-${utcDay(now)}`, "md"), text, "text/markdown");
 }
 
-watch(range, load);
+watch([range, groupBy], load);
 onMounted(() => {
   void load();
   void loadYear();
@@ -181,6 +193,56 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+
+        <h3>
+          By
+          <select v-model="groupBy" class="group-by" aria-label="Group usage by">
+            <option value="agent">agent</option>
+            <option value="provider">provider</option>
+            <option value="gateway">gateway</option>
+            <option value="model">model</option>
+          </select>
+        </h3>
+        <p v-if="usage.report.groups.length === 0" class="muted">None.</p>
+        <table v-else class="groups">
+          <thead>
+            <tr><th>{{ groupHeading }}</th><th class="num">Tokens</th><th class="num">In</th><th class="num">Out</th><th class="num">Turns</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="g in usage.report.groups" :key="g.key">
+              <td>{{ g.key }}</td>
+              <td class="num">{{ tokens(g.tokens) }}</td>
+              <td class="num">{{ tokens(g.input_tokens) }}</td>
+              <td class="num">{{ tokens(g.output_tokens) }}</td>
+              <td class="num">{{ g.turns }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Recent calls</h3>
+        <p v-if="records.length === 0" class="muted">None.</p>
+        <div v-else class="table-scroll">
+          <table class="records">
+            <thead>
+              <tr>
+                <th>When</th><th>Agent</th><th>Provider</th><th>Gateway</th><th>Model</th>
+                <th class="num">In</th><th class="num">Out</th><th class="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in records" :key="r.id">
+                <td>{{ localTime(r.started_at ?? r.created_at) }}</td>
+                <td>{{ r.agent_id ?? r.agent ?? "unknown" }}<span v-if="r.delegated_by" class="muted"> ← {{ r.delegated_by }}</span></td>
+                <td>{{ r.provider_id ?? "-" }}</td>
+                <td>{{ r.gateway ?? "-" }}</td>
+                <td>{{ r.model ?? "-" }}</td>
+                <td class="num">{{ r.input_tokens === null ? "-" : tokens(r.input_tokens) }}</td>
+                <td class="num">{{ r.output_tokens === null ? "-" : tokens(r.output_tokens) }}</td>
+                <td class="num">{{ tokens(r.total_tokens) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <template v-if="isAdmin">
           <h3>All accounts</h3>
@@ -368,6 +430,20 @@ th {
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.group-by {
+  padding: 2px 6px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.records td {
+  white-space: nowrap;
 }
 .muted {
   color: var(--muted);

@@ -40,6 +40,18 @@ describe("usageClient", () => {
     expect(request).toHaveBeenCalledExactlyOnceWith("GET", "/api/usage?days=7");
   });
 
+  it("adds the grouping and filters", async () => {
+    await usageClient.mine(30, undefined, { groupBy: "provider", agent: "calc", provider: "open ai" });
+
+    expect(request).toHaveBeenCalledExactlyOnceWith("GET", "/api/usage?days=30&group_by=provider&agent=calc&provider=open%20ai");
+  });
+
+  it("asks for the rows, newest first, with a limit", async () => {
+    await usageClient.records(7, "2026-10-01", { agent: "calc", limit: 100 });
+
+    expect(request).toHaveBeenCalledExactlyOnceWith("GET", "/api/usage/records?days=7&since=2026-10-01&agent=calc&limit=100");
+  });
+
   it("escapes what it puts in the address", async () => {
     await usageClient.mine(7, "2026-10-01&days=1");
 

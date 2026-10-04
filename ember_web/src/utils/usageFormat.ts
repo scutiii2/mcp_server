@@ -39,7 +39,7 @@ export function agentUsageText(a: AgentUsage): string {
 }
 
 /** An ISO time from the server as a timestamp; one without a zone is UTC. */
-function parseServerTime(value: string | undefined): number {
+export function parseServerTime(value: string | undefined): number {
   if (!value) return NaN;
   return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`);
 }
