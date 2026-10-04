@@ -134,3 +134,59 @@ describe("live agent activity", () => {
     expect(chat.agentText).toEqual({});
   });
 });
+
+describe("live steps and agent events, edge cases", () => {
+  const start = { sequence: 1, agent_id: "calc", agent_label: "Calculator", delegated_by: "main", question: "q", step_id: "d1", at: "2026-10-04T09:12:03.512Z" };
+
+  it("matches live steps by agent and id, so two agents may reuse a step id", async () => {
+    const { chat, emit } = await runningTurn();
+    emit({ type: "step_start", id: "s1", tool: "t_main", arguments: {}, agent_id: "main", agent_label: "Ember" });
+    emit({ type: "step_start", id: "s1", tool: "t_calc", arguments: {}, agent_id: "calc", agent_label: "Calculator" });
+
+    emit({ type: "step_end", id: "s1", ok: true, result: "from calc", agent_id: "calc", agent_label: "Calculator" });
+    expect(chat.liveSteps.map((s) => [s.ok, s.result])).toEqual([[null, ""], [true, "from calc"]]);
+
+    emit({ type: "step_end", id: "s1", ok: false, result: "from main", agent_id: "main", agent_label: "Ember" });
+    expect(chat.liveSteps.map((s) => [s.ok, s.result])).toEqual([[false, "from main"], [true, "from calc"]]);
+  });
+
+  it("an error resets the working agents and their text", async () => {
+    const { chat, emit } = await runningTurn();
+    emit({ type: "agent_start", ...start });
+    emit({ type: "agent_token", sequence: 2, agent_id: "calc", agent_label: "Calculator", step_id: "d1", text: "x" });
+
+    emit({ type: "error", sequence: 3, message: "boom" });
+
+    expect(chat.activeAgents).toEqual([]);
+    expect(chat.agentText).toEqual({});
+  });
+
+  it("ignores an agent_end for a step it never saw", async () => {
+    const { chat, emit } = await runningTurn();
+    emit({ type: "agent_start", ...start });
+
+    emit({ type: "agent_end", sequence: 2, agent_id: "calc", agent_label: "Calculator", ok: true, step_id: "nope", at: "2026-10-04T09:12:07.044Z" });
+
+    expect(chat.activeAgents.map((a) => a.step_id)).toEqual(["d1"]);
+  });
+
+  it("keeps text that arrives before its agent_start, and clears it when the answer ends", async () => {
+    const { chat, emit } = await runningTurn();
+
+    emit({ type: "agent_token", sequence: 1, agent_id: "calc", agent_label: "Calculator", step_id: "d1", text: "early" });
+    expect(chat.agentText).toEqual({ d1: "early" });
+    expect(chat.activeAgents).toEqual([]);
+
+    emit({ type: "final", sequence: 2, message: { role: "assistant", content: "done" }, cancelled: false });
+    expect(chat.agentText).toEqual({});
+  });
+
+  it("does not list an agent twice when agent_start is repeated", async () => {
+    const { chat, emit } = await runningTurn();
+
+    emit({ type: "agent_start", ...start });
+    emit({ type: "agent_start", ...start });
+
+    expect(chat.activeAgents).toHaveLength(1);
+  });
+});

@@ -1,7 +1,9 @@
 import { flushPromises, mount, type DOMWrapper } from "@vue/test-utils";
-import { createPinia } from "pinia";
+import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "../api/types";
+import { useChatStore } from "../stores/chat";
+import { useEntryAgentStore } from "../stores/entryAgent";
 import { withAttachments } from "../utils/attachments";
 import MessageList from "./MessageList.vue";
 
@@ -567,5 +569,23 @@ describe("download cards", () => {
 
     expect(wrapper.find(".downloads a").exists()).toBe(false);
     expect(wrapper.find(".downloads .unavailable").exists()).toBe(true);
+  });
+});
+
+describe("who is working", () => {
+  it("shows the agent chain while an answer runs with a delegated agent, and nothing otherwise", () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEntryAgentStore().entry = { id: "main", label: "Ember" };
+    useChatStore().activeAgents = [{ agent_id: "calc", label: "Calculator", since: "2026-10-04T09:12:03.512Z", step_id: "d1" }];
+    const mountWith = (busy: boolean) =>
+      mount(MessageList, {
+        props: { messages: FOUR, streaming: "", activity: "", steps: [], busy, canChange: !busy },
+        global: { plugins: [pinia] },
+        attachTo: document.body,
+      });
+
+    expect(mountWith(true).find(".agent-activity").text()).toContain("Ember → Calculator");
+    expect(mountWith(false).find(".agent-activity").exists()).toBe(false);
   });
 });

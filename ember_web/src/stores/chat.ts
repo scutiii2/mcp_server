@@ -153,7 +153,8 @@ export const useChatStore = defineStore("chat", () => {
   const liveSteps = ref<ToolStep[]>([]); // the tools it ran so far
   const activeAgents = ref<ActiveAgent[]>([]); // delegated agents working on the answer, outermost first
   const agentText = ref<Record<string, string>>({}); // a delegated agent's streamed text, by delegate step id
-  const liveStepIndex = new Map<string, number>();
+  const liveStepIndex = new Map<string, number>(); // by stepKey: two agents may reuse a step id
+  const stepKey = (agentId: string | undefined, id: string) => `${agentId ?? ""}\t${id}`;
   const starting = ref(false); // question sent, turn not confirmed yet
   // "Terse replies": asks ai_agent for short answers. Remembered per account.
   const caveman = ref(false);
@@ -419,7 +420,7 @@ export const useChatStore = defineStore("chat", () => {
         break;
       case "step_start":
         activity.value = `running ${event.label ?? toolTitle(event.tool)} ...`;
-        liveStepIndex.set(event.id, liveSteps.value.length);
+        liveStepIndex.set(stepKey(event.agent_id, event.id), liveSteps.value.length);
         liveSteps.value.push({
           id: event.id,
           ...(event.agent_id ? { agent_id: event.agent_id, agent_label: event.agent_label ?? "" } : {}),
@@ -448,7 +449,7 @@ export const useChatStore = defineStore("chat", () => {
       case "step_end": {
         activity.value = "";
         dropApproval(event.id);
-        const index = liveStepIndex.get(event.id);
+        const index = liveStepIndex.get(stepKey(event.agent_id, event.id));
         const step = index === undefined ? undefined : liveSteps.value[index];
         if (step) {
           step.ok = event.ok;
@@ -457,10 +458,12 @@ export const useChatStore = defineStore("chat", () => {
         break;
       }
       case "agent_start":
-        activeAgents.value = [
-          ...activeAgents.value,
-          { agent_id: event.agent_id, label: event.agent_label, since: event.at, step_id: event.step_id },
-        ];
+        if (!activeAgents.value.some((a) => a.step_id === event.step_id && a.agent_id === event.agent_id)) {
+          activeAgents.value = [
+            ...activeAgents.value,
+            { agent_id: event.agent_id, label: event.agent_label, since: event.at, step_id: event.step_id },
+          ];
+        }
         break;
       case "agent_end":
         activeAgents.value = activeAgents.value.filter(

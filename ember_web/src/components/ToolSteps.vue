@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import type { ToolStep } from "../api/types";
+import { useChatStore } from "../stores/chat";
+import { useEntryAgentStore } from "../stores/entryAgent";
 import { formatToolResult } from "../utils/toolResultFormat";
 import { toolTitle } from "../utils/toolTitles";
 import MarkdownContent from "./MarkdownContent.vue";
@@ -10,6 +13,9 @@ import MarkdownContent from "./MarkdownContent.vue";
  * Each step expands to its arguments and result. */
 
 const props = defineProps<{ steps: ToolStep[]; live?: boolean }>();
+
+const { agentText, activeAgents } = storeToRefs(useChatStore());
+const { entry } = storeToRefs(useEntryAgentStore());
 
 const failed = computed(() => props.steps.filter((s) => s.ok === false).length);
 const summary = computed(() => {
@@ -27,6 +33,21 @@ function title(step: ToolStep): string {
   return step.label || toolTitle(step.tool);
 }
 
+/** The agent that ran a step, when it was a delegated one (not the main agent). */
+function badge(step: ToolStep): string | null {
+  if (!step.agent_id || step.agent_id === entry.value?.id) return null;
+  return step.agent_label || step.agent_id;
+}
+
+/** A delegated agent's text so far, for the delegate step that handed it its question. */
+function workingText(step: ToolStep): string {
+  return props.live && step.id && step.agent_id === entry.value?.id ? (agentText.value[step.id] ?? "") : "";
+}
+
+function workingLabel(step: ToolStep): string {
+  return activeAgents.value.find((a) => a.step_id === step.id)?.label || "Delegated agent";
+}
+
 function argumentsText(step: ToolStep): string {
   return Object.keys(step.arguments).length ? JSON.stringify(step.arguments, null, 2) : "";
 }
@@ -39,10 +60,15 @@ function argumentsText(step: ToolStep): string {
       <summary>
         <span class="icon">{{ icon(step) }}</span>
         <span class="title">{{ title(step) }}</span>
+        <span v-if="badge(step)" class="agent-badge">{{ badge(step) }}</span>
       </summary>
       <div class="detail">
         <p class="tool"><code>{{ step.tool }}</code></p>
         <pre v-if="argumentsText(step)">{{ argumentsText(step) }}</pre>
+        <details v-if="workingText(step)" class="agent-text" open>
+          <summary>{{ workingLabel(step) }} is working</summary>
+          <pre>{{ workingText(step) }}</pre>
+        </details>
         <template v-if="step.result">
           <MarkdownContent v-if="formatToolResult(step.result)" :text="formatToolResult(step.result) ?? ''" />
           <pre v-else>{{ step.result }}</pre>
@@ -98,6 +124,17 @@ function argumentsText(step: ToolStep): string {
   white-space: pre-wrap;
   font-family: var(--mono);
   background: var(--code-bg);
+}
+.agent-badge {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.85em;
+}
+.agent-text {
+  margin: 0.3rem 0;
 }
 .muted {
   margin: 0;
