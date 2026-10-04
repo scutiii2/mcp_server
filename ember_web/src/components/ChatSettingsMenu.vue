@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// The chat page's settings behind a gear at the top-right corner: closed on
-// every load, closed again by Escape or a click anywhere else.
+// The chat page's settings behind a gear in the bar above the message box:
+// closed on every load, closed again by Escape or a click anywhere else. The
+// panel opens upward, since the bar is at the bottom of the page.
 import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
 
@@ -58,7 +59,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
       :aria-expanded="open"
       @click="open = !open"
     >
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
         <circle cx="12" cy="12" r="3" />
         <path
           d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
@@ -109,17 +110,15 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
 
 <style scoped>
 .settings-menu {
-  position: absolute;
-  top: 8px;
-  right: 16px;
+  position: relative;
   z-index: 15;
 }
 .gear {
   position: relative;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -150,8 +149,8 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
 }
 .panel {
   position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;

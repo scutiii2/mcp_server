@@ -236,19 +236,6 @@ useChatShortcuts({
           <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
       </button>
-      <ChatSettingsMenu
-        :caveman="caveman"
-        :ask-before-tools="askBeforeTools"
-        :force-tool-approval="forceToolApproval"
-        :chime="chime"
-        :allowed-count="allowedCount"
-        :enabled-extensions="enabledExtensions"
-        :attention="pendingApprovals.length > 0"
-        @update:caveman="chat.setCaveman"
-        @update:ask-before-tools="chat.setAskBeforeTools"
-        @update:chime="chat.setChime"
-        @clear-allowed="chat.clearAllowedTools()"
-      />
       <div v-if="saveError || loadError" class="banner" role="alert">
         <template v-if="saveError">
           Couldn't save your chats: {{ saveError }}
@@ -294,6 +281,19 @@ useChatShortcuts({
       <div class="composer-area">
         <div class="toolbar">
           <EntryAgentTag />
+          <ChatSettingsMenu
+            :caveman="caveman"
+            :ask-before-tools="askBeforeTools"
+            :force-tool-approval="forceToolApproval"
+            :chime="chime"
+            :allowed-count="allowedCount"
+            :enabled-extensions="enabledExtensions"
+            :attention="pendingApprovals.length > 0"
+            @update:caveman="chat.setCaveman"
+            @update:ask-before-tools="chat.setAskBeforeTools"
+            @update:chime="chat.setChime"
+            @clear-allowed="chat.clearAllowedTools()"
+          />
           <span
             v-if="contextPercent !== null"
             :class="['context', { high: contextPercent >= 50 }]"
@@ -401,8 +401,8 @@ useChatShortcuts({
   margin: 0 auto;
   padding: 0 24px;
 }
-/* Status and chat actions sit to the right of the agent tag. */
-.toolbar > :first-child {
+/* The settings gear sits right of the agent tag; status and chat actions are pushed to the far right. */
+.toolbar > .settings-menu {
   margin-right: auto;
 }
 .context,
