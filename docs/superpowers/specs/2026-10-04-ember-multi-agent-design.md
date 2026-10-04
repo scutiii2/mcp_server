@@ -101,7 +101,7 @@ Each step below is proposed for approval before it is made.
    `src/api/ChatsClient.ts` and `src/api/AiAgentClient.ts`, and from
    `src/api/types.ts`. `src/services/ConversationStorage.ts` still reads an old
    saved `agent` field but no longer writes it. The header shows
-   "Talking to <label>" from `GET /mcp/agent`.
+   "Talking to <label>" from `GET /api/agent`.
 2. **Live activity.** `src/stores/chat.ts` handles `agent_start`, `agent_end`
    and the snapshot's `active_agents`, keeping the stack per running turn. New
    `src/components/AgentActivity.vue` sits above the streaming answer and shows
