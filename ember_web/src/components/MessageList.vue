@@ -11,6 +11,7 @@ import CopyButton from "./CopyButton.vue";
 import DownloadCards from "./DownloadCards.vue";
 import ElapsedTime from "./ElapsedTime.vue";
 import MarkdownContent from "./MarkdownContent.vue";
+import SaveButton from "./SaveButton.vue";
 import ToolSteps from "./ToolSteps.vue";
 import UsageChip from "./UsageChip.vue";
 import WelcomeCard from "./WelcomeCard.vue";
@@ -40,8 +41,12 @@ const props = defineProps<{
   commands?: CommandInfo[];
   /** Agent ids with the names to show for them, for the tag under each answer. */
   agentLabels?: Record<string, string>;
+  /** The texts of the account's saved prompts: a question that matches one
+   * shows "Saved". Leave it out to hide the Save button. */
+  savedPrompts?: string[];
 }>();
 const emit = defineEmits<{
+  "save-prompt": [text: string];
   regenerate: [];
   edit: [index: number, text: string];
   branch: [index: number];
@@ -58,6 +63,10 @@ function formatArguments(args: Record<string, unknown>): string {
 function agentLabel(m: ChatMessage): string | undefined {
   // Without a label the chip shows the saved id.
   return agentLabelFor(m.agent, props.agentLabels ?? {});
+}
+
+function isSavedPrompt(text: string): boolean {
+  return props.savedPrompts?.includes(text.trim()) ?? false;
 }
 
 function isDeciding(id: string): boolean {
@@ -233,6 +242,13 @@ onBeforeUnmount(() => {
           </div>
           <div class="actions user-actions">
             <CopyButton :text="userParts[i]?.text || m.content" label="Copy message" />
+            <SaveButton
+              v-if="savedPrompts && userParts[i]?.text?.trim()"
+              small
+              :saved="isSavedPrompt(userParts[i]!.text)"
+              :title="isSavedPrompt(userParts[i]!.text) ? 'Already one of your saved prompts' : 'Save as a prompt'"
+              @click="emit('save-prompt', userParts[i]!.text)"
+            />
             <button v-if="canChange" type="button" class="action" title="Edit and resend" aria-label="Edit and resend" @click="startEdit(i)">
               <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
                 <path

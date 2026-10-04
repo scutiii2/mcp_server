@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { computed, onActivated, onDeactivated, onMounted, ref } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
 import EntryAgentTag from "../components/EntryAgentTag.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ChatSettingsMenu from "../components/ChatSettingsMenu.vue";
@@ -72,6 +72,22 @@ const shareOpen = ref(false);
 function openTemplates(draft: string): void {
   templatesDraft.value = draft;
   templatesOpen.value = true;
+}
+
+// The question Save buttons compare against. Loaded once the chat holds a
+// question of yours, so a chat without one never asks for the list.
+const savedPrompts = computed(() => templates.templates.map((t) => t.body.trim()));
+watch(
+  () => messages.value.some((m) => m.role === "user"),
+  (hasQuestion) => {
+    if (hasQuestion) void templates.ensureLoaded();
+  },
+  { immediate: true },
+);
+
+/** Save on a question: a new prompt holding it, or the saved-prompts list when it already is one. */
+function saveAsPrompt(text: string): void {
+  openTemplates(savedPrompts.value.includes(text.trim()) ? "" : text);
 }
 
 // The command form: opened when a command with parameters is picked from
@@ -270,6 +286,8 @@ useChatShortcuts({
         :agent-labels="agentLabels"
         :deciding="deciding"
         :approval-required="forceToolApproval"
+        :saved-prompts="savedPrompts"
+        @save-prompt="saveAsPrompt"
         @decide="chat.decideApproval"
         :regenerate-index="chat.regenerateIndex"
         :jump-index="chat.jumpIndex"

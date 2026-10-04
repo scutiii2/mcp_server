@@ -241,6 +241,36 @@ describe("copy buttons", () => {
   });
 });
 
+describe("save as a prompt", () => {
+  const saveButtons = (wrapper: ReturnType<typeof mountList>) => wrapper.findAll("button.save-button");
+
+  it("is not offered unless the saved prompts are given", () => {
+    expect(saveButtons(mountList())).toHaveLength(0);
+  });
+
+  it("is on each question: Save, or Saved when a prompt holds the same text", () => {
+    const wrapper = mountList({ savedPrompts: ["q2"] });
+
+    const buttons = saveButtons(wrapper);
+    expect(buttons.map((b) => b.text())).toEqual(["Save", "Saved"]);
+    expect(buttons.map((b) => b.attributes("aria-pressed"))).toEqual(["false", "true"]);
+  });
+
+  it("compares the typed text, not the attached file", () => {
+    const wrapper = mountList({ messages: [user(withAttachments("look at this", [FILE])), assistant("ok")], savedPrompts: ["look at this"] });
+
+    expect(saveButtons(wrapper).map((b) => b.text())).toEqual(["Saved"]);
+  });
+
+  it("asks to save the question's text when clicked", async () => {
+    const wrapper = mountList({ savedPrompts: [] });
+
+    await saveButtons(wrapper)[1]!.trigger("click");
+
+    expect(wrapper.emitted("save-prompt")).toEqual([["q2"]]);
+  });
+});
+
 describe("branch button", () => {
   const branchButtons = (wrapper: ReturnType<typeof mountList>) => wrapper.findAll('button[aria-label="Branch from this answer"]');
 
