@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.deps import get_db_session, require_any_permission
 from src.models import Account, LogEntry
 from src.services import log_service
+from src.services.log_analytics import AnalyticsReport, LogAnalytics, Period
 from src.services.permissions import LOGS_CHAT_VIEW, LOGS_ERRORS_VIEW, LOGS_VIEW
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
@@ -73,6 +74,19 @@ async def logs_index(
         kinds=[kind for kind, permission in KIND_PERMISSIONS.items() if permission in held],
         accounts=[ActorOut(id=row.id, username=row.username) for row in accounts],
     )
+
+
+# Registered before "/{kind}" so "analytics" is not read as a log kind.
+@router.get("/analytics")
+async def logs_analytics(
+    period: Period = Query(default="7d", alias="range"),
+    account: Account = Depends(require_any_logs),
+    session: AsyncSession = Depends(get_db_session),
+) -> AnalyticsReport:
+    """Counts over the last 24h / 7d / 30d / 90d, only for the kinds this
+    account may read (a kind it can't read is absent, never zero)."""
+    held = [kind for kind, permission in KIND_PERMISSIONS.items() if permission in account.permission_names]
+    return await LogAnalytics(session).report(period, held)
 
 
 @router.get("/{kind}")
