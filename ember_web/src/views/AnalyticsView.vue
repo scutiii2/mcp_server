@@ -33,6 +33,9 @@ const error = ref("");
 // Set when an account's row was clicked: the Entries tab opens on its list.
 const jump = ref<{ kind: LogKind; actor: LogActor } | null>(null);
 
+const kindParts = computed(() =>
+  (report.value?.kinds ?? []).map((kind) => ({ id: kind, label: KIND_LABELS[kind], color: KIND_COLORS[kind] })),
+);
 const trend = (kind: LogKind): number[] => report.value?.series.map((p) => p.counts[kind] ?? 0) ?? [];
 const sources = computed(() =>
   (report.value?.kinds ?? []).map((kind) => ({
@@ -109,7 +112,7 @@ watch(range, load);
 
           <div class="card">
             <h3>Over time</h3>
-            <ActivityChart :series="report.series" :kinds="report.kinds" :bucket="report.bucket" />
+            <ActivityChart :series="report.series" :parts="kindParts" :bucket="report.bucket" noun="entries" />
           </div>
 
           <div class="pair">

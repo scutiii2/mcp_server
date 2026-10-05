@@ -1,5 +1,8 @@
 import type { AnalyticsRange, AnalyticsReport, LogKind } from "../api/LogsClient";
 
+/** How wide one bucket of a time chart is. */
+export type BucketSize = AnalyticsReport["bucket"];
+
 export const KIND_LABELS: Record<LogKind, string> = { action: "Activity", error: "Errors", chat_trace: "Chat turns" };
 
 /** Each kind keeps its colour on every chart (never by rank), see style.css. */
@@ -56,12 +59,12 @@ const utcDate = (bucket: string) => new Date(`${bucket}Z`);
 const SHORT_DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
 
 /** A bucket's tick on the time axis (UTC, like the buckets themselves). */
-export function axisLabel(bucket: string, size: AnalyticsReport["bucket"]): string {
+export function axisLabel(bucket: string, size: BucketSize): string {
   return size === "hour" ? bucket.slice(11, 16) : utcDate(bucket).toLocaleDateString("en-US", SHORT_DATE);
 }
 
 /** A bucket named in full, for the tooltip and the table. */
-export function bucketTitle(bucket: string, size: AnalyticsReport["bucket"]): string {
+export function bucketTitle(bucket: string, size: BucketSize): string {
   const day = utcDate(bucket).toLocaleDateString("en-US", { ...SHORT_DATE, weekday: "short" });
   return size === "hour" ? `${day}, ${bucket.slice(11, 16)} UTC` : day;
 }

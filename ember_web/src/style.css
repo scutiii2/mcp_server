@@ -19,6 +19,15 @@
   --kind-action: light-dark(#2a78d6, #3987e5);
   --kind-error: light-dark(#eb6834, #d95926);
   --kind-chat: light-dark(#1baf7a, #199e70);
+  /* Traffic tab: requests by status class (stacked, bottom to top) and the two latency lines.
+     Not run through the dataviz palette validator; every series is also named in a legend,
+     tooltip and table, so colour is never the only cue. */
+  --http-2xx: light-dark(#1baf7a, #199e70);
+  --http-3xx: light-dark(#8a8fa3, #7a8094);
+  --http-4xx: var(--warning);
+  --http-5xx: var(--status-failed);
+  --latency-p50: light-dark(#2a78d6, #3987e5);
+  --latency-p95: light-dark(#8e5bd6, #a174e0);
   /* Watcher run states: only the events stand out (failed red, running blue);
      a finished run is the quiet default. Blue and red validated together; each
      state also carries an icon and a label, so colour is never the only cue. */

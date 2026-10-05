@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import type { AnalyticsReport } from "../../api/LogsClient";
+import { KIND_COLORS, KIND_LABELS } from "../../utils/logAnalytics";
 import ActivityChart from "./ActivityChart.vue";
 import BarList from "./BarList.vue";
 import HourHeatmap from "./HourHeatmap.vue";
@@ -12,9 +13,11 @@ const series: AnalyticsReport["series"] = [
   { bucket: "2026-10-05T00:00:00", counts: { action: 0, error: 0, chat_trace: 0 } },
 ];
 const KINDS = ["action", "error", "chat_trace"] as const;
+const parts = (kinds: readonly (typeof KINDS)[number][]) =>
+  kinds.map((kind) => ({ id: kind, label: KIND_LABELS[kind], color: KIND_COLORS[kind] }));
 
 function chart(props: Partial<InstanceType<typeof ActivityChart>["$props"]> = {}) {
-  return mount(ActivityChart, { props: { series, kinds: [...KINDS], bucket: "day", ...props } });
+  return mount(ActivityChart, { props: { series, parts: parts(KINDS), bucket: "day", ...props } });
 }
 
 describe("ActivityChart", () => {
@@ -35,7 +38,7 @@ describe("ActivityChart", () => {
   });
 
   it("lists the kinds it was given in the legend and nothing else", () => {
-    expect(chart({ kinds: ["action", "error"] }).findAll(".legend li").map((l) => l.text())).toEqual(["Activity", "Errors"]);
+    expect(chart({ parts: parts(["action", "error"]) }).findAll(".legend li").map((l) => l.text())).toEqual(["Activity", "Errors"]);
   });
 
   it("reads a bucket with the arrow keys, for every kind at once", async () => {
@@ -90,9 +93,41 @@ describe("ActivityChart", () => {
       bucket: `2026-10-05T${String(h).padStart(2, "0")}:00:00`,
       counts: { action: h },
     }));
-    const wrapper = chart({ series: hours, kinds: ["action"], bucket: "hour" });
+    const wrapper = chart({ series: hours, parts: parts(["action"]), bucket: "hour" });
 
     expect(wrapper.findAll(".xtick").map((t) => t.text())).toEqual(["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]);
+  });
+});
+
+describe("ActivityChart with other parts", () => {
+  const statusParts = [
+    { id: "2xx", label: "2xx success", color: "green" },
+    { id: "5xx", label: "5xx server error", color: "red" },
+  ];
+  const requests = [
+    { bucket: "2026-10-04T00:00:00", counts: { "2xx": 8, "5xx": 2 } },
+    { bucket: "2026-10-05T00:00:00", counts: { "2xx": 0, "5xx": 0 } },
+  ];
+  const mountStatus = (props: Record<string, unknown> = {}) =>
+    mount(ActivityChart, { props: { series: requests, parts: statusParts, bucket: "day", noun: "requests", ...props } });
+
+  it("stacks the parts it is given, in their colours, and names them in the legend and tooltip", async () => {
+    const wrapper = mountStatus();
+
+    expect(wrapper.findAll(".legend li").map((l) => l.text())).toEqual(["2xx success", "5xx server error"]);
+    expect(wrapper.findAll(".col")[0]!.findAll(".seg").map((s) => (s.element as HTMLElement).style.background)).toEqual(["green", "red"]);
+    expect(wrapper.findAll(".ytick").map((t) => t.text())).toEqual(["10", "5", "0"]);
+    await wrapper.find(".plot").trigger("keydown", { key: "Home" });
+    expect(wrapper.findAll(".tooltip .line").map((l) => l.text())).toEqual(["8 2xx success", "2 5xx server error"]);
+  });
+
+  it("uses its noun for the empty state, the screen reader label and the table caption", async () => {
+    const wrapper = mountStatus({ series: requests.slice(1) });
+
+    expect(wrapper.find(".none").text()).toBe("No requests in this range.");
+    expect(wrapper.find(".plot").attributes("aria-label")).toMatch(/^Requests over time/);
+    await wrapper.find(".head .chip").trigger("click");
+    expect(wrapper.find("caption").text()).toBe("Requests per day, UTC");
   });
 });
 
