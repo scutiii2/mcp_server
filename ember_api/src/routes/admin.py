@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, EmailStr, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,7 @@ from src.deps import (
     require_permission,
 )
 from src.models import Account, InviteCode, Permission, Role
-from src.services.admin_service import AdminError, AdminService, NotFoundError
+from src.services.admin_service import AccountStatus, AdminError, AdminService, NotFoundError
 from src.services.email_service import EmailDeliveryError, EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
@@ -105,6 +105,14 @@ class PermissionOut(BaseModel):
         return cls(name=permission.name, description=permission.description)
 
 
+class AdminSummaryOut(BaseModel):
+    accounts: int
+    unverified: int
+    disabled: int
+    open_invites: int
+    roles: int
+
+
 class EmailSentOut(BaseModel):
     sent: bool
 
@@ -185,12 +193,24 @@ async def change_setting(
     return {name: body.value}
 
 
+@router.get("/summary")
+async def summary(
+    _admin: Account = Depends(require_admin),
+    admin_service: AdminService = Depends(get_admin_service),
+) -> AdminSummaryOut:
+    """Counts for the Admin overview tiles."""
+    return AdminSummaryOut(**await admin_service.summary())
+
+
 @router.get("/accounts")
 async def list_accounts(
+    q: str = Query(default="", max_length=120),
+    status: AccountStatus = "all",
     _admin: Account = Depends(require_admin),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> list[AdminAccountOut]:
-    return [AdminAccountOut.of(a) for a in await admin_service.accounts()]
+    """All accounts, or those matching `q` (username/email substring) and `status`."""
+    return [AdminAccountOut.of(a) for a in await admin_service.accounts(q=q, status=status)]
 
 
 @router.patch("/accounts/{account_id}")

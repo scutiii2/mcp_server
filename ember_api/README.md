@@ -131,7 +131,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/settings` | any logged-in account | `{force_tool_approval}`: what the administrator requires of everyone. |
 | `GET` | `/api/admin/invites` | `admin.manage` | Open (unused, unexpired) invites, without codes. |
 | `DELETE` | `/api/admin/invites/{id}` | `admin.manage` | `204`; the code stops working. `409` if already used. |
-| `GET` | `/api/admin/accounts` | `admin.manage` | `[{id, username, email, email_verified, is_active, is_protected, created_at, roles: [{id, name}]}]` |
+| `GET` | `/api/admin/summary` | `admin.manage` | `{accounts, unverified, disabled, open_invites, roles}`: counts for the Admin overview tiles. |
+| `GET` | `/api/admin/accounts` | `admin.manage` | `[{id, username, email, email_verified, is_active, is_protected, created_at, roles: [{id, name}]}]`. Optional `?q=` (username/email substring, case-insensitive) and `?status=all\|unverified\|disabled`; `422` for any other status. |
 | `PATCH` | `/api/admin/accounts/{id}` | `admin.manage` | Any of `{username, email, is_active}` -> the account. Disabling ends its sessions. `409` taken name/email, protected account, or disabling yourself. |
 | `DELETE` | `/api/admin/accounts/{id}` | `admin.manage` | `204`. `409` for the protected account or yourself. |
 | `PUT` `DELETE` | `/api/admin/accounts/{id}/roles/{role_id}` | `admin.manage` | Assign / remove a role -> the account. `409` removing from the protected account, or removing your own last `admin.manage`. |

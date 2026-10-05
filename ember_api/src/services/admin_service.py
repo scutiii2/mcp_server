@@ -14,9 +14,12 @@ so there's nothing here to create, rename or delete them.
 
 from __future__ import annotations
 
-from sqlalchemy import delete, func, select
+from typing import Literal
+
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.db import utcnow
 from src.models import Account, AuthSession, InviteCode, Permission, Role
 from src.services.permissions import ADMIN_MANAGE, ADMIN_ROLE, ALL_PERMISSIONS
 
@@ -29,14 +32,56 @@ class NotFoundError(AdminError):
     """The row doesn't exist (maps to 404)."""
 
 
+AccountStatus = Literal["all", "unverified", "disabled"]
+
+
 class AdminService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     # --- lookups -----------------------------------------------------------
 
-    async def accounts(self) -> list[Account]:
-        return list(await self._session.scalars(select(Account).order_by(func.lower(Account.username))))
+    async def accounts(self, *, q: str = "", status: AccountStatus = "all") -> list[Account]:
+        """Accounts by username, optionally narrowed to those whose username or
+        email contains `q` (case-insensitive, LIKE wildcards taken literally)
+        and by `status`."""
+        query = select(Account).order_by(func.lower(Account.username))
+        needle = q.strip()
+        if needle:
+            query = query.where(
+                or_(
+                    Account.username.icontains(needle, autoescape=True),
+                    Account.email.icontains(needle, autoescape=True),
+                )
+            )
+        if status == "unverified":
+            query = query.where(Account.email_verified.is_(False))
+        elif status == "disabled":
+            query = query.where(Account.is_active.is_(False))
+        return list(await self._session.scalars(query))
+
+    async def summary(self) -> dict[str, int]:
+        """Counts for the Admin overview tiles."""
+        accounts = (
+            await self._session.execute(
+                select(
+                    func.count(Account.id),
+                    func.count(Account.id).filter(Account.email_verified.is_(False)),
+                    func.count(Account.id).filter(Account.is_active.is_(False)),
+                )
+            )
+        ).one()
+        open_invites = await self._session.scalar(
+            select(func.count(InviteCode.id)).where(InviteCode.used_at.is_(None), InviteCode.expires_at > utcnow())
+        )
+        roles = await self._session.scalar(select(func.count(Role.id)))
+        return {
+            "accounts": accounts[0],
+            "unverified": accounts[1],
+            "disabled": accounts[2],
+            "open_invites": open_invites or 0,
+            "roles": roles or 0,
+        }
 
     async def roles(self) -> list[Role]:
         return list(await self._session.scalars(select(Role).order_by(func.lower(Role.name))))

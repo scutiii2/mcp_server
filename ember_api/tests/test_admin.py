@@ -41,6 +41,7 @@ def role_by_name(client: TestClient, name: str) -> dict:
         ("get", "/api/admin/accounts"),
         ("get", "/api/admin/roles"),
         ("get", "/api/admin/permissions"),
+        ("get", "/api/admin/summary"),
         ("delete", "/api/admin/accounts/1"),
         ("delete", "/api/admin/roles/1"),
         ("delete", "/api/admin/invites/1"),
@@ -75,6 +76,60 @@ def test_lists_accounts_roles_and_permissions(client: TestClient, email: FakeEma
 
     names = [p["name"] for p in client.get("/api/admin/permissions").json()]
     assert names == sorted(ALL_PERMISSIONS)
+
+
+def test_filters_accounts_by_search_and_status(client: TestClient, email: FakeEmailSender) -> None:
+    make_member(client, email, "alice")
+    make_member(client, email, "bob", verify=False)
+    make_member(client, email, "carol")
+    as_admin(client)
+    carol = account_by_name(client, "carol")["id"]
+    assert client.patch(f"/api/admin/accounts/{carol}", json={"is_active": False}).status_code == 200
+
+    def names(**params: str) -> list[str]:
+        response = client.get("/api/admin/accounts", params=params)
+        assert response.status_code == 200, response.text
+        return [a["username"] for a in response.json()]
+
+    assert sorted(names()) == sorted(["alice", ADMIN_USERNAME, "bob", "carol"])
+    assert names(q="ALI") == ["alice"]  # username, case-insensitive
+    assert names(q="bob@example") == ["bob"]  # email
+    assert names(q="nobody") == []
+    assert names(status="unverified") == ["bob"]
+    assert names(status="disabled") == ["carol"]
+    assert names(status="all", q="carol") == ["carol"]
+    assert names(status="disabled", q="alice") == []
+
+
+def test_account_filter_rejects_unknown_status(client: TestClient) -> None:
+    as_admin(client)
+    assert client.get("/api/admin/accounts", params={"status": "weird"}).status_code == 422
+
+
+def test_search_treats_like_wildcards_literally(client: TestClient, email: FakeEmailSender) -> None:
+    make_member(client, email, "alice")
+    as_admin(client)
+    assert [a["username"] for a in client.get("/api/admin/accounts", params={"q": "%"}).json()] == []
+    assert [a["username"] for a in client.get("/api/admin/accounts", params={"q": "_"}).json()] == []
+
+
+def test_summary_counts(client: TestClient, email: FakeEmailSender) -> None:
+    make_member(client, email, "alice")
+    make_member(client, email, "bob", verify=False)
+    as_admin(client)
+    bob = account_by_name(client, "bob")["id"]
+    assert client.patch(f"/api/admin/accounts/{bob}", json={"is_active": False}).status_code == 200
+    assert client.post("/api/admin/invites", json={}).status_code == 201
+
+    summary = client.get("/api/admin/summary").json()
+    roles = client.get("/api/admin/roles").json()
+    assert summary == {
+        "accounts": 3,
+        "unverified": 1,
+        "disabled": 1,
+        "open_invites": 1,
+        "roles": len(roles),
+    }
 
 
 # --- accounts -----------------------------------------------------------------
