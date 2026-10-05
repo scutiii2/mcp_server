@@ -1,6 +1,6 @@
-/* Shared look of the Admin page's panels (AccountsPanel, RolesPanel,
-   InvitesPanel). Plain CSS scoped by the .admin-panel class, since each
-   panel's own <style scoped> can't reach the others. */
+/* Shared look of the Admin page's panels (Accounts, Roles, Invites, Settings
+   and the drawer / editor inside them). Plain CSS scoped by the .admin-panel
+   class, since each component's own <style scoped> can't reach the others. */
 
 .admin-panel h3 {
   margin: 24px 0 10px;
@@ -59,16 +59,6 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
-}
-.admin-panel .card-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 10px;
-}
-.admin-panel .card-title {
-  font-weight: 600;
-  overflow-wrap: anywhere;
 }
 .admin-panel .actions {
   display: flex;
