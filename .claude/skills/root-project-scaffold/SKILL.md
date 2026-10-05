@@ -47,7 +47,7 @@ changes the convention for every project after it.
 1. Confirm it's actually a new *project* (its own deployable
    process/environment) and not a new capability/page/agent inside an
    existing one — those go through mcp-capability-scaffold,
-   chatapp-page-scaffold, or aiagent-scaffold instead.
+   ember-feature-scaffold, or aiagent-scaffold instead.
 2. Create the mandatory folders/files from the table above. Copy
    `mcp_server/run.bat` and `mcp_server/pyproject.toml` as starting
    templates — they're the most complete examples — and strip anything
