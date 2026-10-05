@@ -182,6 +182,10 @@ export interface Conversation {
   messageCount?: number;
   /** ember_api is writing an answer for it right now. */
   running?: boolean;
+  /** The folder it is filed in (ember_api's id), or none. */
+  folderId?: number | null;
+  /** Shown in the Pinned section, above the folders. */
+  pinned?: boolean;
   createdAt: number;
   updatedAt: number;
 }

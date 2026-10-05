@@ -11,6 +11,9 @@ export interface ChatSummary {
   updated_at: string;
   /** ember_api is writing an answer for it right now. */
   running: boolean;
+  /** The folder it is filed in; absent from an older ember_api. */
+  folder_id?: number | null;
+  pinned?: boolean;
 }
 
 export interface ChatDetail extends ChatSummary {
@@ -70,6 +73,14 @@ export interface ChatSearchHit {
   message_matches: number;
 }
 
+/** What PATCH /api/chats/{id} can change; send only what changes
+ * (`folder_id: null` takes the chat out of its folder). */
+export interface ChatChanges {
+  title?: string;
+  folder_id?: number | null;
+  pinned?: boolean;
+}
+
 const path = (id: string) => `/api/chats/${encodeURIComponent(id)}`;
 
 /** ember_api's /api/chats routes (chat.use): this account's chat history
@@ -82,6 +93,7 @@ export const chatsClient = {
   get: (id: string) => apiRequest<ChatDetail>("GET", path(id)),
   put: (id: string, chat: ChatWrite) => apiRequest<ChatSummary>("PUT", path(id), chat),
   rename: (id: string, title: string) => apiRequest<ChatSummary>("PATCH", path(id), { title }),
+  update: (id: string, changes: ChatChanges) => apiRequest<ChatSummary>("PATCH", path(id), changes),
   remove: (id: string) => apiRequest<void>("DELETE", path(id)),
   removeAll: () => apiRequest<void>("DELETE", "/api/chats"),
   importChats: (chats: ChatImportItem[]) =>
