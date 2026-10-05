@@ -13,7 +13,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.services.app_config import EmailConfig
-from src.services.email import send_email
+from src.services.email import AUTO_GENERATED_NOTICE, send_email
+from src.services.email_render import render_email_template
 
 
 CONFIG = EmailConfig(
@@ -42,7 +43,7 @@ def test_send_email_uses_the_configured_recipients_by_default():
     smtp, server = _smtp_mock()
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Subject", "<p>Body</p>")
+        send_email(CONFIG, "test", "Subject", "<p>Body</p>")
 
     smtp.assert_called_once_with("smtp.example.com", 587, timeout=15)
     server.starttls.assert_called_once()
@@ -59,7 +60,7 @@ def test_to_override_replaces_rather_than_extends_the_config_list():
     smtp, server = _smtp_mock()
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Subject", "<p>Body</p>", to=["approver@example.com"])
+        send_email(CONFIG, "test", "Subject", "<p>Body</p>", to=["approver@example.com"])
 
     _sender, recipients, _body = server.sendmail.call_args.args
     assert recipients == ["approver@example.com"]
@@ -69,10 +70,10 @@ def test_subject_and_html_body_reach_the_message():
     smtp, server = _smtp_mock()
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Deploy finished", "<h1>Done</h1>")
+        send_email(CONFIG, "test", "Deploy finished", "<h1>Done</h1>")
 
     _sender, _recipients, body = server.sendmail.call_args.args
-    assert "Subject: Deploy finished" in body
+    assert "Subject: [EMBER | test] Deploy finished" in body
     assert "<h1>Done</h1>" in body
 
 
@@ -82,7 +83,7 @@ def test_empty_recipient_list_raises_instead_of_silently_sending_nothing():
 
     with patch("smtplib.SMTP", smtp):
         with pytest.raises(ValueError, match="No recipients"):
-            send_email(config, "Subject", "<p>Body</p>")
+            send_email(config, "test", "Subject", "<p>Body</p>")
 
     smtp.assert_not_called()
 
@@ -99,7 +100,7 @@ def test_starttls_mode_upgrades_a_plain_connection():
     config = EmailConfig(**{**CONFIG.__dict__, "security": "starttls"})
 
     with patch("smtplib.SMTP", smtp), patch("smtplib.SMTP_SSL") as smtp_ssl:
-        send_email(config, "Subject", "<p>Body</p>")
+        send_email(config, "test", "Subject", "<p>Body</p>")
 
     smtp.assert_called_once_with("smtp.example.com", 587, timeout=15)
     smtp_ssl.assert_not_called()
@@ -114,7 +115,7 @@ def test_ssl_mode_uses_smtp_ssl_and_never_calls_starttls():
     config = EmailConfig(**{**CONFIG.__dict__, "smtp_port": 465, "security": "ssl"})
 
     with patch("smtplib.SMTP_SSL", smtp_ssl), patch("smtplib.SMTP") as plain:
-        send_email(config, "Subject", "<p>Body</p>")
+        send_email(config, "test", "Subject", "<p>Body</p>")
 
     smtp_ssl.assert_called_once_with("smtp.example.com", 465, timeout=15)
     plain.assert_not_called()
@@ -130,7 +131,7 @@ def test_none_mode_sends_without_any_tls():
     config = EmailConfig(**{**CONFIG.__dict__, "security": "none", "password": ""})
 
     with patch("smtplib.SMTP", smtp), patch("smtplib.SMTP_SSL") as smtp_ssl:
-        send_email(config, "Subject", "<p>Body</p>")
+        send_email(config, "test", "Subject", "<p>Body</p>")
 
     smtp_ssl.assert_not_called()
     server.starttls.assert_not_called()
@@ -145,7 +146,7 @@ def test_empty_password_skips_authentication_entirely():
     config = EmailConfig(**{**CONFIG.__dict__, "password": ""})
 
     with patch("smtplib.SMTP", smtp):
-        send_email(config, "Subject", "<p>Body</p>")
+        send_email(config, "test", "Subject", "<p>Body</p>")
 
     server.login.assert_not_called()
     server.sendmail.assert_called_once()
@@ -159,7 +160,7 @@ def test_unknown_security_mode_raises_before_opening_a_connection():
 
     with patch("smtplib.SMTP", smtp), patch("smtplib.SMTP_SSL") as smtp_ssl:
         with pytest.raises(ValueError, match="security mode"):
-            send_email(config, "Subject", "<p>Body</p>")
+            send_email(config, "test", "Subject", "<p>Body</p>")
 
     smtp.assert_not_called()
     smtp_ssl.assert_not_called()
@@ -175,7 +176,7 @@ def test_plain_text_part_comes_before_the_html_part():
     smtp, server = _smtp_mock()
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Subject", "<p>Body</p>")
+        send_email(CONFIG, "test", "Subject", "<p>Body</p>")
 
     message = _sent_message(server)
     assert message.get_content_subtype() == "alternative"
@@ -189,7 +190,7 @@ def test_plain_text_is_derived_from_the_html_without_the_caller_asking():
     smtp, server = _smtp_mock()
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Subject", "<h2>Approval needed</h2><p>Restart <b>db</b>?</p>")
+        send_email(CONFIG, "test", "Subject", "<h2>Approval needed</h2><p>Restart <b>db</b>?</p>")
 
     text = _sent_message(server).get_payload()[0].get_payload()
     assert "Approval needed" in text
@@ -205,7 +206,7 @@ def test_derived_text_keeps_link_targets():
     html = '<p><a href="https://example.com/approvals/tok3n">Review this request</a></p>'
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Subject", html)
+        send_email(CONFIG, "test", "Subject", html)
 
     text = _sent_message(server).get_payload()[0].get_payload()
     assert "https://example.com/approvals/tok3n" in text
@@ -215,7 +216,7 @@ def test_body_text_overrides_the_derived_version():
     smtp, server = _smtp_mock()
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Subject", "<p>Body</p>", body_text="Handwritten")
+        send_email(CONFIG, "test", "Subject", "<p>Body</p>", body_text="Handwritten")
 
     parts = _sent_message(server).get_payload()
     assert parts[0].get_payload().startswith("Handwritten")
@@ -229,7 +230,7 @@ def test_date_and_message_id_headers_are_set():
     smtp, server = _smtp_mock()
 
     with patch("smtplib.SMTP", smtp):
-        send_email(CONFIG, "Subject", "<p>Body</p>")
+        send_email(CONFIG, "test", "Subject", "<p>Body</p>")
 
     message = _sent_message(server)
     assert message["Date"]
@@ -252,5 +253,42 @@ def test_every_message_ends_with_the_auto_generated_notice(monkeypatch):
 
     monkeypatch.setattr(email_module.smtplib, "SMTP_SSL", FakeSMTP)
     cfg = email_module.EmailConfig(smtp_server="s", smtp_port=465, from_address="a@x.com", security="ssl")
-    email_module.send_email(cfg, "subj", "<p>hello</p>", to=["b@x.com"])
+    email_module.send_email(cfg, "test", "subj", "<p>hello</p>", to=["b@x.com"])
     assert sent[0].count(email_module.AUTO_GENERATED_NOTICE) == 2  # plain and HTML parts
+
+
+def test_subject_has_ember_capability_prefix():
+    smtp, server = _smtp_mock()
+
+    with patch("smtplib.SMTP", smtp):
+        send_email(CONFIG, "server", "Restarted db", "<p>Body</p>")
+
+    assert _sent_message(server)["Subject"] == "[EMBER | server] Restarted db"
+
+
+def test_auto_generated_notice_ends_both_parts():
+    smtp, server = _smtp_mock()
+
+    with patch("smtplib.SMTP", smtp):
+        send_email(CONFIG, "server", "Subject", "<p>Body</p>")
+
+    plain, html = (part.get_payload(decode=True).decode() for part in _sent_message(server).get_payload())
+    assert plain.rstrip().endswith(AUTO_GENERATED_NOTICE)
+    assert AUTO_GENERATED_NOTICE in html
+
+
+def test_render_template_escapes_values_but_not_html_suffixed_ones():
+    html = render_email_template(
+        "notification", title="<b>x</b>", message="a & b", details_html="<ul><li>one</li></ul>"
+    )
+
+    assert "&lt;b&gt;x&lt;/b&gt;" in html
+    assert "a &amp; b" in html
+    assert "<ul><li>one</li></ul>" in html
+
+
+def test_render_template_rejects_unknown_name_and_missing_value():
+    with pytest.raises(ValueError):
+        render_email_template("../email")
+    with pytest.raises(KeyError):
+        render_email_template("approval", title="t")

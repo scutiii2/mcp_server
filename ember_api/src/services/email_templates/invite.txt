@@ -1,0 +1,5 @@
+You've been invited to Ember.
+
+Invite code: $code
+
+It works once and expires at $expires_at UTC.

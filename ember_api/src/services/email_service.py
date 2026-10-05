@@ -11,9 +11,23 @@ import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
+from string import Template
 from typing import Protocol
 
 from src.utils.config_loader import load_env_secrets
+
+
+TEMPLATE_DIR = Path(__file__).parent / "email_templates"
+
+# Appended to every message so a recipient never mistakes it for a mailbox
+# somebody reads.
+AUTO_GENERATED_NOTICE = "This is an auto-generated message. Do not reply."
+
+
+def render_template(name: str, **values: str) -> str:
+    """Fill ``email_templates/<name>.txt``. ``KeyError`` on a missing value."""
+    source = (TEMPLATE_DIR / f"{name}.txt").read_text(encoding="utf-8")
+    return Template(source).substitute(values).strip()
 
 
 class EmailDeliveryError(RuntimeError):
@@ -38,15 +52,14 @@ class SmtpEmailSender:
         await self._send(
             to,
             "Your Ember invite code",
-            f"You've been invited to Ember.\n\nInvite code: {code}\n\n"
-            f"It works once and expires at {expires_at:%Y-%m-%d %H:%M} UTC.",
+            render_template("invite", code=code, expires_at=f"{expires_at:%Y-%m-%d %H:%M}"),
         )
 
     async def send_email_verification(self, to: str, code: str, expires_at: datetime) -> None:
         await self._send(
             to,
             "Verify your Ember email",
-            f"Your verification code: {code}\n\nIt expires at {expires_at:%Y-%m-%d %H:%M} UTC.",
+            render_template("email_verification", code=code, expires_at=f"{expires_at:%Y-%m-%d %H:%M}"),
         )
 
     async def _send(self, to: str, subject: str, body: str) -> None:
@@ -60,7 +73,7 @@ class SmtpEmailSender:
         message["From"] = sender
         message["To"] = to
         message["Subject"] = subject
-        message.set_content(body)
+        message.set_content(f"{body}\n\n--\n{AUTO_GENERATED_NOTICE}")
 
         await asyncio.to_thread(
             _deliver,

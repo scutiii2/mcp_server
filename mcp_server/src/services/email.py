@@ -65,6 +65,17 @@ _LINE_BREAK = "\x00"
 # a notification for a mailbox somebody reads.
 AUTO_GENERATED_NOTICE = "This is an auto-generated message. Do not reply."
 
+SUBJECT_PREFIX = "EMBER"
+
+
+def format_subject(capability_alias: str, subject: str) -> str:
+    """``[EMBER | <capability_alias>] <subject>``.
+
+    The alias is the capability's chat id (``capability_meta.CapabilityMeta.id``,
+    e.g. ``server``), so a recipient can filter mail by the capability that sent it.
+    """
+    return f"[{SUBJECT_PREFIX} | {capability_alias}] {subject}"
+
 
 def _html_to_text(body_html: str) -> str:
     """Best-effort plain-text rendering of an HTML body.
@@ -97,6 +108,7 @@ def _html_to_text(body_html: str) -> str:
 @catalog
 def send_email(
     config: EmailConfig,
+    capability_alias: str,
     subject: str,
     body_html: str,
     *,
@@ -104,6 +116,11 @@ def send_email(
     body_text: str | None = None,
 ) -> None:
     """Send one message as multipart/alternative (plain text + HTML).
+
+    The subject is sent as ``[EMBER | <capability_alias>] <subject>`` and an
+    auto-generated notice is appended to both parts; callers pass neither.
+    Build ``body_html`` with ``email_render.render_email_template`` for the
+    standard layouts.
 
     ``to`` defaults to ``config.to``, the standing recipient list. Pass it
     explicitly to target a different audience - a different recipient, or one
@@ -131,7 +148,7 @@ def send_email(
         )
 
     message = MIMEMultipart("alternative")
-    message["Subject"] = subject
+    message["Subject"] = format_subject(capability_alias, subject)
     message["From"] = config.from_address
     message["To"] = ", ".join(recipients)
     # Some receivers reject or penalize a message with no Date or

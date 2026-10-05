@@ -28,7 +28,12 @@ where that logic lives instead.
   password), and command execution all go through here.
 - **`email.py`** - `send_email()`, stdlib `smtplib` wrapper supporting
   the three transports `config_email.json`'s `"security"` can name
-  (`starttls` / `ssl` / `none`).
+  (`starttls` / `ssl` / `none`). Subjects go out as
+  `[EMBER | <capability_alias>] <subject>` and every message ends with an
+  auto-generated notice.
+- **`email_render.py`** + **`email_templates/`** - HTML body templates
+  (`notification`, `approval`) for `send_email()`; see
+  `email_templates/README.md` for placeholders and how to add one.
 - **`downloads.py`** - `DownloadRegistry`: files a tool offers its caller
   for download, held in memory for 10 minutes under a random id and bound
   to the asking account (never a path on disk). A tool calls

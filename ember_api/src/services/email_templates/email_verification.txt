@@ -1,0 +1,3 @@
+Your verification code: $code
+
+It expires at $expires_at UTC.
