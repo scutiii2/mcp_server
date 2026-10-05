@@ -274,10 +274,11 @@ src/
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
-  stores/       Pinia: auth, entryAgent, chat, templates
+  stores/       Pinia: auth, entryAgent, chat, templates, configIssues
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
-                useElapsed (running clock), useNotify (chime), useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Analytics, ConfigIssues,
+                useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
+                useTheme (system / light / dark)
+  views/        pages: Overview, Chat, Capabilities, Extensions, Watchers, Usage, Analytics, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, AuthCard
