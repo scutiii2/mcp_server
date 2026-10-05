@@ -1,0 +1,46 @@
+/* The layout the Analytics Overview and Traffic tabs share: KPI tiles, then
+   cards, some of them side by side. Pulled in with <style scoped src>. */
+.overview {
+  transition: opacity 0.15s;
+}
+.overview.dim {
+  opacity: 0.5;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+.card h3 {
+  margin-bottom: 10px;
+}
+.pair .card {
+  margin-bottom: 0;
+}
+.overview > .card,
+.pair {
+  margin-bottom: 12px;
+}
+.group + .group {
+  margin-top: 12px;
+}
+.group h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--muted);
+}
+.key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HEAT_LEVELS, accountLabel, axisLabel, bucketTitle, buildHourHeatmap, describeChange, formatCount, niceCeil } from "./logAnalytics";
+import { HEAT_LEVELS, accountLabel, axisLabel, bucketTitle, buildHourHeatmap, describeChange, describeRateChange, formatCount, niceCeil } from "./logAnalytics";
 
 describe("formatCount", () => {
   it("writes small numbers whole and big ones compact", () => {
@@ -77,5 +77,18 @@ describe("accountLabel", () => {
     expect(accountLabel({ account_id: null, username: null })).toBe("Server");
     expect(accountLabel({ account_id: 3, username: "alice" })).toBe("alice");
     expect(accountLabel({ account_id: 9, username: null })).toBe("Deleted account #9");
+  });
+});
+
+describe("describeRateChange", () => {
+  it("writes the change in percentage points", () => {
+    expect(describeRateChange(0.05, 0.02)).toEqual({ text: "+3 pts", direction: "up" });
+    expect(describeRateChange(0.0244, 0.5)).toEqual({ text: "−47.6 pts", direction: "down" });
+    expect(describeRateChange(0.02, 0.02)).toEqual({ text: "no change", direction: "flat" });
+  });
+
+  it("says so when there was nothing to measure now or before", () => {
+    expect(describeRateChange(null, 0.5)).toEqual({ text: "no requests", direction: "flat" });
+    expect(describeRateChange(0.02, null)).toEqual({ text: "new", direction: "new" });
   });
 });

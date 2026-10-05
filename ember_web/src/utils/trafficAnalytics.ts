@@ -28,3 +28,12 @@ export function latencyLabel(ms: number | null, capMs: number): string {
   if (ms === null) return "–";
   return ms >= capMs ? `${formatDuration(capMs)}+` : formatDuration(ms);
 }
+
+/** A share from 0 to 1 as a percentage: 0.4% / 2.4% / 12%; a dash when there was nothing to measure. */
+export function formatPercent(share: number | null): string {
+  if (share === null) return "–";
+  const percent = share * 100;
+  if (percent === 0) return "0%";
+  if (percent < 0.1) return "<0.1%";
+  return `${percent < 10 ? percent.toFixed(1).replace(/\.0$/, "") : Math.round(percent)}%`;
+}

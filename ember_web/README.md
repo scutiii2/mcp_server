@@ -148,14 +148,19 @@ URL, token or key.
   drawn ("Show all N") and a capability with a failure always is. Search, a
   24h / 7d / All range, and a "Focus" menu for one capability (kept in the
   address as `?capability=`).
-- Analytics page (`/analytics`, any `logs.*` permission; `/logs` redirects
-  here), two tabs. Overview: a 24h / 7d / 30d / 90d range, a tile per log kind
+- Analytics page (`/analytics`, any `logs.*` or `traffic.view` permission; `/logs`
+  redirects here), three tabs, each shown only if the account may use it. Overview: a 24h / 7d / 30d / 90d range, a tile per log kind
   (count, change vs the previous period, trend), entries over time (stacked
   columns, hover or arrow keys for a tooltip, table view), top sources and
   busiest accounts per kind (click an account to open its entries), and a
   weekday-by-hour heatmap; only the kinds the account may read, times in UTC.
-  Entries: the Activity, Errors and Chat turns lists, each for the server or
-  one account.
+  Traffic (`traffic.view`): the same range, tiles for requests, error rate (change
+  in percentage points), slowest 5% and upstream failures, requests over time by
+  status class (2xx to 5xx), response time (median and slowest 5% lines), busiest
+  and slowest routes, and calls to ai_agent and mcp_server per target. Counts
+  only, never who made a request; latency is kept in bands, so a time at the top
+  band reads "5 s+" (at least that). Entries: the Activity, Errors and Chat turns
+  lists, each for the server or one account.
 - Config issues page (`config.issues.view`): problems in ember_api's config and
   secret files, as errors (broken) or warnings (risky or incomplete), grouped by
   file. Not a nav tab: a red (errors) or amber (warnings only) alert with a count
@@ -175,7 +180,7 @@ URL, token or key.
   each tool, the "Ask before tools" checkbox is locked on, and "Allow for this
   chat" is not offered).
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
-  `admin.manage`, `watchers.view`, `logs.*`, `config.issues.view`);
+  `admin.manage`, `watchers.view`, `logs.*`, `traffic.view`, `config.issues.view`);
   ember_api enforces the same rules on every call.
 - Light and dark theme: a top-bar button cycles System, Light and Dark
   (remembered per browser, also on the login page). Colors are
@@ -264,7 +269,7 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 ```
 src/
   api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
-                ExtensionsClient / WatchersClient / LogsClient / AttachmentsClient /
+                ExtensionsClient / WatchersClient / LogsClient / TrafficClient / AttachmentsClient /
                 ConfigIssuesClient / TemplatesClient / SharesClient / SettingsClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
@@ -277,7 +282,8 @@ src/
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
-    analytics/  the Analytics Overview's ActivityChart, KindStatTile, Sparkline, BarList, HourHeatmap (hand-drawn SVG/CSS, series colours `--kind-*`)
+    analytics/  the Analytics Overview and Traffic tabs: ActivityChart (stacked columns), LineChart, StatTile / KindStatTile, Sparkline, BarList, HourHeatmap, TrafficPanel
+                (hand-drawn SVG/CSS; shared hover/keyboard state in useBucketCursor, shared frame in chart.css; series colours `--kind-*`, `--http-*`, `--latency-*`)
     watchers/   the Watchers page's WatcherTimeline, WatcherList, CapabilityFocus (status colours `--status-*`)
     infoPage.css  shared look of the Extensions / Watchers / Analytics / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)

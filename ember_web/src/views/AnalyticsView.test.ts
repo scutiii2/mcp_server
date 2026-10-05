@@ -2,14 +2,19 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { logsClient, type AnalyticsReport, type LogKind } from "../api/LogsClient";
+import { trafficClient, type TrafficReport } from "../api/TrafficClient";
 import { useAuthStore } from "../stores/auth";
 import AnalyticsView from "./AnalyticsView.vue";
 
 vi.mock("../api/LogsClient", () => ({ logsClient: { index: vi.fn(), list: vi.fn(), analytics: vi.fn() } }));
+vi.mock("../api/TrafficClient", () => ({ trafficClient: { analytics: vi.fn() } }));
 
 const index = vi.mocked(logsClient.index);
 const list = vi.mocked(logsClient.list);
 const analytics = vi.mocked(logsClient.analytics);
+const traffic = vi.mocked(trafficClient.analytics);
+
+const LOGS = ["logs.view", "logs.errors.view", "logs.chat.view"];
 
 const ALL: LogKind[] = ["action", "error", "chat_trace"];
 
@@ -35,9 +40,9 @@ function report(kinds: LogKind[] = ALL, period: AnalyticsReport["period"] = "7d"
   };
 }
 
-async function mountView() {
+async function mountView(permissions: string[] = [...LOGS, "traffic.view"]) {
   setActivePinia(createPinia());
-  useAuthStore().account = { id: 1, username: "root", email: "r@example.com", email_verified: true, roles: [], permissions: [] };
+  useAuthStore().account = { id: 1, username: "root", email: "r@example.com", email_verified: true, roles: [], permissions };
   const wrapper = mount(AnalyticsView);
   await flushPromises();
   return wrapper;
@@ -51,7 +56,28 @@ beforeEach(() => {
   analytics.mockResolvedValue(report());
   index.mockResolvedValue({ kinds: ALL, accounts: [{ id: 5, username: "alice" }] });
   list.mockResolvedValue([]);
+  traffic.mockResolvedValue(emptyTraffic());
 });
+
+function emptyTraffic(): TrafficReport {
+  return {
+    period: "7d",
+    bucket: "day",
+    latency_cap_ms: 5000,
+    totals: {
+      requests: { current: 0, previous: 0 },
+      error_rate: { current: null, previous: null },
+      p95_ms: { current: null, previous: null },
+      upstream_failures: { current: 0, previous: 0 },
+    },
+    series: [{ bucket: "2026-10-05T00:00:00", requests: { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0 }, p50_ms: null, p95_ms: null }],
+    routes: { busiest: [], slowest: [] },
+    upstream: [],
+  };
+}
+
+const tabs = (wrapper: Awaited<ReturnType<typeof mountView>>) =>
+  wrapper.find('[aria-label="View"]').findAll("button").map((b) => b.text());
 
 describe("AnalyticsView overview", () => {
   it("loads the last 7 days and draws every chart", async () => {
@@ -161,5 +187,63 @@ describe("AnalyticsView entries", () => {
 
     expect(list).toHaveBeenCalledWith("action", "server");
     expect(list).not.toHaveBeenCalledWith("error", 5);
+  });
+});
+
+describe("AnalyticsView tabs", () => {
+  it("offers Overview, Traffic and Entries to an account that may use all three", async () => {
+    expect(tabs(await mountView())).toEqual(["Overview", "Traffic", "Entries"]);
+  });
+
+  it("loads the traffic report only when the Traffic tab is opened", async () => {
+    const wrapper = await mountView();
+    expect(traffic).not.toHaveBeenCalled();
+
+    await button(wrapper, "Traffic").trigger("click");
+    await flushPromises();
+
+    expect(traffic).toHaveBeenCalledExactlyOnceWith("7d");
+    expect(wrapper.find(".tile .label").text()).toBe("Requests");
+  });
+
+  it("keeps the range across tabs, and Refresh fetches the traffic again", async () => {
+    const wrapper = await mountView();
+    await button(wrapper, "Traffic").trigger("click");
+    await flushPromises();
+
+    await button(wrapper, "30d").trigger("click");
+    await flushPromises();
+    await button(wrapper, "Refresh").trigger("click");
+    await flushPromises();
+
+    expect(traffic.mock.calls.map(([range]) => range)).toEqual(["7d", "30d", "30d"]);
+  });
+
+  it("hides the range and refresh controls on the Entries tab", async () => {
+    const wrapper = await mountView();
+
+    await button(wrapper, "Entries").trigger("click");
+
+    // the page toolbar keeps only the tabs (the entries list has a refresh of its own)
+    expect(wrapper.find(".toolbar").findAll("button").map((b) => b.text())).toEqual(["Overview", "Traffic", "Entries"]);
+    expect(wrapper.find(".toolbar").text()).not.toContain("UTC");
+  });
+
+  it("gives an account with only traffic.view just the Traffic tab, and never asks for logs", async () => {
+    const wrapper = await mountView(["traffic.view"]);
+
+    expect(tabs(wrapper)).toEqual(["Traffic"]);
+    expect(traffic).toHaveBeenCalledExactlyOnceWith("7d");
+    expect(analytics).not.toHaveBeenCalled();
+    await button(wrapper, "30d").trigger("click");
+    await flushPromises();
+    expect(analytics).not.toHaveBeenCalled();
+  });
+
+  it("gives an account with only log permissions no Traffic tab and never asks for traffic", async () => {
+    const wrapper = await mountView(["logs.view"]);
+
+    expect(tabs(wrapper)).toEqual(["Overview", "Entries"]);
+    expect(traffic).not.toHaveBeenCalled();
   });
 });

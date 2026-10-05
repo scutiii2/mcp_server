@@ -10,6 +10,8 @@ const props = defineProps<{
   color: string;
   selectable?: boolean;
   emptyText?: string;
+  /** How a row's value is written at its bar's tip (counts by default). */
+  format?: (value: number) => string;
 }>();
 const emit = defineEmits<{ select: [key: K] }>();
 
@@ -30,7 +32,7 @@ const peak = computed(() => Math.max(1, ...props.items.map((i) => i.count)));
         <span class="label">{{ item.label }}</span>
         <span class="track">
           <span class="bar" :style="{ '--share': item.count / peak, background: color }" />
-          <span class="value">{{ formatCount(item.count) }}</span>
+          <span class="value">{{ (format ?? formatCount)(item.count) }}</span>
         </span>
       </component>
     </li>

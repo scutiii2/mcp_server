@@ -2,7 +2,7 @@ import { createRouter, createWebHistory, type RouteLocationRaw } from "vue-route
 import { useAuthStore } from "../stores/auth";
 import { useConfigIssuesStore } from "../stores/configIssues";
 import ChatView from "../views/ChatView.vue";
-import { LOG_PERMISSIONS } from "./pages";
+import { ANALYTICS_PERMISSIONS } from "./pages";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -59,7 +59,7 @@ export const router = createRouter({
       path: "/analytics",
       name: "analytics",
       component: () => import("../views/AnalyticsView.vue"),
-      meta: { permission: LOG_PERMISSIONS },
+      meta: { permission: ANALYTICS_PERMISSIONS },
     },
     {
       path: "/config-issues",

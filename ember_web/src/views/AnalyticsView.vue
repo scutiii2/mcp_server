@@ -5,33 +5,45 @@ import ActivityChart from "../components/analytics/ActivityChart.vue";
 import BarList from "../components/analytics/BarList.vue";
 import HourHeatmap from "../components/analytics/HourHeatmap.vue";
 import KindStatTile from "../components/analytics/KindStatTile.vue";
+import TrafficPanel from "../components/analytics/TrafficPanel.vue";
 import "../components/infoPage.css";
 import LogEntries from "../components/LogEntries.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
+import { LOG_PERMISSIONS } from "../router/pages";
+import { useAuthStore } from "../stores/auth";
 import { errorMessage } from "../utils/errors";
 import { KIND_COLORS, KIND_LABELS, RANGE_OPTIONS, accountLabel } from "../utils/logAnalytics";
 
-/** Analytics page (was Logs): charts over the log entries, and the entries
- * themselves on a second tab. Any `logs.*` permission opens it; ember_api only
+/** Analytics page (was Logs): charts over the log entries (Overview), network
+ * traffic (Traffic) and the entries themselves (Entries). Any `logs.*` permission
+ * opens Overview and Entries and `traffic.view` opens Traffic; ember_api only
  * counts the kinds the account may read, so the page just draws what it gets. */
 
-type Tab = "overview" | "entries";
+type Tab = "overview" | "traffic" | "entries";
 
 // Rows per kind in the ranking cards; ember_api sends up to ten.
 const TOP_SHOWN = 5;
 
-const TAB_OPTIONS: { value: Tab; label: string }[] = [
-  { value: "overview", label: "Overview" },
-  { value: "entries", label: "Entries" },
-];
+const auth = useAuthStore();
+const canLogs = computed(() => LOG_PERMISSIONS.some((permission) => auth.hasPermission(permission)));
+const canTraffic = computed(() => auth.hasPermission("traffic.view"));
+const TAB_OPTIONS = computed<{ value: Tab; label: string }[]>(() => [
+  ...(canLogs.value ? [{ value: "overview" as const, label: "Overview" }] : []),
+  ...(canTraffic.value ? [{ value: "traffic" as const, label: "Traffic" }] : []),
+  ...(canLogs.value ? [{ value: "entries" as const, label: "Entries" }] : []),
+]);
 
-const tab = ref<Tab>("overview");
+const tab = ref<Tab>(canLogs.value ? "overview" : "traffic");
 const range = ref<AnalyticsRange>("7d");
 const report = ref<AnalyticsReport | null>(null);
 const loading = ref(false);
 const error = ref("");
 // Set when an account's row was clicked: the Entries tab opens on its list.
 const jump = ref<{ kind: LogKind; actor: LogActor } | null>(null);
+// The Traffic tab fetches its own report; this asks it to fetch again.
+const trafficRefresh = ref(0);
+const trafficLoading = ref(false);
+const busy = computed(() => (tab.value === "traffic" ? trafficLoading.value : loading.value));
 
 const kindParts = computed(() =>
   (report.value?.kinds ?? []).map((kind) => ({ id: kind, label: KIND_LABELS[kind], color: KIND_COLORS[kind] })),
@@ -55,6 +67,7 @@ const accounts = computed(() =>
 );
 
 async function load(): Promise<void> {
+  if (!canLogs.value) return;
   const asked = range.value;
   loading.value = true;
   error.value = "";
@@ -73,6 +86,11 @@ function showTab(next: Tab): void {
   tab.value = next;
 }
 
+function refresh(): void {
+  if (tab.value === "traffic") trafficRefresh.value += 1;
+  else void load();
+}
+
 function openEntries(kind: LogKind, actor: LogActor): void {
   jump.value = { kind, actor };
   tab.value = "entries";
@@ -88,9 +106,9 @@ watch(range, load);
       <h2>Analytics</h2>
       <div class="toolbar">
         <SegmentedControl :model-value="tab" :options="TAB_OPTIONS" aria-label="View" @update:model-value="showTab" />
-        <template v-if="tab === 'overview'">
+        <template v-if="tab !== 'entries'">
           <SegmentedControl v-model="range" :options="RANGE_OPTIONS" aria-label="Range" />
-          <button type="button" class="chip" :disabled="loading" @click="load">Refresh</button>
+          <button type="button" class="chip" :disabled="busy" @click="refresh">Refresh</button>
           <span class="note">Times in UTC</span>
         </template>
       </div>
@@ -144,11 +162,14 @@ watch(range, load);
         </div>
       </template>
 
+      <TrafficPanel v-else-if="tab === 'traffic'" v-model:loading="trafficLoading" :range="range" :refresh="trafficRefresh" />
+
       <LogEntries v-else :kind="jump?.kind" :actor="jump?.actor" />
     </div>
   </section>
 </template>
 
+<style scoped src="../components/analytics/overview.css"></style>
 <style scoped>
 .toolbar {
   display: flex;
@@ -161,49 +182,5 @@ watch(range, load);
   margin-left: auto;
   font-size: 0.8em;
   color: var(--muted);
-}
-.overview {
-  transition: opacity 0.15s;
-}
-.overview.dim {
-  opacity: 0.5;
-}
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.pair {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 12px;
-}
-.card h3 {
-  margin-bottom: 10px;
-}
-.pair .card {
-  margin-bottom: 0;
-}
-.overview > .card,
-.pair {
-  margin-bottom: 12px;
-}
-.group + .group {
-  margin-top: 12px;
-}
-.group h4 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 4px;
-  font-size: 0.8em;
-  font-weight: 500;
-  color: var(--muted);
-}
-.key {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
 }
 </style>

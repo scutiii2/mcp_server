@@ -46,6 +46,16 @@ export function describeChange(current: number, previous: number): Change {
     : { text: `−${Math.abs(percent).toLocaleString("en-US")}%`, direction: "down" };
 }
 
+/** The change in a share (0 to 1) between two periods, in percentage points: "+1.2 pts". */
+export function describeRateChange(current: number | null, previous: number | null): Change {
+  if (current === null) return { text: "no requests", direction: "flat" };
+  if (previous === null) return { text: "new", direction: "new" };
+  const points = Math.round((current - previous) * 1000) / 10;
+  if (points === 0) return { text: "no change", direction: "flat" };
+  const text = `${Math.abs(points).toLocaleString("en-US", { maximumFractionDigits: 1 })} pts`;
+  return points > 0 ? { text: `+${text}`, direction: "up" } : { text: `−${text}`, direction: "down" };
+}
+
 const NICE_STEPS = [1, 2, 4, 6, 8, 10];
 
 /** The axis top for a count: a clean number whose half is whole too (2, 4, 10, 60, 200 ...). */

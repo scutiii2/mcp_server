@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LATENCY_PARTS, STATUS_CLASSES, STATUS_PARTS, formatDuration, latencyLabel } from "./trafficAnalytics";
+import { LATENCY_PARTS, STATUS_CLASSES, STATUS_PARTS, formatDuration, formatPercent, latencyLabel } from "./trafficAnalytics";
 
 describe("formatDuration", () => {
   it.each([
@@ -35,5 +35,20 @@ describe("chart parts", () => {
 
   it("has a median and a slowest-5% line", () => {
     expect(LATENCY_PARTS.map((p) => p.id)).toEqual(["p50", "p95"]);
+  });
+});
+
+describe("formatPercent", () => {
+  it.each([
+    [null, "–"],
+    [0, "0%"],
+    [0.00004, "<0.1%"],
+    [0.004, "0.4%"],
+    [0.0244, "2.4%"],
+    [0.05, "5%"],
+    [0.124, "12%"],
+    [1, "100%"],
+  ])("%s is %s", (share, text) => {
+    expect(formatPercent(share)).toBe(text);
   });
 });
