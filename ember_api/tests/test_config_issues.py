@@ -21,16 +21,17 @@ def issues(client: TestClient) -> set[tuple[str, str, str]]:
 def test_reports_config_and_secret_problems(client: TestClient, tmp_path: Path) -> None:
     as_admin(client)
     found = issues(client)
-    # conftest's files: no config_app.json, an example.com admin, no SMTP file.
+    # conftest's files: no config_app.json, an example.com admin, no SMTP settings.
     assert ("config_app.json", "-", f"file not found ({tmp_path / 'config_app.json'})") in found
-    assert ("secret_bootstrap_admin.env", "BOOTSTRAP_ADMIN_EMAIL", "is still a placeholder value") in found
-    assert ("secret_smtp.env", "-", "file is missing (copy it from its .example)") in found
+    assert (".env", "BOOTSTRAP_ADMIN_EMAIL", "is still a placeholder value") in found
+    assert (".env", "-", "email is not configured - invites and verification codes can't be sent") in found
 
     (tmp_path / "config_app.json").write_text(
         json.dumps({**GOOD_CONFIG, "port": 99999, "mcp_server_url": "ftp://x", "usage": {"weekly_token_limit": -1}}),
         encoding="utf-8",
     )
-    (tmp_path / "secrets" / "secret_smtp.env").write_text("SMTP_PASSWORD=hunter2\nSMTP_PORT=abc\n", encoding="utf-8")
+    with (tmp_path / ".env").open("a", encoding="utf-8") as env_file:
+        env_file.write("SMTP_PASSWORD=hunter2\nSMTP_PORT=abc\n")
     (tmp_path / "config_agents.json").write_text(
         json.dumps({"agents": [{"id": "a", "label": "A", "url": "http://a/mcp"}, {"id": "a", "label": "", "url": "nope"}]}),
         encoding="utf-8",
@@ -49,7 +50,7 @@ def test_reports_config_and_secret_problems(client: TestClient, tmp_path: Path) 
         ("agents[1].url", "must be an http(s) URL"),
         ("agents[1].id", "duplicate agent id"),
     }
-    smtp = {i[1:] for i in found if i[0] == "secret_smtp.env"}
+    smtp = {i[1:] for i in found if i[0] == ".env"}
     assert ("SMTP_HOST", "is empty but other SMTP settings are set") in smtp
     assert ("SMTP_PORT", "must be a port number (1-65535)") in smtp
     # A secret's value never appears in a message.
@@ -64,8 +65,8 @@ def test_issues_carry_a_severity(client: TestClient, tmp_path: Path) -> None:
 
     assert levels[("config_app.json", "port")] == "error"
     assert levels[("config_app.json", "backup.enabled")] == "warning"
-    assert levels[("secret_bootstrap_admin.env", "BOOTSTRAP_ADMIN_EMAIL")] == "warning"
-    assert levels[("secret_smtp.env", "-")] == "error"  # file missing
+    assert levels[(".env", "BOOTSTRAP_ADMIN_EMAIL")] == "warning"
+    assert levels[(".env", "-")] == "warning"  # SMTP unset
 
 
 def test_config_issues_need_permission(client: TestClient, email: FakeEmailSender) -> None:
@@ -73,3 +74,12 @@ def test_config_issues_need_permission(client: TestClient, email: FakeEmailSende
     make_member(client, email)
     login(client, "alice")
     assert client.get("/api/config-issues").status_code == 403
+
+
+def test_a_missing_env_file_is_an_error(client: TestClient, tmp_path: Path) -> None:
+    as_admin(client)
+    (tmp_path / ".env").unlink()
+
+    found = {(i["file"], i["key"], i["severity"]) for i in client.get("/api/config-issues").json()}
+
+    assert (".env", "-", "error") in found

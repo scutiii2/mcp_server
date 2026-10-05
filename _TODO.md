@@ -12,7 +12,7 @@ Give each item found by the catalog its own description (catalog_service current
 
 **Secrets: one `.env` per project, like ai_agent**
 - **mcp_server** (done 2026-10-05): `.secrets/secret_*.env` merged into `mcp_server/.env` (+ `.env.example`); `MCP_HOST` / `MCP_PORT` stay there. `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). Delete the legacy `.secrets/` real files once `.env` is confirmed.
-- **ember_api**: merge `secrets/secret_bootstrap_admin.env`, `secret_internal_api.env` and `secret_smtp.env` into `ember_api/.env` (+ `.env.example`).
+- **ember_api** (code done 2026-10-05): `secrets/secret_bootstrap_admin.env`, `secret_internal_api.env` and `secret_smtp.env` merged into `ember_api/.env`; `src/utils/env_file.py` builds `.env` from an old `secrets/` folder on first start, else from `.env.example` (the example file still has to be created by hand: Claude's write to `.env*` is denied). Delete the legacy `secrets/` real files once `.env` is confirmed, and update `ember_api/secrets/README.md`.
 - `INTERNAL_API_TOKEN` stays in each project's own `.env` and must match across ember_api, ai_agent and mcp_server. Do not share one file across projects (each project stays self-contained).
 
 **Configs: stay in `configs/`; which ones can merge**
@@ -31,7 +31,7 @@ Give each item found by the catalog its own description (catalog_service current
 
 **Why not built now**: user asked to log it instead of implementing.
 
-**Revisit when**: user wants this built. mcp_server secrets are done and its configs stay as they are; next is ember_api secrets.
+**Revisit when**: user wants this built. mcp_server and ember_api secrets are done; configs are what is left.
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 

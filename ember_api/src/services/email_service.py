@@ -1,7 +1,7 @@
 """Outgoing email for invite and verification codes.
 
 Routes depend on the EmailSender protocol; the app wires SmtpEmailSender
-(secrets/secret_smtp.env), tests wire a fake.
+(SMTP_* in .env), tests wire a fake.
 """
 
 from __future__ import annotations
@@ -28,11 +28,11 @@ class EmailSender(Protocol):
 
 class SmtpEmailSender:
     """smtplib is blocking, so each send runs on a worker thread. Settings
-    are re-read per send: fixing secret_smtp.env takes effect without a
+    are re-read per send: fixing .env takes effect without a
     restart."""
 
-    def __init__(self, secrets_dir: Path) -> None:
-        self._secrets_path = secrets_dir / "secret_smtp.env"
+    def __init__(self, env_path: Path) -> None:
+        self._env_path = env_path
 
     async def send_invite(self, to: str, code: str, expires_at: datetime) -> None:
         await self._send(
@@ -50,11 +50,11 @@ class SmtpEmailSender:
         )
 
     async def _send(self, to: str, subject: str, body: str) -> None:
-        config = load_env_secrets(self._secrets_path)
+        config = load_env_secrets(self._env_path)
         host = config.get("SMTP_HOST")
         sender = config.get("MAIL_FROM_ADDRESS") or config.get("SMTP_USERNAME")
         if not host or not sender:
-            raise EmailDeliveryError("Email is not configured. Set SMTP_HOST and MAIL_FROM_ADDRESS in secrets/secret_smtp.env.")
+            raise EmailDeliveryError("Email is not configured. Set SMTP_HOST and MAIL_FROM_ADDRESS in .env.")
 
         message = EmailMessage()
         message["From"] = sender
@@ -85,5 +85,5 @@ def _deliver(
             smtp.send_message(message)
     except (smtplib.SMTPException, OSError) as error:
         raise EmailDeliveryError(
-            "Email could not be sent. Check the SMTP settings in secrets/secret_smtp.env."
+            "Email could not be sent. Check the SMTP settings in .env."
         ) from error

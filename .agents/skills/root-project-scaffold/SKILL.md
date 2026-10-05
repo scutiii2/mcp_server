@@ -64,7 +64,7 @@ changes the convention for every project after it.
    registered; an interactive program like `chat_cli` (a terminal client, not
    a server) is not.
 6. Services reached over HTTP/MCP by other projects must take the shared
-   `INTERNAL_API_TOKEN` from a secrets file (`secrets/secret_internal_api.env`; ai_agent and mcp_server: `.env`) and, for
+   `INTERNAL_API_TOKEN` from a secrets file (`.env` in each project) and, for
    `/mcp`, reject calls without it once set. Never import another root
    project: self-contained means a separate venv and no shared packages
    (see `chat_cli`, which talks to ember_api over HTTP instead of reusing

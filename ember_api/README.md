@@ -37,8 +37,9 @@ py -m venv .venv_ember_api
 .venv_ember_api\Scripts\python -m src.run
 ```
 
-On first start, missing `configs/config_app.json` and
-`secrets/secret_bootstrap_admin.env` are copied from their `.example` twins,
+On first start, a missing `configs/config_app.json` is copied from its
+`.example` twin and a missing `.env` is built from an old
+`secrets/secret_*.env` set if there is one, else from `.env.example`,
 `data/ember_api.db` is created, and the bootstrap admin account is made. If
 `BOOTSTRAP_ADMIN_PASSWORD` is empty, a random password is printed to the
 console once - save it.
@@ -123,7 +124,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/auth/verify-email` | cookie | `{code}` -> the account, now verified. `400` wrong/expired code. |
 | `POST` | `/api/auth/verify-email/resend` | cookie | `{sent: true}`; `503` if SMTP failed, `409` if already verified. |
 | `POST` | `/api/account/email` | cookie | `{current_password, email}` -> `{account, verification_email_sent, email_error}`. The new email is unverified (permissions off) until its emailed code is entered. `400` wrong password, `409` email taken or bootstrap admin. |
-| `POST` | `/api/account/password` | cookie | `{current_password, new_password}` (8+ chars) -> the account. Logs out every other session. `400` wrong password, `409` bootstrap admin (change it in `secret_bootstrap_admin.env`). |
+| `POST` | `/api/account/password` | cookie | `{current_password, new_password}` (8+ chars) -> the account. Logs out every other session. `400` wrong password, `409` bootstrap admin (change it in `.env`). |
 | `GET` | `/api/account/devices` | cookie | Devices this account logged in from, most recent first: `[{id, label, user_agent, ip_subnet, first_seen_at, last_seen_at, current}]`. |
 | `DELETE` | `/api/account/devices/{id}` | cookie | `204`; its next login counts as a new device again. `404` unknown or another account's. |
 | `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
@@ -216,7 +217,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   SHA-256, single use, 15-minute expiry (same as chat_app). Registration
   checks the invite before revealing whether a username is taken, and a
   failed registration leaves the invite unused.
-- **Email:** `secrets/secret_smtp.env` (same keys as chat_app), sent on a
+- **Email:** `SMTP_*` and `MAIL_FROM_ADDRESS` in `.env` (same keys as chat_app), sent on a
   worker thread. If sending fails, registration still succeeds and
   `/verify-email/resend` retries; an invite's code is still returned to the
   admin.
@@ -228,7 +229,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   `last-event-id` are forwarded; the browser's cookie and any
   `X-Requester-*` / `X-Internal-Token` it sends are dropped, and ember_api
   adds `X-Requester-Username` / `X-Requester-Email` from the session (plus
-  `X-Internal-Token` from `secrets/secret_internal_api.env`, if set).
+  `X-Internal-Token` from `INTERNAL_API_TOKEN` in `.env`, if set).
   Responses, including SSE, are relayed chunk by chunk; the upstream request
   closes when the browser disconnects.
 - **What may pass** (`src/services/mcp_policy.py`, bodies up to 1 MB): the
@@ -240,7 +241,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   Anything else gets a JSON-RPC error (`403`) and never reaches the server.
 
 ai_agent and mcp_server require that token on `/mcp` once they have one
-configured (use the same value in all four `secret_internal_api.env`
+configured (use the same value in all four projects' `.env`
 files); without a token they're protected only by listening on
 `127.0.0.1`. ai_agent passes the asking user on to the mcp_server tools it
 calls (in each call's `_meta`), so mcp_server sees who asked either way.
@@ -392,7 +393,7 @@ migrations build, so a model edit without its migration is caught.
 
 ```
 configs/   config_app.json(.example)          host, port, db path, session/cookie settings
-secrets/   secret_bootstrap_admin.env, secret_smtp.env, secret_internal_api.env (+ .example each)
+.env       BOOTSTRAP_ADMIN_*, INTERNAL_API_TOKEN, SMTP_* (+ .env.example); secrets/ is the old layout, read once to build it
 data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py

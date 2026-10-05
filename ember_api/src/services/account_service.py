@@ -6,7 +6,7 @@ database crash, a new email must be verified again before permissions come
 back, and a new password logs out every other session.
 
 The protected bootstrap admin is refused: its email and password come from
-secret_bootstrap_admin.env and are reset from it on every start, so a change
+BOOTSTRAP_ADMIN_* in .env and are reset from it on every start, so a change
 here would silently undo itself.
 """
 
@@ -56,7 +56,7 @@ class AccountService:
     async def _check(self, account: Account, current_password: str) -> None:
         if account.is_protected:
             raise AccountChangeError(
-                "This account's email and password come from secret_bootstrap_admin.env - change them there"
+                "This account's email and password come from .env (BOOTSTRAP_ADMIN_*) - change them there"
             )
         if not await password_matches(account.password_hash, current_password):
             raise WrongPasswordError("Current password is incorrect")

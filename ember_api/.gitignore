@@ -9,6 +9,10 @@ __pycache__/
 configs/*
 !configs/*.example
 !configs/README.md
+# Real secrets live in .env; secrets/ is only the pre-.env layout, read once
+# to build .env.
+.env
+!.env.example
 secrets/*
 !secrets/*.example
 !secrets/README.md

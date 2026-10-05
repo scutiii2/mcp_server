@@ -141,4 +141,4 @@ def test_protected_admin_is_refused(client: TestClient) -> None:
     )
 
     assert (email_change.status_code, password_change.status_code) == (409, 409)
-    assert "secret_bootstrap_admin.env" in email_change.json()["detail"]
+    assert ".env" in email_change.json()["detail"]

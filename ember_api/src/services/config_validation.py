@@ -164,7 +164,7 @@ def _check_internal_api(env: dict[str, str]) -> list[Problem]:
             (
                 "INTERNAL_API_TOKEN",
                 "is empty: mcp_server and ai_agent accept requests from anything that can reach them. "
-                "Set the same token in each project's secret_internal_api.env",
+                "Set the same token in each project's .env",
             )
         ]
     return []
@@ -205,16 +205,10 @@ def _check_smtp(env: dict[str, str]) -> list[Problem]:
     return problems
 
 
-_ENV_CHECKS: dict[str, Callable[[dict[str, str]], list[Problem]]] = {
-    "secret_bootstrap_admin.env": _check_bootstrap_admin,
-    "secret_smtp.env": _check_smtp,
-}
+_ENV_CHECKS: tuple[Callable[[dict[str, str]], list[Problem]], ...] = (_check_bootstrap_admin, _check_smtp)
 
-# Per secret file: what only warrants a warning.
-_ENV_WARNINGS: dict[str, Callable[[dict[str, str]], list[Problem]]] = {
-    "secret_internal_api.env": _check_internal_api,
-    "secret_smtp.env": _warn_smtp_unset,
-}
+# What in .env only warrants a warning.
+_ENV_WARNINGS: tuple[Callable[[dict[str, str]], list[Problem]], ...] = (_check_internal_api, _warn_smtp_unset)
 
 
 def _read_json(path: Path, name: str, issues: list[ConfigIssue]) -> Any:
@@ -245,21 +239,20 @@ def collect_issues(settings: Settings) -> list[ConfigIssue]:
     if agents is not None:
         issues.extend(ConfigIssue(f"agents registry ({registry.name})", k, m) for k, m in _check_agents(agents))
 
-    for file_name in dict.fromkeys([*_ENV_CHECKS, *_ENV_WARNINGS]):
-        path = settings.secrets_dir / file_name
-        if not path.exists():
-            issues.append(ConfigIssue(file_name, "-", "file is missing (copy it from its .example)"))
-            continue
-        env = {k: (v or "").strip() for k, v in dotenv_values(path).items()}
-        if file_name in _ENV_CHECKS:
-            issues.extend(ConfigIssue(file_name, k, m) for k, m in _ENV_CHECKS[file_name](env))
-        if file_name in _ENV_WARNINGS:
-            issues.extend(ConfigIssue(file_name, k, m, WARNING) for k, m in _ENV_WARNINGS[file_name](env))
-        issues.extend(
-            ConfigIssue(file_name, key, "is still a placeholder value", WARNING)
-            for key, value in env.items()
-            if value and _PLACEHOLDER.search(value)
-        )
+    env_name = settings.env_path.name
+    if not settings.env_path.exists():
+        issues.append(ConfigIssue(env_name, "-", "file is missing (copy it from .env.example)"))
+        return issues
+    env = {k: (v or "").strip() for k, v in dotenv_values(settings.env_path).items()}
+    for check in _ENV_CHECKS:
+        issues.extend(ConfigIssue(env_name, k, m) for k, m in check(env))
+    for check in _ENV_WARNINGS:
+        issues.extend(ConfigIssue(env_name, k, m, WARNING) for k, m in check(env))
+    issues.extend(
+        ConfigIssue(env_name, key, "is still a placeholder value", WARNING)
+        for key, value in env.items()
+        if value and _PLACEHOLDER.search(value)
+    )
     return issues
 
 

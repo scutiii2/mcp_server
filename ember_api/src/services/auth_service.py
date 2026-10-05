@@ -88,14 +88,14 @@ class AuthService:
         await self._session.commit()
         return result.rowcount or 0
 
-    async def ensure_bootstrap_admin(self, secrets_dir: Path) -> str | None:
+    async def ensure_bootstrap_admin(self, env_path: Path) -> str | None:
         """Makes sure the Administrator role holds every permission and that
         the protected admin account exists and matches
-        secret_bootstrap_admin.env. Returns a generated password when one had
+        the BOOTSTRAP_ADMIN_* values in .env. Returns a generated password when one had
         to be made up (the caller prints it once), else None."""
         role = await self._ensure_admin_role()
 
-        env = load_env_secrets(secrets_dir / "secret_bootstrap_admin.env")
+        env = load_env_secrets(env_path)
         username = env.get("BOOTSTRAP_ADMIN_USERNAME") or "admin"
         email = env.get("BOOTSTRAP_ADMIN_EMAIL") or "admin@example.com"
         password = env.get("BOOTSTRAP_ADMIN_PASSWORD") or ""

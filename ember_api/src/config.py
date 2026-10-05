@@ -7,10 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.utils.config_loader import load_json_config
+from src.utils.env_file import ensure_env_file
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 CONFIGS_DIR = PROJECT_DIR / "configs"
-SECRETS_DIR = PROJECT_DIR / "secrets"
+ENV_PATH = PROJECT_DIR / ".env"
+# Pre-.env layout: one secret_*.env file per concern. Read once to build .env.
+LEGACY_SECRETS_DIR = PROJECT_DIR / "secrets"
 
 
 @dataclass(frozen=True)
@@ -129,7 +132,7 @@ class Settings:
     session_cookie_name: str
     session_hours: int
     cookie_secure: bool
-    secrets_dir: Path
+    env_path: Path
     default_role: str = "Member"
     # False: an account works without verifying its email, and registration
     # sends no code. Verifying stays available (resend, the verify page).
@@ -152,10 +155,12 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    """Reads config_app.json (created from its .example if missing).
+    """Reads config_app.json (created from its .example if missing) and makes
+    sure .env exists (built from the old secrets/ files, else .env.example).
     EMBER_API_HOST / EMBER_API_PORT win over the file, so server_launcher
     and run.bat can pick the port."""
     raw = load_json_config(CONFIGS_DIR / "config_app.json")
+    ensure_env_file(ENV_PATH, ENV_PATH.with_name(".env.example"), LEGACY_SECRETS_DIR)
     database_path = _project_path(raw.get("database_path", "data/ember_api.db"))
     return Settings(
         host=os.getenv("EMBER_API_HOST") or raw.get("host", "127.0.0.1"),
@@ -164,7 +169,7 @@ def load_settings() -> Settings:
         session_cookie_name=raw.get("session_cookie_name", "ember_session"),
         session_hours=int(raw.get("session_hours", 12)),
         cookie_secure=bool(raw.get("cookie_secure", False)),
-        secrets_dir=SECRETS_DIR,
+        env_path=ENV_PATH,
         default_role=raw.get("default_role") or "Member",
         require_email_verification=bool(raw.get("require_email_verification", True)),
         agents_registry_path=_project_path(

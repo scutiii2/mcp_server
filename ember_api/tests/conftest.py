@@ -247,12 +247,11 @@ def make_settings(
     backup: BackupSettings | None = None,
     require_email_verification: bool = True,
 ) -> Settings:
-    secrets_dir = tmp_path / "secrets"
-    secrets_dir.mkdir(exist_ok=True)
-    (secrets_dir / "secret_internal_api.env").write_text(f"INTERNAL_API_TOKEN={internal_token}\n", encoding="utf-8")
     registry = tmp_path / "config_agents.json"
     registry.write_text(json.dumps({"agents": AGENTS}), encoding="utf-8")
-    (secrets_dir / "secret_bootstrap_admin.env").write_text(
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        f"INTERNAL_API_TOKEN={internal_token}\n"
         f"BOOTSTRAP_ADMIN_USERNAME={ADMIN_USERNAME}\n"
         "BOOTSTRAP_ADMIN_EMAIL=root@example.com\n"
         f"BOOTSTRAP_ADMIN_PASSWORD={admin_password}\n",
@@ -266,7 +265,7 @@ def make_settings(
         session_hours=session_hours,
         cookie_secure=False,  # TestClient talks plain http
         require_email_verification=require_email_verification,
-        secrets_dir=secrets_dir,
+        env_path=env_path,
         agents_registry_path=registry,
         mcp_server_url=MCP_SERVER_URL,
         security=security or SecuritySettings(),

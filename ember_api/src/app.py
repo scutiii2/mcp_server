@@ -73,7 +73,7 @@ def create_app(
     server_tools: ServerTools | None = None,
     traffic: TrafficRecorder | None = None,
 ) -> FastAPI:
-    """email_sender defaults to SMTP from secrets/secret_smtp.env,
+    """email_sender defaults to SMTP from .env,
     upstream_transport to real HTTP, agent_gateway to a real MCP client for
     ai_agent and server_tools to one for mcp_server; tests pass fakes. traffic
     defaults to a recorder saving to the database; tests pass their own."""
@@ -87,7 +87,7 @@ def create_app(
         await MigrationRunner(database.engine, before_upgrade=pre_migration.run).run()
         async with database.sessions() as session:
             auth_service = AuthService(session)
-            generated = await auth_service.ensure_bootstrap_admin(settings.secrets_dir)
+            generated = await auth_service.ensure_bootstrap_admin(settings.env_path)
             await auth_service.ensure_default_role(settings.default_role)
             await SessionService(session, settings.session_hours).purge_expired()
             await OtpService(session).purge_stale()
@@ -101,12 +101,12 @@ def create_app(
             # Printed once, like chat_app; never logged to a file.
             print(f"Bootstrap admin created with password: {generated} (save it now, it won't be shown again)")
 
-        internal_token = load_env_secrets(settings.secrets_dir / "secret_internal_api.env").get("INTERNAL_API_TOKEN")
+        internal_token = load_env_secrets(settings.env_path).get("INTERNAL_API_TOKEN")
         upstream = httpx.AsyncClient(transport=upstream_transport, timeout=_UPSTREAM_TIMEOUT)
 
         app.state.settings = settings
         app.state.database = database
-        app.state.email_sender = email_sender or SmtpEmailSender(settings.secrets_dir)
+        app.state.email_sender = email_sender or SmtpEmailSender(settings.env_path)
         app.state.upstream = upstream
         app.state.internal_token = internal_token or None
         app.state.mcp_proxy = McpProxy(upstream, internal_token or None, recorder)

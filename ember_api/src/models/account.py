@@ -16,7 +16,7 @@ class Account(Base):
     username: Mapped[str] = mapped_column(String(80), unique=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    # The bootstrap admin: kept in sync with secret_bootstrap_admin.env.
+    # The bootstrap admin: kept in sync with BOOTSTRAP_ADMIN_* in .env.
     is_protected: Mapped[bool] = mapped_column(default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
     email_verified: Mapped[bool] = mapped_column(default=False)
