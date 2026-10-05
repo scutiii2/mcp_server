@@ -29,6 +29,13 @@ Sidebar tabs:
 - **Servers**: every detected template; flags (port, `set NAME=value` env
   lines, Extra args when the bat forwards `%*`), saved Presets, Start. A taken
   port auto-bumps to the next free one.
+- **Agent projects** (a bat that runs `src.supervisor` next to an `agents/`
+  folder, i.e. ai_agent): the Servers page shows the agent files read-only
+  (id, port, provider and model, entry agent, disabled ones dimmed) instead of
+  flags and presets. The entry agent's port is the project's port, in groups
+  too. Start never bumps it: if that port is taken, Start is refused, so a
+  second supervisor never fights the first for the agents' ports. Edit
+  `agents/<id>.json` to change agents; the launcher never writes them.
 - **Instances**: everything started (or adopted) by this tool; live log tail,
   Stop/Restart, Kill/Restart All, Clear Closed, Create Group.
 - **Groups**: saved sets of instance recipes (template, port, env, args,
@@ -47,8 +54,9 @@ default port, or a port kept via "keep running in background" on close).
 | `src/instance.py` | `Instance`: launch, log capture, stop/restart, adoption |
 | `src/processes.py` | Port/PID helpers, venv bootstrap, spawn |
 | `src/discovery.py` | `discover_templates()` from run.bat files |
+| `src/agent_files.py` | Read-only agent files of a supervisor project; entry port, start refusal |
 | `src/storage.py` | Load/save groups, presets, kept-running handoff |
-| `src/models.py` | `ServerTemplate`, `Preset`, `GroupMember`, `ServerGroup` |
+| `src/models.py` | `ServerTemplate`, `AgentInfo`, `Preset`, `GroupMember`, `ServerGroup` |
 | `src/widgets.py`, `src/theme.py` | Rounded hover widgets, colors |
 | `src/config.py` | Paths, run.bat regexes, timing constants |
 | `src/assets/` | Empty-state image |

@@ -7,6 +7,22 @@ from pathlib import Path
 
 
 @dataclass
+class AgentInfo:
+    """One ai_agent agent file (`agents/<id>.json`), as the launcher shows it.
+    Read-only: the launcher never writes these files. `error` is set, and the
+    other fields are empty, when the file could not be read."""
+
+    id: str
+    label: str
+    port: int | None
+    provider: str
+    model: str
+    enabled: bool
+    entry: bool
+    error: str | None = None
+
+
+@dataclass
 class ServerTemplate:
     key: str
     display_name: str
@@ -19,6 +35,8 @@ class ServerTemplate:
     extra_env_vars: dict[str, str]  # editable flags besides port, e.g. AI_AGENT_PROVIDER
     supports_args: bool  # bat forwards %* to the process it runs
     runtime: str = "python"  # "python" (venv + py -m) or "node" (npm run)
+    # Agent files of a project run by a supervisor (ai_agent); empty otherwise.
+    agents: list[AgentInfo] = field(default_factory=list)
 
     @property
     def command_summary(self) -> str:

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from src import discovery, instance as instance_module, models, storage, window
+from src import agent_files, discovery, instance as instance_module, models, storage, window
 
 
 _PY_RUN_BAT = (
@@ -67,6 +67,123 @@ class ExtraProjectRootTests(unittest.TestCase):
             self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
             bad.write_text(json.dumps({"roots": ["x"]}), encoding="utf-8")
             self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
+
+
+_SUPERVISOR_RUN_BAT = "\n".join([
+    "@echo off",
+    "REM LABEL: AI Agent",
+    r"call .venv_ai_agent\Scripts\activate",
+    "py -m src.supervisor",
+    "",
+])
+
+
+def _write_agent(folder: Path, agent_id: str, **fields) -> None:
+    data = {"label": agent_id.title(), "port": 9100, "llm": {"provider": "anthropic", "model": "m1"}}
+    data.update(fields)
+    (folder / f"{agent_id}.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+class AgentFileTests(unittest.TestCase):
+    """The launcher shows ai_agent's agent files but never changes them."""
+
+    def _agent_project(self, root: Path) -> Path:
+        project = root / "ai_agent"
+        (project / "agents").mkdir(parents=True)
+        (project / "run.bat").write_text(_SUPERVISOR_RUN_BAT, encoding="utf-8")
+        return project
+
+    def test_agent_files_are_read_and_the_template_file_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            agents = self._agent_project(Path(directory)) / "agents"
+            _write_agent(agents, "ember", port=9100, entry=True)
+            _write_agent(agents, "reviewer", port=9102, enabled=False, llm={"provider": "openai", "model": "gpt"})
+            (agents / "agents.json.template").write_text("{}", encoding="utf-8")
+
+            found = agent_files.read_agent_files(agents)
+
+        self.assertEqual([a.id for a in found], ["ember", "reviewer"])
+        ember, reviewer = found
+        self.assertEqual((ember.label, ember.port, ember.provider, ember.model, ember.enabled, ember.entry),
+                         ("Ember", 9100, "anthropic", "m1", True, True))
+        self.assertEqual((reviewer.provider, reviewer.enabled, reviewer.entry), ("openai", False, False))
+        self.assertIsNone(ember.error)
+
+    def test_a_broken_file_becomes_an_error_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            agents = self._agent_project(Path(directory)) / "agents"
+            (agents / "bad.json").write_text("{not json", encoding="utf-8")
+            (agents / "list.json").write_text("[]", encoding="utf-8")
+
+            found = agent_files.read_agent_files(agents)
+
+        self.assertEqual([a.id for a in found], ["bad", "list"])
+        self.assertTrue(all(a.error for a in found))
+        self.assertTrue(all(not a.enabled and a.port is None for a in found))
+
+    def test_entry_port_prefers_the_enabled_entry_agent_then_the_first_enabled(self) -> None:
+        def agent(agent_id, port, enabled=True, entry=False):
+            return models.AgentInfo(agent_id, agent_id, port, "", "", enabled, entry)
+
+        self.assertEqual(agent_files.entry_port([agent("a", 9102), agent("e", 9100, entry=True)]), 9100)
+        self.assertEqual(agent_files.entry_port([agent("e", 9100, enabled=False, entry=True), agent("b", 9103)]), 9103)
+        self.assertIsNone(agent_files.entry_port([agent("off", 9100, enabled=False)]))
+        self.assertIsNone(agent_files.entry_port([]))
+
+    def test_discovery_gives_a_supervisor_project_its_agents_and_entry_port(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            agents = self._agent_project(root) / "agents"
+            _write_agent(agents, "ember", port=9100, entry=True)
+            _write_agent(agents, "server-ops", port=9103)
+
+            (template,) = discovery.discover_templates(roots=[root])
+
+        self.assertEqual(template.key, "ai_agent")
+        self.assertEqual([a.id for a in template.agents], ["ember", "server-ops"])
+        self.assertEqual(template.default_port, 9100)
+
+    def test_a_project_without_agent_files_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "mcp_server").mkdir()
+            (root / "mcp_server" / "run.bat").write_text(
+                _PY_RUN_BAT.format(label="MCP", port_var="MCP_PORT", port=8010, venv="mcp"), encoding="utf-8"
+            )
+            (template,) = discovery.discover_templates(roots=[root])
+
+        self.assertEqual(template.agents, [])
+        self.assertEqual(template.default_port, 8010)
+
+    def test_launch_port_uses_the_entry_port_for_an_agent_project_only(self) -> None:
+        agents = [models.AgentInfo("ember", "Ember", 9100, "anthropic", "m1", True, True)]
+        self.assertEqual(agent_files.launch_port(SimpleNamespace(agents=agents), 8000), 9100)
+        self.assertEqual(agent_files.launch_port(SimpleNamespace(agents=[]), 8010), 8010)
+        self.assertEqual(agent_files.launch_port(SimpleNamespace(), 8010), 8010)  # templates in older tests
+
+    def test_starting_an_agent_project_is_refused_while_its_entry_port_is_taken(self) -> None:
+        template = SimpleNamespace(display_name="AI Agent",
+                                   agents=[models.AgentInfo("ember", "Ember", 9100, "", "", True, True)])
+        self.assertIn("9100", agent_files.start_refusal(template, port_in_use=lambda port: port == 9100))
+        self.assertIsNone(agent_files.start_refusal(template, port_in_use=lambda port: False))
+        self.assertIsNone(agent_files.start_refusal(SimpleNamespace(agents=[]), port_in_use=lambda port: True))
+
+    def test_an_agent_project_with_no_enabled_agent_cannot_start(self) -> None:
+        template = SimpleNamespace(display_name="AI Agent",
+                                   agents=[models.AgentInfo("off", "Off", 9100, "", "", False, False)])
+        self.assertIn("no enabled agent", agent_files.start_refusal(template, port_in_use=lambda port: False))
+
+    def test_group_start_uses_the_entry_port_not_the_saved_one(self) -> None:
+        launcher = object.__new__(window.LauncherWindow)
+        template = SimpleNamespace(key="ai_agent", display_name="AI Agent",
+                                   agents=[models.AgentInfo("ember", "Ember", 9100, "", "", True, True)])
+        launcher.templates = [template]
+        group = models.ServerGroup("Stack", [models.GroupMember("ai_agent", 8000)])
+
+        with patch.object(window, "_port_in_use", side_effect=lambda port: port == 9100):
+            issues = launcher._group_start_issues(group)
+
+        self.assertEqual(issues, ["Port 9100 is already in use for AI Agent."])
 
 
 class GroupPersistenceTests(unittest.TestCase):

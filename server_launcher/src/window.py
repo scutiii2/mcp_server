@@ -8,6 +8,7 @@ import time
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 
+from .agent_files import launch_port, start_refusal
 from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ASSETS_DIR
 from .discovery import discover_templates
 from .instance import Instance
@@ -17,7 +18,7 @@ from .storage import (
     _load_and_clear_kept_running, _load_groups, _load_presets, _save_groups, _save_kept_running, _save_presets,
 )
 from .theme import (
-    _BG, _BORDER, _DIM_FG, _FG, _FIELD_BG, _GREEN, _RED, _ROW_BG, _ROW_SELECTED, _SEPARATOR, _SIDEBAR_BG,
+    _BG, _BORDER, _DIM_FG, _ERROR_FG, _FG, _FIELD_BG, _GREEN, _RED, _ROW_BG, _ROW_SELECTED, _SEPARATOR, _SIDEBAR_BG,
     _SIDEBAR_WIDTH, _STATUS_FILLS,
 )
 from .widgets import PresetChip, RoundedButton, RoundedCard
@@ -360,9 +361,9 @@ class LauncherWindow:
             template = templates.get(member.template_key)
             if template is None:
                 issues.append(f"Missing server template: {member.template_key}.")
-            elif _port_in_use(member.port):
+            elif _port_in_use(port := launch_port(template, member.port)):
                 issues.append(
-                    f"Port {member.port} is already in use for {template.display_name}."
+                    f"Port {port} is already in use for {template.display_name}."
                 )
         return issues
 
@@ -378,8 +379,9 @@ class LauncherWindow:
         templates = {template.key: template for template in self.templates}
         instance_ids = []
         for member in group.members:
+            template = templates[member.template_key]
             instance = Instance(
-                templates[member.template_key], member.port, dict(member.extra_env),
+                template, launch_port(template, member.port), dict(member.extra_env),
                 member.extra_args, preset_name=member.preset_name,
             )
             self._wire_instance(instance)
@@ -489,8 +491,15 @@ class LauncherWindow:
         applied_preset_name: str | None = None
 
         def start() -> None:
+            refusal = start_refusal(template, _port_in_use)
+            if refusal:
+                self.status.config(text=refusal)
+                messagebox.showerror("Start", refusal, parent=self.root)
+                return
             desired = int(port_var.get()) if port_var.get().isdigit() else template.default_port
-            actual = _find_free_port(desired)
+            # An agent project never moves to a free port: its agents' ports
+            # come from their files, so a second supervisor would collide.
+            actual = launch_port(template, desired) if template.agents else _find_free_port(desired)
             extra_env = {name: var.get() for name, var in field_vars.items()}
             extra_args = args_var.get() if template.supports_args else ""
             instance = Instance(
@@ -526,14 +535,18 @@ class LauncherWindow:
             header, "Start", command=start, bg=_BG, fill=_GREEN, outline=_GREEN, fg=_FG,
             font=("Segoe UI", 10, "bold"),
         ).pack(side="right")
-        RoundedButton(
-            header, "Add as Preset", command=add_preset, bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
-        ).pack(side="right", padx=(0, 6))
+        if not template.agents:  # a preset holds the port, which agent files decide
+            RoundedButton(
+                header, "Add as Preset", command=add_preset, bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
+            ).pack(side="right", padx=(0, 6))
 
         body = tk.Frame(self.main, bg=_BG)
         body.pack(fill="x", padx=16)
 
-        self._build_field_row(body, "Port", port_var)
+        if template.agents:
+            self._build_agent_rows(body, template)
+        else:
+            self._build_field_row(body, "Port", port_var)
         for name, default_value in template.extra_env_vars.items():
             var = tk.StringVar(value=default_value)
             field_vars[name] = var
@@ -563,7 +576,8 @@ class LauncherWindow:
             self.status.config(text=f"Removed preset {preset.name!r}.")
             self._render_server_detail(template)
 
-        presets = self.presets.get(template.key, [])
+        # An agent project's presets (from before agent files) set nothing it uses.
+        presets = [] if template.agents else self.presets.get(template.key, [])
         if presets:
             tk.Label(body, text="PRESETS", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
                 anchor="w", pady=(16, 4)
@@ -581,6 +595,36 @@ class LauncherWindow:
             body, text=f"{template.command_summary}   (cwd: {template.working_dir})",
             bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8), wraplength=560, justify="left",
         ).pack(anchor="w", pady=(16, 0))
+
+    def _build_agent_rows(self, parent: tk.Frame, template: ServerTemplate) -> None:
+        """Read-only: the entry port and one line per agent file. The launcher
+        never edits agent files; the supervisor starts every enabled one."""
+        entry = next((a for a in template.agents if a.enabled and a.entry), None)
+        port_text = f"{template.default_port} (entry agent: {entry.id})" if entry else str(template.default_port)
+        row = tk.Frame(parent, bg=_BG)
+        row.pack(fill="x", pady=4)
+        tk.Label(row, text="Port", bg=_BG, fg=_DIM_FG, width=18, anchor="w").pack(side="left")
+        tk.Label(row, text=port_text, bg=_BG, fg=_FG, anchor="w").pack(side="left")
+
+        tk.Label(parent, text="AGENTS", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
+            anchor="w", pady=(16, 4)
+        )
+        for agent in template.agents:
+            if agent.error:
+                text, color = f"{agent.id}   {agent.error}", _ERROR_FG
+            else:
+                model = f"{agent.provider or '?'} / {agent.model or 'default model'}"
+                star = "  ★ entry" if agent.entry else ""
+                off = "  (disabled)" if not agent.enabled else ""
+                text = f"{agent.id}   port {agent.port if agent.port is not None else '?'}   {model}{star}{off}"
+                color = _FG if agent.enabled else _DIM_FG
+            tk.Label(parent, text=text, bg=_BG, fg=color, anchor="w", font=("Consolas", 9)).pack(fill="x")
+        tk.Label(
+            parent,
+            text=f"To change agents, edit {template.working_dir.name}/agents/<id>.json. "
+                 "The supervisor starts every enabled file.",
+            bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8), wraplength=560, justify="left", anchor="w",
+        ).pack(fill="x", pady=(6, 0))
 
     def _build_field_row(self, parent: tk.Frame, label: str, var: tk.StringVar) -> None:
         row = tk.Frame(parent, bg=_BG)

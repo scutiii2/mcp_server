@@ -9,6 +9,7 @@ from .config import (
     _DESCRIPTION_RE, _EXTRA_ROOTS_PATH, _LABEL_RE, _MODULE_RE, _NPM_SCRIPT_RE, _PROJECT_PORT_ENV, _SET_VAR_RE,
     _VENV_RE, REPO_ROOT, SELF_DIR_NAME,
 )
+from .agent_files import AGENTS_DIR_NAME, entry_port, is_agent_project, read_agent_files
 from .models import ServerTemplate
 
 
@@ -76,6 +77,13 @@ def discover_templates(roots: list[Path] | None = None) -> list[ServerTemplate]:
             port_var, default_port = _PROJECT_PORT_ENV.get(project_dir, (f"{project_dir.upper()}_PORT", 8000))
         extra_env_vars = {k: v for k, v in set_vars.items() if k != port_var}
 
+        # A supervisor project (ai_agent) takes its ports from its agent
+        # files; its entry agent's port is the one to start and track.
+        agents = read_agent_files(working_dir / AGENTS_DIR_NAME) if is_agent_project(working_dir, module) else []
+        agents_port = entry_port(agents)
+        if agents_port is not None:
+            default_port = agents_port
+
         label_m = _LABEL_RE.search(content)
         desc_m = _DESCRIPTION_RE.search(content)
         label = label_m.group(1) if label_m else project_dir
@@ -96,6 +104,7 @@ def discover_templates(roots: list[Path] | None = None) -> list[ServerTemplate]:
                 extra_env_vars=extra_env_vars,
                 supports_args=supports_args,
                 runtime=runtime,
+                agents=agents,
             )
         )
     return templates

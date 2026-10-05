@@ -26,18 +26,9 @@ _KEPT_RUNNING_PATH = DATA_DIR / "kept_running.json"
 # it, keyed by ServerTemplate.key - not auto-derived from the target
 # project's own --help (a hardcoded entry per project isn't worth a
 # --help-parsing mechanism for just two of them); add an entry here if
-# another project's run.bat starts forwarding %* too.
-_EXTRA_ARGS_HINTS = {
-    "ai_agent": (
-        "--gateway <name>   override the LLM gateway, e.g. openrouter, bedrock, vertex, "
-        "litellm, helicone, portkey (anthropic) or azure, together, groq, fireworks, "
-        "deepinfra, perplexity, ollama, vllm (openai)\n"
-        "--role <name>      override the persona role, e.g. ops_specialist "
-        "(configs/prompts.json)\n"
-        "--mcp-url <url>    override the mcp_server URL this agent connects to, "
-        "e.g. http://127.0.0.1:8010/mcp"
-    ),
-}
+# another project's run.bat starts forwarding %* too. Empty since ai_agent's
+# bat runs the supervisor, which reads no arguments (see agent_files.py).
+_EXTRA_ARGS_HINTS: dict[str, str] = {}
 
 _VENV_RE = re.compile(r'call\s+\.venv_(\w+)\\Scripts\\activate')
 # Excludes "py -m venv ..." (the bootstrap line) so this finds the actual

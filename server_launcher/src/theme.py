@@ -41,4 +41,5 @@ def _ease_in_out(t: float) -> float:
 
 
 _HOVER_LIGHTEN = 0.22
+_ERROR_FG = _lighten(_RED, 0.55)  # readable red text on _BG (the _RED fill is too dark for text)
 _HOVER_DURATION_MS = 180
