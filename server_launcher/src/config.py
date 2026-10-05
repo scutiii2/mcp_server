@@ -46,6 +46,9 @@ _SET_VAR_RE = re.compile(r"(?:^|\s)set\s+([A-Za-z_][A-Za-z0-9_]*)=([^\r\n]*)", r
 # one-line edit in the bat instead of touching launcher code.
 _LABEL_RE = re.compile(r"^\s*REM\s+LABEL:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 _DESCRIPTION_RE = re.compile(r"^\s*REM\s+DESCRIPTION:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+# `REM LAUNCHER: skip` - a project that is not a server (e.g. chat_cli, an
+# interactive terminal program) opts out of discovery in its own bat.
+_SKIP_RE = re.compile(r"^\s*REM\s+LAUNCHER:\s*skip\b", re.IGNORECASE | re.MULTILINE)
 
 # Port env var + default for a project whose bat doesn't `set` its own
 # port (mcp_server/catalog_service each read one straight from

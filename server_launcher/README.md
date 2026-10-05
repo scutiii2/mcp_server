@@ -23,6 +23,8 @@ Autodetects every `<project>/run.bat` at the repo root (`mcp_server`,
 and programmatic stop/restart possible. A missing venv is bootstrapped the
 same way the bat does (`py -m venv`, `pip install -e .[dev]`).
 `REM LABEL:` / `REM DESCRIPTION:` lines in a bat set its display name/blurb.
+A `REM LAUNCHER: skip` line leaves the project out (chat_cli uses it: it is an
+interactive terminal program, not a server).
 This launcher's own folder is skipped by discovery.
 
 Sidebar tabs:

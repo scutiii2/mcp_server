@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .config import (
     _DESCRIPTION_RE, _EXTRA_ROOTS_PATH, _LABEL_RE, _MODULE_RE, _NPM_SCRIPT_RE, _PROJECT_PORT_ENV, _SET_VAR_RE,
-    _VENV_RE, REPO_ROOT, SELF_DIR_NAME,
+    _SKIP_RE, _VENV_RE, REPO_ROOT, SELF_DIR_NAME,
 )
 from .agent_files import AGENTS_DIR_NAME, entry_port, is_agent_project, read_agent_files
 from .models import ServerTemplate
@@ -50,6 +50,8 @@ def discover_templates(roots: list[Path] | None = None) -> list[ServerTemplate]:
             content = bat_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        if _SKIP_RE.search(content):
+            continue  # the bat says it is not a server
 
         venv_m = _VENV_RE.search(content)
         mod_m = _MODULE_RE.search(content)

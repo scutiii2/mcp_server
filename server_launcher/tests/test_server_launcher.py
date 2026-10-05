@@ -143,6 +143,19 @@ class AgentFileTests(unittest.TestCase):
         self.assertEqual([a.id for a in template.agents], ["ember", "server-ops"])
         self.assertEqual(template.default_port, 9100)
 
+    def test_a_bat_marked_launcher_skip_is_not_listed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, extra in (("mcp_server", ""), ("chat_cli", "REM LAUNCHER: skip\n")):
+                (root / name).mkdir()
+                (root / name / "run.bat").write_text(
+                    extra + _PY_RUN_BAT.format(label=name, port_var="X_PORT", port=8010, venv=name),
+                    encoding="utf-8",
+                )
+            templates = discovery.discover_templates(roots=[root])
+
+        self.assertEqual([t.key for t in templates], ["mcp_server"])
+
     def test_a_project_without_agent_files_is_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
