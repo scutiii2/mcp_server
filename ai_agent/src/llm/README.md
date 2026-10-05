@@ -1,28 +1,37 @@
 # src/llm/
 
-Adapted from `chat_app/src/services/llm/` (Claude and OpenAI only -
-Ollama is out of scope for this slice): each provider here calls
-`src.mcp_client.mcp_upstream` instead of chat_app's own MCP client, and this
-project pins one provider+model per instance (see `../agents/agent_config.py`)
-rather than routing between several per request.
+Claude and OpenAI providers (Ollama only through an OpenAI-compatible
+gateway). Each provider calls `src.mcp_client.mcp_upstream` for tools, and
+each instance pins one provider+model (see `../agents/agent_config.py`)
+rather than routing between several per request. Under the supervisor the
+agent file's `llm` block sets `AI_AGENT_PROVIDER`/`AI_AGENT_GATEWAY`/
+`AI_AGENT_MODEL` before these modules load (`../agents/agent_spec.py`).
+Originally adapted from the retired chat_app's LLM layer.
 
 - **`base_provider.py`** - shared types (`ChatCancelled`, `ToolCallRecord`,
-  `ChatResult`) carried over from chat_app's `services/llm/base.py`.
-  Everything chat_app needed for its per-request provider dropdown
-  (`ProviderSpec`, `ModelOption`, `ModelAvailability*`, the Ollama-only
-  `RecursiveRoundRecord`) has no equivalent need here.
+  `ChatResult`). No per-request provider or model choice lives here:
+  each instance has exactly one.
 - **`anthropic_provider.py`** - Anthropic Messages API provider, pinned
-  by `agent_config.py` when `AI_AGENT_PROVIDER=anthropic`.
+  when the provider is `anthropic` (agent file `llm.provider`, or
+  `AI_AGENT_PROVIDER` for an instance started without one).
 - **`openai_provider.py`** - OpenAI Responses API provider, pinned when
-  `AI_AGENT_PROVIDER=openai`.
+  the provider is `openai`.
+- **`llm_options.py`** - one agent's `llm` settings (temperature,
+  reasoning effort, max tokens, tool rounds) as request kwargs; a
+  parameter the API rejects with a 400 is dropped for the rest of the
+  process, with one warning.
+- **`token_limits.py`** - per-request output/context/tool-round caps from
+  `../../configs/config_limits.json`; an agent file can lower its own.
 - **`llm_config.py`** - loads `../../configs/config_gateways.json`'s
   per-gateway `base_url`/`model` presets; resolves `"{ENV_VAR_NAME}"`
   placeholders against the process environment, never a literal secret.
-- **`agent_roles.py`** - resolves this instance's active persona
-  (`AI_AGENT_ROLE`) from `../../configs/prompts.json`,
-  once, at import time; fails loudly on an unknown role id. Exposes
-  `SYSTEM_PROMPT`, imported by both providers in place of
-  `base_provider`'s old constant.
+- **`agent_roles.py`** - builds `SYSTEM_PROMPT` once, at import time,
+  for both providers: identity line, persona, then tool-use instructions
+  (the shared text in `../../configs/prompts.json`, or the agent file's
+  `instructions`). An orchestrator's prompt also gets the roster, rebuilt
+  each turn. The persona comes
+  from the agent file; without one, from the `AI_AGENT_ROLE` role in
+  `prompts.json` (an unknown role id fails loudly).
 - **`cancellation.py`** - cooperative cancellation registry for
   in-flight chat turns, local to this process. A turn can't be aborted
   mid-network-call, so a process-wide flag is checked between

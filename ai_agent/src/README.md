@@ -2,15 +2,16 @@
 
 The `src` package - installed under that literal name (see
 `../pyproject.toml`), so every import in this codebase reads
-`from src.<group>.foo import bar`, matching `chat_app`/`mcp_server`'s layout.
+`from src.<group>.foo import bar`, matching `mcp_server` and `ember_api`.
 
 ## Code
 
 Entry points stay at the package root; everything else is grouped by concern.
 
-- `server.py` - FastMCP entry point; `ask`/`interpret`/`status`/`cancel`
-  tools. `interpret` is the non-agentic, single-completion path used for
-  chat summarization; `ask` is the full tool-calling loop for free-form chat.
+- `server.py` - FastMCP entry point; `ask`/`interpret`/`status`/`cancel`/`decide`
+  tools. `interpret` is the non-agentic, single-completion path ember_api
+  uses for chat summarization; `ask` is the full tool-calling loop for
+  free-form chat; `decide` answers a tool waiting for approval.
 - `supervisor.py` - `python -m src.supervisor` (what `run.bat` runs):
   spawns one `src.server` child per enabled agent file, relays output,
   restarts crashed children with backoff.
@@ -30,7 +31,7 @@ Entry points stay at the package root; everything else is grouped by concern.
   delegation chain can't run away. `agent_registry.py`'s
   `register()`/`deregister()` also upsert/remove this instance's own
   `{id, label, url}` in `../data/agent_registry.json` (runtime state,
-  gitignored) and `chat_app`'s copy, on startup/clean shutdown.
+  gitignored) on startup/clean shutdown; ember_api reads it.
 - `agent_routing.py` - per-turn roster of specialists for an orchestrator
   (optionally Laya-shortlisted) and the `agent_id="auto"` pick.
 - `agent_events.py` - the progress events a specialist emits and an
@@ -38,8 +39,8 @@ Entry points stay at the package root; everything else is grouped by concern.
 
 ### [`llm/`](llm/README.md) - provider backends
 
-Adapted from `chat_app/src/services/llm/` (Claude and OpenAI only),
-calling `mcp_client/mcp_upstream.py` instead of chat_app's own MCP client.
+Claude and OpenAI only, calling `mcp_client/mcp_upstream.py` for tools
+(originally adapted from the retired chat_app's LLM layer).
 `llm/llm_options.py` holds the per-agent LLM options (gateway, model,
 limits) resolved from the agent file.
 
@@ -70,13 +71,18 @@ to sit alongside the modules that write to them:
 
 - **[`../configs/`](../configs/README.md)** - structured settings,
   mostly gitignored (this project's real config files carry
-  deployment-specific tuning, unlike `chat_app`/`mcp_server`'s).
+  deployment-specific tuning, unlike `mcp_server`'s).
 - **`../.env`** - credential values (provider, gateway, role, API keys,
   `INTERNAL_API_TOKEN`), gitignored; `../.env.example` is the committed twin.
 
-Unlike `chat_app`/`mcp_server`, this project has no `data/` or `logs/`
-folder: it holds no database and does its own file logging nowhere -
-`ask`/`status`/`cancel` are stateless beyond the in-process registries
-above.
+- **`../data/`** - state the program writes, gitignored:
+  `agent_registry.json` (the running agents, see `agents/agent_registry.py`)
+  and `usage/YYYY-MM-DD.<agent id>.jsonl` (one usage row per finished `ask`,
+  see `core/usage_log.py`; `AI_AGENT_USAGE_DIR` overrides the folder).
+
+There is no `logs/` folder and no database: output goes to the console
+(the supervisor prefixes each line with `[<agent id>] `), and
+`ask`/`status`/`cancel` keep no state beyond the in-process registries
+above and the registry and usage log in `data/`.
 
 See the root [`../README.md`](../README.md) for setup instructions.
