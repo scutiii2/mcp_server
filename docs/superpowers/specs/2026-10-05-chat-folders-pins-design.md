@@ -121,3 +121,37 @@ screens and for locked chats.
 - Shares and usage rows refer to chats by `chat_id`: the folder delete reuses
   the single-chat delete path, and phase 1 checks what that path does for them.
 - The sidebar extraction touches tested code: it is its own phase.
+
+## Phase 4 design (approved 2026-10-05): sidebar UI
+
+This section refines the "Sidebar" part above; where they differ, this section wins.
+
+### Decisions
+
+| Question | Decision |
+|---|---|
+| Row actions | One "..." button per row (also right-click) opens a menu: Pin or Unpin, Move to..., Rename, Delete. The rename and delete hover icons go away. Double-clicking the title still renames. |
+| Move to... | A flyout beside the menu: folders (check mark on the current one), "No folder", "New folder...". On narrow or touch screens the flyout opens over the main menu. |
+| Managing folders | The folder header has its own "..." menu (Rename, Delete). A "New folder" button sits in the sidebar footer and in the Move flyout. Naming and deleting use `BaseModal` dialogs that show the server's errors. |
+| Chat delete | Still the browser `confirm()` it uses today. |
+
+### Layout
+
+- Sections in order: Pinned, one group per folder (creation order), then Unfiled (headed "Chats").
+- Pinned and Unfiled are hidden when empty. **Folders are always shown, even when empty** (this changes the earlier "empty sections are hidden"): a folder that vanished could not be renamed, deleted or moved into.
+- With no pins and no folders the list is flat with no headers, exactly as before.
+- A chat whose folder is unknown to the loaded folder list (or whose `folderId` is undefined) is Unfiled.
+- Search results still replace the whole list, flat. Select mode and "Delete all chats" work across all sections.
+- Folder counts are derived from the chat store, not the server's `chat_count`.
+- Collapsed folders are remembered per account in `localStorage` (try/catch). Pinned and Unfiled do not collapse.
+
+### Rules
+
+- A chat that is answering: Move to... and Delete are disabled in its menu; Pin stays available; Rename stays available.
+- At 30 folders "New folder" is disabled (footer button and flyout entry).
+- Deleting a folder: the dialog says `Delete folder "<name>" and its <n> chat(s)? This can't be undone.`; a 409 from the server is shown inside the dialog and nothing is removed; on success the chat store forgets the folder's chats (the open chat closes if it was one of them).
+- The menu is rendered with `Teleport` to the page body, so the sidebar's scrolling never clips it. Esc closes it (first the flyout, then the menu); arrow keys, Home, End, Enter and Space work; focus returns to the button after Esc or an outside click.
+
+### Units
+
+`utils/chatSections.ts` (layout), `utils/chatMenu.ts` (menu items and parsing), `composables/useFolderCollapse.ts`, `components/PopupMenu.vue`, `components/ChatSection.vue` (section header and rows; replaces the spec's `FolderGroup.vue` because Pinned and Unfiled use the same header), `components/FolderDialogs.vue` (create, rename and delete dialogs, driven through exposed methods), changes to `ChatRow.vue`, `ConversationSidebar.vue`, `ChatView.vue`, and the carry-overs (list-sequence guard, `ensureLoaded` promise, `e2e/fakeApi.ts`).
