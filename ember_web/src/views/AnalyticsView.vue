@@ -1,16 +1,206 @@
 <script setup lang="ts">
+import { computed, onMounted, ref, watch } from "vue";
+import { logsClient, type AnalyticsRange, type AnalyticsReport, type LogActor, type LogKind } from "../api/LogsClient";
+import ActivityChart from "../components/analytics/ActivityChart.vue";
+import BarList from "../components/analytics/BarList.vue";
+import HourHeatmap from "../components/analytics/HourHeatmap.vue";
+import KindStatTile from "../components/analytics/KindStatTile.vue";
 import "../components/infoPage.css";
 import LogEntries from "../components/LogEntries.vue";
+import SegmentedControl from "../components/SegmentedControl.vue";
+import { errorMessage } from "../utils/errors";
+import { KIND_COLORS, KIND_LABELS, RANGE_OPTIONS, accountLabel } from "../utils/logAnalytics";
 
-/** Analytics page (was Logs). Any `logs.*` permission opens it; the raw
- * entries stay available as a list. */
+/** Analytics page (was Logs): charts over the log entries, and the entries
+ * themselves on a second tab. Any `logs.*` permission opens it; ember_api only
+ * counts the kinds the account may read, so the page just draws what it gets. */
+
+type Tab = "overview" | "entries";
+
+// Rows per kind in the ranking cards; ember_api sends up to ten.
+const TOP_SHOWN = 5;
+
+const TAB_OPTIONS: { value: Tab; label: string }[] = [
+  { value: "overview", label: "Overview" },
+  { value: "entries", label: "Entries" },
+];
+
+const tab = ref<Tab>("overview");
+const range = ref<AnalyticsRange>("7d");
+const report = ref<AnalyticsReport | null>(null);
+const loading = ref(false);
+const error = ref("");
+// Set when an account's row was clicked: the Entries tab opens on its list.
+const jump = ref<{ kind: LogKind; actor: LogActor } | null>(null);
+
+const trend = (kind: LogKind): number[] => report.value?.series.map((p) => p.counts[kind] ?? 0) ?? [];
+const sources = computed(() =>
+  (report.value?.kinds ?? []).map((kind) => ({
+    kind,
+    items: (report.value?.top_sources[kind] ?? []).slice(0, TOP_SHOWN).map((s) => ({ key: s.source, label: s.source, count: s.count })),
+  })),
+);
+const accounts = computed(() =>
+  (report.value?.kinds ?? []).map((kind) => ({
+    kind,
+    items: (report.value?.accounts[kind] ?? []).slice(0, TOP_SHOWN).map((a) => ({
+      key: (a.account_id ?? "server") as LogActor,
+      label: accountLabel(a),
+      count: a.count,
+    })),
+  })),
+);
+
+async function load(): Promise<void> {
+  const asked = range.value;
+  loading.value = true;
+  error.value = "";
+  try {
+    const result = await logsClient.analytics(asked);
+    if (range.value === asked) report.value = result;
+  } catch (err) {
+    error.value = errorMessage(err);
+  } finally {
+    if (range.value === asked) loading.value = false;
+  }
+}
+
+function showTab(next: Tab): void {
+  jump.value = null;
+  tab.value = next;
+}
+
+function openEntries(kind: LogKind, actor: LogActor): void {
+  jump.value = { kind, actor };
+  tab.value = "entries";
+}
+
+onMounted(load);
+watch(range, load);
 </script>
 
 <template>
   <section class="info-page">
     <div class="column">
       <h2>Analytics</h2>
-      <LogEntries />
+      <div class="toolbar">
+        <SegmentedControl :model-value="tab" :options="TAB_OPTIONS" aria-label="View" @update:model-value="showTab" />
+        <template v-if="tab === 'overview'">
+          <SegmentedControl v-model="range" :options="RANGE_OPTIONS" aria-label="Range" />
+          <button type="button" class="chip" :disabled="loading" @click="load">Refresh</button>
+          <span class="note">Times in UTC</span>
+        </template>
+      </div>
+
+      <template v-if="tab === 'overview'">
+        <p v-if="error" class="error">{{ error }}</p>
+        <p v-else-if="!report" class="muted">loading ...</p>
+        <div v-if="report" :class="['overview', { dim: loading }]">
+          <div class="tiles">
+            <KindStatTile
+              v-for="kind in report.kinds"
+              :key="kind"
+              :kind="kind"
+              :total="report.totals[kind]!"
+              :trend="trend(kind)"
+              :range="report.period"
+            />
+          </div>
+
+          <div class="card">
+            <h3>Over time</h3>
+            <ActivityChart :series="report.series" :kinds="report.kinds" :bucket="report.bucket" />
+          </div>
+
+          <div class="pair">
+            <div class="card">
+              <h3>Top sources</h3>
+              <div v-for="group in sources" :key="group.kind" class="group">
+                <h4><span class="key" :style="{ background: KIND_COLORS[group.kind] }" />{{ KIND_LABELS[group.kind] }}</h4>
+                <BarList :items="group.items" :color="KIND_COLORS[group.kind]" />
+              </div>
+            </div>
+            <div class="card">
+              <h3>Busiest accounts</h3>
+              <div v-for="group in accounts" :key="group.kind" class="group">
+                <h4><span class="key" :style="{ background: KIND_COLORS[group.kind] }" />{{ KIND_LABELS[group.kind] }}</h4>
+                <BarList
+                  :items="group.items"
+                  :color="KIND_COLORS[group.kind]"
+                  selectable
+                  @select="(actor) => openEntries(group.kind, actor)"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>When it happens</h3>
+            <HourHeatmap :cells="report.heatmap" />
+          </div>
+        </div>
+      </template>
+
+      <LogEntries v-else :kind="jump?.kind" :actor="jump?.actor" />
     </div>
   </section>
 </template>
+
+<style scoped>
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: 12px 0 16px;
+}
+.note {
+  margin-left: auto;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+.overview {
+  transition: opacity 0.15s;
+}
+.overview.dim {
+  opacity: 0.5;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+.card h3 {
+  margin-bottom: 10px;
+}
+.pair .card {
+  margin-bottom: 0;
+}
+.overview > .card,
+.pair {
+  margin-bottom: 12px;
+}
+.group + .group {
+  margin-top: 12px;
+}
+.group h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--muted);
+}
+.key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+</style>

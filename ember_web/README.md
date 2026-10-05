@@ -141,8 +141,13 @@ URL, token or key.
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s, with capability/status/date filters and search.
 - Analytics page (`/analytics`, any `logs.*` permission; `/logs` redirects
-  here): Activity, Errors and Chat turns entries, each for the server or one
-  account.
+  here), two tabs. Overview: a 24h / 7d / 30d / 90d range, a tile per log kind
+  (count, change vs the previous period, trend), entries over time (stacked
+  columns, hover or arrow keys for a tooltip, table view), top sources and
+  busiest accounts per kind (click an account to open its entries), and a
+  weekday-by-hour heatmap; only the kinds the account may read, times in UTC.
+  Entries: the Activity, Errors and Chat turns lists, each for the server or
+  one account.
 - Config page (`config.issues.view`): problems in ember_api's config and
   secret files.
 - Account page (click your username): profile, change email (re-verify),
@@ -262,10 +267,11 @@ src/
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
+    analytics/  the Analytics Overview's ActivityChart, KindStatTile, Sparkline, BarList, HourHeatmap (hand-drawn SVG/CSS, series colours `--kind-*`)
     infoPage.css  shared look of the Extensions / Watchers / Analytics / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
-                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, saved-prompt helpers
+                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics helpers, saved-prompt helpers
 ```
 
 ## Security notes

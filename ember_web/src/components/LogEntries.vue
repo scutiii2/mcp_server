@@ -4,12 +4,13 @@ import { logsClient, type LogActor, type LogEntry, type LogKind } from "../api/L
 import SegmentedControl from "./SegmentedControl.vue";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage } from "../utils/errors";
+import { KIND_LABELS } from "../utils/logAnalytics";
 
 /** The raw log entries: Activity, error and chat-turn lists (port of chat_app's Logs page). Each
  * tab needs its own permission; each shows one actor at a time - the
- * server or one account - newest first, the latest 200. */
-
-const TAB_LABELS: Record<LogKind, string> = { action: "Activity", error: "Errors", chat_trace: "Chat turns" };
+ * server or one account - newest first, the latest 200. `kind` and `actor`
+ * open it on that list (read once, when the component is created). */
+const props = defineProps<{ kind?: LogKind; actor?: LogActor }>();
 
 const auth = useAuthStore();
 const kinds = ref<LogKind[]>([]);
@@ -22,7 +23,7 @@ const entries = ref<LogEntry[]>([]);
 const loading = ref(false);
 const error = ref("");
 
-const tabOptions = computed(() => kinds.value.map((k) => ({ value: k, label: TAB_LABELS[k] })));
+const tabOptions = computed(() => kinds.value.map((k) => ({ value: k, label: KIND_LABELS[k] })));
 // The segmented control needs a chosen kind; the tabs only show once there are kinds.
 const tabChoice = computed<LogKind>({
   get: () => tab.value ?? kinds.value[0]!,
@@ -61,7 +62,9 @@ onMounted(async () => {
     accounts.value = index.accounts;
     const me = auth.account?.id;
     if (me !== undefined) actors.value = { action: "server", error: me, chat_trace: me };
-    tab.value = index.kinds[0] ?? null;
+    const first = props.kind && index.kinds.includes(props.kind) ? props.kind : (index.kinds[0] ?? null);
+    if (first && props.actor !== undefined && first === props.kind) actors.value[first] = props.actor;
+    tab.value = first;
   } catch (err) {
     error.value = errorMessage(err);
   }
