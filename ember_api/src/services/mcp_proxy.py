@@ -18,6 +18,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from src.models import Account
+from src.services.traffic import TrafficRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,12 @@ _RESPONSE_HEADERS = ("content-type", "mcp-session-id", "cache-control")
 
 
 class McpProxy:
-    def __init__(self, client: httpx.AsyncClient, internal_token: str | None) -> None:
+    def __init__(
+        self, client: httpx.AsyncClient, internal_token: str | None, traffic: TrafficRecorder | None = None
+    ) -> None:
         self._client = client
         self._internal_token = internal_token
+        self._traffic = traffic or TrafficRecorder()
 
     def _upstream_headers(self, request: Request, account: Account) -> dict[str, str]:
         headers = {name: request.headers[name] for name in _REQUEST_HEADERS if name in request.headers}
@@ -40,12 +44,18 @@ class McpProxy:
             headers["X-Internal-Token"] = self._internal_token
         return headers
 
-    async def forward(self, request: Request, upstream_url: str, account: Account, body: bytes | None) -> Response:
+    async def forward(
+        self, request: Request, upstream_url: str, account: Account, body: bytes | None, target: str = "mcp"
+    ) -> Response:
+        """`target` names the upstream in the traffic counters ("ai_agent" or "mcp_server");
+        the timing is up to the response headers, not the end of a stream."""
         upstream_request = self._client.build_request(
             request.method, upstream_url, headers=self._upstream_headers(request, account), content=body
         )
         try:
-            upstream = await self._client.send(upstream_request, stream=True)
+            with self._traffic.timed(target, f"proxy {request.method}") as timing:
+                upstream = await self._client.send(upstream_request, stream=True)
+                timing.ok = upstream.status_code < 500
         except httpx.HTTPError as error:
             logger.warning("MCP upstream %s unreachable: %s", upstream_url, error)
             return JSONResponse({"detail": "Upstream server unreachable"}, status_code=502)

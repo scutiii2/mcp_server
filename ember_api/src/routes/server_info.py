@@ -53,7 +53,9 @@ DOWNLOAD_PATH_PATTERN = r"^[^\x00-\x1f\x7f]{1,1000}$"
 
 
 def get_server_info(request: Request, settings: Settings = Depends(get_settings)) -> McpServerInfo:
-    return McpServerInfo(request.app.state.upstream, settings.mcp_server_url, request.app.state.internal_token)
+    return McpServerInfo(
+        request.app.state.upstream, settings.mcp_server_url, request.app.state.internal_token, request.app.state.traffic
+    )
 
 
 async def _call(awaitable) -> Any:

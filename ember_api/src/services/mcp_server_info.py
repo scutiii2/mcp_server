@@ -18,6 +18,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 import httpx
 
 from src.models import Account
+from src.services.traffic import TrafficRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,13 @@ def base_url(mcp_url: str) -> str:
 
 
 class McpServerInfo:
-    def __init__(self, client: httpx.AsyncClient, mcp_url: str, internal_token: str | None) -> None:
+    def __init__(
+        self, client: httpx.AsyncClient, mcp_url: str, internal_token: str | None, traffic: TrafficRecorder | None = None
+    ) -> None:
         self._client = client
         self._base = base_url(mcp_url)
         self._internal_token = internal_token
+        self._traffic = traffic or TrafficRecorder()
 
     def _headers(self, account: Account) -> dict[str, str]:
         headers = {"X-Requester-Username": account.username, "X-Requester-Email": account.email}
@@ -62,15 +66,17 @@ class McpServerInfo:
         files: dict[str, tuple[str, bytes]] | None = None,
     ) -> Any:
         try:
-            response = await self._client.request(
-                method,
-                f"{self._base}{path}",
-                params=params,
-                json=json,
-                files=files,
-                headers=self._headers(account),
-                timeout=30.0,
-            )
+            with self._traffic.timed("mcp_server", _traffic_name(method, path)) as timing:
+                response = await self._client.request(
+                    method,
+                    f"{self._base}{path}",
+                    params=params,
+                    json=json,
+                    files=files,
+                    headers=self._headers(account),
+                    timeout=30.0,
+                )
+                timing.ok = response.status_code < 500
         except httpx.HTTPError as error:
             logger.warning("mcp_server %s %s unreachable: %s", method, path, error)
             raise McpServerUnavailable(str(error)) from error
@@ -147,7 +153,9 @@ class McpServerInfo:
             "GET", f"{self._base}/download", params={"path": path}, headers=self._headers(account), timeout=30.0
         )
         try:
-            response = await self._client.send(request, stream=True)
+            with self._traffic.timed("mcp_server", "GET /download") as timing:
+                response = await self._client.send(request, stream=True)
+                timing.ok = response.status_code < 500
         except httpx.HTTPError as error:
             logger.warning("mcp_server download unreachable: %s", error)
             raise McpServerUnavailable(str(error)) from error
@@ -157,6 +165,12 @@ class McpServerInfo:
         if 400 <= response.status_code < 500:
             raise McpServerRefused(response.status_code, f"mcp_server answered {response.status_code}")
         raise McpServerUnavailable(f"mcp_server answered {response.status_code}")
+
+
+def _traffic_name(method: str, path: str) -> str:
+    """"GET /commands/help/foo" -> "GET /commands": the first segment only, so a
+    capability or extension name never becomes a counter of its own."""
+    return f"{method} /{path.lstrip('/').split('/', 1)[0].split('?', 1)[0]}"
 
 
 def is_server_path(path: str) -> bool:

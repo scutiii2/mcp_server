@@ -18,6 +18,7 @@ from src.services import otp_service
 from src.services.agent_gateway import AgentCallError, Caller
 from src.services.email_service import EmailDeliveryError
 from src.services.server_tools import ServerUnavailable, WatcherReport
+from src.services.traffic import TrafficRecorder
 
 ADMIN_USERNAME = "root"
 ADMIN_PASSWORD = "correct horse battery"
@@ -304,8 +305,19 @@ def server_tools() -> FakeServerTools:
 
 
 @pytest.fixture
+def traffic() -> TrafficRecorder:
+    """Counts in memory only (no database), so tests read it with pending()."""
+    return TrafficRecorder()
+
+
+@pytest.fixture
 def client_factory(
-    tmp_path: Path, email: FakeEmailSender, upstream: FakeUpstream, agent: FakeAgent, server_tools: FakeServerTools
+    tmp_path: Path,
+    email: FakeEmailSender,
+    upstream: FakeUpstream,
+    agent: FakeAgent,
+    server_tools: FakeServerTools,
+    traffic: TrafficRecorder,
 ) -> Iterator[Callable[..., TestClient]]:
     """Builds a started app (lifespan run) per call; all are closed at the end."""
     opened: list[TestClient] = []
@@ -320,6 +332,7 @@ def client_factory(
                 upstream_transport=httpx.MockTransport(upstream),
                 agent_gateway=agent,
                 server_tools=server_tools,
+                traffic=traffic,
             ),
             client=(address, 50000),
         )

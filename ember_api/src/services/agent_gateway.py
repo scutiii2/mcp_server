@@ -20,6 +20,7 @@ from typing import Any, Protocol
 import httpx
 
 from src.services.mcp_session import identity_headers, mcp_session, root_cause
+from src.services.traffic import TrafficRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,9 @@ class AgentGateway(Protocol):
 
 
 class McpAgentGateway:
-    def __init__(self, internal_token: str | None) -> None:
+    def __init__(self, internal_token: str | None, traffic: TrafficRecorder | None = None) -> None:
         self._internal_token = internal_token
+        self._traffic = traffic or TrafficRecorder()
 
     def _headers(self, caller: Caller) -> dict[str, str]:
         return identity_headers(caller.username, caller.email, self._internal_token)
@@ -93,17 +95,20 @@ class McpAgentGateway:
         # isError is checked only after both context managers have exited:
         # raising inside them would surface as an ExceptionGroup from their
         # task groups (the same trap chat_app's client documents).
-        try:
-            async with mcp_session(url, self._headers(caller), _TIMEOUT) as session:
-                result = await session.call_tool(tool, arguments, progress_callback=on_progress if on_event else None)
-        except Exception as error:  # noqa: BLE001 - any transport failure is one "unreachable" outcome
-            logger.warning("ai_agent %s %s failed: %s", url, tool, error)
-            raise AgentCallError(f"Could not reach the agent: {root_cause(error)}") from error
+        with self._traffic.timed("ai_agent", tool):
+            try:
+                async with mcp_session(url, self._headers(caller), _TIMEOUT) as session:
+                    result = await session.call_tool(
+                        tool, arguments, progress_callback=on_progress if on_event else None
+                    )
+            except Exception as error:  # noqa: BLE001 - any transport failure is one "unreachable" outcome
+                logger.warning("ai_agent %s %s failed: %s", url, tool, error)
+                raise AgentCallError(f"Could not reach the agent: {root_cause(error)}") from error
 
-        if result.isError:
-            parts = [getattr(block, "text", str(block)) for block in result.content]
-            raise AgentCallError("\n".join(parts) if parts else f"{tool} failed")
-        return result.structuredContent or {}
+            if result.isError:
+                parts = [getattr(block, "text", str(block)) for block in result.content]
+                raise AgentCallError("\n".join(parts) if parts else f"{tool} failed")
+            return result.structuredContent or {}
 
     async def ask(
         self,

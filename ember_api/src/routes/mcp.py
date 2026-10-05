@@ -98,7 +98,7 @@ async def proxy_agent(
     body = await _checked_body(request, AGENT_POLICY)
     if isinstance(body, Response):
         return body
-    return await proxy.forward(request, agent.url, account, body)
+    return await proxy.forward(request, agent.url, account, body, target="ai_agent")
 
 
 @router.api_route("/mcp/server", methods=_PROXY_METHODS)
@@ -111,4 +111,4 @@ async def proxy_server(
     body = await _checked_body(request, SERVER_POLICY)
     if isinstance(body, Response):
         return body
-    return await proxy.forward(request, settings.mcp_server_url, account, body)
+    return await proxy.forward(request, settings.mcp_server_url, account, body, target="mcp_server")

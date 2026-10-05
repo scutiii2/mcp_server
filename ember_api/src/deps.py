@@ -18,6 +18,7 @@ from src.services.public_rate_limiter import PublicReadLimiter
 from src.services.server_tools import ServerTools
 from src.services.session_service import SessionService
 from src.services.settings_service import SettingsService
+from src.services.traffic import TrafficRecorder
 from src.services.turns import TurnRegistry
 
 
@@ -64,6 +65,10 @@ def get_server_tools(request: Request) -> ServerTools:
 
 def get_log_writer(request: Request) -> LogWriter:
     return request.app.state.logs
+
+
+def get_traffic(request: Request) -> TrafficRecorder:
+    return request.app.state.traffic
 
 
 def get_share_limiter(request: Request) -> PublicReadLimiter:

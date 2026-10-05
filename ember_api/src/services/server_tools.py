@@ -19,6 +19,7 @@ from mcp.types import PaginatedRequestParams
 
 from src.services.agent_gateway import Caller
 from src.services.mcp_session import identity_headers, mcp_session, root_cause
+from src.services.traffic import TrafficRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,10 @@ class ServerTools(Protocol):
 
 
 class McpServerTools:
-    def __init__(self, url: str, internal_token: str | None) -> None:
+    def __init__(self, url: str, internal_token: str | None, traffic: TrafficRecorder | None = None) -> None:
         self._url = url
         self._internal_token = internal_token
+        self._traffic = traffic or TrafficRecorder()
 
     async def watchers(self, caller: Caller) -> WatcherReport:
         """Finds every listWatchers tool and calls them all concurrently on
@@ -57,15 +59,16 @@ class McpServerTools:
         headers = identity_headers(caller.username, caller.email, self._internal_token)
         outcomes: list[tuple[str, Any]] = []
         try:
-            async with mcp_session(self._url, headers, _TIMEOUT) as session:
-                aliases = sorted(
-                    {m.group(1) for name in await _tool_names(session) if (m := LIST_WATCHERS_TOOL.match(name))}
-                )
-                results = await asyncio.gather(
-                    *(session.call_tool(f"tool_{alias}_listWatchers", {}) for alias in aliases),
-                    return_exceptions=True,
-                )
-                outcomes = list(zip(aliases, results, strict=True))
+            with self._traffic.timed("mcp_server", "watchers"):
+                async with mcp_session(self._url, headers, _TIMEOUT) as session:
+                    aliases = sorted(
+                        {m.group(1) for name in await _tool_names(session) if (m := LIST_WATCHERS_TOOL.match(name))}
+                    )
+                    results = await asyncio.gather(
+                        *(session.call_tool(f"tool_{alias}_listWatchers", {}) for alias in aliases),
+                        return_exceptions=True,
+                    )
+                    outcomes = list(zip(aliases, results, strict=True))
         except Exception as error:  # noqa: BLE001 - any transport failure is one "unreachable" outcome
             logger.warning("mcp_server watchers failed: %s", error)
             raise ServerUnavailable(root_cause(error)) from error
@@ -84,8 +87,9 @@ class McpServerTools:
         form hint): the only paths /api/commands/options may fetch."""
         headers = identity_headers(caller.username, caller.email, self._internal_token)
         try:
-            async with mcp_session(self._url, headers, _TIMEOUT) as session:
-                tools = await _tools(session)
+            with self._traffic.timed("mcp_server", "options_templates"):
+                async with mcp_session(self._url, headers, _TIMEOUT) as session:
+                    tools = await _tools(session)
         except Exception as error:  # noqa: BLE001 - any transport failure is one "unreachable" outcome
             logger.warning("mcp_server tool list failed: %s", error)
             raise ServerUnavailable(root_cause(error)) from error

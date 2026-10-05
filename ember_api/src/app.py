@@ -46,6 +46,7 @@ from src.services.public_rate_limiter import PublicReadLimiter
 from src.services.share_service import purge_expired_shares
 from src.services.server_tools import McpServerTools, ServerTools
 from src.services.session_service import SessionService
+from src.services.traffic import TrafficMiddleware, TrafficRecorder
 from src.services.turns import TurnRegistry
 from src.utils.config_loader import load_env_secrets
 
@@ -69,10 +70,12 @@ def create_app(
     upstream_transport: httpx.AsyncBaseTransport | None = None,
     agent_gateway: AgentGateway | None = None,
     server_tools: ServerTools | None = None,
+    traffic: TrafficRecorder | None = None,
 ) -> FastAPI:
     """email_sender defaults to SMTP from secrets/secret_smtp.env,
     upstream_transport to real HTTP, agent_gateway to a real MCP client for
-    ai_agent and server_tools to one for mcp_server; tests pass fakes."""
+    ai_agent and server_tools to one for mcp_server; tests pass fakes. traffic
+    defaults to a recorder saving to the database; tests pass their own."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -91,6 +94,8 @@ def create_app(
             await purge_expired_shares(session)
         log_writer = LogWriter(database)
         await log_writer.purge_old()
+        recorder = traffic or TrafficRecorder(database)
+        await recorder.purge_old()
         if generated:
             # Printed once, like chat_app; never logged to a file.
             print(f"Bootstrap admin created with password: {generated} (save it now, it won't be shown again)")
@@ -103,10 +108,12 @@ def create_app(
         app.state.email_sender = email_sender or SmtpEmailSender(settings.secrets_dir)
         app.state.upstream = upstream
         app.state.internal_token = internal_token or None
-        app.state.mcp_proxy = McpProxy(upstream, internal_token or None)
-        app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None)
-        app.state.server_tools = server_tools or McpServerTools(settings.mcp_server_url, internal_token or None)
+        app.state.mcp_proxy = McpProxy(upstream, internal_token or None, recorder)
+        app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None, recorder)
+        app.state.server_tools = server_tools or McpServerTools(settings.mcp_server_url, internal_token or None, recorder)
         app.state.logs = log_writer
+        app.state.traffic = recorder
+        recorder.start()
         app.state.share_limiter = PublicReadLimiter()
         app.state.turns = TurnRegistry(database, app.state.agent_gateway, settings.usage, log_writer)
         backups: BackupScheduler | None = None
@@ -126,6 +133,8 @@ def create_app(
                 await backups.stop()
             # Before the database closes: running turns save what they have.
             await app.state.turns.shutdown()
+            # Saves the counters (turns just ended may have added some).
+            await recorder.stop()
             await upstream.aclose()
             await database.dispose()
 
@@ -140,6 +149,8 @@ def create_app(
     # Added last, so it runs first: blocked IPs never reach JSON checks or
     # routes, and even those rejections carry the security headers.
     app.add_middleware(SecurityMiddleware, settings=settings.security)
+    # Outermost, so blocked and rejected requests are counted too.
+    app.add_middleware(TrafficMiddleware)
     app.include_router(auth.router)
     app.include_router(account.router)
     app.include_router(admin.router)
