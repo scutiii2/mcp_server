@@ -1,0 +1,18 @@
+#!/bin/sh
+# Block a commit that touches agent skills while .agents/skills and
+# .claude/skills differ. .agents/skills is the source; sync_skills.py
+# copies it into .claude/skills. Bypass once with: git commit --no-verify
+
+if git diff --cached --name-only | grep -qE '^\.(agents|claude)/skills/'; then
+    PY=python
+    command -v "$PY" >/dev/null 2>&1 || PY=py
+    if ! "$PY" sync_skills.py --check; then
+        echo "pre-commit: skills out of sync. Run 'python sync_skills.py', stage .claude/skills, commit again." >&2
+        exit 1
+    fi
+    # --check reads the working tree, so the staged copy must match it.
+    if ! git diff --quiet -- .agents/skills .claude/skills; then
+        echo "pre-commit: unstaged changes in skills. Stage .agents/skills and .claude/skills, commit again." >&2
+        exit 1
+    fi
+fi
