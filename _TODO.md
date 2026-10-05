@@ -16,7 +16,7 @@ Give each item found by the catalog its own description (catalog_service current
 - `INTERNAL_API_TOKEN` stays in each project's own `.env` and must match across ember_api, ai_agent and mcp_server. Do not share one file across projects (each project stays self-contained).
 
 **Configs: stay in `configs/`; which ones can merge**
-- **mcp_server**: `config_capabilities.json` (42 B) and `config_extensions.json` can merge into `config_mcp_server.json` (keys `capabilities` and `extensions`). `config_email.json` (example only, no real file yet) could join as an `email` key; its `${SMTP_PASSWORD}` placeholder then resolves from `mcp_server/.env`. Caveat: capabilities and extensions are rewritten at runtime by `capability_routes.py` and `extension_routes.py` (persist-then-apply), so one merged file needs one shared atomic writer. If the "drop the extensions proxy" item below is done first, `config_extensions.json` is deleted and only capabilities (+ email) remain to merge.
+- **mcp_server** (decided 2026-10-05: no merge): `config_capabilities.json` (42 B) and `config_extensions.json` stay separate. Merging needs wrapper keys and rewrites of the loaders and savers in `app_config.py` plus four test files, and `config_extensions.json` is deleted by the extensions-proxy item below, leaving `config_capabilities.json` alone. Both savers are synchronous read-modify-write, so one process cannot interleave them (no shared writer needed). `config_email.json` (example only, gitignored by path unlike the other two) looks dead: `Settings.email_config_path` has no caller in `src/`, `load_email_config` is used only by tests, and nothing loads the `EmailConfig` that `services/email.py` takes. Check `watcher` / `email` before removing it.
 - **ai_agent**: `config_limits.json` and `config_tool_selection.json` are both small runtime tuning (token limits, tool shortlist) and can merge into one file (name to decide, for example `config_tuning.json`).
 - **Keep separate**: `ai_agent/configs/config_gateways.json` (3 KB, provider endpoints), `prompts.json` (persona text), `config_servers.json` (the MCP server list, reworked by the extensions item below), and `ai_agent/data/agent_registry.json` (runtime registry, lives in `data/`, not a config).
 - **Nothing to merge**: ember_api already has the single `configs/config_app.json`; `chat_cli/configs/` has one file. `catalog_service/configs/` not checked.
@@ -31,7 +31,7 @@ Give each item found by the catalog its own description (catalog_service current
 
 **Why not built now**: user asked to log it instead of implementing.
 
-**Revisit when**: user wants this built. mcp_server secrets are done; next is the mcp_server configs, then ember_api secrets.
+**Revisit when**: user wants this built. mcp_server secrets are done and its configs stay as they are; next is ember_api secrets.
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 
