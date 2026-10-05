@@ -6,22 +6,6 @@ Deferred items — not scheduled, revisit when the trigger condition below is me
 
 Give each item found by the catalog its own description (catalog_service currently lacks per-item descriptions).
 
-## Terminal chat client `chat_cli/` (deferred 2026-09-21)
-
-**Context**: A CLI that behaves like the ember web chat, so conversations can run in a terminal. Design chosen, not yet implemented.
-
-**Approved design**:
-- **Architecture**: option B. The CLI talks directly to `ai_agent` / `mcp_server`, reusing the logic of the old `chat_app` `ai_agent_client.py` and `mcp_client.py` (chat_app was removed 2026-10-05; recover them from git history). It does not go through ember_api's HTTP API or login.
-- **Location**: new top-level folder `chat_cli/`, laid out per the `root-project-scaffold` skill.
-- **Features**: token streaming, tool-call progress display, and an agent picker (same agents as the web UI's Agent dropdown).
-- **Suggested libraries**: `rich` for rendering, `prompt_toolkit` for input.
-
-**Known trade-off**: going direct skips ember_api's auth, permissions, usage limits and stored chat history, and duplicates some of that logic. Attachments were not requested and are out of scope.
-
-**Why not built now**: user asked to log it instead of implementing.
-
-**Revisit when**: user wants this built. First check whether the old `ai_agent_client.py` logic can be imported or shared cleanly (for example via `catalog_service`) instead of copied. Decide whether the CLI keeps its own chat history.
-
 ## Consolidate secret .env and config .json files (deferred 2026-09-21)
 
 **Context**: Many secret/config files are tiny (most under 300 bytes) and split by habit. Proposal to merge them; not approved for implementation yet.
