@@ -62,3 +62,21 @@ Give each item found by the catalog its own description (catalog_service current
 **Why not built now**: user asked to log it instead of implementing.
 
 **Revisit when**: user wants this built. Start with step 1.
+
+## Traffic tab on the Analytics page (deferred 2026-10-05)
+
+**Context**: The Analytics page (`ember_web/src/views/AnalyticsView.vue`, `ember_api/src/services/log_analytics.py`) charts log entries only. Nothing records network traffic today; the existing data is `log_entries`, `login_attempts` and usage rows. Design approved in chat, not started.
+
+**Approved design**:
+- **Capture** (ember_api): a pure-ASGI `TrafficMiddleware` records route template, method, status class and time to first response byte per request (no bodies, query strings, IPs or usernames). Upstream calls (MCP proxy, agent gateway, server tools) go through a `traffic.timed("ai_agent", "ask")` wrapper: target, tool, ok/failed, duration. A `TrafficRecorder` keeps counters in memory and flushes every 30s and on shutdown in a background task, never per request.
+- **Storage**: new table `traffic_buckets` (hour, kind `http`|`upstream`, name, status class, latency band <=50/100/250/500/1000/2500/5000/>5000 ms, count, total ms) so p50/p95 work without storing every request. Needs an Alembic migration. Purge older than 90 days at startup, like logs.
+- **Read side**: `GET /api/traffic/analytics?range=24h|7d|30d|90d` (totals vs previous period, requests per bucket by status class, p50/p95 per bucket, busiest and slowest routes, upstream calls per target with failure rate). New permission `traffic.view` (Administrator gets it automatically, Member does not).
+- **ember_web**: third tab **Overview | Traffic | Entries**: KPI tiles (requests, error rate, p95, upstream failures), requests over time by 2xx/3xx, 4xx, 5xx, latency lines, slowest/busiest route bar lists, upstream per target. Generalise `ActivityChart` to take generic series instead of log kinds and add a small `LineChart`. Nav shows the page for any `logs.*` or `traffic.view`.
+
+**Steps** (one approval each): 1) recorder, middleware, upstream wrapper, table and migration, with tests. 2) read endpoint and permission, tests, README. 3) generalise `ActivityChart`, add `LineChart`. 4) Traffic tab.
+
+**Known trade-offs**: history starts at deploy; up to 30s of counts lost on a crash; times are UTC.
+
+**Why not built now**: user asked to log it instead of implementing.
+
+**Revisit when**: user wants this built. Start with step 1 and list the exact files before editing.
