@@ -74,8 +74,9 @@ one place later (e.g. an `X-Internal-Token` check).
 
 **Still relevant to ember:** ember_api reads ai_agent's registry file
 (`ai_agent/configs/config_agents.json`, path configurable as
-`agents_registry_path` in `ember_api/configs/config_app.json`) and only
-proxies to agents listed there. Through the proxy, a browser may call only
+`agents_registry_path` in `ember_api/configs/config_app.json`, or fetched
+from ai_agent's `GET /registry` when `agents_registry_url` is set, for an
+ai_agent on another machine) and only proxies to agents listed there. Through the proxy, a browser may call only
 `ask`, `cancel` and `status`, and `ask` without the `depth` argument (see
 `ember_api/src/services/mcp_policy.py`).
 

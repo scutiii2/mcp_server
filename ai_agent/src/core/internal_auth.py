@@ -36,7 +36,8 @@ INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 REQUESTER_USERNAME_HEADER = "X-Requester-Username"
 REQUESTER_EMAIL_HEADER = "X-Requester-Email"
 REQUESTER_META_KEY = "requester"
-PROTECTED_PATH = "/mcp"
+# /registry lists every agent's URL, so it sits behind the token like /mcp.
+PROTECTED_PATHS = ("/mcp", "/registry")
 
 
 def load_token() -> str:
@@ -105,7 +106,7 @@ def outbound_headers() -> dict[str, str]:
 
 
 class InternalTokenMiddleware:
-    """Plain ASGI middleware: a request to /mcp whose X-Internal-Token
+    """Plain ASGI middleware: a request to /mcp or /registry whose X-Internal-Token
     doesn't match (constant-time) gets 401 JSON before the MCP transport
     sees it. Does nothing when no token is configured."""
 
@@ -117,7 +118,7 @@ class InternalTokenMiddleware:
         if not self._token or scope["type"] != "http":
             return False
         path = scope.get("path", "")
-        return path == PROTECTED_PATH or path.startswith(PROTECTED_PATH + "/")
+        return any(path == p or path.startswith(p + "/") for p in PROTECTED_PATHS)
 
     async def __call__(self, scope, receive, send):
         if self._protects(scope):

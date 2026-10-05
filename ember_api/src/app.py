@@ -34,6 +34,7 @@ from src.routes import (
     usage,
     watchers,
 )
+from src.services.agent_directory import AgentDirectory, HttpRegistrySource
 from src.services.agent_gateway import AgentGateway, McpAgentGateway
 from src.services.auth_service import AuthService
 from src.services.backup_service import BackupScheduler, DatabaseBackup
@@ -109,6 +110,11 @@ def create_app(
         app.state.email_sender = email_sender or SmtpEmailSender(settings.env_path)
         app.state.upstream = upstream
         app.state.internal_token = internal_token or None
+        app.state.agent_directory = AgentDirectory(
+            HttpRegistrySource(settings.agents_registry_url, upstream, internal_token or None)
+            if settings.agents_registry_url
+            else settings.agents_registry_path
+        )
         app.state.mcp_proxy = McpProxy(upstream, internal_token or None, recorder)
         app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None, recorder)
         app.state.server_tools = server_tools or McpServerTools(settings.mcp_server_url, internal_token or None, recorder)

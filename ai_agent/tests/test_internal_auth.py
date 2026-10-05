@@ -138,3 +138,14 @@ def test_delegation_sends_token_and_requester_to_the_peer(monkeypatch):
         "X-Requester-Username": "alice",
         "X-Requester-Email": "a@example.com",
     }
+
+
+def test_registry_requires_the_token_like_mcp():
+    app = Starlette()
+    app.add_route("/registry", lambda request: PlainTextResponse("agents"), methods=["GET"])
+    app.add_middleware(InternalTokenMiddleware, token="shared-secret")
+    client = TestClient(app)
+
+    assert client.get("/registry").status_code == 401
+    assert client.get("/registry", headers={"X-Internal-Token": "guess"}).status_code == 401
+    assert client.get("/registry", headers={"X-Internal-Token": "shared-secret"}).text == "agents"

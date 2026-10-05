@@ -22,8 +22,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import httpx
+
 from src.config import load_settings
-from src.services.agent_directory import AgentDirectory
+from src.services.agent_directory import AgentDirectory, HttpRegistrySource
+from src.utils.config_loader import load_env_secrets
 from src.db import Database
 from src.services.chat_app_import import ChatAppImporter, ChatAppSource, ImportReport, TableReport
 from src.services.migrations import MigrationRunner
@@ -65,10 +68,11 @@ def parse_agent_map(pairs: list[str]) -> dict[str, str]:
     return mapping
 
 
-async def check_agents(mapping: dict[str, str], registry: Path) -> None:
+async def check_agents(mapping: dict[str, str], registry: Path | AgentDirectory) -> None:
     """Every NEW must be an agent ai_agent has registered: a typo would label rows with a
-    name nothing shows."""
-    known = {agent.id for agent in await AgentDirectory(registry).all()}
+    name nothing shows. `registry` is the registry file or a ready AgentDirectory."""
+    directory = registry if isinstance(registry, AgentDirectory) else AgentDirectory(registry)
+    known = {agent.id for agent in await directory.all()}
     for old, new in mapping.items():
         if new not in known:
             have = ", ".join(sorted(known)) or "none (is ai_agent running?)"
@@ -77,7 +81,13 @@ async def check_agents(mapping: dict[str, str], registry: Path) -> None:
 
 async def run(chat_app: Path, apply: bool, agent_map: dict[str, str] | None = None) -> ImportReport:
     settings = load_settings()
-    await check_agents(agent_map or {}, settings.agents_registry_path)
+    if settings.agents_registry_url and agent_map:
+        token = load_env_secrets(settings.env_path).get("INTERNAL_API_TOKEN")
+        async with httpx.AsyncClient() as client:
+            directory = AgentDirectory(HttpRegistrySource(settings.agents_registry_url, client, token or None))
+            await check_agents(agent_map, directory)
+    else:
+        await check_agents(agent_map or {}, settings.agents_registry_path)
     data_dir = chat_app / "data"
     if not data_dir.is_dir():
         raise SystemExit(f"No data folder at {data_dir}")

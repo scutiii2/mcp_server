@@ -206,3 +206,35 @@ def test_main_registers_with_the_spec_flags(monkeypatch):
     assert args[0] == server._AGENT_ID
     assert kwargs == {"entry": server.SPEC.entry, "orchestrator": server.SPEC.orchestrator, "focus": server.SPEC.focus}
     assert calls["deregister"] == server._AGENT_ID
+
+
+def test_registry_route_serves_the_registry_as_json():
+    from starlette.testclient import TestClient
+
+    agents = [{"id": "main", "label": "Main", "url": "http://10.0.0.5:9100/mcp", "entry": True}]
+    with patch("src.server.agent_registry.reload"), patch("src.server.agent_registry.all_agents", return_value=agents):
+        response = TestClient(server.mcp.streamable_http_app()).get("/registry")
+
+    assert response.status_code == 200
+    assert response.json() == {"agents": agents}
+
+
+def test_agent_url_defaults_to_the_host_and_falls_back_to_loopback_for_bind_all():
+    assert server._agent_url("10.0.0.5", 9100, None) == "http://10.0.0.5:9100/mcp"
+    assert server._agent_url("0.0.0.0", 9100, None) == "http://127.0.0.1:9100/mcp"
+    assert server._agent_url("0.0.0.0", 9100, "") == "http://127.0.0.1:9100/mcp"
+
+
+def test_agent_url_uses_the_advertised_origin_and_adds_the_port_only_when_missing():
+    assert server._agent_url("0.0.0.0", 9101, "http://10.0.0.5") == "http://10.0.0.5:9101/mcp"
+    assert server._agent_url("0.0.0.0", 9101, "https://agents.example.com:8443/") == "https://agents.example.com:8443/mcp"
+
+
+def test_agent_url_rejects_an_advertise_value_that_is_not_an_origin():
+    for bad in ("10.0.0.5", "ftp://10.0.0.5", "http://10.0.0.5/mcp", "http://10.0.0.5?x=1"):
+        try:
+            server._agent_url("0.0.0.0", 9100, bad)
+        except ValueError as error:
+            assert "AI_AGENT_ADVERTISE_URL" in str(error)
+        else:
+            raise AssertionError(f"{bad!r} was accepted")

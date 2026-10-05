@@ -136,6 +136,25 @@ orchestrators, two instances started the old way cannot delegate to each
 other. The example above registers `openai-agent`; don't run it next to an
 agent file that uses the `openai` provider and the same id.
 
+## Running on another machine
+
+ember_api finds agents through the registry. On the same machine it reads
+`data/agent_registry.json`; from another machine it fetches `GET /registry`
+(served by every instance, same JSON, behind `INTERNAL_API_TOKEN` like
+`/mcp`). On the ai_agent machine:
+
+- `AI_AGENT_HOST=0.0.0.0` so it accepts outside connections.
+- `AI_AGENT_ADVERTISE_URL=http://10.0.0.5` (an address peers can reach, no
+  path). This is the address registered for each agent; without it a bind-all
+  host registers as `127.0.0.1`. Leave the port out when `run.bat` starts
+  several agents: each one adds its own port. A value with a port is used as
+  is (single instance).
+- The same `INTERNAL_API_TOKEN` as ember_api, and the ports open in the
+  firewall. Use a private network or TLS: the token travels in a header.
+
+Then set `agents_registry_url` in `ember_api/configs/config_app.json` (see
+`ember_api/configs/README.md`).
+
 ## Orchestrator and routing
 
 An agent with `orchestrator: true` gets the `delegate_to_agent` tool;

@@ -23,9 +23,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpx
 from dotenv import dotenv_values
 
 from src.config import Settings
+from src.utils.config_loader import load_env_secrets
 
 _PLACEHOLDER = re.compile(
     r"^(change[-_ ]?me|replace[-_ ]?me|your[-_ ].*|<.*>|x{3,}|todo)$|@example\.(com|org|net)$",
@@ -74,6 +76,7 @@ def _check_app(data: dict[str, Any]) -> list[Problem]:
         ("default_role", _is_text, "a non-empty string"),
         ("require_email_verification", lambda v: isinstance(v, bool), "true or false"),
         ("agents_registry_path", _is_text, "a non-empty string"),
+        ("agents_registry_url", _is_http_url, "an http(s) URL"),
         ("mcp_server_url", _is_http_url, "an http(s) URL"),
         ("security", lambda v: isinstance(v, dict), "an object"),
         ("usage", lambda v: isinstance(v, dict), "an object"),
@@ -234,10 +237,12 @@ def collect_issues(settings: Settings) -> list[ConfigIssue]:
             issues.append(ConfigIssue(name, "-", "top level must be a JSON object"))
     issues.extend(ConfigIssue(name, k, m, WARNING) for k, m in _check_deployment(settings))
 
-    registry = settings.agents_registry_path
-    agents = _read_json(registry, "agents registry", issues)
-    if agents is not None:
-        issues.extend(ConfigIssue(f"agents registry ({registry.name})", k, m) for k, m in _check_agents(agents))
+    # With a registry URL the file is not used; the async variant checks the URL.
+    if not settings.agents_registry_url:
+        registry = settings.agents_registry_path
+        agents = _read_json(registry, "agents registry", issues)
+        if agents is not None:
+            issues.extend(ConfigIssue(f"agents registry ({registry.name})", k, m) for k, m in _check_agents(agents))
 
     env_name = settings.env_path.name
     if not settings.env_path.exists():
@@ -256,5 +261,24 @@ def collect_issues(settings: Settings) -> list[ConfigIssue]:
     return issues
 
 
+async def _registry_url_issues(settings: Settings) -> list[ConfigIssue]:
+    """Fetches agents_registry_url once and checks what comes back."""
+    url = settings.agents_registry_url
+    name = "agents registry (URL)"
+    token = (await asyncio.to_thread(load_env_secrets, settings.env_path)).get("INTERNAL_API_TOKEN")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0)) as client:
+            response = await client.get(url, headers={"X-Internal-Token": token} if token else {})
+        response.raise_for_status()
+        data = response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        # The error text can name the URL but never carries the token.
+        return [ConfigIssue(name, "agents_registry_url", f"could not be read: {error}")]
+    return [ConfigIssue(name, k, m) for k, m in _check_agents(data)]
+
+
 async def collect_issues_async(settings: Settings) -> list[ConfigIssue]:
-    return await asyncio.to_thread(collect_issues, settings)
+    issues = await asyncio.to_thread(collect_issues, settings)
+    if settings.agents_registry_url:
+        issues.extend(await _registry_url_issues(settings))
+    return issues

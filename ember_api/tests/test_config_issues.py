@@ -83,3 +83,40 @@ def test_a_missing_env_file_is_an_error(client: TestClient, tmp_path: Path) -> N
     found = {(i["file"], i["key"], i["severity"]) for i in client.get("/api/config-issues").json()}
 
     assert (".env", "-", "error") in found
+
+
+def test_a_registry_url_replaces_the_file_check(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+    from dataclasses import replace
+
+    import httpx
+
+    from src.services import config_validation
+    from tests.conftest import make_settings
+
+    settings = replace(
+        make_settings(tmp_path),
+        agents_registry_path=tmp_path / "missing.json",
+        agents_registry_url="http://agents.test/registry",
+    )
+    # No file read, so the missing file is not reported.
+    assert not any(i.file.startswith("agents registry") for i in config_validation.collect_issues(settings))
+
+    real = httpx.AsyncClient
+
+    def serve(response: httpx.Response) -> None:
+        monkeypatch.setattr(
+            config_validation.httpx,
+            "AsyncClient",
+            lambda **kw: real(transport=httpx.MockTransport(lambda request: response), **kw),
+        )
+
+    serve(httpx.Response(200, json={"agents": [{"id": "a", "label": "A", "url": "nope"}]}))
+    found = asyncio.run(config_validation.collect_issues_async(settings))
+    assert [(i.file, i.key) for i in found if i.file.startswith("agents registry")] == [
+        ("agents registry (URL)", "agents[0].url")
+    ]
+
+    serve(httpx.Response(401, json={"error": "no"}))
+    found = asyncio.run(config_validation.collect_issues_async(settings))
+    assert any(i.key == "agents_registry_url" and "could not be read" in i.message for i in found)

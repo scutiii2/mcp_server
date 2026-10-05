@@ -12,10 +12,12 @@ Run with:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import sys
 from typing import Any
+from urllib.parse import urlsplit
 
 _parser = argparse.ArgumentParser(add_help=False)
 _parser.add_argument(
@@ -73,6 +75,8 @@ if os.getenv("AI_AGENT_FILE"):
 
 import uvicorn
 from mcp.server.fastmcp import Context, FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 # agent_config resolves provider/key/role/config files at import time and
 # raises on a bad value; show that as one clean line instead of a traceback.
@@ -92,15 +96,37 @@ except Exception as _exc:
 HOST = os.getenv("AI_AGENT_HOST", "127.0.0.1")
 PORT = int(os.getenv("AI_AGENT_PORT", "9100"))
 
-# HOST may be a bind-all address (0.0.0.0) that isn't itself reachable -
-# the URL this instance registers under (see register()/deregister()
-# below) needs an address a peer on the same machine can actually
-# connect to, so it falls back to loopback rather than publishing 0.0.0.0.
+
+
+def _agent_url(host: str, port: int, advertise: str | None) -> str:
+    """The URL this instance registers under (see register()/deregister()
+    below): one a peer can actually connect to. AI_AGENT_ADVERTISE_URL
+    ("http://10.0.0.5", no path) names it when peers are on another machine;
+    without a port in it this instance's own port is added, so one value
+    serves every supervised agent. Without it HOST is used, and a bind-all
+    address (0.0.0.0), which isn't itself reachable, falls back to loopback.
+    Raises ValueError for an advertise value that is not an http(s) origin."""
+    if advertise:
+        value = advertise.strip()
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.netloc or parts.path not in ("", "/") or parts.query or parts.fragment:
+            raise ValueError(
+                f"AI_AGENT_ADVERTISE_URL must be an http(s) address with no path, like http://10.0.0.5; got {advertise!r}"
+            )
+        origin = f"{parts.scheme}://{parts.netloc}"
+        return f"{origin}/mcp" if parts.port else f"{origin}:{port}/mcp"
+    return f"http://{host if host not in ('0.0.0.0', '') else '127.0.0.1'}:{port}/mcp"
+
+
 SPEC = agent_spec.current()
 _AGENT_ID = SPEC.id
 # An env-var instance has no label of its own: keep today's "<vendor> Agent".
 _AGENT_LABEL = SPEC.label or f"{agent_config.status()['vendor_label']} Agent"
-_AGENT_URL = f"http://{HOST if HOST not in ('0.0.0.0', '') else '127.0.0.1'}:{PORT}/mcp"
+try:
+    _AGENT_URL = _agent_url(HOST, PORT, os.getenv("AI_AGENT_ADVERTISE_URL"))
+except ValueError as _exc:
+    sys.stderr.write(f"\nai_agent cannot start - configuration error:\n  {_exc}\n\n")
+    sys.exit(1)
 
 mcp = FastMCP(
     name=f"ai-agent-{_AGENT_ID}",
@@ -222,6 +248,15 @@ async def ask(
         "model": result.model,
         "cancelled": False,
     }
+
+
+@mcp.custom_route("/registry", methods=["GET"])
+async def registry(_request: Request) -> JSONResponse:
+    """The agent registry (the same JSON as data/agent_registry.json), so
+    ember_api can find agents by URL instead of by file path. Behind the
+    internal token like /mcp (see internal_auth.PROTECTED_PATHS)."""
+    await asyncio.to_thread(agent_registry.reload)
+    return JSONResponse({"agents": agent_registry.all_agents()})
 
 
 @mcp.tool()

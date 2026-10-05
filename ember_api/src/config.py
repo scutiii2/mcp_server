@@ -138,6 +138,9 @@ class Settings:
     # sends no code. Verifying stays available (resend, the verify page).
     require_email_verification: bool = True
     agents_registry_path: Path = PROJECT_DIR.parent / "ai_agent" / "data" / "agent_registry.json"
+    # ai_agent's GET /registry, for an ai_agent in another directory or on
+    # another machine. Wins over agents_registry_path when set.
+    agents_registry_url: str | None = None
     mcp_server_url: str = "http://127.0.0.1:8010/mcp"
     security: SecuritySettings = field(default_factory=SecuritySettings)
     usage: UsageSettings = field(default_factory=UsageSettings)
@@ -175,6 +178,7 @@ def load_settings() -> Settings:
         agents_registry_path=_project_path(
             raw.get("agents_registry_path", "../ai_agent/data/agent_registry.json")
         ),
+        agents_registry_url=raw.get("agents_registry_url") or None,
         mcp_server_url=raw.get("mcp_server_url") or "http://127.0.0.1:8010/mcp",
         security=SecuritySettings.from_config(raw.get("security", {})),
         usage=UsageSettings.from_config(raw.get("usage", {})),

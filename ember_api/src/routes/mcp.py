@@ -28,8 +28,8 @@ require_tools = require_permission(TOOLS_USE)
 _PROXY_METHODS = ["GET", "POST", "DELETE"]
 
 
-def get_agent_directory(settings: Settings = Depends(get_settings)) -> AgentDirectory:
-    return AgentDirectory(settings.agents_registry_path)
+def get_agent_directory(request: Request) -> AgentDirectory:
+    return request.app.state.agent_directory
 
 
 def get_proxy(request: Request) -> McpProxy:
