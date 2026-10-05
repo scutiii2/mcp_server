@@ -30,6 +30,7 @@ from src.routes import (
     settings as settings_routes,
     shares,
     templates,
+    traffic as traffic_routes,
     usage,
     watchers,
 )
@@ -164,6 +165,7 @@ def create_app(
     app.include_router(server_info.router)
     app.include_router(watchers.router)
     app.include_router(logs.router)
+    app.include_router(traffic_routes.router)
     app.include_router(attachments.router)
     app.include_router(config_issues.router)
 

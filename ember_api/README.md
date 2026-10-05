@@ -184,6 +184,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/logs/analytics?range=24h\|7d\|30d\|90d` | any `logs.*` | Counts for the Analytics page, only for the kinds this account may read (default `7d`): `{period, bucket (hour\|day), kinds, totals {kind: {current, previous}}, series [{bucket, counts}] (zero-filled), top_sources {kind: [{source, count}]}, accounts {kind: [{account_id, username, count}]}, heatmap [{weekday, hour, count}]}`. Top lists hold 10; `account_id` null is the server, `username` null a deleted account; heatmap is UTC, weekday 0 = Sunday. `422` bad range. |
 | `GET` | `/api/logs/{kind}?actor=server\|<account id>` | `logs.view` (action), `logs.errors.view` (error), `logs.chat.view` (chat_trace) | The 200 newest entries: `[{id, kind, account_id, source, message, details, created_at}]`. |
 | `POST` | `/api/attachments/text` | `chat.use` | `{filename, data}` (base64, up to 15 MB) -> `{filename, text, char_count, truncated}`: text from a text/code, `.pdf`, `.docx` or `.xlsx` file, at most 20,000 characters. The file isn't kept. `400` with a readable reason when it can't be read. |
+| `GET` | `/api/traffic/analytics?range=24h\|7d\|30d\|90d` | `traffic.view` | Network traffic for the Analytics Traffic tab (default `7d`): `{period, bucket (hour\|day), latency_cap_ms, totals {requests, error_rate, p95_ms, upstream_failures: {current, previous}}, series [{bucket, requests {2xx,3xx,4xx,5xx}, p50_ms, p95_ms}] (zero-filled), routes {busiest, slowest: [{name, count, error_rate, p95_ms}]}, upstream [{target, calls, failures, failure_rate, p95_ms, tools [{name, calls, failures, p95_ms}]}]}`. Counts come from `traffic_buckets` (written by `TrafficMiddleware` and the upstream timing, flushed every 30 s); names are route templates, never raw paths. Latency is kept as bands (50/100/250/500/1000/2500/5000 ms), so a percentile is its band's upper bound, and one in the slowest band shows as `latency_cap_ms` (meaning "at least"). `error_rate` is 5xx over all requests (`null` with no requests); `slowest` needs 5 requests per route; top lists hold 10. `422` bad range. |
 | `GET` | `/api/config-issues` | `config.issues.view` | `[{file, key, message}]`: problems in `config_app.json`, the agent registry and the secret files. Never includes secret values. |
 | `GET` | `/api/agent` | `chat.use` | The agent every question goes to, as `{id, label}` - no URL. `503` "No agent is running" when none is registered. |
 | `GET` `POST` `DELETE` | `/api/mcp/agents/{agent_id}` | `chat.use` | MCP Streamable HTTP proxy to that agent. `404` if the id isn't in ai_agent's registry. |
@@ -205,8 +206,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   one line per answered chat turn go there too. Entries older than 90 days
   are deleted on startup; a deleted account's entries stay.
 - **Permissions:** `chat.use`, `tools.use`, `admin.manage`, `watchers.view`,
-  `logs.view`, `logs.errors.view`, `logs.chat.view`, `config.issues.view`
-  (`src/services/permissions.py`). The Administrator role always holds all
+  `logs.view`, `logs.errors.view`, `logs.chat.view`, `config.issues.view`,
+  `traffic.view` (`src/services/permissions.py`). The Administrator role always holds all
   of them (new ones are added to it on startup). New registrations get `default_role` (config, default `Member`:
   `chat.use` + `tools.use`) - unlike chat_app, where new accounts get no
   role. An account with an unverified email holds no permissions at all, unless

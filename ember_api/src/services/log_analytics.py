@@ -30,13 +30,35 @@ _HOUR = timedelta(hours=1)
 _DAY = timedelta(days=1)
 # period -> (bucket size, bucket length, bucket count). The current window is
 # `count` buckets; the previous one is the `count` buckets before it.
-_WINDOWS: dict[str, tuple[BucketSize, timedelta, int]] = {
+WINDOWS: dict[str, tuple[BucketSize, timedelta, int]] = {
     "24h": ("hour", _HOUR, 24),
     "7d": ("day", _DAY, 7),
     "30d": ("day", _DAY, 30),
     "90d": ("day", _DAY, 90),
 }
-_BUCKET_FORMAT: dict[str, str] = {"hour": "%Y-%m-%dT%H:00:00", "day": "%Y-%m-%dT00:00:00"}
+BUCKET_FORMAT: dict[str, str] = {"hour": "%Y-%m-%dT%H:00:00", "day": "%Y-%m-%dT00:00:00"}
+
+
+@dataclass(frozen=True)
+class Window:
+    """The current window (`count` buckets ending at the current one) and the
+    one before it, which totals are compared with."""
+
+    bucket: BucketSize
+    starts: list[datetime]
+    start: datetime
+    end: datetime
+    previous_start: datetime
+
+
+def window(period: Period, now: datetime | None = None) -> Window:
+    bucket, length, count = WINDOWS[period]
+    floor = (now or utcnow()).replace(minute=0, second=0, microsecond=0)
+    if bucket == "day":
+        floor = floor.replace(hour=0)
+    end = floor + length
+    start = end - length * count
+    return Window(bucket, [start + length * i for i in range(count)], start, end, start - length * count)
 
 
 @dataclass(frozen=True)
@@ -96,21 +118,14 @@ class LogAnalytics:
     async def report(self, period: Period, kinds: Sequence[str], now: datetime | None = None) -> AnalyticsReport:
         """Counts for the `kinds` the caller may read, in the canonical kind order."""
         wanted = [k for k in KINDS if k in kinds]
-        bucket, length, count = _WINDOWS[period]
-        floor = (now or utcnow()).replace(minute=0, second=0, microsecond=0)
-        if bucket == "day":
-            floor = floor.replace(hour=0)
-        end = floor + length
-        start = end - length * count
-        previous_start = start - length * count
-
-        starts = [start + length * i for i in range(count)]
-        counts: dict[str, dict[str, int]] = {s.isoformat(): {k: 0 for k in wanted} for s in starts}
+        span = window(period, now)
+        bucket, start, end, previous_start = span.bucket, span.start, span.end, span.previous_start
+        counts: dict[str, dict[str, int]] = {s.isoformat(): {k: 0 for k in wanted} for s in span.starts}
         totals = {k: KindTotal(current=0, previous=0) for k in wanted}
         if not wanted:
             return AnalyticsReport(period, bucket, wanted, totals, self._points(counts), {}, {}, [])
 
-        bucket_of = func.strftime(_BUCKET_FORMAT[bucket], LogEntry.created_at)
+        bucket_of = func.strftime(BUCKET_FORMAT[bucket], LogEntry.created_at)
         series = await self._session.execute(
             select(LogEntry.kind, bucket_of, func.count())
             .where(*self._within(wanted, start, end))

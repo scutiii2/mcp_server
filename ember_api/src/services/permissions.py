@@ -9,6 +9,7 @@ LOGS_VIEW = "logs.view"
 LOGS_ERRORS_VIEW = "logs.errors.view"
 LOGS_CHAT_VIEW = "logs.chat.view"
 CONFIG_ISSUES_VIEW = "config.issues.view"
+TRAFFIC_VIEW = "traffic.view"
 
 ALL_PERMISSIONS: dict[str, str] = {
     CHAT_USE: "Chat with ai_agent instances",
@@ -19,6 +20,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     LOGS_ERRORS_VIEW: "Read the error log",
     LOGS_CHAT_VIEW: "Read the chat-turn log (every account's questions and answers)",
     CONFIG_ISSUES_VIEW: "See problems in ember_api's config and secret files",
+    TRAFFIC_VIEW: "See network traffic charts (requests, latency, upstream calls)",
 }
 
 ADMIN_ROLE = "Administrator"
