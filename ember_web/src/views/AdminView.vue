@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { adminClient, type AdminSummary } from "../api/AdminClient";
 import AccountsPanel from "../components/admin/AccountsPanel.vue";
 import InvitesPanel from "../components/admin/InvitesPanel.vue";
 import RolesPanel from "../components/admin/RolesPanel.vue";
 import SettingsPanel from "../components/admin/SettingsPanel.vue";
+import StatTile from "../components/admin/StatTile.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
+import { errorMessage } from "../utils/errors";
 
 const TABS = [
   { id: "accounts", label: "Accounts" },
@@ -22,6 +25,23 @@ const router = useRouter();
 // The tab lives in the URL (?tab=roles), so reload and back/forward keep it.
 const tab = computed<TabId>(() => TABS.find((t) => t.id === route.query.tab)?.id ?? "accounts");
 
+const summary = ref<AdminSummary | null>(null);
+const summaryError = ref("");
+
+async function loadSummary(): Promise<void> {
+  try {
+    summary.value = await adminClient.summary();
+    summaryError.value = "";
+  } catch (err) {
+    summaryError.value = errorMessage(err);
+  }
+}
+
+onMounted(loadSummary);
+// Counts change through the tabs (disable an account, revoke an invite), so
+// they are read again whenever the tab changes.
+watch(tab, loadSummary);
+
 function select(id: TabId): void {
   void router.replace({ query: { ...route.query, tab: id } });
 }
@@ -31,6 +51,13 @@ function select(id: TabId): void {
   <section class="admin-view">
     <div class="column">
       <h2>Admin</h2>
+      <div class="stats">
+        <StatTile label="Accounts" :value="summary?.accounts ?? null" />
+        <StatTile label="Unverified" :value="summary?.unverified ?? null" warn />
+        <StatTile label="Disabled" :value="summary?.disabled ?? null" />
+        <StatTile label="Open invites" :value="summary?.open_invites ?? null" />
+      </div>
+      <p v-if="summaryError" class="error">Couldn't load the overview: {{ summaryError }}</p>
       <SegmentedControl class="tabs" :model-value="tab" :options="TAB_OPTIONS" aria-label="Admin section" @update:model-value="select" />
 
       <!-- v-if, not v-show: each panel reloads its data when opened, so a
@@ -57,6 +84,16 @@ function select(id: TabId): void {
 h2 {
   margin: 0 0 12px;
   font-size: 1.2em;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.error {
+  margin: 0 0 12px;
+  color: var(--danger);
 }
 .tabs {
   margin-bottom: 18px;

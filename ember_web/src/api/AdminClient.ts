@@ -48,6 +48,23 @@ export interface PermissionInfo {
   description: string | null;
 }
 
+/** Counts for the Admin overview tiles. */
+export interface AdminSummary {
+  accounts: number;
+  unverified: number;
+  disabled: number;
+  open_invites: number;
+  roles: number;
+}
+
+export type AccountStatus = "all" | "unverified" | "disabled";
+
+export interface AccountFilters {
+  /** Username or email substring, case-insensitive. */
+  q?: string;
+  status?: AccountStatus;
+}
+
 export interface AccountChanges {
   username?: string;
   email?: string;
@@ -69,7 +86,16 @@ export const adminClient = {
     apiRequest<CreatedInvite>("POST", "/api/admin/invites", { invitee_email, delivery_method }),
   revokeInvite: (id: number) => apiRequest<void>("DELETE", `/api/admin/invites/${id}`),
 
-  listAccounts: () => apiRequest<AdminAccount[]>("GET", "/api/admin/accounts"),
+  summary: () => apiRequest<AdminSummary>("GET", "/api/admin/summary"),
+
+  listAccounts: (filters: AccountFilters = {}) => {
+    const query = new URLSearchParams();
+    const q = filters.q?.trim();
+    if (q) query.set("q", q);
+    if (filters.status && filters.status !== "all") query.set("status", filters.status);
+    const suffix = query.size ? `?${query}` : "";
+    return apiRequest<AdminAccount[]>("GET", `/api/admin/accounts${suffix}`);
+  },
   updateAccount: (id: number, changes: AccountChanges) =>
     apiRequest<AdminAccount>("PATCH", `/api/admin/accounts/${id}`, changes),
   deleteAccount: (id: number) => apiRequest<void>("DELETE", `/api/admin/accounts/${id}`),
