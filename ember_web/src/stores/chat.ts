@@ -853,6 +853,9 @@ export const useChatStore = defineStore("chat", () => {
     return find(id) !== undefined;
   }
 
+  /** Temporary: replaced in the next task. */
+  function forgetFolder(_folderId: number): void {}
+
   function setAskBeforeTools(on: boolean): void {
     askBeforeTools.value = on;
     const accountId = auth.account?.id;
@@ -1044,6 +1047,7 @@ export const useChatStore = defineStore("chat", () => {
     deleteChat,
     deleteChats,
     hasChat,
+    forgetFolder,
     renameChat,
     searchQuery,
     searchActive,
