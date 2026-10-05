@@ -1,8 +1,17 @@
 # chat_cli — terminal chat client (design)
 
 Date: 2026-09-25
-Status: approved design, not yet implemented
+Status: superseded 2026-10-05, not built as designed. Kept as a record.
 Source: `_TODO.md` entry "Terminal chat client `chat_cli/`" (deferred 2026-09-21)
+
+> **Superseded.** The chat_cli that was built (`bd1cfda`, 2026-10-05) does
+> not talk to ai_agent directly. It logs in to ember_api and uses its REST
+> and SSE API, so it gets ember's auth, permissions, usage limits, saved
+> chats and tool approvals. Every question goes to ember_api's entry agent
+> (`GET /api/agent`, `21190fe`); there is no agent list or picker. The
+> "ai_agent change" below was never made, and chat_app, which this design
+> copied from, was removed in `1a51fac`. See `chat_cli/README.md` for the
+> current behaviour.
 
 ## Goal
 
