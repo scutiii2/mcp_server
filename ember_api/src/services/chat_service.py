@@ -18,11 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from src.db import utcnow
-from src.models import Chat, SharedChat
+from src.models import Chat, ChatFolder, SharedChat
+from src.services.folder_service import FolderNotFound
 
 MAX_CHAT_BYTES = 2 * 1024 * 1024
 MAX_CHATS_PER_ACCOUNT = 1000
 TITLE_MAX = 120  # the chats.title column
+# "folder_id was not sent", as opposed to None ("take it out of its folder").
+UNSET: Any = object()
 
 
 class ChatNotFound(Exception):
@@ -110,7 +113,7 @@ class ChatService:
         """A new chat holding the source's messages up to and including
         message `upto`, which must be one of the assistant's answers. The
         source is not touched; the copy shares nothing with it. It keeps the
-        source's agent and is titled "Branch of <title>"."""
+        source's agent and folder (never its pin) and is titled "Branch of <title>"."""
         source = await self.get(source_id)
         messages = decode_messages(source)
         target = messages[upto] if 0 <= upto < len(messages) else None
@@ -119,7 +122,11 @@ class ChatService:
         title = f"Branch of {source.title}"
         if len(title) > TITLE_MAX:
             title = title[: TITLE_MAX - 1] + "…"
-        return await self.put(str(uuid.uuid4()), title, source.agent_id, messages[: upto + 1])
+        branched = await self.put(str(uuid.uuid4()), title, source.agent_id, messages[: upto + 1])
+        if source.folder_id is not None:
+            branched.folder_id = source.folder_id
+            await self._session.commit()
+        return branched
 
     async def replace_messages(self, chat_id: str, messages: list[ChatMessage], agent_id: str | None = None) -> Chat:
         """New transcript for an existing chat, keeping its title (and its
@@ -136,6 +143,29 @@ class ChatService:
     async def rename(self, chat_id: str, title: str) -> Chat:
         chat = await self.get(chat_id)
         chat.title = title
+        await self._session.commit()
+        return chat
+
+    async def update(
+        self, chat_id: str, *, title: str | None = None, folder_id: int | None = UNSET, pinned: bool | None = None
+    ) -> Chat:
+        """Changes whichever of title, folder and pin are given. `folder_id`
+        None takes the chat out of its folder; a folder of another account is
+        FolderNotFound. Does not touch updated_at: filing a chat is not
+        activity, and must not reorder the list."""
+        chat = await self.get(chat_id)
+        if folder_id is not UNSET:
+            if folder_id is not None:
+                owned = await self._session.scalar(
+                    select(ChatFolder.id).where(ChatFolder.id == folder_id, ChatFolder.account_id == self._account_id)
+                )
+                if owned is None:
+                    raise FolderNotFound(folder_id)
+            chat.folder_id = folder_id
+        if title is not None:
+            chat.title = title
+        if pinned is not None:
+            chat.pinned = pinned
         await self._session.commit()
         return chat
 

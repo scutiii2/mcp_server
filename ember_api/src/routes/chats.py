@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
@@ -44,6 +44,7 @@ from src.services.chat_service import (
     NotABranchPoint,
     decode_messages,
 )
+from src.services.folder_service import FolderNotFound
 from src.services.permissions import CHAT_USE
 from src.services.settings_service import FORCE_TOOL_APPROVAL, SettingsService
 from src.services.turns import (
@@ -157,6 +158,25 @@ class RenameRequest(BaseModel):
     @classmethod
     def clean_title(cls, title: str) -> str:
         return _clean_title(title)
+
+
+class UpdateChatRequest(BaseModel):
+    """Any of: a new title, a folder (null: out of its folder), a pin."""
+
+    title: str | None = Field(default=None, max_length=TITLE_MAX)
+    folder_id: int | None = None
+    pinned: bool | None = None
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, title: str | None) -> str | None:
+        return None if title is None else _clean_title(title)
+
+    @model_validator(mode="after")
+    def something_to_change(self) -> UpdateChatRequest:
+        if self.title is None and self.pinned is None and "folder_id" not in self.model_fields_set:
+            raise ValueError("send a title, a folder_id or pinned")
+        return self
 
 
 class PutChatRequest(RenameRequest):
@@ -461,17 +481,25 @@ async def put_chat(
 
 
 @router.patch("/{chat_id}")
-async def rename_chat(
-    body: RenameRequest,
+async def update_chat(
+    body: UpdateChatRequest,
     chat_id: str = ChatId,
     account: Account = Depends(require_chat),
     chats: ChatService = Depends(get_chat_service),
     turns: TurnRegistry = Depends(get_turns),
 ) -> ChatSummaryOut:
+    """Renames, files (folder_id; null takes it out of its folder) or pins a
+    chat. Allowed while an answer is being written: it changes no messages."""
+    changes: dict[str, Any] = {"title": body.title, "pinned": body.pinned}
+    if "folder_id" in body.model_fields_set:
+        changes["folder_id"] = body.folder_id
     try:
-        return ChatSummaryOut.of(await chats.rename(chat_id, body.title), turns.is_running(account.id, chat_id))
+        chat = await chats.update(chat_id, **changes)
     except ChatNotFound as error:
         raise _not_found() from error
+    except FolderNotFound as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Folder not found") from error
+    return ChatSummaryOut.of(chat, turns.is_running(account.id, chat_id))
 
 
 @router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)

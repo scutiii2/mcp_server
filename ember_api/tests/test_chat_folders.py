@@ -153,3 +153,96 @@ def test_a_patch_must_change_something(client: TestClient) -> None:
 
     assert client.patch(f"/api/chat-folders/{folder_id}", json={}).status_code == 422
     assert client.patch(f"/api/chat-folders/{folder_id}", json={"position": -1}).status_code == 422
+
+
+# --- moving and pinning chats ------------------------------------------------------
+
+
+def listed(client: TestClient, chat_id: str) -> dict:
+    return next(c for c in client.get("/api/chats").json() if c["id"] == chat_id)
+
+
+def test_a_chat_can_be_moved_into_a_folder_and_out_again(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = make_chat(client)
+    folder_id = new_folder(client).json()["id"]
+
+    moved = client.patch(f"/api/chats/{chat_id}", json={"folder_id": folder_id})
+
+    assert moved.status_code == 200
+    assert moved.json()["folder_id"] == folder_id
+    assert listed(client, chat_id)["folder_id"] == folder_id
+    assert folders(client)[0]["chat_count"] == 1
+
+    out = client.patch(f"/api/chats/{chat_id}", json={"folder_id": None})
+
+    assert out.json()["folder_id"] is None
+    assert folders(client)[0]["chat_count"] == 0
+
+
+def test_pinning_keeps_the_folder(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = make_chat(client)
+    folder_id = new_folder(client).json()["id"]
+    client.patch(f"/api/chats/{chat_id}", json={"folder_id": folder_id})
+
+    pinned = client.patch(f"/api/chats/{chat_id}", json={"pinned": True}).json()
+
+    assert (pinned["pinned"], pinned["folder_id"]) == (True, folder_id)
+    assert client.patch(f"/api/chats/{chat_id}", json={"pinned": False}).json()["pinned"] is False
+    assert listed(client, chat_id)["folder_id"] == folder_id
+
+
+def test_moving_or_pinning_does_not_change_the_order(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = make_chat(client)
+    before = listed(client, chat_id)["updated_at"]
+    folder_id = new_folder(client).json()["id"]
+
+    client.patch(f"/api/chats/{chat_id}", json={"folder_id": folder_id, "pinned": True})
+
+    assert listed(client, chat_id)["updated_at"] == before
+
+
+def test_a_rename_still_works_and_can_be_combined(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = make_chat(client)
+    folder_id = new_folder(client).json()["id"]
+
+    body = client.patch(f"/api/chats/{chat_id}", json={"title": "  New   title ", "folder_id": folder_id}).json()
+
+    assert (body["title"], body["folder_id"]) == ("New title", folder_id)
+
+
+def test_an_empty_or_blank_patch_is_refused(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = make_chat(client)
+
+    assert client.patch(f"/api/chats/{chat_id}", json={}).status_code == 422
+    assert client.patch(f"/api/chats/{chat_id}", json={"title": None}).status_code == 422
+    assert client.patch(f"/api/chats/{chat_id}", json={"title": "   "}).status_code == 422
+
+
+def test_moving_into_someone_elses_or_a_missing_folder_is_404(client: TestClient, email: FakeEmailSender) -> None:
+    as_admin(client)
+    foreign = new_folder(client, "Admin only").json()["id"]
+    client.post("/api/auth/logout", json={})
+    make_member(client, email)
+    login(client, "alice")
+    chat_id = make_chat(client)
+
+    assert client.patch(f"/api/chats/{chat_id}", json={"folder_id": foreign}).status_code == 404
+    assert client.patch(f"/api/chats/{chat_id}", json={"folder_id": 99999}).status_code == 404
+    assert listed(client, chat_id)["folder_id"] is None
+
+
+def test_a_branch_stays_in_the_source_folder_and_is_not_pinned(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = make_chat(client)
+    folder_id = new_folder(client).json()["id"]
+    client.patch(f"/api/chats/{chat_id}", json={"folder_id": folder_id, "pinned": True})
+
+    branch = client.post(f"/api/chats/{chat_id}/branch", json={"upto": 1})
+
+    assert branch.status_code == 201, branch.text
+    assert (branch.json()["folder_id"], branch.json()["pinned"]) == (folder_id, False)
