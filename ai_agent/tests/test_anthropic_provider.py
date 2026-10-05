@@ -14,7 +14,7 @@ import pytest
 
 from src.llm import cancellation, cooldown, token_limits
 from src.llm.base_provider import ChatCancelled
-from src.agent_spec import RosterEntry
+from src.agents.agent_spec import RosterEntry
 from src.llm import anthropic_provider
 
 ROSTER = [RosterEntry("openai-agent", "OpenAI Agent", "second opinion")]
@@ -288,8 +288,8 @@ def test_run_chat_raises_chat_cancelled_before_any_api_call_when_already_cancell
 
 def test_run_chat_sends_agent_llm_options_and_retries_without_a_rejected_one(monkeypatch):
     import anthropic
-    from src import agent_spec
-    from src.agent_spec import AgentSpec, LlmSpec
+    from src.agents import agent_spec
+    from src.agents.agent_spec import AgentSpec, LlmSpec
     from src.llm import llm_options
 
     monkeypatch.setenv("CLAUDE_API_KEY", "sk-ant-test")

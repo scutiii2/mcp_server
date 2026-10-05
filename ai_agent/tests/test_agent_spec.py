@@ -9,8 +9,8 @@ import os
 
 import pytest
 
-from src import agent_spec
-from src.agent_spec import AgentSpecError, ToolScope
+from src.agents import agent_spec
+from src.agents.agent_spec import AgentSpecError, ToolScope
 
 
 def _write(directory, name, data):

@@ -10,8 +10,10 @@ from unittest.mock import patch
 
 import pytest
 
-from src import agent_spec, mcp_upstream
-from src.agent_spec import AgentSpec, LlmSpec, ToolScope
+from src.agents import agent_spec
+
+from src.mcp_client import mcp_upstream
+from src.agents.agent_spec import AgentSpec, LlmSpec, ToolScope
 
 
 def _tool(name):
@@ -44,7 +46,7 @@ def test_warn_unmatched_tool_globs(monkeypatch, caplog):
                      tools=ToolScope(allow=("calc_*", "convrt_*")))
     monkeypatch.setattr(agent_spec, "_current", spec)
     with patch.object(mcp_upstream.client, "list_tools", return_value=[_tool("main__calc_add")]), \
-         caplog.at_level(logging.WARNING, logger="src.mcp_upstream"):
+         caplog.at_level(logging.WARNING, logger="src.mcp_client.mcp_upstream"):
         mcp_upstream.warn_unmatched_tool_globs()
     assert "convrt_*" in caplog.text
     assert "calc_*" not in caplog.text

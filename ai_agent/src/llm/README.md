@@ -2,8 +2,8 @@
 
 Adapted from `chat_app/src/services/llm/` (Claude and OpenAI only -
 Ollama is out of scope for this slice): each provider here calls
-`src.mcp_upstream` instead of chat_app's own MCP client, and this
-project pins one provider+model per instance (see `../agent_config.py`)
+`src.mcp_client.mcp_upstream` instead of chat_app's own MCP client, and this
+project pins one provider+model per instance (see `../agents/agent_config.py`)
 rather than routing between several per request.
 
 - **`base_provider.py`** - shared types (`ChatCancelled`, `ToolCallRecord`,

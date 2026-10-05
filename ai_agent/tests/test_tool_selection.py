@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src import tool_selection
+from src.mcp_client import tool_selection
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def test_missing_keys_default_to_off_and_20(config_path):
 
 def test_missing_file_is_seeded_from_example(config_path):
     # tmp_path has no .example sibling, so point at the real one via the shipped file.
-    real = Path(tool_selection.__file__).resolve().parent.parent / "configs"
+    real = Path(tool_selection.__file__).resolve().parent.parent.parent / "configs"
     config_path.with_name(config_path.name + ".example").write_text(
         (real / "config_tool_selection.json.example").read_text(encoding="utf-8"), encoding="utf-8"
     )

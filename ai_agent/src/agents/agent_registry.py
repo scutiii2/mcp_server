@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent / "data" / "agent_registry.json"
+_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "agent_registry.json"
 
 # chat_app's own copy of this same file (its provider dropdown - see
 # chat_app/src/services/agent_registry.py). register()/deregister() below
@@ -31,7 +31,7 @@ _CONFIG_PATH = Path(__file__).resolve().parent.parent / "data" / "agent_registry
 # cross-project" convention while no longer needing a human to keep the
 # two in sync by hand.
 _CHAT_APP_CONFIG_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "chat_app" / "src" / "configs" / "config_agents.json"
+    Path(__file__).resolve().parent.parent.parent.parent / "chat_app" / "src" / "configs" / "config_agents.json"
 )
 
 # "claude"/"openai" rather than this instance's own AI_AGENT_PROVIDER

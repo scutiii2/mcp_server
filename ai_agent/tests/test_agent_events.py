@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import re
 
-from src import agent_events
+from src.agents import agent_events
 from src.llm.base_provider import dispatch_with_progress
 
 

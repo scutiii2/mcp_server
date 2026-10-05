@@ -13,8 +13,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from src import agent_spec
-from src.agent_spec import LlmSpec
+from src.agents import agent_spec
+from src.agents.agent_spec import LlmSpec
 
 _log = logging.getLogger(__name__)
 

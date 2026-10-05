@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import time
 
-from src.catalog import catalog
+from src.core.catalog import catalog
 
 DEFAULT_COOLDOWN_SECONDS = 60.0
 

@@ -30,8 +30,10 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from src import agent_events, agent_registry, agent_routing, agent_spec, approvals, internal_auth
-from src.agent_spec import RosterEntry
+from src.agents import agent_events, agent_registry, agent_routing, agent_spec
+
+from src.core import approvals, internal_auth
+from src.agents.agent_spec import RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
 AUTO_AGENT_ID = "auto"

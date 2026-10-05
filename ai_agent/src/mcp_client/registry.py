@@ -22,9 +22,9 @@ from typing import Any, Callable
 from mcp import types
 from mcp.client.session import ClientSession
 
-from src.catalog import catalog
-from src.config import ServerConfig, load_servers_config
-from src.transports import open_session
+from src.core.catalog import catalog
+from src.mcp_client.config import ServerConfig, load_servers_config
+from src.mcp_client.transports import open_session
 
 # "__" rather than "_": several servers this connects to (mcp_server's own
 # tools among them) already use single underscores as ordinary word

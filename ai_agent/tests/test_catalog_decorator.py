@@ -1,4 +1,4 @@
-from src.catalog import catalog
+from src.core.catalog import catalog
 
 
 def test_bare_decorator_returns_function_unchanged():

@@ -20,7 +20,7 @@ import anyio.to_thread
 
 from src.llm.base_provider import ChatResult
 
-_DEFAULT_DIR = Path(__file__).resolve().parent.parent / "data" / "usage"
+_DEFAULT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "usage"
 _log = logging.getLogger(__name__)
 # Serializes appends within this process. A threading lock, not an
 # asyncio one: writes run on worker threads, and tests use many loops.

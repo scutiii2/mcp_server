@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from src import mcp_upstream
+from src.mcp_client import mcp_upstream
 
 
 def test_tool_description_unchanged_without_flag():

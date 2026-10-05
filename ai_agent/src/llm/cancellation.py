@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import threading
 
-from src.catalog import catalog
+from src.core.catalog import catalog
 
 _lock = threading.Lock()
 _cancelled: set[str] = set()

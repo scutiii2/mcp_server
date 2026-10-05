@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 from mcp import types
 
-from src.registry import McpClientRegistry, ServerStatus
+from src.mcp_client.registry import McpClientRegistry, ServerStatus
 
 
 class SyncMcpClient:

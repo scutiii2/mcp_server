@@ -118,8 +118,8 @@ def test_system_prompt_for_appends_caveman_instructions_only_when_asked():
     assert agent_roles.CAVEMAN_INSTRUCTIONS in on
 
 
-from src import agent_spec
-from src.agent_spec import AgentSpec, LlmSpec, RosterEntry
+from src.agents import agent_spec
+from src.agents.agent_spec import AgentSpec, LlmSpec, RosterEntry
 from src.llm import agent_roles
 
 

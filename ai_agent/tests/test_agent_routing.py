@@ -8,8 +8,8 @@ import asyncio
 
 import pytest
 
-from src import agent_registry, agent_routing, agent_spec
-from src.agent_spec import AgentSpec, LlmSpec, RoutingSpec
+from src.agents import agent_registry, agent_routing, agent_spec
+from src.agents.agent_spec import AgentSpec, LlmSpec, RoutingSpec
 
 AGENTS = [
     {"id": "orchestrator", "label": "Ember", "url": "u", "orchestrator": True, "focus": "coordination"},

@@ -1,7 +1,7 @@
 import anyio
 import pytest
 
-from src import delegation
+from src.agents import delegation
 
 
 @pytest.mark.anyio

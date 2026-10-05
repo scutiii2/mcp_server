@@ -11,8 +11,8 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from src import agent_registry, delegation
-from src.agent_spec import RosterEntry
+from src.agents import agent_registry, delegation
+from src.agents.agent_spec import RosterEntry
 
 ROSTER = [RosterEntry("calc", "Calculator", "Arithmetic."), RosterEntry("explainer", "Explainer", "Explanations.")]
 
@@ -42,12 +42,12 @@ def test_tool_description_lists_the_roster_and_auto():
 
 def test_call_resolves_auto_through_routing(monkeypatch):
     _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
-    monkeypatch.setattr("src.delegation.agent_routing.resolve_auto", lambda question: ROSTER[0])
+    monkeypatch.setattr("src.agents.delegation.agent_routing.resolve_auto", lambda question: ROSTER[0])
 
     async def _fake_call_tool(url, name, arguments, on_progress=None):
         return {"response": "4"}
 
-    with patch("src.delegation._call_tool", side_effect=_fake_call_tool):
+    with patch("src.agents.delegation._call_tool", side_effect=_fake_call_tool):
         result = delegation.call("auto", "2+2?", depth=0)
 
     assert result == "Delegated to calc (Calculator).\n\n4"
@@ -56,7 +56,7 @@ def test_call_resolves_auto_through_routing(monkeypatch):
 def test_call_raises_at_the_depth_cap_without_any_network_call(monkeypatch):
     _configure_agents(monkeypatch, [{"id": "claude-agent", "label": "Claude Agent", "url": "http://x/mcp"}])
 
-    with patch("src.delegation._call_tool") as fake_call_tool:
+    with patch("src.agents.delegation._call_tool") as fake_call_tool:
         try:
             delegation.call("claude-agent", "hi", depth=delegation._MAX_DELEGATION_DEPTH)
             raise AssertionError("expected ValueError")
@@ -87,7 +87,7 @@ def test_call_returns_the_sub_agents_response_on_success(monkeypatch):
         captured["arguments"] = arguments
         return {"response": "the answer", "cancelled": False}
 
-    with patch("src.delegation._call_tool", side_effect=_fake_call_tool):
+    with patch("src.agents.delegation._call_tool", side_effect=_fake_call_tool):
         result = delegation.call("openai-agent", "sub-question", depth=0)
 
     assert result == "the answer"
@@ -127,8 +127,8 @@ def _cm(value):
 def test_call_tool_raises_plain_exception_on_iserror_result():
     session = _fake_session(is_error=True, content=[SimpleNamespace(text="openai is rate-limited")], structured=None)
 
-    with patch("src.delegation.streamablehttp_client", return_value=_cm((None, None, None))), \
-         patch("src.delegation.ClientSession", return_value=_cm(session)):
+    with patch("src.agents.delegation.streamablehttp_client", return_value=_cm((None, None, None))), \
+         patch("src.agents.delegation.ClientSession", return_value=_cm(session)):
         try:
             asyncio.run(delegation._call_tool("http://127.0.0.1:9101/mcp", "ask", {}))
             raise AssertionError("expected RuntimeError")
@@ -156,7 +156,7 @@ def test_call_reports_the_delegates_agent_usage_to_the_bound_sink(monkeypatch):
 
 def test_call_emits_start_and_end_and_forwards_specialist_progress(monkeypatch):
     import json as _json
-    from src import agent_events
+    from src.agents import agent_events
 
     _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
     emitted = []
@@ -170,7 +170,7 @@ def test_call_emits_start_and_end_and_forwards_specialist_progress(monkeypatch):
         return {"response": "4"}
 
     try:
-        with patch("src.delegation._call_tool", side_effect=_fake_call_tool):
+        with patch("src.agents.delegation._call_tool", side_effect=_fake_call_tool):
             assert delegation.call("calc", "2+2?", depth=0) == "4"
     finally:
         agent_events.reset(token)
@@ -183,13 +183,13 @@ def test_call_emits_start_and_end_and_forwards_specialist_progress(monkeypatch):
 
 
 def test_call_emits_a_failed_end_when_the_specialist_errors(monkeypatch):
-    from src import agent_events
+    from src.agents import agent_events
 
     _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
     emitted = []
     token = agent_events.bind(emitted.append, "step-7")
     try:
-        with patch("src.delegation._call_tool", side_effect=RuntimeError("down")):
+        with patch("src.agents.delegation._call_tool", side_effect=RuntimeError("down")):
             try:
                 delegation.call("calc", "2+2?", depth=0)
                 raise AssertionError("expected RuntimeError")

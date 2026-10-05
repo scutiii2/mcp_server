@@ -19,9 +19,9 @@ import os
 from pathlib import Path
 from typing import Any, Sequence
 
-from src import agent_spec
-from src.agent_spec import RosterEntry
-from src.seed import seed_from_example
+from src.agents import agent_spec
+from src.agents.agent_spec import RosterEntry
+from src.core.seed import seed_from_example
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "prompts.json"
 

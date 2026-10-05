@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from src import agent_registry
+from src.agents import agent_registry
 
 
 def _configure(monkeypatch, tmp_path, agents, chat_app_agents=None):
@@ -263,8 +263,8 @@ def test_reload_keeps_previous_agents_when_the_file_is_corrupt(monkeypatch, tmp_
 def test_roster_and_specialists_survive_a_corrupt_registry_file(monkeypatch, tmp_path):
     import asyncio
 
-    from src import agent_routing, agent_spec
-    from src.agent_spec import AgentSpec, LlmSpec
+    from src.agents import agent_routing, agent_spec
+    from src.agents.agent_spec import AgentSpec, LlmSpec
 
     agents = [
         {"id": "orchestrator", "label": "Ember", "url": "u", "orchestrator": True},

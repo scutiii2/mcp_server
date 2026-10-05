@@ -39,14 +39,18 @@ from typing import Any, Sequence
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, BadRequestError, OpenAI, RateLimitError
 
-from src import agent_routing, agent_spec, approvals, delegation, tool_selection
-from src.agent_spec import RosterEntry
+from src.agents import agent_routing, agent_spec, delegation
+
+from src.core import approvals
+
+from src.mcp_client import tool_selection
+from src.agents.agent_spec import RosterEntry
 from src.llm import cancellation, cooldown, llm_config, llm_options, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
 from src.llm.base_provider import (
     BaseProvider, ChatCancelled, ChatResult, LiveUsage, OnEvent, ToolCallRecord, dispatch_with_progress, step_event,
 )
-from src.mcp_upstream import call_tool, list_tools, tool_description
+from src.mcp_client.mcp_upstream import call_tool, list_tools, tool_description
 
 
 PROVIDER_NAME = "openai"

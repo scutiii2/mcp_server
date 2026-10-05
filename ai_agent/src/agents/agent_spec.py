@@ -22,7 +22,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Iterable
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 AGENTS_DIR = PROJECT_ROOT / "agents"
 
 PROVIDERS = ("anthropic", "openai")

@@ -8,6 +8,6 @@ API call.
   fail-loud `AgentConfigError` paths.
 - **`test_anthropic_provider.py`, `test_openai_provider.py`** - the 6-round
   tool-calling loop, cancellation checkpoint, and rate-limit cooldown,
-  with the SDK client and `src.mcp_upstream` both mocked.
+  with the SDK client and `src.mcp_client.mcp_upstream` both mocked.
 - **`test_server.py`** - the `ask`/`status`/`cancel` FastMCP tool
   contracts, with `agent_config` mocked.

@@ -11,8 +11,8 @@ import json
 import math
 from typing import Any
 
-from src.catalog import catalog
-from src.config_files import LIMITS_PATH, read_section
+from src.core.catalog import catalog
+from src.core.config_files import LIMITS_PATH, read_section
 
 _CONFIG_PATH = LIMITS_PATH
 _REQUIRED_FIELDS = (

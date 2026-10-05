@@ -9,7 +9,7 @@ crashing or showing nothing.
 
 from __future__ import annotations
 
-from src.catalog import catalog
+from src.core.catalog import catalog
 
 CONTEXT_WINDOWS: dict[str, int] = {
     "claude": 200_000,

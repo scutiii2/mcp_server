@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from src import approvals, delegation, server
+from src import server
+
+from src.agents import delegation
+
+from src.core import approvals
 from src.llm import anthropic_provider, cancellation, openai_provider
 from src.llm.base_provider import ChatCancelled, ChatResult
 
@@ -542,7 +546,7 @@ def test_ask_defaults_to_no_approvals() -> None:
 
 
 def test_run_chat_refuses_an_unknown_mode_before_starting_anything() -> None:
-    from src import agent_config
+    from src.agents import agent_config
 
     with pytest.raises(ValueError, match="approval_mode"):
         run(agent_config.run_chat("q", [], [], request_id=REQUEST, approval_mode="whenever"))
@@ -551,7 +555,7 @@ def test_run_chat_refuses_an_unknown_mode_before_starting_anything() -> None:
 
 
 def test_run_chat_binds_the_policy_for_the_turn_and_removes_it_after() -> None:
-    from src import agent_config
+    from src.agents import agent_config
 
     seen: list[approvals.ApprovalPolicy] = []
 
@@ -602,8 +606,8 @@ def _delegate_and_capture(mode: str) -> dict:
         finally:
             approvals.reset(token)
 
-    with patch("src.delegation._call_tool", side_effect=fake_call_tool), \
-         patch("src.delegation.agent_registry.get_agent", return_value={"url": "http://x/mcp"}):
+    with patch("src.agents.delegation._call_tool", side_effect=fake_call_tool), \
+         patch("src.agents.delegation.agent_registry.get_agent", return_value={"url": "http://x/mcp"}):
         run(scenario())
     return captured
 

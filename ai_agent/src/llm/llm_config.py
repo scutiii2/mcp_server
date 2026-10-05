@@ -16,8 +16,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.catalog import catalog
-from src.seed import seed_from_example
+from src.core.catalog import catalog
+from src.core.seed import seed_from_example
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_gateways.json"
 _PLACEHOLDER = re.compile(r"^\{([A-Z0-9_]+)\}$")

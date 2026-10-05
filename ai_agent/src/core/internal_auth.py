@@ -28,9 +28,9 @@ from typing import Any, Mapping
 
 from dotenv import dotenv_values
 
-from src.seed import seed_from_example
+from src.core.seed import seed_from_example
 
-_SECRETS_PATH = Path(__file__).resolve().parent.parent / ".env"
+_SECRETS_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 REQUESTER_USERNAME_HEADER = "X-Requester-Username"

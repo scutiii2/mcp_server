@@ -14,10 +14,12 @@ from typing import Any
 import anyio
 from dotenv import dotenv_values
 
-from src import approvals, delegation
-from src.seed import seed_from_example
+from src.agents import delegation
 
-_SECRETS_PATH = Path(__file__).resolve().parent.parent / ".env"
+from src.core import approvals
+from src.core.seed import seed_from_example
+
+_SECRETS_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 def _load_secrets_into_environ() -> None:

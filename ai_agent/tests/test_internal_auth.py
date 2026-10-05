@@ -11,10 +11,16 @@ from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
-from src import delegation, internal_auth, mcp_upstream, server
-from src.internal_auth import InternalTokenMiddleware, Requester
+from src import server
+
+from src.agents import delegation
+
+from src.core import internal_auth
+
+from src.mcp_client import mcp_upstream
+from src.core.internal_auth import InternalTokenMiddleware, Requester
 from src.llm.base_provider import ChatResult
-from src.registry import McpClientRegistry
+from src.mcp_client.registry import McpClientRegistry
 
 
 def _client(token: str) -> TestClient:

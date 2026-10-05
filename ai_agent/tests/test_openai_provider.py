@@ -16,7 +16,7 @@ import pytest
 
 from src.llm import cancellation, cooldown, token_limits
 from src.llm.base_provider import ChatCancelled
-from src.agent_spec import RosterEntry
+from src.agents.agent_spec import RosterEntry
 from src.llm import openai_provider
 
 ROSTER = [RosterEntry("openai-agent", "OpenAI Agent", "second opinion")]
@@ -314,8 +314,8 @@ def test_output_items_are_resent_without_sdk_only_fields():
 
 def test_run_chat_sends_agent_llm_options_and_retries_without_a_rejected_one(monkeypatch):
     import openai
-    from src import agent_spec
-    from src.agent_spec import AgentSpec, LlmSpec
+    from src.agents import agent_spec
+    from src.agents.agent_spec import AgentSpec, LlmSpec
     from src.llm import llm_options
 
     monkeypatch.setenv("GPT_API_KEY", "sk-test")

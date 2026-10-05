@@ -14,8 +14,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from src.catalog import catalog
-from src.config_files import read_section
+from src.core.catalog import catalog
+from src.core.config_files import read_section
 
 
 @catalog

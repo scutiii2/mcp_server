@@ -3,7 +3,7 @@ the developer's real agent registry."""
 
 from __future__ import annotations
 
-from src import agent_registry
+from src.agents import agent_registry
 
 
 def test_registry_paths_do_not_point_at_the_real_config_files():

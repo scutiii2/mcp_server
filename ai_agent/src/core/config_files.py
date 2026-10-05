@@ -8,9 +8,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.seed import seed_from_example
+from src.core.seed import seed_from_example
 
-CONFIGS_DIR = Path(__file__).resolve().parent.parent / "configs"
+CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
 # One file per concern, each a JSON object with one top-level section.
 LIMITS_PATH = CONFIGS_DIR / "config_limits.json"  # token_limits

@@ -22,8 +22,8 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 
-from src.catalog import catalog
-from src.config import ServerConfig
+from src.core.catalog import catalog
+from src.mcp_client.config import ServerConfig
 
 
 class AuthResolutionError(RuntimeError):

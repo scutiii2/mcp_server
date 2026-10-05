@@ -1,5 +1,5 @@
 """Primes a valid pinned-provider config before any test module imports
-src.agent_config / src.server - both resolve PROVIDER_ID/MODEL once at
+src.agents.agent_config / src.server - both resolve PROVIDER_ID/MODEL once at
 import time (see agent_config.py's module docstring) and raise
 AgentConfigError immediately if AI_AGENT_PROVIDER or its API key isn't
 set, which would otherwise break collection of test_server.py.
@@ -25,7 +25,7 @@ def _isolated_agent_registry(monkeypatch, tmp_path):
     """Point the agent registry at empty, per-test files so no test reads or
     rewrites the developer's real agent registry (roster_for and
     delegation.call reload it). Tests needing agents set their own."""
-    from src import agent_registry
+    from src.agents import agent_registry
 
     monkeypatch.setattr(agent_registry, "_CONFIG_PATH", tmp_path / "registry" / "agent_registry.json")
     monkeypatch.setattr(agent_registry, "_CHAT_APP_CONFIG_PATH", tmp_path / "registry" / "chat_app_agents.json")

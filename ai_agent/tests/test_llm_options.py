@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 
-from src.agent_spec import LlmSpec
+from src.agents.agent_spec import LlmSpec
 from src.llm.llm_options import LlmOptions
 
 

@@ -2,16 +2,24 @@
 
 The `src` package - installed under that literal name (see
 `../pyproject.toml`), so every import in this codebase reads
-`from src.foo import bar`, matching `chat_app`/`mcp_server`'s layout.
+`from src.<group>.foo import bar`, matching `chat_app`/`mcp_server`'s layout.
 
 ## Code
 
-- **[`llm/`](llm/README.md)** - adapted from `chat_app/src/services/llm/`
-  (Claude and OpenAI only), calling `mcp_upstream.py` instead of
-  chat_app's own MCP client.
+Entry points stay at the package root; everything else is grouped by concern.
+
 - `server.py` - FastMCP entry point; `ask`/`interpret`/`status`/`cancel`
   tools. `interpret` is the non-agentic, single-completion path used for
   chat summarization; `ask` is the full tool-calling loop for free-form chat.
+- `supervisor.py` - `python -m src.supervisor` (what `run.bat` runs):
+  spawns one `src.server` child per enabled agent file, relays output,
+  restarts crashed children with backoff.
+
+### [`agents/`](agents/) - agent identity, routing, delegation
+
+- `agent_spec.py` - loads and validates one `agents/<id>.json` (identity,
+  port, `llm`, `orchestrator`, `routing`) into the process-wide
+  `AgentSpec` the other modules read.
 - `agent_config.py` - resolves the pinned provider+model from
   `.env` once at startup; fails loudly on a bad
   config.
@@ -23,26 +31,36 @@ The `src` package - installed under that literal name (see
   `register()`/`deregister()` also upsert/remove this instance's own
   `{id, label, url}` in `../data/agent_registry.json` (runtime state,
   gitignored) and `chat_app`'s copy, on startup/clean shutdown.
-- `agent_spec.py` - loads and validates one `agents/<id>.json` (identity,
-  port, `llm`, `orchestrator`, `routing`) into the process-wide
-  `AgentSpec` the other modules read.
 - `agent_routing.py` - per-turn roster of specialists for an orchestrator
   (optionally Laya-shortlisted) and the `agent_id="auto"` pick.
 - `agent_events.py` - the progress events a specialist emits and an
   orchestrator re-emits upward (`agent_*`).
+
+### [`llm/`](llm/README.md) - provider backends
+
+Adapted from `chat_app/src/services/llm/` (Claude and OpenAI only),
+calling `mcp_client/mcp_upstream.py` instead of chat_app's own MCP client.
+`llm/llm_options.py` holds the per-agent LLM options (gateway, model,
+limits) resolved from the agent file.
+
+### [`mcp_client/`](mcp_client/) - upstream MCP connection
+
+- `registry.py`, `config.py`, `transports.py`, `sync_wrapper.py` - a
+  generic MCP-client layer (`McpClientRegistry`/`SyncMcpClient`), giving
+  this project a persistent, namespaced connection to `mcp_server` instead
+  of reconnecting per call.
+- `mcp_upstream.py` - the only one adapted for this project's specific
+  single-upstream, enabled-extensions-filtered use.
+- `tool_selection.py`, `tool_progress.py` - Laya tool shortlist and
+  per-tool progress reporting.
+
+### [`core/`](core/) - shared plumbing
+
+- `catalog.py`, `seed.py`, `config_files.py` - `@catalog` stub, `.example`
+  seeding, and the paths/readers for `../configs/`.
+- `internal_auth.py` - internal API token and requester identity.
+- `approvals.py` - per-call tool approval handling.
 - `usage_log.py` - append-only per-agent usage log.
-- `supervisor.py` - `python -m src.supervisor` (what `run.bat` runs):
-  spawns one `src.server` child per enabled agent file, relays output,
-  restarts crashed children with backoff.
-- `llm/llm_options.py` - per-agent LLM options (gateway, model, limits)
-  resolved from the agent file.
-- `mcp_upstream.py`, `registry.py`, `config.py`, `transports.py`,
-  `sync_wrapper.py` - a generic MCP-client layer
-  (`McpClientRegistry`/`SyncMcpClient`), giving this project a
-  persistent, namespaced connection to `mcp_server` instead of
-  reconnecting per call; `mcp_upstream.py` is the only one adapted for
-  this project's specific single-upstream, enabled-extensions-filtered
-  use.
 
 ## Runtime data (not code)
 

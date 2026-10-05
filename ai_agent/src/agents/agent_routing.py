@@ -15,8 +15,10 @@ from typing import Any
 
 import anyio.to_thread
 
-from src import agent_registry, agent_spec, tool_selection
-from src.agent_spec import RosterEntry
+from src.agents import agent_registry, agent_spec
+
+from src.mcp_client import tool_selection
+from src.agents.agent_spec import RosterEntry
 
 _log = logging.getLogger(__name__)
 

@@ -23,8 +23,8 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable, Sequence
 
-from src import agent_registry, agent_spec
-from src.agent_spec import AgentSpec
+from src.agents import agent_registry, agent_spec
+from src.agents.agent_spec import AgentSpec
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MAX_CRASHES = 5

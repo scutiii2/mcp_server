@@ -15,8 +15,8 @@ from typing import Any, Iterable, Protocol
 
 import anyio.to_thread
 
-from src.catalog import catalog
-from src.config_files import TOOL_SELECTION_PATH, read_section
+from src.core.catalog import catalog
+from src.core.config_files import TOOL_SELECTION_PATH, read_section
 
 _CONFIG_PATH = TOOL_SELECTION_PATH
 _config: dict[str, Any] | None = None

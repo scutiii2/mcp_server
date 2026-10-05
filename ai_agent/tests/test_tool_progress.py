@@ -6,9 +6,9 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from src import mcp_upstream, tool_progress
+from src.mcp_client import mcp_upstream, tool_progress
 from src.llm.base_provider import dispatch_with_progress
-from src.registry import McpClientRegistry
+from src.mcp_client.registry import McpClientRegistry
 
 
 def test_dispatch_with_progress_emits_step_progress_events_in_order():

@@ -9,7 +9,7 @@ import asyncio
 import sys
 
 from src import supervisor
-from src.agent_spec import AgentSpec, LlmSpec
+from src.agents.agent_spec import AgentSpec, LlmSpec
 
 
 def _spec(agent_id, port=9200, enabled=True, tmp_path=None):

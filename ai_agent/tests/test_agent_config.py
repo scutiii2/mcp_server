@@ -23,7 +23,7 @@ from src.llm.base_provider import ChatResult
 
 @pytest.fixture(autouse=True)
 def _no_real_secrets_file(monkeypatch, tmp_path):
-    from src import agent_config
+    from src.agents import agent_config
 
     monkeypatch.setattr(agent_config, "_SECRETS_PATH", tmp_path / ".env")
     monkeypatch.setattr(agent_config.cancellation, "_cancelled", set())
@@ -49,7 +49,7 @@ def test_missing_provider_env_var_fails_loudly(monkeypatch):
     # _resolve() function keeps everything referencing one class.
     _clear_env(monkeypatch)
 
-    from src import agent_config
+    from src.agents import agent_config
 
     with pytest.raises(agent_config.AgentConfigError, match="AI_AGENT_PROVIDER is not set"):
         agent_config._resolve()
@@ -59,7 +59,7 @@ def test_unknown_provider_fails_loudly(monkeypatch):
     _clear_env(monkeypatch)
     monkeypatch.setenv("AI_AGENT_PROVIDER", "bogus")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     with pytest.raises(agent_config.AgentConfigError, match="Unknown AI_AGENT_PROVIDER 'bogus'"):
         agent_config._resolve()
@@ -69,7 +69,7 @@ def test_provider_without_api_key_fails_loudly(monkeypatch):
     _clear_env(monkeypatch)
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     with pytest.raises(agent_config.AgentConfigError, match="its API key is not configured"):
         agent_config._resolve()
@@ -80,7 +80,7 @@ def test_valid_anthropic_config_resolves(monkeypatch):
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     reloaded = importlib.reload(agent_config)
 
@@ -98,7 +98,7 @@ def test_blank_model_env_var_counts_as_unset(monkeypatch):
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
     monkeypatch.setenv("AI_AGENT_MODEL", "")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     reloaded = importlib.reload(agent_config)
 
@@ -113,7 +113,7 @@ def test_run_chat_registers_and_clears_cancellation_around_the_call(monkeypatch)
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     reloaded = importlib.reload(agent_config)
 
@@ -148,7 +148,7 @@ def test_run_chat_defaults_depth_to_zero(monkeypatch):
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     reloaded = importlib.reload(agent_config)
 
@@ -176,7 +176,7 @@ def test_run_chat_still_clears_cancellation_when_the_provider_raises(monkeypatch
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     reloaded = importlib.reload(agent_config)
 
@@ -202,7 +202,7 @@ def test_cancel_delegates_to_cancellation_module(monkeypatch):
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     reloaded = importlib.reload(agent_config)
 
@@ -220,7 +220,7 @@ def test_run_chat_awaits_async_provider_and_forwards_on_event(monkeypatch):
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
     
     reloaded = importlib.reload(agent_config)
 
@@ -252,7 +252,7 @@ def test_run_chat_falls_back_to_thread_for_sync_provider(monkeypatch):
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
     from src.llm.base_provider import ChatResult
 
     reloaded = importlib.reload(agent_config)
@@ -288,7 +288,7 @@ def test_run_chat_still_registers_and_clears_cancellation_for_async_provider(mon
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
     from src.llm.base_provider import ChatResult
 
     reloaded = importlib.reload(agent_config)
@@ -319,7 +319,7 @@ def test_run_chat_still_clears_cancellation_when_async_provider_raises(monkeypat
     monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
     monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
 
-    from src import agent_config
+    from src.agents import agent_config
 
     reloaded = importlib.reload(agent_config)
 

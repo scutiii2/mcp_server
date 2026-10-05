@@ -10,7 +10,7 @@ chat_app  --(MCP: ask/interpret/status/cancel/decide)-->  ai_agent  --(MCP, pers
 It is both an MCP *server* (to `chat_app`, exposing
 `ask`/`interpret`/`status`/`cancel`/`decide`)
 and an MCP *client* (to `mcp_server`, via a persistent connection - see
-`src/mcp_upstream.py`). Run one agent per provider (see Agents) to back
+`src/mcp_client/mcp_upstream.py`). Run one agent per provider (see Agents) to back
 `chat_app`'s Claude Agent / OpenAI Agent dropdown entries.
 
 ## Setup
@@ -194,7 +194,7 @@ the turn. `data/usage/` is gitignored.
 
 ## Asking before tools run
 
-`ask` takes `approval_mode` and `allowed_tools` (`src/approvals.py`):
+`ask` takes `approval_mode` and `allowed_tools` (`src/core/approvals.py`):
 
 - `off` (default): tools run as before. chat_app never sets a mode.
 - `ask`: before each tool that is not in `allowed_tools`, the agent emits an
@@ -267,7 +267,7 @@ Agent files give each instance its own id, so any number of same-provider agents
   `.env` (created from its `.example` on first
   run; same value as mcp_server's, chat_app's and ember_api's). Without it
   a request gets `401`. The agent sends the same token on its own calls to
-  mcp_server and to peer agents (`src/internal_auth.py`).
+  mcp_server and to peer agents (`src/core/internal_auth.py`).
 - **The asking user travels on**: `ask()` reads `X-Requester-Username` /
   `X-Requester-Email` from the request (ember_api and chat_app set them),
   and every mcp_server tool it calls during that turn gets the user in the

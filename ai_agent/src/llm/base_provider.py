@@ -19,8 +19,10 @@ from typing import Any, Awaitable, Callable
 
 import anyio.to_thread
 
-from src import agent_events, tool_progress
-from src.catalog import catalog
+from src.agents import agent_events
+
+from src.mcp_client import tool_progress
+from src.core.catalog import catalog
 from src.llm import cooldown
 
 

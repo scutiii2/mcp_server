@@ -1,5 +1,5 @@
 """ai_agent's connection to mcp_server - a thin, sync-friendly wrapper
-around src/sync_wrapper.py's SyncMcpClient, giving the provider files
+around src/mcp_client/sync_wrapper.py's SyncMcpClient, giving the provider files
 (src/llm/anthropic_provider.py, src/llm/openai_provider.py) the same
 call_tool(name, args) -> str / list_tools(enabled_extensions) -> list
 shape chat_app's own services/mcp_client.py gives them today.
@@ -15,9 +15,13 @@ import logging
 import os
 from typing import Any
 
-from src import agent_spec, internal_auth, tool_progress
-from src.config_files import SERVERS_PATH
-from src.sync_wrapper import SyncMcpClient
+from src.agents import agent_spec
+
+from src.core import internal_auth
+
+from src.mcp_client import tool_progress
+from src.core.config_files import SERVERS_PATH
+from src.mcp_client.sync_wrapper import SyncMcpClient
 
 _CONFIG_PATH = SERVERS_PATH
 

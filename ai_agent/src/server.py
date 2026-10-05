@@ -62,7 +62,7 @@ if _args.mcp_url:
 # AI_AGENT_FILE. Its provider/gateway/model must reach the env vars before
 # agent_config is imported (the providers resolve them at import time), so
 # this runs first. agent_spec imports nothing from this project.
-from src import agent_spec
+from src.agents import agent_spec
 
 if os.getenv("AI_AGENT_FILE"):
     try:
@@ -79,7 +79,9 @@ from mcp.server.fastmcp import Context, FastMCP
 # Anything else (a real bug, ImportError...) still propagates untouched.
 _CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError", "AgentSpecError"}
 try:
-    from src import agent_config, agent_events, agent_registry, approvals, internal_auth, mcp_upstream, usage_log
+    from src.agents import agent_config, agent_events, agent_registry
+    from src.core import approvals, internal_auth, usage_log
+    from src.mcp_client import mcp_upstream
     from src.llm.base_provider import ChatCancelled
 except Exception as _exc:
     if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
