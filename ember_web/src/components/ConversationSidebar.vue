@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { ChatSearchHit, MatchSpan } from "../api/ChatsClient";
 import type { Conversation } from "../api/types";
+import ChatRow from "./ChatRow.vue";
 import UsageGauges from "./UsageGauges.vue";
 
 // locked: a turn is running - switching or starting chats is blocked.
@@ -45,23 +46,13 @@ function parts(text: string, span: MatchSpan | null): { before: string; match: s
   };
 }
 
-// The row being renamed, and its draft title.
+// The row being renamed (its draft text lives in the row).
 const renamingId = ref<string | null>(null);
-const draft = ref("");
-const renameInput = ref<HTMLInputElement[]>([]);
 
-async function startRename(c: Conversation): Promise<void> {
-  renamingId.value = c.id;
-  draft.value = c.title;
-  await nextTick();
-  renameInput.value[0]?.select();
-}
-
-function finishRename(save: boolean): void {
-  const id = renamingId.value;
-  if (id === null) return;
-  renamingId.value = null; // before emitting: blur fires again when the input goes
-  if (save) emit("rename", id, draft.value);
+function finishRename(id: string, save: boolean, title: string): void {
+  if (renamingId.value !== id) return;
+  renamingId.value = null;
+  if (save) emit("rename", id, title);
 }
 
 function confirmDelete(c: Conversation): void {
@@ -178,64 +169,22 @@ watch(
     </template>
     <p v-else-if="conversations.length === 0" class="empty">{{ loading ? "Loading chats …" : "No saved chats yet." }}</p>
     <ul v-else class="list">
-      <li
+      <ChatRow
         v-for="c in conversations"
         :key="c.id"
-        :class="['row', { active: c.id === activeId, locked, ticked: selecting && ticked.has(c.id) }]"
-        :title="c.title"
-        @click="selecting ? toggle(c) : renamingId !== c.id && emit('select', c.id)"
-      >
-        <template v-if="selecting">
-          <input
-            type="checkbox"
-            class="tick"
-            :checked="ticked.has(c.id)"
-            :disabled="isLocked(c)"
-            :aria-label="`Select ${c.title}`"
-            @click.stop="toggle(c)"
-          />
-          <span v-if="c.running" class="running" title="An answer is being written" />
-          <span class="title">{{ c.title }}</span>
-        </template>
-        <input
-          v-else-if="renamingId === c.id"
-          ref="renameInput"
-          v-model="draft"
-          class="rename"
-          aria-label="Chat title"
-          maxlength="120"
-          @click.stop
-          @keydown.enter.prevent="finishRename(true)"
-          @keydown.esc.prevent="finishRename(false)"
-          @blur="finishRename(true)"
-        />
-        <template v-else>
-          <span v-if="c.running" class="running" title="An answer is being written" />
-          <span class="title" @dblclick.stop="startRename(c)">{{ c.title }}</span>
-          <button type="button" class="icon" title="Rename chat" @click.stop="startRename(c)">
-            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-              <path
-                d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="icon delete"
-            title="Delete chat"
-            :disabled="locked && c.id === activeId"
-            @click.stop="confirmDelete(c)"
-          >
-            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-            </svg>
-          </button>
-        </template>
-      </li>
+        :chat="c"
+        :active="c.id === activeId"
+        :locked="locked"
+        :locked-here="isLocked(c)"
+        :selecting="selecting"
+        :ticked="ticked.has(c.id)"
+        :renaming="renamingId === c.id"
+        @select="emit('select', c.id)"
+        @toggle="toggle(c)"
+        @start-rename="renamingId = c.id"
+        @finish-rename="(save, title) => finishRename(c.id, save, title)"
+        @delete="confirmDelete(c)"
+      />
     </ul>
 
     <div v-if="selecting" class="select-bar">
@@ -374,63 +323,6 @@ mark {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Shown on hover (or always on touch screens, which have no hover). */
-.icon {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--muted);
-  background: transparent;
-  opacity: 0;
-}
-.row:hover .icon,
-.icon:focus-visible {
-  opacity: 1;
-}
-@media (hover: none) {
-  .icon {
-    opacity: 1;
-  }
-}
-.icon:hover:not(:disabled) {
-  color: var(--text);
-}
-.delete:hover:not(:disabled) {
-  color: var(--danger);
-}
-.icon:disabled {
-  cursor: default;
-  opacity: 0;
-}
-.running {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-@keyframes pulse {
-  50% {
-    opacity: 0.3;
-  }
-}
-.rename {
-  flex: 1;
-  min-width: 0;
-  padding: 2px 6px;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--bg);
-  font: inherit;
-}
 .footer,
 .select-bar {
   display: flex;
@@ -477,11 +369,6 @@ mark {
 }
 .count-chosen {
   flex: 1;
-}
-.tick {
-  flex-shrink: 0;
-  margin: 0 2px 0 0;
-  cursor: pointer;
 }
 .row.ticked {
   color: var(--text);
