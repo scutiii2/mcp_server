@@ -3,7 +3,7 @@
 Every caller of this server's /mcp endpoint is another server in this
 repo - chat_app, ai_agent, ember_api - never a browser or an end user, and
 each of them already holds INTERNAL_API_TOKEN (the same value everywhere,
-see .secrets/secret_internal_api.env). Checking it here means a process
+see .env). Checking it here means a process
 that can merely reach the port can no longer call every tool with
 arguments of its choosing.
 

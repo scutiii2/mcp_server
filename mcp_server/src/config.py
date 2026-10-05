@@ -66,7 +66,7 @@ class Settings:
     # same token on the way IN, since chat_app's Chat/api/upload proxies a
     # user's dropped file here and the receiving end shouldn't accept that
     # from anything else reachable on the network. Blank by default (from
-    # secret_internal_api.env, unset until someone configures it) so it
+    # .env, unset until someone configures it) so it
     # fails loudly rather than silently accepting an unauthenticated request.
     internal_api_token: str = _env("INTERNAL_API_TOKEN", "")
     # Where POST /upload (upload_routes.py) writes files a chat_app user

@@ -181,7 +181,7 @@ def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:
     if value is None:
         raise KeyError(
             f"Config file {config_path} refers to ${{{name}}} at '{where}', but "
-            f"{name} is not set in the environment. Add it to mcp_server/.secrets/ "
+            f"{name} is not set in the environment. Add it to mcp_server/.env "
             f"(or however this deployment supplies secrets)."
         )
     if value == "":

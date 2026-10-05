@@ -175,7 +175,7 @@ through `Field(json_schema_extra={...})`:
    standard explain-the-result note to that tool's description. There is no `needs_ai_review` or
    `ai_required` metadata anymore, and slash commands never go through an AI agent.
 5. `capabilities/<name>/README.md` - what it reads (which
-   `../../configs/*.json` files, which `../../.secrets/*.env` files), what (if
+   `../../configs/*.json` files, which `../../.env` variables), what (if
    anything) it owns under its own dot-folders, and how to toggle it
    off. Every capability README uses the same three tables under fixed
    headings: `## Tools` (`Tool | Purpose | Connection`; slash-command tools

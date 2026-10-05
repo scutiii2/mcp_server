@@ -11,7 +11,7 @@ Give each item found by the catalog its own description (catalog_service current
 **Context**: Secrets and settings are split into many tiny files. ai_agent already uses a single `ai_agent/.env` (with `.env.example`); mcp_server and ember_api still use several `secret_*.env` files. Not approved for implementation yet.
 
 **Secrets: one `.env` per project, like ai_agent**
-- **mcp_server**: merge `.secrets/secret_app.env`, `secret_internal_api.env`, `secret_smtp.env` and `secret_ssh.env` into `mcp_server/.env` (+ `.env.example`). The old note kept `secret_ssh.env` apart as "more sensitive", but it only holds `SSH_HOST_KEY_POLICY` and `SSH_KNOWN_HOSTS` (no credentials), so it can join. `secret_app.env` holds `MCP_HOST` and `MCP_PORT`, which are settings rather than secrets; they could move to a config file instead (decide).
+- **mcp_server** (done 2026-10-05): `.secrets/secret_*.env` merged into `mcp_server/.env` (+ `.env.example`); `MCP_HOST` / `MCP_PORT` stay there. `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). Delete the legacy `.secrets/` real files once `.env` is confirmed.
 - **ember_api**: merge `secrets/secret_bootstrap_admin.env`, `secret_internal_api.env` and `secret_smtp.env` into `ember_api/.env` (+ `.env.example`).
 - `INTERNAL_API_TOKEN` stays in each project's own `.env` and must match across ember_api, ai_agent and mcp_server. Do not share one file across projects (each project stays self-contained).
 
@@ -31,7 +31,7 @@ Give each item found by the catalog its own description (catalog_service current
 
 **Why not built now**: user asked to log it instead of implementing.
 
-**Revisit when**: user wants this built. Start with mcp_server (ember_api configs are already merged).
+**Revisit when**: user wants this built. mcp_server secrets are done; next is the mcp_server configs, then ember_api secrets.
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 

@@ -61,7 +61,7 @@ mechanics); paths come from `Settings.email_config_path` /
 
 Each file's top-level JSON *is* its content - there's no wrapper key.
 Anything sensitive is a `${VAR}` placeholder resolved from
-`../.secrets/*.env` at load time, never a literal value in these files -
+`../.env` at load time, never a literal value in these files -
 see `services/app_config.py`'s docstring for the substitution syntax.
 Every file has a committed `.example` twin with the same shape.
 

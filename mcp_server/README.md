@@ -13,8 +13,8 @@ starting/stopping/restarting/listing managed apps. Built to be called by
 
 ## Setup
 
-1. Copy the `.example` files under `.secrets/` and `configs/` and
-   fill in real values - see [Configuration](#configuration).
+1. Copy `.env.example` to `.env` (created automatically on first run) and
+   the `.example` files under `configs/`, and fill in real values - see [Configuration](#configuration).
 
 2. Run the server:
 
@@ -29,16 +29,15 @@ starting/stopping/restarting/listing managed apps. Built to be called by
 
 Both loaded once at boot by `src/run.py`:
 
-- **`.secrets/*.env`** - credentials, gitignored. Copy each
-  `*.env.example` to the matching `*.env`. See
-  [`docs/secrets.md`](docs/secrets.md).
+- **`.env`** - credentials and deployment settings, gitignored. Copy
+  `.env.example` to `.env`. See [`docs/secrets.md`](docs/secrets.md).
 - **`configs/*.json`** - structure, mostly committed. See
   [`configs/README.md`](configs/README.md).
 
 ## Security
 
 - **`/mcp` needs the internal token** once `INTERNAL_API_TOKEN` is set in
-  `.secrets/secret_internal_api.env` (`X-Internal-Token`, compared in
+  `.env` (`X-Internal-Token`, compared in
   constant time; `401` otherwise). Every caller is another server in this
   repo - chat_app, ai_agent, ember_api - and all of them send it. The
   startup banner says whether it's on.

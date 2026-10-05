@@ -6,28 +6,14 @@ Run with:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 # Must run before any src.* import: Settings' field defaults read
-# os.getenv() at class-definition time (i.e. at import time), so every
-# secrets/*.env file needs to be loaded into the environment first or
-# those defaults never see it. Loaded from every *.env file in
-# secrets/ rather than one fixed name, mirroring configs/'s
-# one-file-per-concern split (secret_app.env, secret_smtp.env,
-# secret_ssh.env today; a future capability that owns a real secret adds
-# its own file here with zero changes to this loop).
-import shutil
+# os.getenv() at class-definition time (i.e. at import time), so .env
+# needs to be loaded into the environment first or those defaults never
+# see it. A missing .env is built from the legacy .secrets/*.env files,
+# else from .env.example.
+from src.utils.env_file import load_env_file
 
-from dotenv import load_dotenv
-
-_SECRETS_DIR = Path(".secrets")
-# Auto-create any missing secret_*.env from its .env.example twin.
-for _example in sorted(_SECRETS_DIR.glob("*.env.example")):
-    _target = _example.with_suffix("")
-    if not _target.exists():
-        shutil.copyfile(_example, _target)
-for _env_file in sorted(_SECRETS_DIR.glob("*.env")):
-    load_dotenv(_env_file)
+load_env_file()
 
 from src.config import settings  # noqa: E402
 from src.services import capability_registry  # noqa: E402
@@ -151,7 +137,7 @@ async def _serve() -> None:
         banner.append(
             "  /mcp auth : X-Internal-Token required"
             if settings.internal_api_token
-            else "  /mcp auth : none (set INTERNAL_API_TOKEN in .secrets/secret_internal_api.env)"
+            else "  /mcp auth : none (set INTERNAL_API_TOKEN in .env)"
         )
         if settings.host not in {"127.0.0.1", "localhost", "::1"} and not settings.internal_api_token:
             # Worth shouting about: there is no authentication on this

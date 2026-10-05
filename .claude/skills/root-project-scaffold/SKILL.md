@@ -22,7 +22,7 @@ Mandatory in every root project:
 | `pyproject.toml` | Its own dependencies — each root project is a separate Python environment, never a shared venv |
 | `run.bat` | The one launcher, env-var-configured: don't copy the bat per instance, set env vars before calling it (ai_agent goes further: its bat starts a supervisor that runs one child per `agents/<id>.json`). Creates its own `.venv_<project>` on first run |
 | `configs/` | JSON config, each real file gitignored with a committed `.example` twin (`config_x.json` + `config_x.json.example`) |
-| `secrets/` | Credentials/env files, same gitignored-with-`.example` pattern (e.g. `mcp_server/.secrets/*.example`; ai_agent instead keeps a single root `.env` + `.env.example`) |
+| `secrets/` | Credentials/env files, same gitignored-with-`.example` pattern (`mcp_server` and `ai_agent` keep a single root `.env` + `.env.example`) |
 | `src/` | The actual code |
 | `tests/` | Its test suite |
 
@@ -64,7 +64,7 @@ changes the convention for every project after it.
    registered; an interactive program like `chat_cli` (a terminal client, not
    a server) is not.
 6. Services reached over HTTP/MCP by other projects must take the shared
-   `INTERNAL_API_TOKEN` from a secrets file (`secrets/secret_internal_api.env`; ai_agent: `.env`) and, for
+   `INTERNAL_API_TOKEN` from a secrets file (`secrets/secret_internal_api.env`; ai_agent and mcp_server: `.env`) and, for
    `/mcp`, reject calls without it once set. Never import another root
    project: self-contained means a separate venv and no shared packages
    (see `chat_cli`, which talks to ember_api over HTTP instead of reusing
@@ -73,11 +73,10 @@ changes the convention for every project after it.
 ## mcp_server's dotted variant
 
 `mcp_server` already goes one step further, and a new server that owns per-capability state should copy it: the rule is
-**dot-prefixed = untracked runtime state or secrets, plain `configs/` = tracked**. Its root has `.data/`, `.logs/`, `.cache/`,
-`.secrets/` (in place of plain `data/`, `logs/`, `secrets/`) and `configs/`, and each capability gets the same five under
-`specifics/<capability_name>/` (`.data/ .logs/ .cache/ .secrets/ configs/`). An untracked dot-folder needs no `README.md`; a
-credentials README that is worth keeping lives in `docs/` (see `mcp_server/docs/secrets.md`); `.secrets/*.example` twins stay
-tracked. `mcp_server/migrate_state_layout.py` moves an older checkout onto this shape. `ai_agent`, `ember_api` and `chat_cli` use the
+**dot-prefixed = untracked runtime state or secrets, plain `configs/` = tracked**. Its root has `.data/`, `.logs/`, `.cache/`
+(in place of plain `data/`, `logs/`), a single `.env`, and `configs/`; each capability gets `.data/ .logs/ .cache/ .secrets/ configs/` under
+`specifics/<capability_name>/`. An untracked dot-folder needs no `README.md`; a
+credentials README that is worth keeping lives in `docs/` (see `mcp_server/docs/secrets.md`); `.env.example` stays tracked. `mcp_server/migrate_state_layout.py` moves an older checkout onto this shape. `ai_agent`, `ember_api` and `chat_cli` use the
 plain folder names above.
 
 ## Auditing an existing root folder

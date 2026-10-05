@@ -16,11 +16,12 @@ __pycache__/
 # stale if committed (whatever was running at commit time, not now).
 /server_launcher/data/kept_running.json
 
-# mcp_server's real config/secrets/runtime-state, mirroring chat_app's
-# configs + secrets + data split. config_*.json holds
+# mcp_server's real config/secrets/runtime-state. config_*.json holds
 # structure (committed) with ${VAR} placeholders for anything sensitive;
-# secret_*.env holds the real values (gitignored) those placeholders
-# resolve to. Both keep an .example twin, which IS committed.
+# .env holds the real values (gitignored) those placeholders resolve to.
+# Both keep an .example twin, which IS committed. .secrets/ is the legacy
+# folder run.py migrates into .env on first start.
+/mcp_server/.env
 /mcp_server/.secrets/*
 !/mcp_server/.secrets/*.example
 
