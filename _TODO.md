@@ -6,23 +6,32 @@ Deferred items — not scheduled, revisit when the trigger condition below is me
 
 Give each item found by the catalog its own description (catalog_service currently lacks per-item descriptions).
 
-## Consolidate secret .env and config .json files (deferred 2026-09-21)
+## One .env per project, and merge the small configs (deferred 2026-09-21, rewritten 2026-10-05)
 
-**Context**: Many secret/config files are tiny (most under 300 bytes) and split by habit. Proposal to merge them; not approved for implementation yet.
+**Context**: Secrets and settings are split into many tiny files. ai_agent already uses a single `ai_agent/.env` (with `.env.example`); mcp_server and ember_api still use several `secret_*.env` files. Not approved for implementation yet.
 
-**Proposed merges**:
-- **mcp_server secrets**: merge `secret_app`, `secret_internal_api`, `secret_smtp` into one file. `secret_ssh.env` stays separate (more sensitive).
-- **mcp_server configs**: `config_capabilities` + `config_extensions` into `config_mcp_server.json`.
-- **ai_agent**: split by concern instead of merged (done): `config_limits`, `config_servers`, `config_tool_selection`, `config_gateways`, `prompts.json`, and the runtime registry at `data/agent_registry.json`.
+**Secrets: one `.env` per project, like ai_agent**
+- **mcp_server**: merge `.secrets/secret_app.env`, `secret_internal_api.env`, `secret_smtp.env` and `secret_ssh.env` into `mcp_server/.env` (+ `.env.example`). The old note kept `secret_ssh.env` apart as "more sensitive", but it only holds `SSH_HOST_KEY_POLICY` and `SSH_KNOWN_HOSTS` (no credentials), so it can join. `secret_app.env` holds `MCP_HOST` and `MCP_PORT`, which are settings rather than secrets; they could move to a config file instead (decide).
+- **ember_api**: merge `secrets/secret_bootstrap_admin.env`, `secret_internal_api.env` and `secret_smtp.env` into `ember_api/.env` (+ `.env.example`).
+- `INTERNAL_API_TOKEN` stays in each project's own `.env` and must match across ember_api, ai_agent and mcp_server. Do not share one file across projects (each project stays self-contained).
 
-**Notes**:
-- `INTERNAL_API_TOKEN` exists in ember_api, ai_agent and mcp_server and must match. Do not share a file across projects (keeps each project self-contained).
+**Configs: stay in `configs/`; which ones can merge**
+- **mcp_server**: `config_capabilities.json` (42 B) and `config_extensions.json` can merge into `config_mcp_server.json` (keys `capabilities` and `extensions`). `config_email.json` (example only, no real file yet) could join as an `email` key; its `${SMTP_PASSWORD}` placeholder then resolves from `mcp_server/.env`. Caveat: capabilities and extensions are rewritten at runtime by `capability_routes.py` and `extension_routes.py` (persist-then-apply), so one merged file needs one shared atomic writer. If the "drop the extensions proxy" item below is done first, `config_extensions.json` is deleted and only capabilities (+ email) remain to merge.
+- **ai_agent**: `config_limits.json` and `config_tool_selection.json` are both small runtime tuning (token limits, tool shortlist) and can merge into one file (name to decide, for example `config_tuning.json`).
+- **Keep separate**: `ai_agent/configs/config_gateways.json` (3 KB, provider endpoints), `prompts.json` (persona text), `config_servers.json` (the MCP server list, reworked by the extensions item below), and `ai_agent/data/agent_registry.json` (runtime registry, lives in `data/`, not a config).
+- **Nothing to merge**: ember_api already has the single `configs/config_app.json`; `chat_cli/configs/` has one file. `catalog_service/configs/` not checked.
 
-**Work involved**: update every loader, the `.example` twins, `config_validation.py` per-file checkers, tests, READMEs and the scaffold skills (`aiagent-scaffold`, `mcp-capability-scaffold`, `root-project-scaffold`). Add a one-time migration that reads the old files when the new one is missing, so existing real secrets (for example the bootstrap admin password) are not lost. Trade-off: one typo can break several settings in a merged file, and a merged `config_security.json` reloads all four features together.
+**Work involved**:
+- Update every loader, the `.example` twins, `.gitignore` entries and any `run.bat` first-run copy step to match ai_agent's `.env` handling.
+- Update `ember_api/src/services/config_validation.py` per-file checkers (mcp_server has no equivalent file), tests, READMEs (including `ember_api/secrets/README.md`) and the scaffold skills. Edit the skills under `.agents/skills/` (`aiagent-scaffold`, `mcp-capability-scaffold`, `root-project-scaffold`, `ember-feature-scaffold`), then sync to `.claude/skills/`; the pre-commit check enforces the match.
+- Add a one-time migration that reads the old files when the new one is missing, so existing real secrets (for example the bootstrap admin password) are not lost.
+- Fix stale comments in `ai_agent/.env.example` (it still mentions `secret_llm.env`, `secret.env` and chat_app).
+
+**Trade-off**: one typo in a merged file can break several settings at once.
 
 **Why not built now**: user asked to log it instead of implementing.
 
-**Revisit when**: user wants this built. Start with ember_api or mcp_server.
+**Revisit when**: user wants this built. Start with mcp_server (ember_api configs are already merged).
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 
