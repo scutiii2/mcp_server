@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from rich.console import Console
 
-from src.api import Agent, ApiError, EmberUnreachable
-from src.main import authenticate, build_parser, pick_agent
+from src.api import ApiError, EmberUnreachable
+from src.main import authenticate, build_parser
 from tests.conftest import Script, screen
 
 
@@ -101,20 +101,18 @@ class TestCommandLine:
     def test_every_option_is_optional(self) -> None:
         args = build_parser().parse_args([])
 
-        assert (args.url, args.user, args.agent, args.ask) == (None, None, None, False)
+        assert (args.url, args.user, args.ask) == (None, None, False)
 
     def test_options(self) -> None:
-        args = build_parser().parse_args(["--url", "http://x:1", "--user", "ada", "--agent", "a1", "--ask"])
+        args = build_parser().parse_args(["--url", "http://x:1", "--user", "ada", "--ask"])
 
-        assert (args.url, args.user, args.agent, args.ask) == ("http://x:1", "ada", "a1", True)
+        assert (args.url, args.user, args.ask) == ("http://x:1", "ada", True)
 
     def test_there_is_no_password_option(self) -> None:
         with pytest.raises(SystemExit):
             build_parser().parse_args(["--password", "x"])
 
-    def test_pick_agent(self) -> None:
-        agents = [Agent("a1", "One"), Agent("a2", "Two")]
-
-        assert pick_agent(agents, "a2") == agents[1]
-        assert pick_agent(agents, "nope") is None
-        assert pick_agent(agents, None) is None
+    def test_there_is_no_agent_option(self) -> None:
+        # Every question goes to ember_api's entry agent, so there is nothing to pick.
+        with pytest.raises(SystemExit):
+            build_parser().parse_args(["--agent", "a1"])

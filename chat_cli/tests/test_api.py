@@ -130,10 +130,18 @@ class TestErrors:
 
 
 class TestCalls:
-    async def test_agents(self) -> None:
-        server = Server(reply([{"id": "a1", "label": "Agent One"}, {"id": "a2"}]))
+    async def test_entry_agent(self) -> None:
+        server = Server(reply({"id": "ember", "label": "Ember"}))
 
-        assert await server.client().agents() == [Agent("a1", "Agent One"), Agent("a2", "a2")]
+        assert await server.client().entry_agent() == Agent("ember", "Ember")
+        assert server.last.method == "GET" and server.last.url.path == "/api/agent"
+
+    async def test_no_entry_agent_running_is_an_api_error(self) -> None:
+        server = Server(reply({"detail": "No agent is running"}, 503))
+
+        with pytest.raises(ApiError) as caught:
+            await server.client().entry_agent()
+        assert caught.value.status == 503 and caught.value.detail == "No agent is running"
 
     async def test_chats(self) -> None:
         item = {"id": "c1", "title": "T", "agent_id": None, "message_count": 3, "created_at": "x",

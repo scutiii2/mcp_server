@@ -90,50 +90,18 @@ class TestPromptLoop:
         assert script.prompts == ["you > "]
 
 
-class TestAgentChoice:
-    async def test_with_no_agent_chosen_the_picker_runs_first(self, client: FakeClient, console: Console) -> None:
-        repl = ChatRepl(client, console, Script("2", "Q"), [], ChatSession())
+class TestEntryAgent:
+    async def test_with_no_agent_nothing_is_asked_or_sent(self, client: FakeClient, console: Console) -> None:
+        script = Script("Q")
 
-        await repl.run()
+        await ChatRepl(client, console, script, [], ChatSession()).run()
 
-        assert client.turns[0]["agent_id"] == "a2"
-        assert "1) Agent One" in screen(console) and "2) Agent Two" in screen(console)
+        assert client.turns == [] and script.prompts == []
 
-    async def test_a_single_agent_needs_no_question(self, client: FakeClient, console: Console) -> None:
-        client.agent_list = [Agent("only", "Only Agent")]
-        repl = ChatRepl(client, console, Script("Q"), [], ChatSession())
+    async def test_the_agent_command_is_gone(self, client: FakeClient, console: Console) -> None:
+        await make_repl(client, console, Script("/agent")).run()
 
-        await repl.run()
-
-        assert client.turns[0]["agent_id"] == "only"
-
-    async def test_a_bad_number_is_asked_again(self, client: FakeClient, console: Console) -> None:
-        repl = ChatRepl(client, console, Script("9", "x", "0", "1", "Q"), [], ChatSession())
-
-        await repl.run()
-
-        assert client.turns[0]["agent_id"] == "a1"
-        assert screen(console).count("Type a number from 1 to 2.") == 3
-
-    async def test_no_agents_at_all_ends_with_a_hint(self, client: FakeClient, console: Console) -> None:
-        client.agent_list = []
-
-        await ChatRepl(client, console, Script("Q"), [], ChatSession()).run()
-
-        assert client.turns == [] and "no agents" in screen(console)
-
-    async def test_the_agent_command_switches_the_agent_and_keeps_the_chat(self, client: FakeClient, console: Console) -> None:
-        repl = make_repl(client, console, Script("Q1", "/agent", "2", "Q2"))
-
-        await repl.run()
-
-        assert [t["agent_id"] for t in client.turns] == ["a1", "a2"]
-        assert client.turns[0]["chat_id"] == client.turns[1]["chat_id"]
-
-    async def test_enter_keeps_the_current_agent(self, client: FakeClient, console: Console) -> None:
-        await make_repl(client, console, Script("/agent", "", "Q")).run()
-
-        assert client.turns[0]["agent_id"] == "a1"
+        assert client.turns == [] and TOOLS_NOT_HERE in screen(console)
 
 
 class TestCommands:
@@ -141,7 +109,8 @@ class TestCommands:
         await make_repl(client, console, Script("/help")).run()
 
         out = screen(console)
-        assert all(word in out for word in ("/chats", "/open", "/new", "/agent", "/ask", "/usage", "/quit"))
+        assert all(word in out for word in ("/chats", "/open", "/new", "/ask", "/usage", "/quit"))
+        assert "/agent" not in out
 
     async def test_an_unknown_slash_command_is_not_sent_to_the_agent(self, client: FakeClient, console: Console) -> None:
         await make_repl(client, console, Script("/server list")).run()
@@ -176,7 +145,7 @@ class TestCommands:
 
         assert "Earlier question" in screen(console) and "Earlier answer" in screen(console)
         assert client.turns[0]["chat_id"] == "c2" and client.turns[0]["title"] is None
-        assert client.turns[0]["agent_id"] == "a2"  # the agent that chat last used
+        assert client.turns[0]["agent_id"] == "a1"  # every question goes to the entry agent
 
     async def test_open_without_a_list_or_with_a_bad_number_explains(self, client: FakeClient, console: Console) -> None:
         client.chat_list = [summary("c1")]

@@ -154,8 +154,10 @@ class EmberClient:
         except EmberError:
             pass  # leaving anyway; the session expires on its own
 
-    async def agents(self) -> list[Agent]:
-        return [Agent(id=str(a["id"]), label=str(a.get("label", a["id"]))) for a in await self._request("GET", "/api/agents")]
+    async def entry_agent(self) -> Agent:
+        """The agent every question goes to (ember_api picks it; 503 when none is running)."""
+        data = await self._request("GET", "/api/agent")
+        return Agent(id=str(data["id"]), label=str(data.get("label", data["id"])))
 
     async def force_tool_approval(self) -> bool:
         """Whether an administrator requires approval for every tool. A failed read means no."""

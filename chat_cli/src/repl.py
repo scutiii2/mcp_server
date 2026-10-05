@@ -35,7 +35,6 @@ HELP = """\
 /chats          list your recent chats
 /open N         open chat N from the list (and join it if it is still answering)
 /new            start a new chat
-/agent          choose another agent
 /ask on|off     ask before each tool runs (off by default)
 /usage          show your token usage against the limits
 /help           this list
@@ -47,7 +46,7 @@ CHATS_SHOWN = 30
 
 
 class Client(Protocol):
-    async def agents(self) -> list[Agent]: ...
+    async def entry_agent(self) -> Agent: ...
     async def chats(self) -> list[ChatSummary]: ...
     async def chat(self, chat_id: str) -> ChatDetail: ...
     async def start_turn(
@@ -94,8 +93,8 @@ class ChatRepl:
     # --- the loop ---------------------------------------------------------------------------
 
     async def run(self) -> None:
-        """Reads questions until the person leaves. Chooses an agent first when none is set."""
-        if self.session.agent is None and not await self._choose_agent():
+        """Reads questions until the person leaves. Needs the session's agent set (main sets the entry agent)."""
+        if self.session.agent is None:
             return
         while not self._ended:
             try:
@@ -135,8 +134,6 @@ class ChatRepl:
             elif name == "/new":
                 self.session.start_new()
                 self._say("New chat.", "dim")
-            elif name == "/agent":
-                await self._choose_agent()
             elif name == "/chats":
                 await self._list_chats()
             elif name == "/open":
@@ -163,31 +160,6 @@ class ChatRepl:
         note = " (an administrator requires it for everyone anyway)" if self._forced and not self.ask_tools else ""
         self._say(f"Asking before tools: {value}{note}.", "dim")
 
-    async def _choose_agent(self) -> bool:
-        """Lists the agents and takes a number. False when there are none to choose."""
-        self.agents = await self._client.agents()
-        if not self.agents:
-            self._say(f"{self._symbols.error} ember_api lists no agents. Is ai_agent running?", "red")
-            return False
-        for number, agent in enumerate(self.agents, 1):
-            mark = "*" if self.session.agent and agent.id == self.session.agent.id else " "
-            self._console.print(Text(f"{mark}{number}) {agent.label}"))
-        if len(self.agents) == 1:
-            self.session.agent = self.agents[0]
-            return True
-        while True:
-            try:
-                answer = (await self._read("Agent number: ")).strip()
-            except (EOFError, KeyboardInterrupt):
-                return self.session.agent is not None
-            if not answer and self.session.agent is not None:
-                return True
-            if answer.isdigit() and 1 <= int(answer) <= len(self.agents):
-                self.session.agent = self.agents[int(answer) - 1]
-                self._say(f"Agent: {self.session.agent.label}", "dim")
-                return True
-            self._say(f"Type a number from 1 to {len(self.agents)}.", "yellow")
-
     async def _list_chats(self) -> None:
         self._listed = (await self._client.chats())[:CHATS_SHOWN]
         if not self._listed:
@@ -211,7 +183,7 @@ class ChatRepl:
             return
         chat = self._listed[int(number) - 1]
         detail = await self._client.chat(chat.id)
-        self.session.open(detail.summary, self.agents)
+        self.session.open(detail.summary)
         renderer = StreamRenderer(self._console, {a.id: a.label for a in self.agents})
         renderer.print_history(detail.messages)
         if detail.summary.running:

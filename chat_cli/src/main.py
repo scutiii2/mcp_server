@@ -1,6 +1,6 @@
 """chat_cli: a terminal chat with an ember agent.
 
-    python -m src.main [--url URL] [--user NAME] [--agent ID] [--ask]
+    python -m src.main [--url URL] [--user NAME] [--ask]
 
 Logs in to ember_api with your account (the password is typed, hidden, and kept
 only in memory), then chats like the web page does: the same agents, saved
@@ -19,7 +19,7 @@ from prompt_toolkit.history import InMemoryHistory
 from rich.console import Console
 from rich.text import Text
 
-from src.api import Agent, ApiError, EmberClient, EmberError
+from src.api import ApiError, EmberClient, EmberError
 from src.config import ConfigError, load_config
 from src.repl import ChatRepl
 from src.session import ChatSession
@@ -59,15 +59,10 @@ async def authenticate(
     return False
 
 
-def pick_agent(agents: list[Agent], wanted: str | None) -> Agent | None:
-    return next((a for a in agents if a.id == wanted), None) if wanted else None
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="chat_cli", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--url", help="ember_api's address (default: configs/config_cli.json)")
     parser.add_argument("--user", help="the account to log in as (default: configs/config_cli.json, else asked)")
-    parser.add_argument("--agent", help="an agent id, to skip the picker")
     parser.add_argument("--ask", action="store_true", help="ask before each tool runs")
     return parser
 
@@ -103,20 +98,17 @@ async def amain(argv: list[str] | None = None) -> int:
         if not await authenticate(client, username, read_secret, console):
             return 1
         try:
-            agents = await client.agents()
+            agent = await client.entry_agent()
         except EmberError as error:
             console.print(Text(str(error), style="red"))
             return 1
-        session = ChatSession(agent=pick_agent(agents, args.agent))
-        if args.agent and session.agent is None:
-            console.print(Text(f"No agent '{args.agent}'. Available: {', '.join(a.id for a in agents) or 'none'}", style="red"))
-            return 1
+        session = ChatSession(agent=agent)
         console.print(Text(f"Logged in as {username}. /help lists the commands.", style="dim"))
         repl = ChatRepl(
             client,
             console,
             read_line,
-            agents,
+            [agent],
             session,
             ask_tools=args.ask,
             force_approval=await client.force_tool_approval(),

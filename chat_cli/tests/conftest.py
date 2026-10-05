@@ -82,8 +82,8 @@ class FakeClient:
         self.usage_value = Usage(UsageWindow(1200, 5000, "2026-10-03T15:00:00"), UsageWindow(40000, 0, None))
         self.started = asyncio.Event()
 
-    async def agents(self) -> list[Agent]:
-        return self.agent_list
+    async def entry_agent(self) -> Agent:
+        return self.agent_list[0]
 
     async def chats(self) -> list[ChatSummary]:
         return self.chat_list

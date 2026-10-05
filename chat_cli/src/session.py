@@ -37,11 +37,8 @@ class ChatSession:
         self.is_new = True
         self.allowed_tools = set()
 
-    def open(self, chat: ChatSummary, agents: list[Agent]) -> None:
-        """Continues a saved chat, with the agent it last used when that agent still exists."""
+    def open(self, chat: ChatSummary) -> None:
+        """Continues a saved chat. The agent stays the entry agent: ember_api sends every question there."""
         self.chat_id = chat.id
         self.is_new = False
         self.allowed_tools = set()
-        match = next((a for a in agents if a.id == chat.agent_id), None)
-        if match is not None:
-            self.agent = match

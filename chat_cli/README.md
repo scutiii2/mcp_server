@@ -1,7 +1,8 @@
 # chat_cli
 
 A terminal chat with an ember agent. It logs in to [ember_api](../ember_api/README.md) with your
-account and works like the web chat: the same agents, answers streamed as they are written,
+account and works like the web chat: every question goes to ember_api's entry agent, which hands
+work to specialist agents, and answers stream as they are written, with
 tool progress, saved chats, usage limits and tool approvals. It is an interactive program,
 not a server, so `server_launcher` does not start it.
 
@@ -14,7 +15,7 @@ not a server, so `server_launcher` does not start it.
 
 ```bat
 run.bat
-run.bat --user ada --agent claude-agent
+run.bat --user ada
 run.bat --url http://127.0.0.1:8030 --ask
 ```
 
@@ -25,7 +26,6 @@ activated environment: `python -m src.main`.
 |---|---|
 | `--url URL` | ember_api's address (default: `configs/config_cli.json`, else `http://127.0.0.1:8030`) |
 | `--user NAME` | the account to log in as (default: the config, else asked) |
-| `--agent ID` | skip the agent picker |
 | `--ask` | ask before each tool runs (same as `/ask on`) |
 
 There is no password option on purpose: the password is typed at the prompt (hidden), kept
@@ -44,7 +44,6 @@ is also in the web page, and the web page's chats are here.
 | `/chats` | list your recent chats (30 newest) |
 | `/open N` | open chat N from that list; if it is still answering, join it |
 | `/new` | start a new chat |
-| `/agent` | choose another agent (the chat goes on) |
 | `/ask on\|off` | ask before each tool runs (off by default) |
 | `/usage` | your tokens against the 6-hour and weekly limits |
 | `/help`, `/quit` | |
@@ -96,5 +95,6 @@ tests/          pytest; no network (fake ember_api through httpx's MockTransport
 ```
 
 The tests use a fake ember_api and a scripted prompt. The client was also run once against a real
-ember_api (its own code, a temporary database and a fake agent): login, agents, a streamed
-answer with a tool approval, `/chats`, `/open`, `/usage`, logout.
+ember_api (its own code, a temporary database and a fake agent): login, the agent list, a streamed
+answer with a tool approval, `/chats`, `/open`, `/usage`, logout. That run predates ember_api's switch to
+one entry agent (`GET /api/agent`); chat_cli now asks for the entry agent and has no agent picker.
