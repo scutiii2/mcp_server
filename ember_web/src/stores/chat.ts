@@ -316,8 +316,12 @@ export const useChatStore = defineStore("chat", () => {
       conversations.value = fresh.map((c) => {
         const known = find(c.id);
         const unchanged = known?.messagesLoaded && known.updatedAt === c.updatedAt && !known.running;
-        if (c.id === activeId.value && known) return { ...known, title: c.title, running: known.running };
-        return unchanged ? { ...known, title: c.title } : c;
+        // Folder and pin come from the server on every reload: changing them is
+        // not activity, so `updatedAt` stays the same and the "unchanged" check
+        // alone would keep a stale value.
+        const filing = { folderId: c.folderId, pinned: c.pinned };
+        if (c.id === activeId.value && known) return { ...known, title: c.title, running: known.running, ...filing };
+        return unchanged ? { ...known, title: c.title, ...filing } : c;
       });
     } catch (err) {
       if (started === generation) loadError.value = errorMessage(err);
@@ -733,6 +737,8 @@ export const useChatStore = defineStore("chat", () => {
         messagesLoaded: true,
         messageCount: chat.message_count,
         running: false,
+        folderId: chat.folder_id ?? null,
+        pinned: chat.pinned ?? false,
         agentId: chat.agent_id ?? undefined,
         createdAt: Date.parse(`${chat.created_at}Z`),
         updatedAt: Date.parse(`${chat.updated_at}Z`),
@@ -853,8 +859,6 @@ export const useChatStore = defineStore("chat", () => {
     return find(id) !== undefined;
   }
 
-  /** Temporary: replaced in the next task. */
-  function forgetFolder(_folderId: number): void {}
 
   function setAskBeforeTools(on: boolean): void {
     askBeforeTools.value = on;
@@ -947,6 +951,37 @@ export const useChatStore = defineStore("chat", () => {
     // A result shows the new title; where the query sat in the old one is gone.
     searchHits.value = searchHits.value.map((h) => (h.id === id ? { ...h, title: trimmed, title_match: null } : h));
     enqueue(() => storage.rename(id, trimmed));
+  }
+
+  /** Files a chat in a folder (null: takes it out). The screen changes first;
+   * ember_api is told through the same ordered queue as renames. */
+  function setChatFolder(id: string, folderId: number | null): void {
+    const conversation = find(id);
+    if (!conversation || (conversation.folderId ?? null) === folderId) return;
+    conversation.folderId = folderId;
+    enqueue(() => storage.update(id, { folder_id: folderId }));
+  }
+
+  function setChatPinned(id: string, pinned: boolean): void {
+    const conversation = find(id);
+    if (!conversation || (conversation.pinned ?? false) === pinned) return;
+    conversation.pinned = pinned;
+    enqueue(() => storage.update(id, { pinned }));
+  }
+
+  /** A folder was deleted on the server, which deleted its chats: drop them
+   * from the screen. Nothing is sent to ember_api; it already did it. */
+  function forgetFolder(folderId: number): void {
+    const doomed = new Set(conversations.value.filter((c) => c.folderId === folderId).map((c) => c.id));
+    if (doomed.size === 0) return;
+    if (activeId.value !== null && doomed.has(activeId.value)) {
+      unfollow();
+      jumpIndex.value = null;
+      activeId.value = null;
+    }
+    conversations.value = conversations.value.filter((c) => !doomed.has(c.id));
+    searchHits.value = searchHits.value.filter((h) => !doomed.has(h.id));
+    for (const id of doomed) clearAllowedTools(id);
   }
 
   function deleteAllChats(): void {
@@ -1049,6 +1084,8 @@ export const useChatStore = defineStore("chat", () => {
     hasChat,
     forgetFolder,
     renameChat,
+    setChatFolder,
+    setChatPinned,
     searchQuery,
     searchActive,
     searchHits,

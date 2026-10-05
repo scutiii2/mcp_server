@@ -1,4 +1,4 @@
-import { chatsClient, type ChatSummary } from "../api/ChatsClient";
+import { chatsClient, type ChatChanges, type ChatSummary } from "../api/ChatsClient";
 import { ApiError } from "../api/http";
 import type { ChatMessage, Conversation } from "../api/types";
 
@@ -11,6 +11,8 @@ export interface ConversationStorage {
   /** A chat's transcript, and whether an answer is being written for it. */
   detail(id: string): Promise<{ messages: ChatMessage[]; running: boolean }>;
   rename(id: string, title: string): Promise<void>;
+  /** Moves a chat into a folder (null: out of its folder) and/or pins it. */
+  update(id: string, changes: ChatChanges): Promise<void>;
   remove(id: string): Promise<void>;
   removeAll(): Promise<void>;
 }
@@ -28,6 +30,10 @@ export class ServerConversationStorage implements ConversationStorage {
 
   async rename(id: string, title: string): Promise<void> {
     await ignoreMissing(chatsClient.rename(id, title));
+  }
+
+  async update(id: string, changes: ChatChanges): Promise<void> {
+    await ignoreMissing(chatsClient.update(id, changes));
   }
 
   async remove(id: string): Promise<void> {
@@ -57,6 +63,8 @@ function fromSummary(s: ChatSummary): Conversation {
     messagesLoaded: false,
     messageCount: s.message_count,
     running: s.running,
+    folderId: s.folder_id ?? null,
+    pinned: s.pinned ?? false,
     agentId: s.agent_id ?? undefined,
     createdAt: Date.parse(`${s.created_at}Z`),
     updatedAt: Date.parse(`${s.updated_at}Z`),
