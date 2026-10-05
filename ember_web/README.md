@@ -139,7 +139,15 @@ URL, token or key.
   (remembered per account, shown in the chat header). Admins add and
   remove extensions.
 - Watchers page (`watchers.view`): every capability's background watchers,
-  refreshed every 15 s, with capability/status/date filters and search.
+  refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with
+  the oldest age, succeeded, failed), a timeline with one lane per capability
+  that opens (click its name) into one lane per watcher, and a list under it
+  that follows the same open lanes. Failed is red, running blue, finished a
+  quiet gray, each with a glyph and a label (a running bar ends in a dot, a
+  failed one in a tick). Lanes keep their place across refreshes; the top 8 are
+  drawn ("Show all N") and a capability with a failure always is. Search, a
+  24h / 7d / All range, and a "Focus" menu for one capability (kept in the
+  address as `?capability=`).
 - Analytics page (`/analytics`, any `logs.*` permission; `/logs` redirects
   here), two tabs. Overview: a 24h / 7d / 30d / 90d range, a tile per log kind
   (count, change vs the previous period, trend), entries over time (stacked
@@ -268,10 +276,11 @@ src/
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
     analytics/  the Analytics Overview's ActivityChart, KindStatTile, Sparkline, BarList, HourHeatmap (hand-drawn SVG/CSS, series colours `--kind-*`)
+    watchers/   the Watchers page's WatcherTimeline, WatcherList, CapabilityFocus (status colours `--status-*`)
     infoPage.css  shared look of the Extensions / Watchers / Analytics / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
-                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics helpers, saved-prompt helpers
+                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics and watcher helpers, saved-prompt helpers
 ```
 
 ## Security notes

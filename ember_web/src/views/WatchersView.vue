@@ -1,263 +1,333 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { watchersClient, type WatcherInfo } from "../api/WatchersClient";
+import CapabilityFocus from "../components/watchers/CapabilityFocus.vue";
+import WatcherList from "../components/watchers/WatcherList.vue";
+import WatcherTimeline from "../components/watchers/WatcherTimeline.vue";
 import "../components/infoPage.css";
+import SegmentedControl from "../components/SegmentedControl.vue";
 import { errorMessage } from "../utils/errors";
+import {
+  RANGE_OPTIONS,
+  STATUS_COLORS,
+  STATUS_ICONS,
+  STATUS_LABELS,
+  countStatuses,
+  formatDuration,
+  groupByCapability,
+  inOrder,
+  intervalOf,
+  matching,
+  overlaps,
+  stableOrder,
+  statusOf,
+  timeAgo,
+  visibleGroups,
+  windowOf,
+  type WatcherRange,
+} from "../utils/watchers";
 
-/** Status of mcp_server's background watchers, every capability's (port of
- * chat_app's Watchers page). Read-only and live: refreshed every 15 s;
- * filtering happens here on the rows already fetched. */
+/** Status of mcp_server's background watchers, every capability's (port of chat_app's Watchers
+ * page). Read-only and live: refreshed every 15 s; everything below is derived from the rows
+ * already fetched. One timeline lane per capability that opens into one lane per watcher; the
+ * list under it follows the same open lanes. `?capability=` narrows the page to one. */
 
 const REFRESH_MS = 15_000;
+// Lanes drawn before "Show all"; a capability with a failure is always drawn.
+const TOP_LANES = 8;
 
-type StatusChip = "running" | "completed" | "failed";
-const STATUS_LABELS: Record<string, string> = {
-  running: "Running",
-  completed: "Success",
-  failed: "Failed",
-  timed_out: "Failed",
-};
-// The "Failed" chip covers timed-out watchers too.
-const CHIP_PHASES: Record<StatusChip, string[]> = {
-  running: ["running"],
-  completed: ["completed"],
-  failed: ["failed", "timed_out"],
-};
+const route = useRoute();
+const router = useRouter();
 
 const watchers = ref<WatcherInfo[]>([]);
 const loading = ref(true);
+const refreshing = ref(false);
 const error = ref("");
 const partialErrors = ref<string[]>([]);
 const now = ref(Date.now());
+const clock = ref(Date.now());
+const updatedAt = ref<number | null>(null);
 
-// Filters. Capabilities start all on; one seen for the first time joins on.
-const hiddenCapabilities = ref(new Set<string>());
-const statuses = ref(new Set<StatusChip>(["running", "completed", "failed"]));
-const startedFrom = ref("");
-const startedUntil = ref("");
+const range = ref<WatcherRange>("24h");
 const search = ref("");
+const showAll = ref(false);
+const expanded = ref(new Set<string>());
+// Lane order that holds still across refreshes (see stableOrder).
+const order = ref<string[]>([]);
+let seeded = false;
 
-const capabilities = computed(() => [...new Set(watchers.value.map((w) => w.capability))].sort());
-
-function keyOf(w: WatcherInfo): string {
-  return w.key ?? w.name ?? "";
-}
-
-const shown = computed(() => {
-  const phases = new Set([...statuses.value].flatMap((s) => CHIP_PHASES[s]));
-  const from = startedFrom.value ? Date.parse(startedFrom.value) : null;
-  const until = startedUntil.value ? Date.parse(startedUntil.value) : null;
-  const needle = search.value.trim().toLowerCase();
-  return watchers.value.filter((w) => {
-    if (hiddenCapabilities.value.has(w.capability) || !phases.has(w.phase)) return false;
-    const started = w.started_at ? Date.parse(w.started_at) : NaN;
-    if (from !== null && !(started >= from)) return false;
-    if (until !== null && !(started <= until)) return false;
-    return !needle || `${w.capability} ${keyOf(w)}`.toLowerCase().includes(needle);
-  });
+const allGroups = computed(() => groupByCapability(watchers.value));
+const focusOptions = computed(() =>
+  allGroups.value
+    .map((g) => ({ name: g.capability, watchers: g.watchers.length, failed: g.counts.failed > 0, running: g.counts.running > 0 }))
+    .sort((a, b) => a.name.localeCompare(b.name)),
+);
+// The address names a capability; one that is not (or no longer) there means "all".
+const focus = computed(() => {
+  const asked = route.query.capability;
+  return typeof asked === "string" && allGroups.value.some((g) => g.capability === asked) ? asked : null;
 });
 
-function toggle<T>(set: Set<T>, value: T): Set<T> {
-  const next = new Set(set);
-  if (!next.delete(value)) next.add(value);
-  return next;
+const timeWindow = computed(() => windowOf(range.value, watchers.value, now.value));
+const filtered = computed(() =>
+  matching(
+    watchers.value.filter((w) => overlaps(w, timeWindow.value, now.value)),
+    search.value,
+  ),
+);
+const scoped = computed(() => {
+  const groups = inOrder(groupByCapability(filtered.value), order.value);
+  return focus.value ? groups.filter((g) => g.capability === focus.value) : groups;
+});
+const shown = computed(() => (focus.value ? scoped.value : visibleGroups(scoped.value, TOP_LANES, showAll.value)));
+const hiddenLanes = computed(() => scoped.value.length - shown.value.length);
+const canCollapse = computed(() => showAll.value && !focus.value && scoped.value.length > TOP_LANES);
+
+const scopedWatchers = computed(() => scoped.value.flatMap((g) => g.watchers));
+const counts = computed(() => countStatuses(scopedWatchers.value));
+const failedCapabilities = computed(() => scoped.value.filter((g) => g.counts.failed > 0).length);
+const oldestRunning = computed(() => {
+  const starts = scopedWatchers.value
+    .filter((w) => statusOf(w) === "running")
+    .map((w) => intervalOf(w, now.value)?.start)
+    .filter((s): s is number => s !== undefined);
+  return starts.length ? now.value - Math.min(...starts) : null;
+});
+const rangeText = computed(() => RANGE_OPTIONS.find((o) => o.value === range.value)?.long ?? "");
+const updatedText = computed(() => (updatedAt.value === null ? "" : timeAgo(updatedAt.value, clock.value)));
+
+function setFocus(name: string | null): void {
+  void router.replace({ query: { ...route.query, capability: name ?? undefined } });
 }
 
-function clearFilters(): void {
-  hiddenCapabilities.value = new Set();
-  statuses.value = new Set(["running", "completed", "failed"]);
-  startedFrom.value = startedUntil.value = search.value = "";
-}
-
-function formatTime(iso?: string): string {
-  return iso ? new Date(iso).toLocaleString() : "";
-}
-
-function duration(w: WatcherInfo): string {
-  if (!w.started_at) return "";
-  const end = w.phase === "running" ? now.value : w.last_polled_at ? Date.parse(w.last_polled_at) : NaN;
-  let seconds = Math.max(0, Math.round((end - Date.parse(w.started_at)) / 1000));
-  if (Number.isNaN(seconds)) return "";
-  const hours = Math.floor(seconds / 3600);
-  seconds -= hours * 3600;
-  const minutes = Math.floor(seconds / 60);
-  seconds -= minutes * 60;
-  return [hours ? `${hours}h` : "", hours || minutes ? `${minutes}m` : "", `${seconds}s`].filter(Boolean).join(" ");
+function toggle(capability: string): void {
+  const next = new Set(expanded.value);
+  if (!next.delete(capability)) next.add(capability);
+  expanded.value = next;
 }
 
 async function refresh(): Promise<void> {
+  refreshing.value = true;
   try {
     const report = await watchersClient.list();
     watchers.value = report.watchers;
     partialErrors.value = report.errors;
     error.value = "";
+    updatedAt.value = Date.now();
+    const groups = groupByCapability(report.watchers);
+    order.value = stableOrder(order.value, groups);
+    if (!seeded) {
+      // Failing capabilities start open; after that the lanes are the reader's.
+      expanded.value = new Set(groups.filter((g) => g.counts.failed > 0).map((g) => g.capability));
+      seeded = true;
+    }
   } catch (err) {
     error.value = errorMessage(err);
   } finally {
     loading.value = false;
-    now.value = Date.now();
+    refreshing.value = false;
+    now.value = clock.value = Date.now();
   }
 }
 
 // Only while the page is shown (it may be kept alive in the background).
 let timer: ReturnType<typeof setInterval> | null = null;
-function startTimer(): void {
-  stopTimer();
+let ticker: ReturnType<typeof setInterval> | null = null;
+function startTimers(): void {
+  stopTimers();
   timer = setInterval(() => void refresh(), REFRESH_MS);
+  ticker = setInterval(() => (clock.value = Date.now()), 1000);
 }
-function stopTimer(): void {
+function stopTimers(): void {
   if (timer !== null) clearInterval(timer);
-  timer = null;
+  if (ticker !== null) clearInterval(ticker);
+  timer = ticker = null;
 }
 onMounted(() => {
   void refresh();
-  startTimer();
+  startTimers();
 });
-onActivated(startTimer);
-onDeactivated(stopTimer);
-onUnmounted(stopTimer);
+onActivated(startTimers);
+onDeactivated(stopTimers);
+onUnmounted(stopTimers);
 </script>
 
 <template>
   <section class="info-page">
     <div class="column">
-      <h2>Watchers</h2>
-      <p class="muted intro">
-        Background jobs mcp_server's capabilities are watching. Refreshed every 15 seconds; recipients are set on the
-        mcp_server side.
-      </p>
+      <div class="top">
+        <div>
+          <h2>Watchers</h2>
+          <p class="muted intro">Background jobs mcp_server's capabilities are watching. Recipients are set on the mcp_server side.</p>
+        </div>
+        <span v-if="updatedText" :class="['live', { stale: !!error }]">
+          <span class="pulse" aria-hidden="true" />
+          {{ error ? "Not updating" : "Live" }} · updated {{ updatedText }}
+        </span>
+      </div>
 
       <p v-if="error" class="error">Could not reach mcp_server: {{ error }}</p>
       <p v-else-if="partialErrors.length" class="error">Some capabilities didn't answer: {{ partialErrors.join("; ") }}</p>
 
-      <div class="filters">
-        <div v-if="capabilities.length" class="group">
-          <span class="label">Capability</span>
-          <button
-            v-for="c in capabilities"
-            :key="c"
-            type="button"
-            :class="['chip', { active: !hiddenCapabilities.has(c) }]"
-            @click="hiddenCapabilities = toggle(hiddenCapabilities, c)"
-          >
-            {{ c }}
-          </button>
-        </div>
-        <div class="group">
-          <span class="label">Status</span>
-          <button
-            v-for="s in ['running', 'completed', 'failed'] as const"
-            :key="s"
-            type="button"
-            :class="['chip', { active: statuses.has(s) }]"
-            @click="statuses = toggle(statuses, s)"
-          >
-            {{ STATUS_LABELS[s] }}
-          </button>
-        </div>
-        <label class="group">
-          <span class="label">Started from</span>
-          <input v-model="startedFrom" type="datetime-local" />
-        </label>
-        <label class="group">
-          <span class="label">until</span>
-          <input v-model="startedUntil" type="datetime-local" />
-        </label>
-        <input v-model="search" type="search" placeholder="Search" class="search" />
-        <button type="button" class="chip" @click="clearFilters">Clear filters</button>
+      <div class="toolbar">
+        <input v-model="search" type="search" placeholder="Search watchers" aria-label="Search watchers" class="search" />
+        <CapabilityFocus v-if="focusOptions.length" :model-value="focus" :options="focusOptions" @update:model-value="setFocus" />
+        <SegmentedControl v-model="range" :options="RANGE_OPTIONS" aria-label="Range" />
+        <button type="button" class="chip" :disabled="refreshing" @click="refresh">Refresh</button>
       </div>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Watcher</th>
-              <th>Status</th>
-              <th>Duration</th>
-              <th>Recipients</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading">
-              <td colspan="4" class="muted">Loading …</td>
-            </tr>
-            <tr v-else-if="shown.length === 0">
-              <td colspan="4" class="muted">
-                {{ watchers.length ? "No watchers match the filters." : "No watchers are running." }}
-              </td>
-            </tr>
-            <tr v-for="w in shown" :key="`${w.capability}/${keyOf(w)}`">
-              <td>
-                {{ keyOf(w) }}<br /><span class="muted">{{ w.capability }}</span>
-                <details v-if="w.detail && Object.keys(w.detail).length">
-                  <summary>Detail</summary>
-                  <pre>{{ JSON.stringify(w.detail, null, 2) }}</pre>
-                </details>
-              </td>
-              <td>
-                <span :class="['badge', w.phase]">{{ STATUS_LABELS[w.phase] ?? w.phase }}</span>
-              </td>
-              <td>
-                {{ duration(w) }}<br />
-                <span class="muted">Started {{ formatTime(w.started_at) }}</span>
-                <template v-if="w.phase !== 'running' && w.last_polled_at">
-                  <br /><span class="muted">Finished {{ formatTime(w.last_polled_at) }}</span>
-                </template>
-              </td>
-              <td>
-                <template v-if="w.recipients?.length">
-                  <div v-for="r in w.recipients" :key="r">{{ r }}</div>
-                </template>
-                <span v-else class="muted">none</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <p v-if="loading" class="muted">Loading …</p>
+      <p v-else-if="watchers.length === 0" class="muted">No watchers are running.</p>
+      <template v-else>
+        <div class="tiles">
+          <div class="tile">
+            <span class="label">Running</span>
+            <span class="value" :style="counts.running ? { color: STATUS_COLORS.running } : undefined">{{ counts.running }}</span>
+            <span class="sub">{{ oldestRunning === null ? "none right now" : `oldest ${formatDuration(oldestRunning)}` }}</span>
+          </div>
+          <div class="tile">
+            <span class="label">Succeeded</span>
+            <span class="value">{{ counts.succeeded }}</span>
+            <span class="sub">{{ rangeText }}</span>
+          </div>
+          <div class="tile">
+            <span class="label">Failed</span>
+            <span class="value" :style="counts.failed ? { color: STATUS_COLORS.failed } : undefined">{{ counts.failed }}</span>
+            <span class="sub">
+              {{ counts.failed ? `${failedCapabilities} ${failedCapabilities === 1 ? "capability" : "capabilities"} affected` : "none" }}
+            </span>
+          </div>
+        </div>
+
+        <p v-if="scoped.length === 0" class="muted">No watchers match the filters.</p>
+        <template v-else>
+          <div class="card">
+            <div class="card-head">
+              <h3>Timeline</h3>
+              <ul class="legend">
+                <li v-for="s in (['running', 'succeeded', 'failed'] as const)" :key="s">
+                  <span class="swatch" :style="{ background: STATUS_COLORS[s] }" />
+                  <span aria-hidden="true">{{ STATUS_ICONS[s] }}</span>
+                  {{ STATUS_LABELS[s] }}
+                </li>
+              </ul>
+            </div>
+            <WatcherTimeline :groups="shown" :expanded="expanded" :force-open="!!focus" :window="timeWindow" :now="now" @toggle="toggle" />
+            <div v-if="hiddenLanes > 0 || canCollapse" class="more">
+              <button type="button" class="chip" @click="showAll = !showAll">
+                {{ showAll ? `Show top ${TOP_LANES}` : `Show all ${scoped.length} capabilities` }}
+              </button>
+            </div>
+          </div>
+
+          <div class="card list-card">
+            <WatcherList :groups="shown" :expanded="expanded" :force-open="!!focus" :now="now" @toggle="toggle" />
+          </div>
+        </template>
+      </template>
     </div>
   </section>
 </template>
 
 <style scoped>
-.filters {
+.top {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 16px;
-  margin-bottom: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px 16px;
 }
-.group {
-  display: flex;
-  flex-wrap: wrap;
+.live {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-.label {
+  margin-top: 4px;
   font-size: 0.8em;
   color: var(--muted);
 }
+.pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-running);
+}
+.live.stale .pulse {
+  background: var(--status-failed);
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 6px 0 14px;
+}
 .search {
-  flex: 0 1 200px;
+  flex: 1 1 180px;
   min-width: 0;
+  max-width: 280px;
 }
-.badge {
-  padding: 1px 8px;
-  border-radius: 999px;
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--code-bg);
+}
+.tile .label {
   font-size: 0.8em;
-  white-space: nowrap;
-  border: 1px solid var(--border);
+  color: var(--muted);
 }
-.badge.running {
-  border-color: var(--accent);
-  color: var(--accent);
+.tile .value {
+  font-size: 1.6em;
+  font-weight: 600;
+  line-height: 1.2;
 }
-.badge.completed {
-  border-color: #2e9d5b;
-  color: #2e9d5b;
+.tile .sub {
+  font-size: 0.8em;
+  color: var(--muted);
 }
-.badge.failed,
-.badge.timed_out {
-  border-color: var(--danger);
-  color: var(--danger);
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.more {
+  margin-top: 10px;
+  text-align: center;
+}
+.list-card {
+  padding: 0;
+  overflow: hidden;
 }
 </style>
