@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { adminClient, type CreatedInvite, type Invite } from "../../api/AdminClient";
 import { errorMessage, formatUtc } from "../../utils/errors";
+import CopyButton from "../CopyButton.vue";
+import ToggleSwitch from "../ToggleSwitch.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import "./admin.css";
+
+/** The overview counts (AdminView) change whenever an invite does. */
+const emit = defineEmits<{ changed: [] }>();
 
 const invites = ref<Invite[]>([]);
 const listError = ref("");
@@ -13,8 +19,13 @@ const creating = ref(false);
 const createError = ref("");
 // The code is only ever shown here, right after creation.
 const created = ref<CreatedInvite | null>(null);
-const copied = ref(false);
-const revokingId = ref<number | null>(null);
+const pendingRevoke = ref<Invite | null>(null);
+const revoking = ref(false);
+
+// Emailing needs an address: clearing it switches the option off.
+watch(inviteeEmail, (email) => {
+  if (!email.trim()) byEmail.value = false;
+});
 
 async function loadInvites(): Promise<void> {
   listError.value = "";
@@ -28,12 +39,12 @@ async function loadInvites(): Promise<void> {
 async function createInvite(): Promise<void> {
   createError.value = "";
   created.value = null;
-  copied.value = false;
   creating.value = true;
   try {
     const email = inviteeEmail.value.trim() || null;
     created.value = await adminClient.createInvite(email, byEmail.value ? "email" : "manual");
     inviteeEmail.value = "";
+    emit("changed");
     await loadInvites();
   } catch (err) {
     createError.value = errorMessage(err);
@@ -42,29 +53,27 @@ async function createInvite(): Promise<void> {
   }
 }
 
-async function revoke(invite: Invite): Promise<void> {
-  const who = invite.invitee_email ?? "this invite";
-  if (!confirm(`Revoke ${who}? Its code stops working.`)) return;
+const revokeMessage = computed(() => {
+  const invite = pendingRevoke.value;
+  if (!invite) return "";
+  return `Revoke ${invite.invitee_email ?? "this invite"}? Its code stops working.`;
+});
+
+async function confirmRevoke(): Promise<void> {
+  const invite = pendingRevoke.value;
+  if (!invite) return;
   listError.value = "";
-  revokingId.value = invite.id;
+  revoking.value = true;
   try {
     await adminClient.revokeInvite(invite.id);
     invites.value = invites.value.filter((i) => i.id !== invite.id);
     if (created.value?.invite.id === invite.id) created.value = null;
+    emit("changed");
   } catch (err) {
     listError.value = errorMessage(err);
   } finally {
-    revokingId.value = null;
-  }
-}
-
-async function copyCode(): Promise<void> {
-  if (!created.value) return;
-  try {
-    await navigator.clipboard.writeText(created.value.code);
-    copied.value = true;
-  } catch {
-    // clipboard blocked; the code is still on screen
+    revoking.value = false;
+    pendingRevoke.value = null;
   }
 }
 
@@ -74,12 +83,16 @@ onMounted(loadInvites);
 <template>
   <div class="admin-panel">
     <form class="row-form" @submit.prevent="createInvite">
-      <input v-model="inviteeEmail" type="email" placeholder="Invitee email (optional)" />
-      <label class="check">
-        <input v-model="byEmail" type="checkbox" :disabled="!inviteeEmail.trim()" />
+      <input v-model="inviteeEmail" type="email" placeholder="Invitee email (optional)" aria-label="Invitee email" />
+      <ToggleSwitch
+        small
+        :checked="byEmail"
+        :disabled="!inviteeEmail.trim()"
+        @change="byEmail = ($event.target as HTMLInputElement).checked"
+      >
         Email the code
-      </label>
-      <button class="primary" :disabled="creating || (byEmail && !inviteeEmail.trim())">
+      </ToggleSwitch>
+      <button class="primary" :disabled="creating">
         {{ creating ? "Creating ..." : "Create invite" }}
       </button>
     </form>
@@ -89,7 +102,7 @@ onMounted(loadInvites);
       <p>
         Invite code (shown only now, valid 15 minutes, works once):
         <code class="code">{{ created.code }}</code>
-        <button type="button" class="small" @click="copyCode">{{ copied ? "Copied" : "Copy" }}</button>
+        <CopyButton :text="created.code" label="Copy invite code" />
       </p>
       <p v-if="created.email_sent" class="muted">Emailed to {{ created.invite.invitee_email }}.</p>
       <p v-else-if="created.email_error" class="error">
@@ -99,7 +112,7 @@ onMounted(loadInvites);
 
     <h3>Open invites</h3>
     <p v-if="listError" class="error">error: {{ listError }}</p>
-    <p v-if="invites.length === 0 && !listError" class="muted">None.</p>
+    <p v-if="invites.length === 0 && !listError" class="muted">No open invites.</p>
     <div class="table-wrap">
       <table v-if="invites.length">
         <thead>
@@ -107,29 +120,32 @@ onMounted(loadInvites);
         </thead>
         <tbody>
           <tr v-for="i in invites" :key="i.id">
-            <td>{{ i.invitee_email ?? "-" }}</td>
-            <td>{{ i.delivery_method }}</td>
+            <td class="invitee">{{ i.invitee_email ?? "-" }}</td>
+            <td><span class="badge">{{ i.delivery_method }}</span></td>
             <td>{{ formatUtc(i.created_at) }}</td>
             <td>{{ formatUtc(i.expires_at) }}</td>
             <td>
-              <button type="button" class="small danger" :disabled="revokingId === i.id" @click="revoke(i)">
-                Revoke
-              </button>
+              <button type="button" class="small danger" @click="pendingRevoke = i">Revoke</button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <ConfirmModal
+      :open="pendingRevoke !== null"
+      title="Revoke invite"
+      :message="revokeMessage"
+      confirm-label="Revoke"
+      danger
+      :busy="revoking"
+      @confirm="confirmRevoke"
+      @close="pendingRevoke = null"
+    />
   </div>
 </template>
 
 <style scoped>
-.check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9em;
-}
 .created {
   margin-top: 14px;
   padding: 12px 14px;
@@ -158,12 +174,17 @@ table {
 }
 th,
 td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  border-top: 1px solid var(--border);
   text-align: left;
 }
 th {
+  border-top: none;
+  font-size: 0.85em;
+  font-weight: 500;
   color: var(--muted);
-  font-weight: 600;
+}
+.invitee {
+  overflow-wrap: anywhere;
 }
 </style>

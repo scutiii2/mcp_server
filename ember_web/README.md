@@ -149,9 +149,12 @@ URL, token or key.
   from (forget one to have its next login noted as new). Reachable while
   unverified.
 - Overview (click "Ember"): every page you may open, as tiles.
-- Admin page, four tabs: Accounts (edit, enable/disable, add/remove roles,
-  send verification, delete), Roles (create, edit, delete, permission
-  checkboxes), Invites (create, optionally email, list, revoke) and Settings
+- Admin page: overview tiles (accounts, unverified, disabled, open invites)
+  above four tabs. Accounts (search by name or email, filter by status, click a
+  row for a drawer to edit, enable/disable, add/remove roles, send
+  verification, delete), Roles (a list and an editor with a switch per
+  permission; create, edit, delete), Invites (create, optionally email, list,
+  revoke) and Settings
   ("Require approval for every tool": every account's answers then ask before
   each tool, the "Ask before tools" checkbox is locked on, and "Allow for this
   chat" is not offered).
@@ -257,7 +260,7 @@ src/
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, NavRail, ChatSettingsMenu, AuthCard
-    admin/      the Admin page's Accounts / Roles / Invites / Settings panels + shared admin.css
+    admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
     infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,

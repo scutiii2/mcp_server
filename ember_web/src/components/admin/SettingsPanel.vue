@@ -40,21 +40,32 @@ onMounted(load);
 
 <template>
   <div class="admin-panel">
-    <h3>Tool approval</h3>
     <p v-if="loadError" class="error">error: {{ loadError }}</p>
-    <LockSwitch
-      v-if="settings"
-      :checked="settings.force_tool_approval"
-      :disabled="saving"
-      @change="setForceToolApproval($event.target as HTMLInputElement)"
-    >
-      Require approval for every tool
-    </LockSwitch>
-    <p class="muted">
-      When on, every account's answers ask before each tool the agent runs, whatever the account chose, and "Allow for
-      this chat" is not offered. A tool runs only after its own "Allow once". Typed commands (such as /tool) are not
-      affected: the person types the exact command themselves.
-    </p>
-    <p v-if="saveError" class="error">{{ saveError }}</p>
+    <section class="card">
+      <h3>Tool approval</h3>
+      <LockSwitch
+        v-if="settings"
+        :checked="settings.force_tool_approval"
+        :disabled="saving"
+        @change="setForceToolApproval($event.target as HTMLInputElement)"
+      >
+        Require approval for every tool
+      </LockSwitch>
+      <p class="muted">
+        When on, every account's answers ask before each tool the agent runs, whatever the account chose, and "Allow
+        for this chat" is not offered. A tool runs only after its own "Allow once". Typed commands (such as /tool) are
+        not affected: the person types the exact command themselves.
+      </p>
+      <p v-if="saveError" class="error">{{ saveError }}</p>
+    </section>
   </div>
 </template>
+
+<style scoped>
+.card h3 {
+  margin-top: 0;
+}
+.card p {
+  margin-bottom: 0;
+}
+</style>
