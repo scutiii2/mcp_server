@@ -140,8 +140,9 @@ URL, token or key.
   remove extensions.
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s, with capability/status/date filters and search.
-- Logs page (any `logs.*` permission): Activity, Errors and Chat turns tabs,
-  each for the server or one account.
+- Analytics page (`/analytics`, any `logs.*` permission; `/logs` redirects
+  here): Activity, Errors and Chat turns entries, each for the server or one
+  account.
 - Config page (`config.issues.view`): problems in ember_api's config and
   secret files.
 - Account page (click your username): profile, change email (re-verify),
@@ -256,12 +257,12 @@ src/
   stores/       Pinia: auth, entryAgent, chat, templates
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Logs, ConfigIssues,
+  views/        pages: Overview, Chat, Tools, Capabilities, Extensions, Watchers, Usage, Analytics, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, NavRail, ChatSettingsMenu, AuthCard
+                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
-    infoPage.css  shared look of the Extensions / Watchers / Logs / Config pages
+    infoPage.css  shared look of the Extensions / Watchers / Analytics / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
                 tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, saved-prompt helpers

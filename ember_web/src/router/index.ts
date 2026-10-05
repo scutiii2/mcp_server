@@ -52,10 +52,12 @@ export const router = createRouter({
       component: () => import("../views/WatchersView.vue"),
       meta: { permission: "watchers.view" },
     },
+    // The Logs page became Analytics (its entries are a tab there); old links and bookmarks still work.
+    { path: "/logs", redirect: (to) => ({ path: "/analytics", query: to.query }) },
     {
-      path: "/logs",
-      name: "logs",
-      component: () => import("../views/LogsView.vue"),
+      path: "/analytics",
+      name: "analytics",
+      component: () => import("../views/AnalyticsView.vue"),
       meta: { permission: LOG_PERMISSIONS },
     },
     {

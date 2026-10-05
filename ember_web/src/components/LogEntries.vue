@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { logsClient, type LogActor, type LogEntry, type LogKind } from "../api/LogsClient";
-import "../components/infoPage.css";
-import SegmentedControl from "../components/SegmentedControl.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage } from "../utils/errors";
 
-/** Activity, error and chat-turn logs (port of chat_app's Logs page). Each
+/** The raw log entries: Activity, error and chat-turn lists (port of chat_app's Logs page). Each
  * tab needs its own permission; each shows one actor at a time - the
  * server or one account - newest first, the latest 200. */
 
@@ -75,39 +74,34 @@ watch(
 </script>
 
 <template>
-  <section class="info-page">
-    <div class="column">
-      <h2>Logs</h2>
-      <div v-if="kinds.length" class="head">
-        <SegmentedControl v-model="tabChoice" :options="tabOptions" aria-label="Log" />
-        <label v-if="tab" class="actor">
-          Entries for
-          <select v-model="actors[tab]">
-            <option v-for="o in actorOptions" :key="String(o.value)" :value="o.value">{{ o.label }}</option>
-          </select>
-        </label>
-        <button type="button" class="chip" :disabled="loading" @click="loadEntries">Refresh</button>
+  <div v-if="kinds.length" class="head">
+    <SegmentedControl v-model="tabChoice" :options="tabOptions" aria-label="Log" />
+    <label v-if="tab" class="actor">
+      Entries for
+      <select v-model="actors[tab]">
+        <option v-for="o in actorOptions" :key="String(o.value)" :value="o.value">{{ o.label }}</option>
+      </select>
+    </label>
+    <button type="button" class="chip" :disabled="loading" @click="loadEntries">Refresh</button>
+  </div>
+
+  <p v-if="error" class="error">{{ error }}</p>
+  <p v-else-if="loading" class="muted">loading ...</p>
+  <p v-else-if="tab && entries.length === 0" class="muted">No entries yet.</p>
+
+  <ul v-if="!loading" class="entries">
+    <li v-for="e in entries" :key="e.id">
+      <div class="line">
+        <span class="time">{{ time(e.created_at) }}</span>
+        <code class="source">{{ e.source }}</code>
+        <span class="message">{{ e.message }}</span>
       </div>
-
-      <p v-if="error" class="error">{{ error }}</p>
-      <p v-else-if="loading" class="muted">loading ...</p>
-      <p v-else-if="tab && entries.length === 0" class="muted">No entries yet.</p>
-
-      <ul v-if="!loading" class="entries">
-        <li v-for="e in entries" :key="e.id">
-          <div class="line">
-            <span class="time">{{ time(e.created_at) }}</span>
-            <code class="source">{{ e.source }}</code>
-            <span class="message">{{ e.message }}</span>
-          </div>
-          <details v-if="e.details">
-            <summary>Details</summary>
-            <pre>{{ e.details }}</pre>
-          </details>
-        </li>
-      </ul>
-    </div>
-  </section>
+      <details v-if="e.details">
+        <summary>Details</summary>
+        <pre>{{ e.details }}</pre>
+      </details>
+    </li>
+  </ul>
 </template>
 
 <style scoped>
