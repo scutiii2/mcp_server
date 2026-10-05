@@ -102,6 +102,8 @@ export async function installFakeApi(page: Page): Promise<FakeApi> {
     if (method === "GET" && path === "/api/settings") return json(route, { force_tool_approval: false });
     if (method === "GET" && path === "/api/agent") return json(route, ENTRY_AGENT);
     if (method === "GET" && path === "/api/chats") return json(route, [...api.chats.values()].map(summary));
+    // No saved prompts: the template picker in the chat input stays empty.
+    if (method === "GET" && path === "/api/templates") return json(route, []);
 
     // No limits are set, so the sidebar shows no usage gauge.
     if (method === "GET" && path === "/api/usage") return json(route, NO_USAGE);
