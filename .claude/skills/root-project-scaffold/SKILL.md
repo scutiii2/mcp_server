@@ -57,7 +57,7 @@ changes the convention for every project after it.
    `mcp_server/configs/*.json.example` and `secrets/*.env.example` do it.
    Loaders should auto-create a missing real file by copying its
    `.example` (see `chat_app/src/utils/config_loader.py`,
-   `ai_agent/src/seed.py`) rather than raising on first run.
+   `ai_agent/src/core/seed.py`) rather than raising on first run.
 4. Write `README.md` covering: what the project does, requirements,
    setup steps, how to run it — model it on `mcp_server/README.md`.
 5. Register it with `server_launcher` if it should be startable from there

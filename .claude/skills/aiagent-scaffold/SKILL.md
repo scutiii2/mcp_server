@@ -166,7 +166,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
      (Startup config is one file per concern - `config_limits.json`
      (`token_limits`), `config_servers.json` (`servers`),
      `config_tool_selection.json` (`tool_selection`) - read via
-     `src/config_files.py`'s `read_section`.
+     `src/core/config_files.py`'s `read_section`.
      Credentials live in a single `ai_agent/.env`, seeded from `.env.example`;
      there is no `secrets/` folder.)
    - Wrap rate-limit errors into `cooldown.start_cooldown(PROVIDER_ID, seconds)`

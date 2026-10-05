@@ -6,7 +6,7 @@ so every os.getenv() call here sees them without each module needing to
 know how they got there.
 
 Only mcp_server_url and chats_db_path remain here - provider/model
-choice now lives in ai_agent (see ai_agent/src/agent_config.py), hard-
+choice now lives in ai_agent (see ai_agent/src/agents/agent_config.py), hard-
 pinned per instance rather than a chat_app-side setting.
 """
 

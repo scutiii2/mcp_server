@@ -5,7 +5,7 @@ to one LLM) rather than an LLM provider directly - see
 services/ai_agent_client.py for how a question actually reaches one.
 
 Each ai_agent instance now writes/removes its own entry here on
-startup/shutdown (see ai_agent/src/agent_registry.py's register()/
+startup/shutdown (see ai_agent/src/agents/agent_registry.py's register()/
 deregister()), so it no longer needs a manual edit - reload() below
 picks up such a change without a chat_app restart, via the Chat page's
 provider-dropdown refresh button (GET /api/providers?refresh=1).
@@ -33,7 +33,7 @@ _AGENTS_BY_ID = {agent["id"]: agent for agent in _AGENTS}
 def reload() -> None:
     """Re-reads config_agents.json - an ai_agent instance started or
     stopped after this process's own import-time load (see
-    ai_agent/src/agent_registry.py's register()/deregister()) needs this
+    ai_agent/src/agents/agent_registry.py's register()/deregister()) needs this
     before the dropdown reflects it; see the Chat page's
     /api/providers?refresh=1."""
     global _AGENTS, _AGENTS_BY_ID

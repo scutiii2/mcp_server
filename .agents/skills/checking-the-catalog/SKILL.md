@@ -62,7 +62,7 @@ why in a comment.
 
 Proceed. If what you write is itself a reusable building block, tag it
 with the project's `@catalog` stub (`chat_app/src/utils/catalog.py`,
-`mcp_server/src/utils/catalog.py`, `ai_agent/src/catalog.py`) so the
+`mcp_server/src/utils/catalog.py`, `ai_agent/src/core/catalog.py`) so the
 next scan finds it — `POST /catalog/refresh` to pick it up immediately
 instead of waiting for the service's next boot.
 

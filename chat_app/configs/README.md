@@ -11,7 +11,7 @@ values, never credentials (those go in `../secrets/`).
   localhost URL isn't a secret), so the real file is committed directly,
   same treatment as `mcp_server`'s own `config_extensions.json`. Each
   `ai_agent` instance now upserts/removes its own entry here on
-  startup/shutdown (see `ai_agent/src/agent_registry.py`) - a manual edit
+  startup/shutdown (see `ai_agent/src/agents/agent_registry.py`) - a manual edit
   is still possible, but no longer required for a new instance to show
   up.
 - **`config_security_ip_filter.json`, `config_security_rate_limit.json`,
