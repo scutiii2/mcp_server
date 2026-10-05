@@ -214,7 +214,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   role. An account with an unverified email holds no permissions at all, unless
   `require_email_verification` is `false` in config.
 - **Invites and verification codes:** 10 random characters, stored as
-  SHA-256, single use, 15-minute expiry (same as chat_app). Registration
+  SHA-256, single use. Invites expire after 7 days, verification codes after
+  15 minutes. Registration
   checks the invite before revealing whether a username is taken, and a
   failed registration leaves the invite unused.
 - **Email:** `SMTP_*` and `MAIL_FROM_ADDRESS` in `.env` (same keys as chat_app), sent on a

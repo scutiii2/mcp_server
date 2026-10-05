@@ -69,6 +69,20 @@ def test_expired_invite_is_rejected(client: TestClient) -> None:
     assert register(client, code).status_code == 400
 
 
+def test_invite_lasts_a_week_but_verification_code_fifteen_minutes(client: TestClient) -> None:
+    from datetime import datetime
+
+    as_admin(client)
+    invite = client.post("/api/admin/invites", json={}).json()["invite"]
+    lifetime = datetime.fromisoformat(invite["expires_at"]) - datetime.fromisoformat(invite["created_at"])
+
+    assert abs(lifetime - timedelta(days=7)) < timedelta(seconds=5)
+
+    from src.services import otp_service
+
+    assert otp_service.CODE_EXPIRY == timedelta(minutes=15)
+
+
 def test_invite_works_only_once(client: TestClient) -> None:
     code = new_invite(client)
     assert register(client, code).status_code == 201

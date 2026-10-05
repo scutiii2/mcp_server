@@ -19,6 +19,9 @@ from src.db import utcnow
 from src.models import Account, EmailVerificationCode, InviteCode
 
 CODE_EXPIRY = timedelta(minutes=15)
+# An invite is mailed to someone who may not read it for a while, so it lasts
+# longer than the codes a person types straight away.
+INVITE_EXPIRY = timedelta(days=7)
 CODE_LENGTH = 10
 # Verification emails per account: one every VERIFICATION_COOLDOWN, and at most
 # VERIFICATION_PER_HOUR in any hour, so resend and email changes cannot be used
@@ -53,7 +56,7 @@ class OtpService:
             created_by_account_id=created_by.id,
             invitee_email=invitee_email,
             delivery_method=delivery_method,
-            expires_at=utcnow() + CODE_EXPIRY,
+            expires_at=utcnow() + INVITE_EXPIRY,
         )
         self._session.add(invite)
         await self._session.commit()

@@ -100,7 +100,7 @@ onMounted(loadInvites);
 
     <div v-if="created" class="created">
       <p>
-        Invite code (shown only now, valid 15 minutes, works once):
+        Invite code (shown only now, valid 7 days, works once):
         <code class="code">{{ created.code }}</code>
         <CopyButton :text="created.code" label="Copy invite code" />
       </p>
