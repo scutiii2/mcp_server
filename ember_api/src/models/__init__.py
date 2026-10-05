@@ -5,6 +5,7 @@ from src.models.account import Account
 from src.models.app_setting import AppSetting
 from src.models.auth_session import AuthSession
 from src.models.chat import Chat
+from src.models.chat_folder import ChatFolder
 from src.models.known_device import KnownDevice
 from src.models.log_entry import LogEntry
 from src.models.login_attempt import LoginAttempt
@@ -20,6 +21,7 @@ __all__ = [
     "AppSetting",
     "AuthSession",
     "Chat",
+    "ChatFolder",
     "EmailVerificationCode",
     "InviteCode",
     "KnownDevice",

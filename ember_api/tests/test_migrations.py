@@ -18,12 +18,28 @@ from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
 # The newest real migration; the tests' throwaway one comes after it.
-HEAD = "0004"
-NEXT = "0005"
+HEAD = "0005"
+NEXT = "0006"
 
 
 def make_database(tmp_path: Path) -> Database:
     return Database(f"sqlite+aiosqlite:///{(tmp_path / 'ember.db').as_posix()}")
+
+
+def drop_chat_folders(conn: sqlite3.Connection) -> None:
+    """Take chat folders out of a database built from the models, as a legacy one lacks them.
+    SQLite cannot drop a foreign-key column, so the (empty) chats table is made again as it was."""
+    conn.execute("DROP TABLE chats")
+    conn.execute("DROP TABLE chat_folders")
+    conn.execute(
+        "CREATE TABLE chats (id INTEGER NOT NULL, account_id INTEGER NOT NULL, chat_id VARCHAR(64) NOT NULL,"
+        " title VARCHAR(120) NOT NULL, agent_id VARCHAR(120), messages TEXT NOT NULL,"
+        " message_count INTEGER NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,"
+        " PRIMARY KEY (id), UNIQUE (account_id, chat_id),"
+        " FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE)"
+    )
+    conn.execute("CREATE INDEX ix_chats_updated_at ON chats (updated_at)")
+    conn.execute("CREATE INDEX ix_chats_account_id ON chats (account_id)")
 
 
 def tables_of(path: Path) -> set[str]:
@@ -129,6 +145,7 @@ class TestDatabaseFromBeforeMigrations:
         with closing(sqlite3.connect(path)) as conn:
             conn.execute("DROP TABLE app_settings")  # made after the baseline, so a legacy database lacks it
             conn.execute("DROP TABLE traffic_buckets")  # likewise
+            drop_chat_folders(conn)
             for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
                 conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")  # added after the baseline too
             conn.execute(
@@ -163,7 +180,7 @@ class TestDatabaseFromBeforeMigrations:
     def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
         scripts = tmp_path / "baseline_only"
-        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*"))
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*"))
         calls: list[int] = []
 
         async def backup() -> None:
@@ -187,9 +204,9 @@ def scripts_with_a_new_migration(tmp_path: Path) -> Path:
     """The real migrations plus a throwaway one adding a column."""
     scripts = tmp_path / "migrations"
     shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
-    (scripts / "versions" / "0005_add_nickname.py").write_text(
-        'revision = "0005"\n'
-        'down_revision = "0004"\n'
+    (scripts / "versions" / "0006_add_nickname.py").write_text(
+        'revision = "0006"\n'
+        'down_revision = "0005"\n'
         "branch_labels = None\n"
         "depends_on = None\n"
         "import sqlalchemy as sa\n"
@@ -259,6 +276,7 @@ class TestLaterMigration:
             conn.execute("DROP TABLE traffic_buckets")
             for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
                 conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")
+            drop_chat_folders(conn)
             conn.commit()
         calls: list[int] = []
 

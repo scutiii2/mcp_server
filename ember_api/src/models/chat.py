@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db import Base, utcnow
@@ -28,5 +28,10 @@ class Chat(Base):
     # JSON list of {"role": "user" | "assistant", "content": str}.
     messages: Mapped[str] = mapped_column(Text, default="[]")
     message_count: Mapped[int] = mapped_column(default=0)
+    # None: not in a folder. Deleting the folder deletes the chat.
+    folder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("chat_folders.id", ondelete="CASCADE"), index=True, default=None
+    )
+    pinned: Mapped[bool] = mapped_column(default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)

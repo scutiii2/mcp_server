@@ -249,6 +249,9 @@ class ChatSummaryOut(BaseModel):
     updated_at: datetime
     # An answer is being written for this chat right now.
     running: bool = False
+    # The folder this chat is filed in (chat-folders id), and whether it is pinned.
+    folder_id: int | None = None
+    pinned: bool = False
 
     @classmethod
     def of(cls, chat: Chat, running: bool = False) -> ChatSummaryOut:
@@ -260,6 +263,8 @@ class ChatSummaryOut(BaseModel):
             created_at=chat.created_at,
             updated_at=chat.updated_at,
             running=running,
+            folder_id=chat.folder_id,
+            pinned=chat.pinned,
         )
 
 
