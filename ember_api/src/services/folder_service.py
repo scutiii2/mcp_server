@@ -85,6 +85,27 @@ class FolderService:
         await self._session.commit()
         return folder
 
+    async def delete(self, folder_id: int, running: set[str]) -> tuple[str, int]:
+        """Deletes the folder and every chat in it, with those chats' share
+        links, in one transaction. `running` holds this account's chat ids
+        that have an answer being written: if any is in the folder nothing is
+        deleted (FolderBusy). Returns (folder name, chats deleted)."""
+        folder = await self._get(folder_id)
+        chat_ids = list(await self._session.scalars(select(Chat.chat_id).where(Chat.folder_id == folder.id)))
+        if running.intersection(chat_ids):
+            raise FolderBusy(folder_id)
+        name = folder.name
+        if chat_ids:
+            await self._session.execute(
+                delete(SharedChat).where(SharedChat.account_id == self._account_id, SharedChat.chat_id.in_(chat_ids))
+            )
+            await self._session.execute(
+                delete(Chat).where(Chat.account_id == self._account_id, Chat.folder_id == folder.id)
+            )
+        await self._session.delete(folder)
+        await self._session.commit()
+        return name, len(chat_ids)
+
     async def count_chats(self, folder: ChatFolder) -> int:
         count = await self._session.scalar(
             select(func.count()).select_from(Chat).where(Chat.folder_id == folder.id)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.deps import get_db_session, get_log_writer, require_permission
+from src.deps import get_db_session, get_log_writer, get_turns, require_permission
 from src.models import Account, ChatFolder
 from src.services.folder_service import (
     NAME_MAX,
@@ -19,6 +19,7 @@ from src.services.folder_service import (
 )
 from src.services.log_service import LogWriter
 from src.services.permissions import CHAT_USE
+from src.services.turns import TurnRegistry
 
 router = APIRouter(prefix="/api/chat-folders", tags=["chat-folders"])
 
@@ -128,3 +129,25 @@ async def update_folder(
     except FolderNameTaken as error:
         raise _conflict(error) from error
     return FolderOut.of(folder, await folders.count_chats(folder))
+
+
+@router.delete("/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_folder(
+    folder_id: int,
+    account: Account = Depends(require_chat),
+    folders: FolderService = Depends(get_folder_service),
+    turns: TurnRegistry = Depends(get_turns),
+    logs: LogWriter = Depends(get_log_writer),
+) -> Response:
+    """Deletes the folder and every chat in it. Refused while one of those
+    chats has an answer being written, so a live answer is never cut off."""
+    try:
+        name, chat_count = await folders.delete(folder_id, turns.running_chat_ids(account.id))
+    except FolderNotFound as error:
+        raise _not_found() from error
+    except FolderBusy as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "A chat in this folder is still writing an answer. Wait for it to finish."
+        ) from error
+    await logs.action(account, "chat_folder.delete", f'Deleted folder "{name}" and its {chat_count} chat(s)')
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

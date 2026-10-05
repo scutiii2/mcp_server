@@ -6,9 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.services import folder_service
-from tests.conftest import FakeEmailSender
+from tests.conftest import FakeAgent, FakeEmailSender
 from tests.test_admin import login, make_member
+from tests.test_logs import messages, my_id
 from tests.test_registration import as_admin
+from tests.test_turns import events, start
 
 
 def make_chat(client: TestClient, title: str = "A chat") -> str:
@@ -54,6 +56,7 @@ def test_folders_need_login_and_chat_use(client: TestClient, email: FakeEmailSen
     assert client.get("/api/chat-folders").status_code == 401
     assert new_folder(client).status_code == 401
     assert client.patch("/api/chat-folders/1", json={"name": "x"}).status_code == 401
+    assert client.delete("/api/chat-folders/1").status_code == 401
 
     make_member(client, email, verify=False)
     login(client, "alice")
@@ -111,6 +114,7 @@ def test_folders_are_private_to_their_account(client: TestClient, email: FakeEma
 
     assert folders(client) == []
     assert client.patch(f"/api/chat-folders/{folder_id}", json={"name": "Mine"}).status_code == 404
+    assert client.delete(f"/api/chat-folders/{folder_id}").status_code == 404
     assert new_folder(client, "Secret").status_code == 201  # same name is fine for another account
 
 
@@ -246,3 +250,73 @@ def test_a_branch_stays_in_the_source_folder_and_is_not_pinned(client: TestClien
 
     assert branch.status_code == 201, branch.text
     assert (branch.json()["folder_id"], branch.json()["pinned"]) == (folder_id, False)
+
+
+# --- deleting a folder -------------------------------------------------------------
+
+
+def put_in(client: TestClient, folder_id: int, count: int) -> list[str]:
+    ids = [make_chat(client, f"chat {i}") for i in range(count)]
+    for chat_id in ids:
+        assert client.patch(f"/api/chats/{chat_id}", json={"folder_id": folder_id}).status_code == 200
+    return ids
+
+
+def test_deleting_a_folder_deletes_its_chats_and_their_shares(client: TestClient) -> None:
+    as_admin(client)
+    keep = make_chat(client, "unfiled")
+    other = new_folder(client, "Other").json()["id"]
+    (kept_elsewhere,) = put_in(client, other, 1)
+    doomed = new_folder(client, "Doomed").json()["id"]
+    first, second = put_in(client, doomed, 2)
+    token = client.post(f"/api/chats/{first}/shares", json={}).json()["token"]
+    assert client.get(f"/api/shared/{token}").status_code == 200
+
+    response = client.delete(f"/api/chat-folders/{doomed}")
+
+    assert response.status_code == 204
+    assert [f["name"] for f in folders(client)] == ["Other"]
+    remaining = {c["id"] for c in client.get("/api/chats").json()}
+    assert remaining == {keep, kept_elsewhere}
+    assert client.get(f"/api/chats/{second}").status_code == 404
+    assert client.get(f"/api/shared/{token}").status_code == 404  # the link died with the chat
+
+
+def test_deleting_an_empty_folder(client: TestClient) -> None:
+    as_admin(client)
+    folder_id = new_folder(client).json()["id"]
+
+    assert client.delete(f"/api/chat-folders/{folder_id}").status_code == 204
+    assert folders(client) == []
+    assert client.delete(f"/api/chat-folders/{folder_id}").status_code == 404
+
+
+def test_a_folder_with_an_answering_chat_cannot_be_deleted(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    folder_id = new_folder(client).json()["id"]
+    (chat_id,) = put_in(client, folder_id, 1)
+    agent.hold = True
+    assert start(client, chat_id, "q3").status_code == 202
+
+    try:
+        response = client.delete(f"/api/chat-folders/{folder_id}")
+        assert response.status_code == 409
+        assert "answer" in response.json()["detail"]
+        assert len(folders(client)) == 1  # nothing was deleted
+        assert client.get(f"/api/chats/{chat_id}").status_code == 200
+    finally:
+        agent.release()
+    events(client, chat_id)
+
+    assert client.delete(f"/api/chat-folders/{folder_id}").status_code == 204
+    assert client.get(f"/api/chats/{chat_id}").status_code == 404
+
+
+def test_deleting_a_folder_writes_an_audit_entry(client: TestClient) -> None:
+    as_admin(client)
+    folder_id = new_folder(client, "Audit me").json()["id"]
+    put_in(client, folder_id, 2)
+
+    client.delete(f"/api/chat-folders/{folder_id}")
+
+    assert 'Deleted folder "Audit me" and its 2 chat(s)' in messages(client, "action", my_id(client))
