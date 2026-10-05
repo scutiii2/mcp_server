@@ -144,11 +144,11 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `DELETE` | `/api/admin/roles/{id}` | `admin.manage` | `204`. `409` for Administrator, or if it's your only source of `admin.manage`. |
 | `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `admin.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last `admin.manage`. |
 | `GET` | `/api/admin/permissions` | `admin.manage` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |
-| `GET` | `/api/chats` | `chat.use` | This account's chats, newest first: `[{id, title, agent_id, message_count, created_at, updated_at}]` (no messages). |
+| `GET` | `/api/chats` | `chat.use` | This account's chats, newest first: `[{id, title, agent_id, message_count, folder_id, pinned, created_at, updated_at}]` (no messages; `folder_id` is null for a chat in no folder). |
 | `GET` | `/api/chats/search?q=` | `chat.use` | `q` 2-100 characters. Chats whose title or message text contains `q` (case-insensitive, literal; attached files' text is not searched), newest first, at most 50: `[{id, title, updated_at, title_match: {start, length}\|null, snippet: {text, start, length}\|null, message_index, message_matches}]`. The snippet is one line around the first matching message. |
 | `GET` | `/api/chats/{id}` | `chat.use` | One chat with `messages`. `404` if missing or another account's. |
 | `PUT` | `/api/chats/{id}` | `chat.use` | `{title, agent_id, messages: [{role, content}]}` creates or replaces the chat. `413` over 2 MB or 1000 chats. |
-| `PATCH` | `/api/chats/{id}` | `chat.use` | `{title}` renames. |
+| `PATCH` | `/api/chats/{id}` | `chat.use` | `{title?, folder_id?, pinned?}` (at least one) -> the chat row. `folder_id: null` takes the chat out of its folder. `404` unknown chat or a folder that is not this account's. Allowed while an answer is being written; filing and pinning do not change `updated_at`. |
 | `DELETE` | `/api/chats/{id}`, `/api/chats` | `chat.use` | `204`; one chat, or all of this account's. |
 | `POST` | `/api/chats/import` | `chat.use` | `{chats: [{id, title, agent_id, messages, created_at, updated_at}]}` (times in ms) -> `{imported, skipped}`. Existing ids are skipped, never replaced. |
 | `POST` | `/api/chats/{id}/turns` | `chat.use` | `{question, agent_id?, caveman?, enabled_extensions?, title?, truncate_to?, ask_before_tools?, allowed_tools?}` -> `202 {chat, sequence}`. `enabled_extensions`: extension ids whose tools the agent may use (none by default). `truncate_to` (regenerate / edit): index of the typed question this one replaces; it and everything after it are dropped first (`422` unless that message is a question the user typed, `404` for an unknown chat). `ask_before_tools`: the agent asks before each tool runs, except `allowed_tools` (names, at most 200; the tools the user allowed for this chat); see `/approvals` below. `agent_id` is accepted but ignored: every turn goes to the entry agent (`GET /api/agent`). Saves the question (creating the chat) and starts the answer **in ember_api**: it finishes, is saved and counts toward the usage limits even if the browser leaves. `503` no entry agent is registered, `409` already answering, `429` usage limit or 3 answers already running. |
@@ -159,6 +159,10 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/chats/{id}/clear` | `chat.use` | -> the chat, restarted: everything kept as one `log_attachment`. |
 | `POST` | `/api/chats/{id}/branch` | `chat.use` | `{upto}` -> `201` a new chat (server-made id, title `Branch of <title>`, same agent) holding the messages up to and including message `upto`, which must be one of the assistant's answers (`422` for a question, summary, raw log or command result, or an index past the end). The original is untouched and may still be answering. `404` unknown chat, `413` at the chat limit. |
 | `POST` | `/api/chats/{id}/messages` | `chat.use` | `{title, messages}` appends (slash-command calls and results), creating the chat if needed. |
+| `GET` | `/api/chat-folders` | `chat.use` | `[{id, name, position, chat_count}]` in display order. |
+| `POST` | `/api/chat-folders` | `chat.use` | `{name}` (1 to 60 characters, trimmed) -> `201` folder. `409` duplicate name (ignoring case) or 30 folders already. Logged as `chat_folder.create`. |
+| `PATCH` | `/api/chat-folders/{id}` | `chat.use` | `{name?, position?}` (at least one). `404` unknown, `409` duplicate name. Logged as `chat_folder.rename` for renames. |
+| `DELETE` | `/api/chat-folders/{id}` | `chat.use` | Deletes the folder **and every chat in it**, with their share links. `404` unknown, `409` while a chat in it is writing an answer. Logged as `chat_folder.delete`. |
 | `GET` | `/api/templates` | `chat.use` | This account's saved prompts, most recently edited first: `[{id, name, body, created_at, updated_at}]`. |
 | `POST` | `/api/templates` | `chat.use` | `{name, body}` -> `201` the template. Name up to 60 characters (trimmed), body up to 10,000, at most 100 per account. `409` for a name the account already has (ignoring case) or the limit, `422` for a blank or too-long field. |
 | `PUT` | `/api/templates/{id}` | `chat.use` | `{name, body}` replaces one. `404` if missing or another account's, `409` name taken. |
@@ -275,6 +279,7 @@ calls (in each call's `_meta`), so mcp_server sees who asked either way.
   of the saved messages up to one answer becomes a new chat with a
   server-made id. Only saved messages are read, so a chat that is still
   answering can be branched.
+- **Chat folders and pins** (`services/folder_service.py`, `routes/chat_folders.py`): folders are one level deep per account. A branch stays in its source's folder and is not pinned. The schema change is migration `0005`.
 - **Share links** (`services/share_service.py`, `routes/shares.py`): the one
   feature that lets someone read a chat without logging in, so its rules live
   on the server. A link's token is 256 random bits and only its SHA-256 is
