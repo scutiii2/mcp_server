@@ -62,7 +62,7 @@ function select(id: TabId): void {
 
       <!-- v-if, not v-show: each panel reloads its data when opened, so a
            role created on one tab shows up in the Accounts dropdown. -->
-      <AccountsPanel v-if="tab === 'accounts'" />
+      <AccountsPanel v-if="tab === 'accounts'" @changed="loadSummary" />
       <RolesPanel v-else-if="tab === 'roles'" />
       <InvitesPanel v-else-if="tab === 'invites'" />
       <SettingsPanel v-else />
