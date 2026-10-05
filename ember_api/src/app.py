@@ -22,6 +22,7 @@ from src.routes import (
     admin,
     attachments,
     auth,
+    chat_folders,
     chats,
     config_issues,
     logs,
@@ -162,6 +163,7 @@ def create_app(
     app.include_router(account.router)
     app.include_router(admin.router)
     app.include_router(chats.router)
+    app.include_router(chat_folders.router)
     app.include_router(templates.router)
     app.include_router(shares.router)
     app.include_router(shares.public_router)
