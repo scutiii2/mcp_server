@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import { authClient } from "../api/AuthClient";
+import { configIssuesClient } from "../api/ConfigIssuesClient";
 import { NAV_PAGES } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 import NavRail from "./NavRail.vue";
 
 vi.mock("../api/AuthClient", () => ({ authClient: { logout: vi.fn(() => Promise.resolve()) } }));
+vi.mock("../api/ConfigIssuesClient", () => ({ configIssuesClient: { list: vi.fn(() => Promise.resolve([])) } }));
 
 const ACCOUNT: Account = {
   id: 1,
@@ -30,6 +32,7 @@ function setup(account: Account | null) {
     routes: [
       ...NAV_PAGES.map((p) => ({ path: p.to, component: stub })),
       { path: "/account", component: stub },
+      { path: "/config-issues", component: stub },
       { path: "/login", name: "login", component: stub },
     ],
   });
@@ -90,6 +93,46 @@ describe("NavRail", () => {
     expect(wrapper.find(".account").exists()).toBe(false);
     expect(wrapper.find("button.logout").exists()).toBe(false);
     expect(wrapper.find("button.theme").exists()).toBe(true);
+  });
+
+  describe("config issues alert", () => {
+    const VIEWER: Account = { ...ACCOUNT, permissions: [...ACCOUNT.permissions, "config.issues.view"] };
+    const issue = (severity: "error" | "warning") => ({ file: "f", key: "k", message: "m", severity });
+
+    it("is hidden while there are no issues", async () => {
+      const { wrapper } = setup(VIEWER);
+      await flushPromises();
+
+      expect(wrapper.find("a.alert").exists()).toBe(false);
+    });
+
+    it("is red and counts every issue when an error exists", async () => {
+      vi.mocked(configIssuesClient.list).mockResolvedValueOnce([issue("error"), issue("warning"), issue("warning")]);
+      const { wrapper } = setup(VIEWER);
+      await flushPromises();
+
+      const alert = wrapper.find("a.alert");
+      expect(alert.classes()).toContain("has-errors");
+      expect(alert.find(".count").text()).toBe("3");
+      expect(alert.attributes("aria-label")).toBe("Config issues: 1 error, 2 warnings");
+      expect(alert.attributes("href")).toBe("/config-issues");
+    });
+
+    it("is amber when only warnings exist", async () => {
+      vi.mocked(configIssuesClient.list).mockResolvedValueOnce([issue("warning")]);
+      const { wrapper } = setup(VIEWER);
+      await flushPromises();
+
+      expect(wrapper.find("a.alert").classes()).toContain("has-warnings");
+    });
+
+    it("is never asked for by an account without the permission", async () => {
+      const { wrapper } = setup(ACCOUNT);
+      await flushPromises();
+
+      expect(configIssuesClient.list).not.toHaveBeenCalled();
+      expect(wrapper.find("a.alert").exists()).toBe(false);
+    });
   });
 
   it("links the account page by username and logs out to the login page", async () => {

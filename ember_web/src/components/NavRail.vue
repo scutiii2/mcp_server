@@ -5,8 +5,9 @@
 import { computed } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { useTheme } from "../composables/useTheme";
-import { visiblePages } from "../router/pages";
+import { CONFIG_ISSUES_ICON, visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
+import { useConfigIssuesStore } from "../stores/configIssues";
 
 const { theme, next, cycle } = useTheme();
 const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" } as const;
@@ -17,6 +18,18 @@ const router = useRouter();
 
 const canBrowse = computed(() => auth.account !== null && !auth.needsVerification);
 const pages = computed(() => (canBrowse.value ? visiblePages((p) => auth.hasPermission(p)) : []));
+
+const configIssues = useConfigIssuesStore();
+const showConfigAlert = computed(() => canBrowse.value && configIssues.issues.length > 0);
+const alertLabel = computed(() => {
+  const parts = [
+    [configIssues.errorCount, "error"],
+    [configIssues.warningCount, "warning"],
+  ]
+    .filter(([n]) => n)
+    .map(([n, word]) => `${n} ${word}${n === 1 ? "" : "s"}`);
+  return `Config issues: ${parts.join(", ")}`;
+});
 
 async function logout(): Promise<void> {
   await auth.logout();
@@ -43,6 +56,20 @@ async function logout(): Promise<void> {
         </svg>
       </RouterLink>
     </nav>
+
+    <RouterLink
+      v-if="showConfigAlert"
+      to="/config-issues"
+      class="alert"
+      :class="configIssues.errorCount > 0 ? 'has-errors' : 'has-warnings'"
+      :data-label="alertLabel"
+      :aria-label="alertLabel"
+    >
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path v-for="d in CONFIG_ISSUES_ICON" :key="d" :d="d" />
+      </svg>
+      <span class="count">{{ configIssues.issues.length }}</span>
+    </RouterLink>
 
     <div class="bottom">
       <button
@@ -126,6 +153,7 @@ nav {
 
 /* One shape for every control in the rail. */
 nav a,
+.alert,
 .theme,
 .account,
 .logout {
@@ -143,6 +171,33 @@ nav a,
   text-decoration: none;
   font-size: 0.85em;
   font-weight: 600;
+}
+/* Config issues: red while any error exists, amber when only warnings. */
+.alert {
+  margin-top: 8px;
+}
+.alert {
+  --tone: var(--warning);
+}
+.alert.has-errors {
+  --tone: var(--status-failed);
+}
+.alert {
+  color: var(--tone);
+}
+.alert .count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  line-height: 16px;
+  text-align: center;
+  color: var(--bg);
+  background: var(--tone);
 }
 nav a:hover,
 .theme:hover,

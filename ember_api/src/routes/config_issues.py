@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -21,10 +23,14 @@ class ConfigIssueOut(BaseModel):
     file: str
     key: str
     message: str
+    severity: Literal["error", "warning"]
 
 
 @router.get("")
 async def list_config_issues(
     _account: Account = Depends(require_config), settings: Settings = Depends(get_settings)
 ) -> list[ConfigIssueOut]:
-    return [ConfigIssueOut(file=i.file, key=i.key, message=i.message) for i in await collect_issues_async(settings)]
+    return [
+        ConfigIssueOut(file=i.file, key=i.key, message=i.message, severity=i.severity)  # type: ignore[arg-type]
+        for i in await collect_issues_async(settings)
+    ]

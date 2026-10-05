@@ -33,11 +33,16 @@ _PLACEHOLDER = re.compile(
 )
 
 
+ERROR = "error"  # broken or won't work
+WARNING = "warning"  # runs, but risky or incomplete
+
+
 @dataclass(frozen=True)
 class ConfigIssue:
     file: str
     key: str
     message: str
+    severity: str = ERROR
 
 
 Problem = tuple[str, str]  # (key, message)
@@ -172,10 +177,19 @@ def _check_bootstrap_admin(env: dict[str, str]) -> list[Problem]:
     return []
 
 
+def _smtp_in_use(env: dict[str, str]) -> bool:
+    return any(env.get(k) for k in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "MAIL_FROM_ADDRESS"))
+
+
+def _warn_smtp_unset(env: dict[str, str]) -> list[Problem]:
+    if _smtp_in_use(env):
+        return []
+    return [("-", "email is not configured - invites and verification codes can't be sent")]
+
+
 def _check_smtp(env: dict[str, str]) -> list[Problem]:
-    keys = ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "MAIL_FROM_ADDRESS")
-    if not any(env.get(k) for k in keys):
-        return [("-", "email is not configured - invites and verification codes can't be sent")]
+    if not _smtp_in_use(env):
+        return []
     problems: list[Problem] = []
     if not env.get("SMTP_HOST"):
         problems.append(("SMTP_HOST", "is empty but other SMTP settings are set"))
@@ -193,8 +207,13 @@ def _check_smtp(env: dict[str, str]) -> list[Problem]:
 
 _ENV_CHECKS: dict[str, Callable[[dict[str, str]], list[Problem]]] = {
     "secret_bootstrap_admin.env": _check_bootstrap_admin,
-    "secret_internal_api.env": _check_internal_api,
     "secret_smtp.env": _check_smtp,
+}
+
+# Per secret file: what only warrants a warning.
+_ENV_WARNINGS: dict[str, Callable[[dict[str, str]], list[Problem]]] = {
+    "secret_internal_api.env": _check_internal_api,
+    "secret_smtp.env": _warn_smtp_unset,
 }
 
 
@@ -219,22 +238,25 @@ def collect_issues(settings: Settings) -> list[ConfigIssue]:
             issues.extend(ConfigIssue(name, k, m) for k, m in _check_app(data))
         else:
             issues.append(ConfigIssue(name, "-", "top level must be a JSON object"))
-    issues.extend(ConfigIssue(name, k, m) for k, m in _check_deployment(settings))
+    issues.extend(ConfigIssue(name, k, m, WARNING) for k, m in _check_deployment(settings))
 
     registry = settings.agents_registry_path
     agents = _read_json(registry, "agents registry", issues)
     if agents is not None:
         issues.extend(ConfigIssue(f"agents registry ({registry.name})", k, m) for k, m in _check_agents(agents))
 
-    for file_name, check in _ENV_CHECKS.items():
+    for file_name in dict.fromkeys([*_ENV_CHECKS, *_ENV_WARNINGS]):
         path = settings.secrets_dir / file_name
         if not path.exists():
             issues.append(ConfigIssue(file_name, "-", "file is missing (copy it from its .example)"))
             continue
         env = {k: (v or "").strip() for k, v in dotenv_values(path).items()}
-        issues.extend(ConfigIssue(file_name, k, m) for k, m in check(env))
+        if file_name in _ENV_CHECKS:
+            issues.extend(ConfigIssue(file_name, k, m) for k, m in _ENV_CHECKS[file_name](env))
+        if file_name in _ENV_WARNINGS:
+            issues.extend(ConfigIssue(file_name, k, m, WARNING) for k, m in _ENV_WARNINGS[file_name](env))
         issues.extend(
-            ConfigIssue(file_name, key, "is still a placeholder value")
+            ConfigIssue(file_name, key, "is still a placeholder value", WARNING)
             for key, value in env.items()
             if value and _PLACEHOLDER.search(value)
         )

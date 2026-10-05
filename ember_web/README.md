@@ -156,8 +156,10 @@ URL, token or key.
   weekday-by-hour heatmap; only the kinds the account may read, times in UTC.
   Entries: the Activity, Errors and Chat turns lists, each for the server or
   one account.
-- Config page (`config.issues.view`): problems in ember_api's config and
-  secret files.
+- Config issues page (`config.issues.view`): problems in ember_api's config and
+  secret files, as errors (broken) or warnings (risky or incomplete), grouped by
+  file. Not a nav tab: a red (errors) or amber (warnings only) alert with a count
+  shows in the rail, and the page opens, only while there are issues.
 - Account page (click your username): profile, change email (re-verify),
   change password (logs out other devices), and the devices you logged in
   from (forget one to have its next login noted as new). Reachable while

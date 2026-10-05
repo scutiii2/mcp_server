@@ -56,6 +56,18 @@ def test_reports_config_and_secret_problems(client: TestClient, tmp_path: Path) 
     assert not any("hunter2" in part for issue in found for part in issue)
 
 
+def test_issues_carry_a_severity(client: TestClient, tmp_path: Path) -> None:
+    as_admin(client)
+    (tmp_path / "config_app.json").write_text(json.dumps({**GOOD_CONFIG, "port": 99999}), encoding="utf-8")
+
+    levels = {(i["file"], i["key"]): i["severity"] for i in client.get("/api/config-issues").json()}
+
+    assert levels[("config_app.json", "port")] == "error"
+    assert levels[("config_app.json", "backup.enabled")] == "warning"
+    assert levels[("secret_bootstrap_admin.env", "BOOTSTRAP_ADMIN_EMAIL")] == "warning"
+    assert levels[("secret_smtp.env", "-")] == "error"  # file missing
+
+
 def test_config_issues_need_permission(client: TestClient, email: FakeEmailSender) -> None:
     assert client.get("/api/config-issues").status_code == 401
     make_member(client, email)
