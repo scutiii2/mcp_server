@@ -24,6 +24,7 @@ from mcp.client.session import ClientSession
 
 from src.core.catalog import catalog
 from src.mcp_client.config import ServerConfig, load_servers_config
+from src.mcp_client.schema import inline_refs
 from src.mcp_client.transports import open_session
 
 # "__" rather than "_": several servers this connects to (mcp_server's own
@@ -67,7 +68,7 @@ def _namespace(server_id: str, tools: list[types.Tool]) -> list[types.Tool]:
         types.Tool(
             name=f"{server_id}{NAMESPACE_SEPARATOR}{tool.name}",
             description=tool.description,
-            inputSchema=tool.inputSchema,
+            inputSchema=inline_refs(tool.inputSchema),
             outputSchema=tool.outputSchema,
             _meta=tool.meta,
             annotations=tool.annotations,
