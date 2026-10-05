@@ -1,12 +1,12 @@
 ---
 name: root-project-scaffold
-description: Create or audit a new top-level project directory at the repo root (a new server, service, or standalone application sitting alongside mcp_server/ai_agent/chat_app) so it follows the same folder-structure convention those three already share. Use whenever the user asks to add a new app/server/service to this repo, scaffold a new root-level project, or wants to check whether an existing root folder matches repo convention — even if they only describe it ("I want a new microservice for X", "add another backend next to mcp_server") without naming this skill or "folder structure" explicitly. This is about the project's *top-level shape* (what folders exist at its root) — for what goes *inside* mcp_server's capabilities/, use mcp-capability-scaffold instead.
+description: Create or audit a new top-level project directory at the repo root (a new server, service, or standalone application sitting alongside mcp_server/ai_agent) so it follows the same folder-structure convention those already share. Use whenever the user asks to add a new app/server/service to this repo, scaffold a new root-level project, or wants to check whether an existing root folder matches repo convention — even if they only describe it ("I want a new microservice for X", "add another backend next to mcp_server") without naming this skill or "folder structure" explicitly. This is about the project's *top-level shape* (what folders exist at its root) — for what goes *inside* mcp_server's capabilities/, use mcp-capability-scaffold instead.
 ---
 
 # root_project_scaffold
 
 Every Python project at this repo's root (`mcp_server`, `ai_agent`, `ember_api`,
-`chat_cli`, and the retired `chat_app`) shares one top-level shape. (`ember_web` is a
+and `chat_cli`) shares one top-level shape. (`ember_web` is a
 Node project with its own layout - see ember-feature-scaffold.) A new root-level project must match it, not
 invent its own layout — consistency here is what lets `server_launcher.py`,
 onboarding docs, and anyone jumping between projects rely on the same
@@ -56,8 +56,7 @@ changes the convention for every project after it.
    and a `.example` twin with placeholder values, matching how
    `mcp_server/configs/*.json.example` and `secrets/*.env.example` do it.
    Loaders should auto-create a missing real file by copying its
-   `.example` (see `chat_app/src/utils/config_loader.py`,
-   `ai_agent/src/core/seed.py`) rather than raising on first run.
+   `.example` (see `ai_agent/src/core/seed.py`) rather than raising on first run.
 4. Write `README.md` covering: what the project does, requirements,
    setup steps, how to run it — model it on `mcp_server/README.md`.
 5. Register it with `server_launcher` if it should be startable from there
@@ -78,7 +77,7 @@ changes the convention for every project after it.
 `.secrets/` (in place of plain `data/`, `logs/`, `secrets/`) and `configs/`, and each capability gets the same five under
 `specifics/<capability_name>/` (`.data/ .logs/ .cache/ .secrets/ configs/`). An untracked dot-folder needs no `README.md`; a
 credentials README that is worth keeping lives in `docs/` (see `mcp_server/docs/secrets.md`); `.secrets/*.example` twins stay
-tracked. `mcp_server/migrate_state_layout.py` moves an older checkout onto this shape. `chat_app`, `ai_agent`, `ember_api` and `chat_cli` use the
+tracked. `mcp_server/migrate_state_layout.py` moves an older checkout onto this shape. `ai_agent`, `ember_api` and `chat_cli` use the
 plain folder names above.
 
 ## Auditing an existing root folder

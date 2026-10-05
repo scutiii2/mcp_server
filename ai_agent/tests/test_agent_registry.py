@@ -12,19 +12,13 @@ import pytest
 from src.agents import agent_registry
 
 
-def _configure(monkeypatch, tmp_path, agents, chat_app_agents=None):
+def _configure(monkeypatch, tmp_path, agents):
     config_path = tmp_path / "agent_registry.json"
     config_path.write_text(json.dumps({"agents": agents}), encoding="utf-8")
     monkeypatch.setattr(agent_registry, "_CONFIG_PATH", config_path)
 
-    chat_app_config_path = tmp_path / "chat_app_agent_registry.json"
-    chat_app_config_path.write_text(
-        json.dumps({"agents": chat_app_agents if chat_app_agents is not None else agents}), encoding="utf-8"
-    )
-    monkeypatch.setattr(agent_registry, "_CHAT_APP_CONFIG_PATH", chat_app_config_path)
-
     agent_registry.reload()
-    return config_path, chat_app_config_path
+    return config_path
 
 
 def test_agent_id_for_uses_the_pre_rename_provider_names():
@@ -36,8 +30,8 @@ def test_agent_id_for_uses_the_pre_rename_provider_names():
     assert agent_registry.agent_id_for("openai") == "openai-agent"
 
 
-def test_register_adds_this_instance_to_both_config_files(monkeypatch, tmp_path):
-    config_path, chat_app_config_path = _configure(monkeypatch, tmp_path, [])
+def test_register_adds_this_instance_to_the_config_file(monkeypatch, tmp_path):
+    config_path = _configure(monkeypatch, tmp_path, [])
 
     agent_registry.register("claude-agent", "Claude Agent", "http://127.0.0.1:9100/mcp")
 
@@ -46,7 +40,6 @@ def test_register_adds_this_instance_to_both_config_files(monkeypatch, tmp_path)
         "entry": False, "orchestrator": False, "focus": "",
     }]
     assert json.loads(config_path.read_text(encoding="utf-8"))["agents"] == expected
-    assert json.loads(chat_app_config_path.read_text(encoding="utf-8"))["agents"] == expected
     assert agent_registry.get_agent("claude-agent") == expected[0]
 
 
@@ -91,13 +84,12 @@ def test_deregister_removes_only_the_matching_id(monkeypatch, tmp_path):
         {"id": "claude-agent", "label": "Claude Agent", "url": "http://127.0.0.1:9100/mcp"},
         {"id": "openai-agent", "label": "OpenAI Agent", "url": "http://127.0.0.1:9101/mcp"},
     ]
-    config_path, chat_app_config_path = _configure(monkeypatch, tmp_path, agents)
+    config_path = _configure(monkeypatch, tmp_path, agents)
 
     agent_registry.deregister("claude-agent")
 
     assert agent_registry.list_agent_ids() == ["openai-agent"]
     assert json.loads(config_path.read_text(encoding="utf-8"))["agents"] == [agents[1]]
-    assert json.loads(chat_app_config_path.read_text(encoding="utf-8"))["agents"] == [agents[1]]
 
 
 def test_deregister_unknown_id_is_a_no_op(monkeypatch, tmp_path):
@@ -140,7 +132,7 @@ def test_missing_config_file_yields_no_agents(monkeypatch, tmp_path):
 
 
 def test_register_writes_entry_orchestrator_and_focus(monkeypatch, tmp_path):
-    config_path, _ = _configure(monkeypatch, tmp_path, [])
+    config_path = _configure(monkeypatch, tmp_path, [])
 
     agent_registry.register(
         "calc", "Calculator", "http://127.0.0.1:9103/mcp",
@@ -251,7 +243,7 @@ def test_swap_gives_up_after_the_last_attempt(monkeypatch, tmp_path):
 
 def test_reload_keeps_previous_agents_when_the_file_is_corrupt(monkeypatch, tmp_path):
     agents = [{"id": "claude-agent", "label": "Claude Agent", "url": "http://x/mcp"}]
-    config_path, _ = _configure(monkeypatch, tmp_path, agents)
+    config_path = _configure(monkeypatch, tmp_path, agents)
     config_path.write_text('{"agents": [{"id": "cla', encoding="utf-8")
 
     agent_registry.reload()
@@ -270,7 +262,7 @@ def test_roster_and_specialists_survive_a_corrupt_registry_file(monkeypatch, tmp
         {"id": "orchestrator", "label": "Ember", "url": "u", "orchestrator": True},
         {"id": "calc", "label": "Calculator", "url": "u", "focus": "arithmetic"},
     ]
-    config_path, _ = _configure(monkeypatch, tmp_path, agents)
+    config_path = _configure(monkeypatch, tmp_path, agents)
     spec = AgentSpec(id="orchestrator", label="Ember", port=9100, llm=LlmSpec(provider="anthropic"), orchestrator=True)
     monkeypatch.setattr(agent_spec, "_current", spec)
     config_path.write_text("{", encoding="utf-8")

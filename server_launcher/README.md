@@ -16,7 +16,7 @@ Tests: `cd server_launcher && .venv_launcher\Scripts\python -m pytest`.
 ## What it does
 
 Autodetects every `<project>/run.bat` at the repo root (`mcp_server`,
-`chat_app`, `catalog_service`, `ai_agent`) by parsing its venv-folder and
+`catalog_service`, `ai_agent`) by parsing its venv-folder and
 `py -m <module>` lines, and runs each directly as
 `<project>/.venv_<id>/Scripts/python.exe -m <module>`. That gives a real
 `Popen` handle with piped stdout, which is what makes the in-app log viewer

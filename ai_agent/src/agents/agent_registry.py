@@ -3,10 +3,6 @@
 data/agent_registry.json, then kept live by register()/deregister()
 below. The file is written by the running instances, never edited by hand,
 so it lives under data/ (gitignored runtime state) rather than configs/.
-Identical in shape to chat_app/src/services/agent_registry.py; copied
-rather than shared cross-project, same convention as everything else in
-this project.
-
 Includes this instance's own entry, but an agent never lists itself in
 its roster (see agent_routing.specialists()): orchestrators delegate to
 specialists only.
@@ -25,20 +21,11 @@ from typing import Any
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "agent_registry.json"
 
-# chat_app's own copy of this same file (its provider dropdown - see
-# chat_app/src/services/agent_registry.py). register()/deregister() below
-# write both rather than one shared file, keeping the "copied, not shared
-# cross-project" convention while no longer needing a human to keep the
-# two in sync by hand.
-_CHAT_APP_CONFIG_PATH = (
-    Path(__file__).resolve().parent.parent.parent.parent / "chat_app" / "src" / "configs" / "config_agents.json"
-)
-
 # "claude"/"openai" rather than this instance's own AI_AGENT_PROVIDER
 # ("anthropic"/"openai" - see agent_config.py) for the id prefix: the
 # provider id was renamed from "claude" to "anthropic" without renaming
-# the agent id, and delegate_to_agent calls, chat_app's stored
-# `provider` field on old chat turns, and cancel's `provider` param all
+# the agent id, and delegate_to_agent calls, stored chat
+# `provider` fields on old chat turns, and cancel's `provider` param all
 # already reference "claude-agent" - deriving straight from PROVIDER_ID
 # would silently rename that out from under them.
 _AGENT_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
@@ -125,8 +112,7 @@ def _release_lock(lock_path: Path) -> None:
 def _update(path: Path, mutate) -> None:
     """Locked read-modify-write of one registry file: `mutate` takes
     the current agent list and returns the new one. Silently gives up on
-    any OSError (e.g. chat_app's copy missing because only ai_agent was
-    checked out) - self-registration is a convenience, not something
+    any OSError - self-registration is a convenience, not something
     that should ever stop this instance from starting or stopping."""
     lock_path = path.with_name(path.name + ".lock")
     try:
@@ -167,9 +153,8 @@ def reload() -> None:
 def register(
     agent_id: str, label: str, url: str, *, entry: bool = False, orchestrator: bool = False, focus: str = "",
 ) -> None:
-    """Upserts this instance's own entry into both registry files
-    (this project's and chat_app's), so neither needs a manual edit
-    to learn about a newly-started instance. Call once at startup, before
+    """Upserts this instance's own entry into the registry file, so no
+    manual edit is needed to learn about a newly-started instance. Call once at startup, before
     serving; see deregister() for the matching shutdown call.
 
     entry/orchestrator/focus are optional for readers (a missing key reads
@@ -184,28 +169,26 @@ def register(
         return [a for a in agents if a["id"] != agent_id] + [record]
 
     # data/ is gitignored runtime state, so a fresh checkout has no such
-    # folder yet; chat_app's folder is never created from here.
+    # folder yet.
     try:
         _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
-    for path in (_CONFIG_PATH, _CHAT_APP_CONFIG_PATH):
-        _update(path, _upsert)
+    _update(_CONFIG_PATH, _upsert)
     reload()
 
 
 def deregister(agent_id: str) -> None:
-    """Removes this instance's own entry from both registry files
+    """Removes this instance's own entry from the registry file
     - called on clean shutdown (Ctrl+C, or the process exiting
-    normally) so a stopped instance doesn't linger in either list. A
+    normally) so a stopped instance doesn't linger in the list. A
     crash that skips Python's own shutdown path leaves the entry behind,
     same as any other clean-shutdown-only cleanup in this project."""
 
     def _remove(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [a for a in agents if a["id"] != agent_id]
 
-    for path in (_CONFIG_PATH, _CHAT_APP_CONFIG_PATH):
-        _update(path, _remove)
+    _update(_CONFIG_PATH, _remove)
     reload()
 
 

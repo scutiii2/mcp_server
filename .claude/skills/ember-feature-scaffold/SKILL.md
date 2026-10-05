@@ -1,6 +1,6 @@
 ---
 name: ember-feature-scaffold
-description: Add a feature to ember_web (the Vue 3 + TypeScript browser app) and/or ember_api (its FastAPI backend) following this repo's established layout, auth and proxy conventions. Use whenever the user asks for a new ember_web page, screen, tab, panel, store or API call, a new ember_api route, permission, admin action or model, or wants ember_web to reach a new ai_agent / mcp_server capability - even if they only describe the behavior ("let admins see login attempts", "add a settings page to ember", "show token usage per answer") without naming files. Also use when reviewing whether ember_web/ember_api code follows these conventions. Not for the retired chat_app (see chatapp-page-scaffold, legacy only) or new mcp_server tools (use mcp-capability-scaffold).
+description: Add a feature to ember_web (the Vue 3 + TypeScript browser app) and/or ember_api (its FastAPI backend) following this repo's established layout, auth and proxy conventions. Use whenever the user asks for a new ember_web page, screen, tab, panel, store or API call, a new ember_api route, permission, admin action or model, or wants ember_web to reach a new ai_agent / mcp_server capability - even if they only describe the behavior ("let admins see login attempts", "add a settings page to ember", "show token usage per answer") without naming files. Also use when reviewing whether ember_web/ember_api code follows these conventions. Not for new mcp_server tools (use mcp-capability-scaffold).
 ---
 
 # ember_web + ember_api feature scaffolding
@@ -15,8 +15,7 @@ Two root projects that ship together:
   accounts, sessions, roles/permissions, invites, email verification (can be
   switched off with `require_email_verification: false`), and
   proxies MCP to ai_agent (`/api/mcp/agents/{id}`) and mcp_server
-  (`/api/mcp/server`). Auth logic mirrors chat_app's but lives in its own
-  database; chat_app is never touched for ember work.
+  (`/api/mcp/server`). Auth logic lives in its own database.
 
 A third client uses the same REST API: **chat_cli/** (terminal chat, logs in
 with the account, same cookie session, same SSE events). A change to an

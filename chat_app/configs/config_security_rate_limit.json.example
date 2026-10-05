@@ -1,7 +1,0 @@
-{
-  "enabled": true,
-  "max_attempts": 5,
-  "window_seconds": 300,
-  "lockout_seconds": 900,
-  "scope": "both"
-}

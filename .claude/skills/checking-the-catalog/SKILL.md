@@ -1,6 +1,6 @@
 ---
 name: checking-the-catalog
-description: Use when about to write a new reusable function, class, config loader, formatter, or service wrapper in chat_app, mcp_server, or ai_agent — before writing implementation code — to check catalog_service for an existing @catalog-tagged building block first, instead of reinventing or hand-mirroring one found by grep.
+description: Use when about to write a new reusable function, class, config loader, formatter, or service wrapper in mcp_server or ai_agent — before writing implementation code — to check catalog_service for an existing @catalog-tagged building block first, instead of reinventing or hand-mirroring one found by grep.
 ---
 
 # Checking the catalog
@@ -8,7 +8,7 @@ description: Use when about to write a new reusable function, class, config load
 ## Overview
 
 `catalog_service` (repo root, port 8020) indexes every `@catalog`-tagged
-function/class across chat_app, mcp_server, and ai_agent — three
+function/class across mcp_server and ai_agent — two
 independent codebases with **no cross-imports between them** (a
 documented architectural invariant, see
 `docs/System_Overview_Documentation.md`). So checking the catalog never
@@ -25,7 +25,7 @@ incidental function with a matching keyword.
 ## When to use
 
 Before writing any new function/class that's more than a one-off inline
-snippet in `chat_app/`, `mcp_server/`, or `ai_agent/` — a config loader,
+snippet in `mcp_server/` or `ai_agent/` — a config loader,
 validator, formatter, SSH/API client wrapper, cache, anything another
 part of the repo plausibly already needed.
 
@@ -61,8 +61,7 @@ why in a comment.
 ## On a miss
 
 Proceed. If what you write is itself a reusable building block, tag it
-with the project's `@catalog` stub (`chat_app/src/utils/catalog.py`,
-`mcp_server/src/utils/catalog.py`, `ai_agent/src/core/catalog.py`) so the
+with the project's `@catalog` stub (`mcp_server/src/utils/catalog.py`, `ai_agent/src/core/catalog.py`) so the
 next scan finds it — `POST /catalog/refresh` to pick it up immediately
 instead of waiting for the service's next boot.
 

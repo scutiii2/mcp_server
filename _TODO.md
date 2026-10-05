@@ -8,42 +8,41 @@ Give each item found by the catalog its own description (catalog_service current
 
 ## Terminal chat client `chat_cli/` (deferred 2026-09-21)
 
-**Context**: A CLI that behaves like the chat_app web chat, so conversations can run in a terminal. Design chosen, not yet implemented.
+**Context**: A CLI that behaves like the ember web chat, so conversations can run in a terminal. Design chosen, not yet implemented.
 
 **Approved design**:
-- **Architecture**: option B. The CLI talks directly to `ai_agent` / `mcp_server`, reusing the logic in `chat_app/src/services/ai_agent_client.py` and `mcp_client.py`. It does not go through chat_app's HTTP API or login.
+- **Architecture**: option B. The CLI talks directly to `ai_agent` / `mcp_server`, reusing the logic of the old `chat_app` `ai_agent_client.py` and `mcp_client.py` (chat_app was removed 2026-10-05; recover them from git history). It does not go through ember_api's HTTP API or login.
 - **Location**: new top-level folder `chat_cli/`, laid out per the `root-project-scaffold` skill.
 - **Features**: token streaming, tool-call progress display, and an agent picker (same agents as the web UI's Agent dropdown).
 - **Suggested libraries**: `rich` for rendering, `prompt_toolkit` for input.
 
-**Known trade-off**: going direct skips chat_app's auth, permissions, usage limits and stored chat history, and duplicates some of that logic. Attachments were not requested and are out of scope.
+**Known trade-off**: going direct skips ember_api's auth, permissions, usage limits and stored chat history, and duplicates some of that logic. Attachments were not requested and are out of scope.
 
 **Why not built now**: user asked to log it instead of implementing.
 
-**Revisit when**: user wants this built. First check whether `ai_agent_client.py` can be imported or shared cleanly (for example via `catalog_service`) instead of copied. Decide whether the CLI keeps its own chat history.
+**Revisit when**: user wants this built. First check whether the old `ai_agent_client.py` logic can be imported or shared cleanly (for example via `catalog_service`) instead of copied. Decide whether the CLI keeps its own chat history.
 
 ## Consolidate secret .env and config .json files (deferred 2026-09-21)
 
 **Context**: Many secret/config files are tiny (most under 300 bytes) and split by habit. Proposal to merge them; not approved for implementation yet.
 
 **Proposed merges**:
-- **chat_app secrets** (6 files to 2): `secret_app`, `secret_db`, `secret_internal_api`, `secret_mcp`, `secret_smtp` into `secret_chat_app.env`. `secret_bootstrap_admin.env` stays separate (isolated password, edited for a different reason).
 - **mcp_server secrets**: merge `secret_app`, `secret_internal_api`, `secret_smtp` into one file. `secret_ssh.env` stays separate (more sensitive).
-- **chat_app configs** (7 files to 3): `config_security_fingerprint`, `_headers`, `_ip_filter`, `_rate_limit` into one `config_security.json` with a top-level key per feature. `config_app` + `config_usage_limits` into `config_app.json`. `config_agents.json` stays.
 - **mcp_server configs**: `config_capabilities` + `config_extensions` into `config_mcp_server.json`.
 - **ai_agent**: split by concern instead of merged (done): `config_limits`, `config_servers`, `config_tool_selection`, `config_gateways`, `prompts.json`, and the runtime registry at `data/agent_registry.json`.
 
 **Notes**:
-- `INTERNAL_API_TOKEN` exists in both chat_app and mcp_server and must match. Do not share a file across projects (keeps each project self-contained).
-- ai_agent's registry is now `ai_agent/data/agent_registry.json`; its write into `chat_app/src/configs/` targets a folder that does not exist (chat_app's real one is `chat_app/configs/`). Remove or fix that copy.
+- `INTERNAL_API_TOKEN` exists in ember_api, ai_agent and mcp_server and must match. Do not share a file across projects (keeps each project self-contained).
 
-**Work involved**: update every loader, the `.example` twins, `config_validation.py` per-file checkers, tests, READMEs and the four scaffold skills (`aiagent-scaffold`, `chatapp-page-scaffold`, `mcp-capability-scaffold`, `root-project-scaffold`). Add a one-time migration that reads the old files when the new one is missing, so existing real secrets (for example the bootstrap admin password) are not lost. Trade-off: one typo can break several settings in a merged file, and a merged `config_security.json` reloads all four features together.
+**Work involved**: update every loader, the `.example` twins, `config_validation.py` per-file checkers, tests, READMEs and the scaffold skills (`aiagent-scaffold`, `mcp-capability-scaffold`, `root-project-scaffold`). Add a one-time migration that reads the old files when the new one is missing, so existing real secrets (for example the bootstrap admin password) are not lost. Trade-off: one typo can break several settings in a merged file, and a merged `config_security.json` reloads all four features together.
 
 **Why not built now**: user asked to log it instead of implementing.
 
-**Revisit when**: user wants this built. Start with chat_app (most files, plus the ConfigIssues validation to update).
+**Revisit when**: user wants this built. Start with ember_api or mcp_server.
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21)
+
+**Note (2026-10-05)**: chat_app was removed. Read "chat_app" below as ember_api (`services/mcp_proxy.py`), which now owns the MCP proxying.
 
 **Context**: Today mcp_server is a hub: external MCPs are added as "extensions" (`mcp_server/configs/config_extensions.json`, `/extensions` endpoint) and their tools arrive proxied as `{ext_id}__{tool}`. `ai_agent` already has a multi-server list (`configs/config_servers.json`, `McpClientRegistry`, tools namespaced `<server>__<tool>`) with mcp_server as the single `main` entry. `chat_app` (`services/mcp_client.py`) connects to mcp_server only and manages extensions through its `/extensions` endpoint. Goal: chat_app lists MCPs directly, mcp_server is just one entry, no proxying.
 

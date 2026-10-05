@@ -37,10 +37,6 @@ _EXTRA_ARGS_HINTS = {
         "--mcp-url <url>    override the mcp_server URL this agent connects to, "
         "e.g. http://127.0.0.1:8010/mcp"
     ),
-    "chat_app": (
-        "--mcp-url <url>    override the mcp_server URL this app connects to, "
-        "e.g. http://127.0.0.1:8010/mcp"
-    ),
 }
 
 _VENV_RE = re.compile(r'call\s+\.venv_(\w+)\\Scripts\\activate')
@@ -61,13 +57,12 @@ _LABEL_RE = re.compile(r"^\s*REM\s+LABEL:\s*(.+?)\s*$", re.IGNORECASE | re.MULTI
 _DESCRIPTION_RE = re.compile(r"^\s*REM\s+DESCRIPTION:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 
 # Port env var + default for a project whose bat doesn't `set` its own
-# port (mcp_server/chat_app/catalog_service each read one straight from
-# their own config/run.py - see MCP_PORT/CHAT_APP_PORT/CATALOG_PORT).
+# port (mcp_server/catalog_service each read one straight from
+# their own config/run.py - see MCP_PORT/CATALOG_PORT).
 # ai_agent needs no entry here: its bat already `set`s AI_AGENT_PORT
 # itself, picked up generically below.
 _PROJECT_PORT_ENV = {
     "mcp_server": ("MCP_PORT", 8010),
-    "chat_app": ("CHAT_APP_PORT", 5000),
     "catalog_service": ("CATALOG_PORT", 8020),
 }
 

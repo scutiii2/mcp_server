@@ -3,7 +3,7 @@ REM Catalog service dev launcher. Creates .venv_catalog on first run and
 REM installs this project into it in editable mode.
 REM
 REM LABEL: Catalog Service
-REM DESCRIPTION: Cross-project reuse catalog for chat_app, mcp_server, and ai_agent - scans @catalog-decorated functions/classes and serves them over HTTP.
+REM DESCRIPTION: Cross-project reuse catalog for mcp_server and ai_agent - scans @catalog-decorated functions/classes and serves them over HTTP.
 cd /d "%~dp0"
 
 if not exist ".venv_catalog\Scripts\python.exe" (

@@ -28,7 +28,6 @@ def _isolated_agent_registry(monkeypatch, tmp_path):
     from src.agents import agent_registry
 
     monkeypatch.setattr(agent_registry, "_CONFIG_PATH", tmp_path / "registry" / "agent_registry.json")
-    monkeypatch.setattr(agent_registry, "_CHAT_APP_CONFIG_PATH", tmp_path / "registry" / "chat_app_agents.json")
     monkeypatch.setattr(agent_registry, "_AGENTS", [])
     monkeypatch.setattr(agent_registry, "_AGENTS_BY_ID", {})
 

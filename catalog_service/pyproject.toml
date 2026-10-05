@@ -1,7 +1,7 @@
 [project]
 name = "catalog_service"
 version = "0.1.0"
-description = "Cross-project reuse catalog for chat_app, mcp_server, and ai_agent"
+description = "Cross-project reuse catalog for mcp_server and ai_agent"
 requires-python = ">=3.11"
 dependencies = [
     "starlette>=0.37,<1.0",

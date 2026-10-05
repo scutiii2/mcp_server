@@ -11,7 +11,7 @@ Read one existing capability end to end first if you haven't seen this codebase'
 
 **REQUIRED SUB-SKILL:** Use checking-the-catalog before writing any new
 function/class in `domain.py` — check `catalog_service` for an existing
-tagged building block in chat_app/mcp_server/ai_agent before designing
+tagged building block in mcp_server/ai_agent before designing
 the interface from scratch.
 
 ## Before scaffolding: is this a new capability or a new tool on an existing one?
