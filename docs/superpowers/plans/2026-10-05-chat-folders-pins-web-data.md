@@ -1252,3 +1252,13 @@ Report what changed and the results. Give the user this short manual checklist (
 **Placeholders:** none. Task 3 Step 1 tells the implementer to check the real `branchFrom` call shape and adapt only the call; that is a lookup, not a gap.
 
 **Type consistency:** `ChatFolder`, `foldersClient.*`, `ChatChanges`, `chatsClient.update`, `Conversation.folderId/pinned`, `setChatFolder`, `setChatPinned`, `forgetFolder`, and the `ChatRow` props and emits use the same names in every task.
+
+## Carry into the phase 4 plan (from the final review of this plan's work)
+
+- `ember_web/e2e/fakeApi.ts` needs `GET/POST/PATCH/DELETE /api/chat-folders` and `PATCH /api/chats/{id}` handling before the sidebar UI calls them (the Playwright test fails on any call the fake does not know).
+- `forgetFolder` does not invalidate a `loadList` that started before the folder delete; its late result can bring the deleted chats back. Add a list sequence counter that `forgetFolder` bumps, or filter forgotten folder ids until a newer list arrives.
+- Derive folder chat counts from the chat store; `ChatFolder.chat_count` goes stale after `setChatFolder` and `forgetFolder`.
+- Treat an undefined `folderId` like null (unfiled): chats created locally by `send` have neither field until the next reload.
+- `ensureLoaded` in the folders store returns at once while a load is running, so `await ensureLoaded()` does not wait for it; store the in-flight promise and return it. This also closes the create-during-initial-load race.
+- Spec text drift: the spec says `folderId?: string | null` and names `setFolder`/`setPinned`; the code uses `number | null` and `setChatFolder`/`setChatPinned`.
+- The folders-store test "create passes ember_api's error on" should call `ensureLoaded()` first so its `folders` assertion proves something.
