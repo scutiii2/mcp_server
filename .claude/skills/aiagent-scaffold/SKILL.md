@@ -53,7 +53,7 @@ block before designing the interface from scratch.
    ```
 
    Fields (full table in the README): `label`, `port` (required, unique across
-   enabled files; 9100 and 9102 are the two shipped examples), `enabled`,
+   enabled files; the template uses 9103), `enabled`,
    `entry`, `llm.{provider,gateway,model,temperature,reasoning_effort,max_tokens,max_tool_rounds}`,
    `persona`, `focus`, `tools.{allow,deny}` (fnmatch on tool names without the
    `main__` prefix; empty allow = all; deny wins), `orchestrator`,

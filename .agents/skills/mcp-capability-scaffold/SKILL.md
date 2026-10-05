@@ -18,7 +18,7 @@ the interface from scratch.
 
 - **New capability** (a new domain of logic entirely, e.g. "check transport queue status" or "query a ticketing system"): full scaffold, steps below.
 - **New tool on an existing capability** (another check within a domain a capability already owns): skip straight to writing the `contract.py` model + `domain.py` function + `tool.py` `@command`/`@mcp.tool` pair inside the existing folder. Don't touch `__init__.py`, `run.py`, or `config_capabilities.json` — those are per-capability, not per-tool.
-- **Wrapping an MCP server that already exists elsewhere** (not logic living in this repo): that's an *extension*, not a capability — see `mcp_server/src/services/extensions.py` instead. Don't scaffold a capability folder for this case.
+- **Wrapping an MCP server that already exists elsewhere** (not logic living in this repo): that's an *extension*, not a capability — see `mcp_server/src/services/extensions.py` instead (an HTTP extension is handshake-preflighted first, so a host that answers 401/403/5xx marks that one extension as errored instead of crashing startup; error text never includes headers). Don't scaffold a capability folder for this case.
 
 ## The three-file split (non-negotiable)
 
@@ -128,7 +128,7 @@ Do these in order — each step depends on the last:
 
    `commands[].name` is the bare sub-command (`"list"`, not `"/server list"`) — the capability id prefix is added at render time. A manual, human-only workflow step uses the literal string `"(manual - no tool)"` for `tool`.
 
-5. Add a toggle entry to both `mcp_server/configs/config_capabilities.json` **and** `config_capabilities.json.example`:
+5. Add a toggle entry to both `mcp_server/configs/config_capabilities.json` **and** `config_capabilities.json.example` (the real file is auto-created from the example only when missing, so an existing one needs the entry added by hand):
 
    ```json
    { "<id>": { "enabled": true } }

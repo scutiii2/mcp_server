@@ -5,8 +5,9 @@ description: Create or audit a new top-level project directory at the repo root 
 
 # root_project_scaffold
 
-Every project at this repo's root (`mcp_server`, `ai_agent`, `chat_app`)
-shares one top-level shape. A new root-level project must match it, not
+Every Python project at this repo's root (`mcp_server`, `ai_agent`, `ember_api`,
+and `chat_cli`) shares one top-level shape. (`ember_web` is a
+Node project with its own layout - see ember-feature-scaffold.) A new root-level project must match it, not
 invent its own layout — consistency here is what lets `server_launcher.py`,
 onboarding docs, and anyone jumping between projects rely on the same
 mental map.
@@ -19,9 +20,9 @@ Mandatory in every root project:
 |---|---|
 | `README.md` | What the project does, setup steps, requirements — see mcp_server/README.md as the fullest example |
 | `pyproject.toml` | Its own dependencies — each root project is a separate Python environment, never a shared venv |
-| `run.bat` | The one launcher, env-var-configured (see aiagent-scaffold's Path 2 for the pattern: don't copy the bat per instance, set env vars before calling it) |
+| `run.bat` | The one launcher, env-var-configured: don't copy the bat per instance, set env vars before calling it (ai_agent goes further: its bat starts a supervisor that runs one child per `agents/<id>.json`). Creates its own `.venv_<project>` on first run |
 | `configs/` | JSON config, each real file gitignored with a committed `.example` twin (`config_x.json` + `config_x.json.example`) |
-| `secrets/` | Credentials/env files, same gitignored-with-`.example` pattern (e.g. `secret_llm.env.example`) |
+| `secrets/` | Credentials/env files, same gitignored-with-`.example` pattern (e.g. `mcp_server/.secrets/*.example`; ai_agent instead keeps a single root `.env` + `.env.example`) |
 | `src/` | The actual code |
 | `tests/` | Its test suite |
 
@@ -30,8 +31,9 @@ pre-create empty ones "for consistency":
 
 | Path | When to add it |
 |---|---|
-| `data/` | Persists runtime data to disk (mcp_server, chat_app have it; ai_agent doesn't — it's stateless, see aiagent-scaffold's "Logging (there isn't any)" section for why a project can legitimately skip a folder) |
+| `data/` | Persists runtime data to disk (mcp_server, ember_api have it; ai_agent only writes its usage JSONL under `data/usage/`; chat_cli keeps nothing, ember_api stores its chats) |
 | `docs/` | Documentation beyond the README is substantial enough to split out |
+| `migrations/`, `scripts/` | ember_api only: Alembic revisions and its CLIs (`migrate_db`, `backup_db`, `import_chat_app`). A new project with a database may follow it; otherwise use `src/` |
 | `logs/` | The project writes its own log files (needs a `logging_setup.py`-style module in `src/`, not an ad-hoc log call) |
 
 Do not invent additional top-level folders (`lib/`, `scripts/`, `bin/`,
@@ -53,10 +55,20 @@ changes the convention for every project after it.
 3. For every config/secret file, write both the real (gitignored) file
    and a `.example` twin with placeholder values, matching how
    `mcp_server/configs/*.json.example` and `secrets/*.env.example` do it.
+   Loaders should auto-create a missing real file by copying its
+   `.example` (see `ai_agent/src/core/seed.py`) rather than raising on first run.
 4. Write `README.md` covering: what the project does, requirements,
    setup steps, how to run it — model it on `mcp_server/README.md`.
-6. Register it with `server_launcher.py` (repo root) if it should be
-   startable from there like the other three projects are.
+5. Register it with `server_launcher` if it should be startable from there
+   (it discovers a project from its `run.bat`). A **long-running service** is
+   registered; an interactive program like `chat_cli` (a terminal client, not
+   a server) is not.
+6. Services reached over HTTP/MCP by other projects must take the shared
+   `INTERNAL_API_TOKEN` from a secrets file (`secrets/secret_internal_api.env`; ai_agent: `.env`) and, for
+   `/mcp`, reject calls without it once set. Never import another root
+   project: self-contained means a separate venv and no shared packages
+   (see `chat_cli`, which talks to ember_api over HTTP instead of reusing
+   its code).
 
 ## mcp_server's dotted variant
 
@@ -65,7 +77,7 @@ changes the convention for every project after it.
 `.secrets/` (in place of plain `data/`, `logs/`, `secrets/`) and `configs/`, and each capability gets the same five under
 `specifics/<capability_name>/` (`.data/ .logs/ .cache/ .secrets/ configs/`). An untracked dot-folder needs no `README.md`; a
 credentials README that is worth keeping lives in `docs/` (see `mcp_server/docs/secrets.md`); `.secrets/*.example` twins stay
-tracked. `mcp_server/migrate_state_layout.py` moves an older checkout onto this shape. `chat_app` and `ai_agent` still use the
+tracked. `mcp_server/migrate_state_layout.py` moves an older checkout onto this shape. `ai_agent`, `ember_api` and `chat_cli` use the
 plain folder names above.
 
 ## Auditing an existing root folder
