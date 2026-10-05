@@ -80,6 +80,41 @@ describe("listing", () => {
   });
 });
 
+describe("listing, more", () => {
+  it("a reload brings in folder and pin for a loaded chat that is not open", async () => {
+    const chat = await setup([summary("a"), summary("b")]);
+    await chat.selectChat("a");
+    await chat.selectChat("b");
+    client.list.mockResolvedValue([summary("a", { folder_id: 9, pinned: true }), summary("b")]);
+
+    await chat.reload();
+
+    expect([row(chat, "a")?.folderId, row(chat, "a")?.pinned]).toEqual([9, true]);
+    expect(row(chat, "a")?.messages).toHaveLength(2);
+  });
+
+  it("a reload that was in flight before a move does not undo it while the save is outstanding", async () => {
+    const chat = await setup([summary("a")]);
+    let finish: (v: ChatSummary) => void = () => {};
+    client.update.mockReturnValue(new Promise<ChatSummary>((resolve) => (finish = resolve)));
+
+    chat.setChatFolder("a", 3);
+    client.list.mockResolvedValue([summary("a", { folder_id: null })]);
+    await chat.reload();
+    expect(row(chat, "a")?.folderId).toBe(3);
+
+    finish(summary("a", { folder_id: 3 }));
+    await flushPromises();
+    client.list.mockResolvedValue([summary("a", { folder_id: 3 })]);
+    await chat.reload();
+    expect(row(chat, "a")?.folderId).toBe(3);
+
+    client.list.mockResolvedValue([summary("a", { folder_id: 5 })]);
+    await chat.reload();
+    expect(row(chat, "a")?.folderId).toBe(5);
+  });
+});
+
 describe("moving and pinning", () => {
   it("setChatFolder changes the screen first, then tells ember_api once", async () => {
     const chat = await setup([summary("a")]);

@@ -319,9 +319,12 @@ export const useChatStore = defineStore("chat", () => {
         // Folder and pin come from the server on every reload: changing them is
         // not activity, so `updatedAt` stays the same and the "unchanged" check
         // alone would keep a stale value.
-        const filing = { folderId: c.folderId, pinned: c.pinned };
+        // While a save is outstanding the local values win: this list may have
+        // been requested before the change and would write the old ones back.
+        const keepLocal = known !== undefined && (pending.length > 0 || saving);
+        const filing = keepLocal ? { folderId: known.folderId, pinned: known.pinned } : { folderId: c.folderId, pinned: c.pinned };
         if (c.id === activeId.value && known) return { ...known, title: c.title, running: known.running, ...filing };
-        return unchanged ? { ...known, title: c.title, ...filing } : c;
+        return unchanged ? { ...known, title: c.title, ...filing } : { ...c, ...filing };
       });
     } catch (err) {
       if (started === generation) loadError.value = errorMessage(err);
@@ -858,7 +861,6 @@ export const useChatStore = defineStore("chat", () => {
   function hasChat(id: string): boolean {
     return find(id) !== undefined;
   }
-
 
   function setAskBeforeTools(on: boolean): void {
     askBeforeTools.value = on;
