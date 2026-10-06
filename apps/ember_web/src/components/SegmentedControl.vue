@@ -32,6 +32,9 @@ const index = () => props.options.findIndex((o) => o.value === model.value);
 
 <style scoped>
 .segmented {
+  /* Text, thumb and focus ring sit on the accent track in both themes, so they
+     stay white (--accent-contrast turns dark in dark mode). */
+  --on-track: #fff;
   position: relative;
   display: inline-grid;
   grid-auto-flow: column;
@@ -48,7 +51,7 @@ const index = () => props.options.findIndex((o) => o.value === model.value);
   left: 3px;
   width: calc((100% - 6px) / var(--n));
   border-radius: var(--radius-full);
-  background: #fff;
+  background: var(--on-track);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transform: translateX(calc(var(--i) * 100%));
   transition: transform 0.18s ease;
@@ -66,7 +69,7 @@ button {
   font-size: 0.85em;
   font-weight: 600;
   white-space: nowrap;
-  color: #fff;
+  color: var(--on-track);
   background: transparent;
   transition: color 0.18s ease;
 }
@@ -74,7 +77,11 @@ button.active {
   color: var(--accent);
 }
 button:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--on-track);
   outline-offset: -2px;
+}
+/* The active segment sits on the white thumb, where a white ring would vanish. */
+button.active:focus-visible {
+  outline-color: var(--accent);
 }
 </style>
