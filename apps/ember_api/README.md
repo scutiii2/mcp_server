@@ -53,7 +53,7 @@ Tests:
 ## Moving from chat_app
 
 `scripts/import_chat_app.py` copies chat_app's accounts, chats, token usage,
-activity log and known devices into ember_api, so chat_app can be retired. Run it from `ember_api/` with
+activity log and known devices into ember_api, so chat_app can be retired. Run it from `apps/ember_api/` with
 ember_api stopped:
 
 ```bash

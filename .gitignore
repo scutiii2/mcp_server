@@ -10,31 +10,31 @@ __pycache__/
 .vscode
 
 # server_launcher's saved presets - personal, per-machine, not source.
-/server_launcher/data/presets.json
+/apps/server_launcher/data/presets.json
 # server_launcher's one-shot "keep running in background" state, written
 # on close and consumed (deleted) on the next launch - not source, and
 # stale if committed (whatever was running at commit time, not now).
-/server_launcher/data/kept_running.json
+/apps/server_launcher/data/kept_running.json
 
 # mcp_server's real config/secrets/runtime-state. config_*.json holds
 # structure (committed) with ${VAR} placeholders for anything sensitive;
 # .env holds the real values (gitignored) those placeholders resolve to.
 # Both keep an .example twin, which IS committed. .secrets/ is the legacy
 # folder run.py migrates into .env on first start.
-/mcp_server/.env
-/mcp_server/.secrets/*
-!/mcp_server/.secrets/*.example
+/apps/mcp_server/.env
+/apps/mcp_server/.secrets/*
+!/apps/mcp_server/.secrets/*.example
 
 # ai_agent's real API keys / pinned-provider selection, same treatment
 # as mcp_server's secret_*.env above - only .env.example is committed.
-/ai_agent/.env
-/ai_agent/configs/*
-!/ai_agent/configs/*.example
+/apps/ai_agent/.env
+/apps/ai_agent/configs/*
+!/apps/ai_agent/configs/*.example
 # ai_agent's real agent definitions (only agents.json.template is committed)
 # and its per-agent token usage log.
-/ai_agent/agents/*
-!/ai_agent/agents/agents.json.template
-/ai_agent/data/
+/apps/ai_agent/agents/*
+!/apps/ai_agent/agents/agents.json.template
+/apps/ai_agent/data/
 
 # mcp_server's real SMTP-account addresses. The equivalent data lived in the old root-level config.json,
 # which was gitignored outright - these carry the same real deployment
@@ -42,23 +42,23 @@ __pycache__/
 # treatment. config_extensions.json and config_capabilities.json are NOT
 # listed here - low-sensitivity structure, tracked normally like their
 # .example twins.
-/mcp_server/configs/config_email.json
+/apps/mcp_server/configs/config_email.json
 
 # Runtime state, not source: one-time-code
 # records, and any capability's own data/ (e.g. capabilities/otp/data/).
 # All hold security-relevant material or are regenerated on every run.
-/mcp_server/.data/
-/mcp_server/.logs/
-/mcp_server/.cache/
+/apps/mcp_server/.data/
+/apps/mcp_server/.logs/
+/apps/mcp_server/.cache/
 
 # Per-capability state/config under mcp_server/specifics/<capability_name>/:
 # dot-prefixed folders are untracked runtime state and secrets; the plain
 # configs/ folder next to them is tracked. Includes audit DBs and
 # JobWatcher persisted state ({state_dir}/{WatcherClass}/{key}.json).
-/mcp_server/specifics/*/.data/
-/mcp_server/specifics/*/.logs/
-/mcp_server/specifics/*/.cache/
-/mcp_server/specifics/*/.secrets/
+/apps/mcp_server/specifics/*/.data/
+/apps/mcp_server/specifics/*/.logs/
+/apps/mcp_server/specifics/*/.cache/
+/apps/mcp_server/specifics/*/.secrets/
 *.db
 
 
@@ -68,14 +68,17 @@ __pycache__/
 # on every run, not source. Anchored to each app's own root (not a bare
 # "logs/") - unanchored, this also matched chat_app's SOURCE blueprint at
 # pages/logs/, silently excluding it from version control entirely.
-/chat_app/logs/
-/ai_agent/data/token_usage.json
+/apps/chat_app/logs/
+/apps/ai_agent/data/token_usage.json
 
 zip_versions/
 
 # Local git worktrees used for isolated feature work (superpowers
 # subagent-driven-development) - scratch checkouts, not source.
 .worktrees/
+
+# Subagent-driven-development scratch, not source.
+.superpowers/
 
 MCPServer.yaml
 .sessions/

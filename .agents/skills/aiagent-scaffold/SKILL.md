@@ -6,7 +6,7 @@ description: Add a new AI agent (a persona/specialist, a delegate-able or entry 
 # ai_agent scaffolding
 
 Since multi-agent phase 1 (2026-10-04) **one file per agent**:
-`ai_agent/agents/<id>.json`. `run.bat` starts `python -m src.supervisor`,
+`apps/ai_agent/agents/<id>.json`. `run.bat` starts `python -m src.supervisor`,
 which spawns one `python -m src.server` child per enabled file (env
 `AI_AGENT_FILE`), registers it under its file-name id, prefixes its output
 `[<id>] ` and restarts a crashed child with backoff. Adding an agent is a
@@ -24,7 +24,7 @@ instance per `AI_AGENT_PROVIDER`/`AI_AGENT_PORT` still work for a lone
 hand-edit `data/agent_registry.json` - it is the runtime registry the children
 write (atomic temp file + `os.replace`); ember_api reads it.
 
-`ai_agent/README.md` ("Agents", "Orchestrator and routing", "Usage log") is
+`apps/ai_agent/README.md` ("Agents", "Orchestrator and routing", "Usage log") is
 the source of truth this skill compresses; read it first. Running shape:
 `ember_api --MCP--> ai_agent (entry) --delegate_to_agent--> specialists`, each
 agent one provider+model, all `--MCP-->` mcp_server.
@@ -36,7 +36,7 @@ block before designing the interface from scratch.
 
 ## Path 1 - New agent (file only)
 
-1. Create `ai_agent/agents/<id>.json`. The stem is the id
+1. Create `apps/ai_agent/agents/<id>.json`. The stem is the id
    (`^[a-z0-9][a-z0-9-]{0,62}$`); it is what ember_api, stored chat turns and
    the usage log name, so pick it once. Unknown keys are an error. Minimal
    specialist:
@@ -151,7 +151,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
        every emit with `if on_event is not None:`. This is what
        ultimately reaches ember_api (and from there ember_web) as events - see
        `server.py`'s `ask()` tool (`ctx.report_progress(0, None, json.dumps(event))`)
-       and `ember_api/src/services/agent_gateway.py` on the other end.
+       and `apps/ember_api/src/services/agent_gateway.py` on the other end.
    - `run_interpret(text, model) -> ChatResult` — one non-agentic
      completion, no tools offered (used to finish an AI-required
      `mcp_server` tool's result — see `server.py`'s `interpret` tool).
@@ -167,7 +167,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
      (`token_limits`), `config_servers.json` (`servers`),
      `config_tool_selection.json` (`tool_selection`) - read via
      `src/core/config_files.py`'s `read_section`.
-     Credentials live in a single `ai_agent/.env`, seeded from `.env.example`;
+     Credentials live in a single `apps/ai_agent/.env`, seeded from `.env.example`;
      there is no `secrets/` folder.)
    - Wrap rate-limit errors into `cooldown.start_cooldown(PROVIDER_ID, seconds)`
      and re-raise, same pattern as the existing providers, so `is_available()`

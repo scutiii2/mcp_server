@@ -25,7 +25,7 @@ incidental function with a matching keyword.
 ## When to use
 
 Before writing any new function/class that's more than a one-off inline
-snippet in `mcp_server/` or `ai_agent/` — a config loader,
+snippet in `apps/mcp_server/` or `apps/ai_agent/` — a config loader,
 validator, formatter, SSH/API client wrapper, cache, anything another
 part of the repo plausibly already needed.
 
@@ -42,7 +42,7 @@ client-side by name/description keyword, or browse the UI at
 **Cache file** (works even if the service isn't running — never skip
 the check just because it's down):
 ```
-catalog_service/data/catalog_cache.json
+apps/catalog_service/data/catalog_cache.json
 ```
 Same entry shape either way: `id` (fully-qualified dotted), `type`,
 `name`, `description`, `project`, `file`, `line`, `parameters`, and
@@ -61,7 +61,7 @@ why in a comment.
 ## On a miss
 
 Proceed. If what you write is itself a reusable building block, tag it
-with the project's `@catalog` stub (`mcp_server/src/utils/catalog.py`, `ai_agent/src/core/catalog.py`) so the
+with the project's `@catalog` stub (`apps/mcp_server/src/utils/catalog.py`, `apps/ai_agent/src/core/catalog.py`) so the
 next scan finds it — `POST /catalog/refresh` to pick it up immediately
 instead of waiting for the service's next boot.
 

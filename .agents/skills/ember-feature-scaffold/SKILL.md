@@ -20,10 +20,10 @@ Two root projects that ship together:
 A third client uses the same REST API: **chat_cli/** (terminal chat, logs in
 with the account, same cookie session, same SSE events). A change to an
 existing route's shape or to the turn/events contract must keep it working -
-check `chat_cli/src/api.py` and `events.py` - and a new route the web app
+check `apps/chat_cli/src/api.py` and `events.py` - and a new route the web app
 needs is not automatically wanted there.
 
-Read both READMEs (`ember_web/README.md`, `ember_api/README.md`) before
+Read both READMEs (`apps/ember_web/README.md`, `apps/ember_api/README.md`) before
 designing - they hold the current API table and security model this skill
 compresses.
 
@@ -81,14 +81,14 @@ in routes), `src/models/` (SQLAlchemy 2 typed models), `src/deps.py`
 5. **POST bodies are always JSON** - `JsonOnlyMiddleware` rejects anything
    else with 415 (CSRF guard with the `SameSite=Strict` cookie). Don't
    add form endpoints.
-6. **Tests** in `ember_api/tests/`: fixtures in `conftest.py` give
+6. **Tests** in `apps/ember_api/tests/`: fixtures in `conftest.py` give
    `client`, `client_factory(**settings)`, `email` (FakeEmailSender) and
    `upstream` (FakeUpstream for the MCP proxy); `tests/test_registration.py`
    has `as_admin`, `new_invite`, `register` helpers. Cover: happy path,
    401 when logged out, 403 without the permission / unverified, and
    validation errors. Run:
-   `ember_api\.venv_ember_api\Scripts\python -m pytest -q` (from `ember_api/`).
-7. Update the API table in `ember_api/README.md`.
+   `ember_api\.venv_ember_api\Scripts\python -m pytest -q` (from `apps/ember_api/`).
+7. Update the API table in `apps/ember_api/README.md`.
 
 ## 3. ember_web side
 
@@ -134,7 +134,7 @@ preference), `src/components/` (reusable pieces only), `src/router/`,
    enums - declare fields explicitly.
 7. **Markdown/HTML from the server or a model** only via
    `components/MarkdownContent.vue` (DOMPurify-sanitized) - never raw `v-html`.
-8. Verify from `ember_web/`: `npx vue-tsc -b --noEmit` (must print
+8. Verify from `apps/ember_web/`: `npx vue-tsc -b --noEmit` (must print
    nothing) and `npx vite build`, then delete `dist/`. Tests sit beside the source
    (`*.test.ts`, Vitest + jsdom, ember_api mocked): `npm test`. If a page now
    calls a new `/api` route, add it to `e2e/fakeApi.ts` - the Playwright test

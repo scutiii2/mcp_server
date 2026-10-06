@@ -20,11 +20,11 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
    you're running), or the key(s) for whichever `AI_AGENT_GATEWAY` you're
    pointing at instead. Both can be set at once - one file backs every agent.
 
-2. Make sure `mcp_server` is running (`mcp_server/run.bat`) -
-   `ai_agent/configs/config_servers.json` points at its default
+2. Make sure `mcp_server` is running (`apps/mcp_server/run.bat`) -
+   `apps/ai_agent/configs/config_servers.json` points at its default
    `http://127.0.0.1:8010/mcp`.
 
-3. Start the agents with `run.bat` (from `ai_agent/`). It creates
+3. Start the agents with `run.bat` (from `apps/ai_agent/`). It creates
    `.venv_ai_agent` and installs this project into it in editable mode on
    first run, then runs `py -m src.supervisor`. See Agents below.
 
@@ -152,8 +152,8 @@ ember_api finds agents through the registry. On the same machine it reads
 - The same `INTERNAL_API_TOKEN` as ember_api, and the ports open in the
   firewall. Use a private network or TLS: the token travels in a header.
 
-Then set `agents_registry_url` in `ember_api/configs/config_app.json` (see
-`ember_api/configs/README.md`).
+Then set `agents_registry_url` in `apps/ember_api/configs/config_app.json` (see
+`apps/ember_api/configs/README.md`).
 
 ## Orchestrator and routing
 

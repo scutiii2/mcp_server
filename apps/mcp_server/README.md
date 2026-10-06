@@ -22,7 +22,7 @@ starting/stopping/restarting/listing managed apps. Built to be called by
    run.bat
    ```
 
-   (from `mcp_server/` - creates `.venv_mcp` and installs this project
+   (from `apps/mcp_server/` - creates `.venv_mcp` and installs this project
    into it in editable mode on first run, then runs `py -m src.run`.)
 
 ## Configuration
