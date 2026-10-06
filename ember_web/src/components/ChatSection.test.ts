@@ -166,6 +166,38 @@ describe("as a drop zone", () => {
     expect(wrapper.find("section").classes()).not.toContain("over");
   });
 
+  it("clears the highlight when it stops accepting, and does not bring it back", async () => {
+    const wrapper = mountSection({ accepting: true });
+    wrapper.find("section").element.dispatchEvent(dragEvent("dragover"));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("section").classes()).toContain("over");
+
+    await wrapper.setProps({ accepting: false });
+    await wrapper.setProps({ accepting: true });
+
+    expect(wrapper.find("section").classes()).not.toContain("over");
+  });
+
+  it("decides by position when dragleave has no relatedTarget", async () => {
+    const wrapper = mountSection({ accepting: true });
+    const section = wrapper.find("section").element;
+    section.getBoundingClientRect = () => ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, x: 0, y: 0 }) as DOMRect;
+    section.dispatchEvent(dragEvent("dragover"));
+    await wrapper.vm.$nextTick();
+
+    const inside = dragEvent("dragleave");
+    Object.assign(inside, { clientX: 50, clientY: 50 });
+    section.dispatchEvent(inside);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("section").classes()).toContain("over");
+
+    const outside = dragEvent("dragleave");
+    Object.assign(outside, { clientX: 150, clientY: 50 });
+    section.dispatchEvent(outside);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("section").classes()).not.toContain("over");
+  });
+
   it("shows its hint while accepting and empty", () => {
     expect(mountEmpty({ accepting: true, hint: "Drop here to pin" }).text()).toContain("Drop here to pin");
   });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import type { MenuPoint } from "./menuPoint";
 
 // One block of the chat list: a header (title, count, a "..." menu button) and
@@ -32,10 +32,24 @@ function onDragOver(event: DragEvent): void {
 
 function onDragLeave(event: DragEvent): void {
   // Moving between the zone's own children fires dragleave too; only leaving the zone counts.
+  const zone = event.currentTarget as HTMLElement;
   const next = event.relatedTarget as Node | null;
-  if (next && (event.currentTarget as Node).contains(next)) return;
+  if (next) {
+    if (zone.contains(next)) return;
+  } else {
+    // Some browsers give no relatedTarget: decide by where the pointer is.
+    const box = zone.getBoundingClientRect();
+    const inside = event.clientX >= box.left && event.clientX <= box.right
+      && event.clientY >= box.top && event.clientY <= box.bottom;
+    if (inside) return;
+  }
   over.value = false;
 }
+
+// A cancelled or outside drop may never fire dragleave; never carry `over` into the next drag.
+watch(() => props.accepting, (accepting) => {
+  if (!accepting) over.value = false;
+});
 
 function onDrop(event: DragEvent): void {
   if (!props.accepting) return;
