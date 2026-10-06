@@ -4,6 +4,7 @@ import type {
   GuiPageSpec,
   GuiResultKind,
   GuiResultSpec,
+  GuiTabsSectionSpec,
   GuiTextSectionSpec,
 } from "../api/CapabilityPagesClient";
 import type { JsonSchema, ToolRunResult } from "../api/types";
@@ -14,6 +15,8 @@ export class GuiPageError extends Error {}
 const KINDS: GuiResultKind[] = ["secret", "message", "table", "fields"];
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const SECTION_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const MIN_TABS = 2;
+const MAX_TABS = 8;
 
 type Obj = Record<string, unknown>;
 
@@ -42,17 +45,26 @@ function name(obj: Obj, key: string, where: string): string | undefined {
 function parseResult(raw: unknown, where: string): GuiResultSpec {
   if (raw === undefined) return { kind: "fields" };
   if (!isObj(raw)) throw new GuiPageError(`${where}: 'result' must be an object`);
-  warnUnknown(`${where} result`, raw, ["kind", "field", "detail", "refresh_after"]);
+  warnUnknown(`${where} result`, raw, ["kind", "field", "detail", "refresh_after", "strength", "group"]);
   const kind = (raw.kind ?? "fields") as GuiResultKind;
   if (!KINDS.includes(kind)) throw new GuiPageError(`${where}: unknown result kind '${String(raw.kind)}'`);
+  const group = raw.group;
+  if (group != null && (typeof group !== "number" || !Number.isInteger(group) || group < 2 || group > 8)) {
+    throw new GuiPageError(`${where}: 'group' must be a whole number from 2 to 8`);
+  }
   const result: GuiResultSpec = {
     kind,
     field: name(raw, "field", where),
     detail: name(raw, "detail", where),
     refresh_after: name(raw, "refresh_after", where),
+    strength: name(raw, "strength", where),
+    group: typeof group === "number" ? group : undefined,
   };
   if ((kind === "secret" || kind === "table") && !result.field) {
     throw new GuiPageError(`${where}: result kind '${kind}' needs a 'field'`);
+  }
+  if (kind !== "secret" && (result.strength !== undefined || result.group !== undefined)) {
+    throw new GuiPageError(`${where}: 'strength' and 'group' only apply to a result of kind 'secret'`);
   }
   return result;
 }
@@ -72,17 +84,16 @@ function parseFields(raw: unknown, where: string): GuiFieldSpec[] {
   });
 }
 
-function parseSection(raw: unknown, index: number): GuiFormSectionSpec | GuiTextSectionSpec {
-  const where = `section ${index + 1}`;
-  if (!isObj(raw)) throw new GuiPageError(`${where} must be an object`);
+function parseSectionId(raw: Obj, where: string): string {
   const id = text(raw, "id", where)!;
   if (!SECTION_ID.test(id)) throw new GuiPageError(`${where}: bad id '${id}'`);
-  // Any section with a `text` key is prose (as mcp_server reads it), even if it also names a tool.
-  if ("text" in raw) {
-    warnUnknown(where, raw, ["id", "title", "text"]);
-    return { type: "text", id, title: text(raw, "title", where, false), text: text(raw, "text", where)! };
-  }
-  warnUnknown(where, raw, ["id", "title", "tool", "submit", "fields", "result"]);
+  return id;
+}
+
+function parseForm(raw: unknown, where: string): GuiFormSectionSpec {
+  if (!isObj(raw)) throw new GuiPageError(`${where} must be an object`);
+  const id = parseSectionId(raw, where);
+  warnUnknown(where, raw, ["id", "title", "tool", "submit", "fields", "result", "live"]);
   return {
     type: "form",
     id,
@@ -91,7 +102,36 @@ function parseSection(raw: unknown, index: number): GuiFormSectionSpec | GuiText
     submit: text(raw, "submit", where, false) ?? "Run",
     fields: parseFields(raw.fields, where),
     result: parseResult(raw.result, where),
+    live: raw.live === true,
   };
+}
+
+function parseTabs(raw: Obj, where: string): GuiTabsSectionSpec {
+  const id = parseSectionId(raw, where);
+  warnUnknown(where, raw, ["id", "tabs"]);
+  const tabs = raw.tabs;
+  if (!Array.isArray(tabs) || tabs.length < MIN_TABS || tabs.length > MAX_TABS) {
+    throw new GuiPageError(`${where}: 'tabs' must be a list of ${MIN_TABS} to ${MAX_TABS} forms`);
+  }
+  return { type: "tabs", id, tabs: tabs.map((tab, i) => parseForm(tab, `${where} tab ${i + 1}`)) };
+}
+
+function parseSection(raw: unknown, index: number): GuiFormSectionSpec | GuiTextSectionSpec | GuiTabsSectionSpec {
+  const where = `section ${index + 1}`;
+  if (!isObj(raw)) throw new GuiPageError(`${where} must be an object`);
+  if ("tabs" in raw) return parseTabs(raw, where);
+  // Any section with a `text` key is prose (as mcp_server reads it), even if it also names a tool.
+  if ("text" in raw) {
+    const id = parseSectionId(raw, where);
+    warnUnknown(where, raw, ["id", "title", "text"]);
+    return { type: "text", id, title: text(raw, "title", where, false), text: text(raw, "text", where)! };
+  }
+  return parseForm(raw, where);
+}
+
+/** Every form of the page, those inside tabs included, in page order. */
+export function formSections(sections: GuiPageSpec["sections"]): GuiFormSectionSpec[] {
+  return sections.flatMap((s) => (s.type === "form" ? [s] : s.type === "tabs" ? s.tabs : []));
 }
 
 /** Checks a page from mcp_server before anything is drawn. Every tool a page
@@ -103,10 +143,10 @@ export function parseGuiPage(raw: unknown, ownTools: string[]): GuiPageSpec {
   if (raw.version !== 1) throw new GuiPageError(`Unsupported page version ${String(raw.version)}`);
   if (!Array.isArray(raw.sections) || raw.sections.length === 0) throw new GuiPageError("The page has no sections");
   const sections = raw.sections.map(parseSection);
-  const ids = sections.map((s) => s.id);
+  const ids = sections.flatMap((s) => (s.type === "tabs" ? [s.id, ...s.tabs.map((t) => t.id)] : [s.id]));
   const dup = ids.find((id, i) => ids.indexOf(id) !== i);
   if (dup) throw new GuiPageError(`Duplicate section id '${dup}'`);
-  const foreign = sections.flatMap((s) => (s.type === "form" && !ownTools.includes(s.tool) ? [s.tool] : []));
+  const foreign = formSections(sections).flatMap((f) => (ownTools.includes(f.tool) ? [] : [f.tool]));
   if (foreign.length) throw new GuiPageError(`The page names tools its capability does not own: ${foreign.join(", ")}`);
   return {
     version: 1,

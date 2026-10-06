@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { JsonSchema, ToolRunResult } from "../api/types";
-import { applyFieldOverrides, GuiPageError, parseGuiPage, resultValue } from "./guiPage";
+import { applyFieldOverrides, formSections, GuiPageError, parseGuiPage, resultValue } from "./guiPage";
 
 const RAW = {
   version: 1,
@@ -155,6 +155,59 @@ describe("parseGuiPage", () => {
 
   it("rejects a tool the capability does not own", () => {
     expect(() => parseGuiPage(RAW, ["tool_b"])).toThrow(/tool_a/);
+  });
+
+  const TABS = {
+    id: "gen",
+    tabs: [
+      { id: "a", title: "A", tool: "tool_a", live: true, result: { kind: "secret", field: "v", strength: "bits", group: 3 } },
+      { id: "b", title: "B", tool: "tool_a" },
+    ],
+  };
+  const tabsPage = (section: unknown) => ({ version: 1, title: "T", sections: [section] });
+
+  it("accepts a tabs section and tags it", () => {
+    const page = parseGuiPage(tabsPage(TABS), ["tool_a"]);
+    const section = page.sections[0]!;
+    expect(section).toMatchObject({ type: "tabs", id: "gen" });
+    if (section.type !== "tabs") throw new Error("not tabs");
+    expect(section.tabs[0]).toMatchObject({ type: "form", live: true, result: { strength: "bits", group: 3 } });
+    expect(section.tabs[1]).toMatchObject({ live: false });
+  });
+
+  it("accepts null strength and group, as an unstripped page would carry them", () => {
+    const page = parseGuiPage(
+      tabsPage({ ...TABS, tabs: [{ id: "a", title: "A", tool: "tool_a", live: false, result: { kind: "secret", field: "v", strength: null, group: null } }, TABS.tabs[1]] }),
+      ["tool_a"],
+    );
+    expect(page.sections[0]).toMatchObject({ type: "tabs" });
+  });
+
+  it("formSections lists the forms inside tabs too, in order", () => {
+    const page = parseGuiPage(
+      { version: 1, title: "T", sections: [{ id: "top", title: "Top", tool: "tool_a" }, TABS, { id: "n", text: "x" }] },
+      ["tool_a"],
+    );
+    expect(formSections(page.sections).map((f) => f.id)).toEqual(["top", "a", "b"]);
+  });
+
+  it.each([
+    ["one tab", tabsPage({ ...TABS, tabs: TABS.tabs.slice(0, 1) })],
+    ["nine tabs", tabsPage({ ...TABS, tabs: Array.from({ length: 9 }, (_, i) => ({ id: `t${i}`, title: "T", tool: "tool_a" })) })],
+    ["tabs not a list", tabsPage({ ...TABS, tabs: "x" })],
+    ["a text section as a tab", tabsPage({ ...TABS, tabs: [TABS.tabs[0], { id: "x", text: "not a form" }] })],
+    ["a tab id repeated", tabsPage({ ...TABS, tabs: [TABS.tabs[0], { id: "a", title: "Again", tool: "tool_a" }] })],
+    ["a tab id equal to a section id", { version: 1, title: "T", sections: [{ id: "a", title: "Top", tool: "tool_a" }, TABS] }],
+    ["a foreign tool in a tab", tabsPage({ ...TABS, tabs: [TABS.tabs[0], { id: "b", title: "B", tool: "elsewhere" }] })],
+    ["strength on a message", tabsPage({ ...TABS, tabs: [{ id: "a", title: "A", tool: "tool_a", result: { kind: "message", strength: "bits" } }, TABS.tabs[1]] })],
+    ["group on a table", tabsPage({ ...TABS, tabs: [{ id: "a", title: "A", tool: "tool_a", result: { kind: "table", field: "rows", group: 3 } }, TABS.tabs[1]] })],
+    ...[1, 9, 2.5, "3"].map((group): [string, unknown] => [
+      `group ${JSON.stringify(group)}`,
+      tabsPage({ ...TABS, tabs: [{ id: "a", title: "A", tool: "tool_a", result: { kind: "secret", field: "v", group } }, TABS.tabs[1]] }),
+    ]),
+    ["strength not an identifier", tabsPage({ ...TABS, tabs: [{ id: "a", title: "A", tool: "tool_a", result: { kind: "secret", field: "v", strength: "a-b" } }, TABS.tabs[1]] })],
+  ])("rejects %s", (_name, raw) => {
+    expect(() => parseGuiPage(raw, ["tool_a"])).toThrow(GuiPageError);
   });
 });
 

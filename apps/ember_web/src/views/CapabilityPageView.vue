@@ -78,8 +78,8 @@ watch(name, load);
             <h3 v-if="s.title">{{ s.title }}</h3>
             <p>{{ s.text }}</p>
           </section>
-          <GuiFormSection v-else-if="tools[s.tool]" :section="s" :tool="tools[s.tool]" :run-tool="runTool" />
-          <p v-else class="error">The tool {{ s.tool }} is not available right now.</p>
+          <GuiFormSection v-else-if="s.type === 'form' && tools[s.tool]" :section="s" :tool="tools[s.tool]" :run-tool="runTool" />
+          <p v-else-if="s.type === 'form'" class="error">The tool {{ s.tool }} is not available right now.</p>
         </template>
       </template>
     </div>

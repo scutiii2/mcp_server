@@ -10,6 +10,10 @@ export interface GuiResultSpec {
   detail?: string;
   /** A numeric result field: seconds until the tool is run again. */
   refresh_after?: string;
+  /** A numeric result field: bits of entropy, drawn as a strength bar (secret only). */
+  strength?: string;
+  /** Show a secret in groups of this many characters, 2 to 8 (secret only). */
+  group?: number;
 }
 
 export interface GuiFieldSpec {
@@ -27,6 +31,15 @@ export interface GuiFormSectionSpec {
   submit: string;
   fields: GuiFieldSpec[];
   result: GuiResultSpec;
+  /** Runs when it opens and when a control changes. */
+  live?: boolean;
+}
+
+export interface GuiTabsSectionSpec {
+  type: "tabs";
+  id: string;
+  /** Two to eight forms, one shown at a time; a form's title is its tab label. */
+  tabs: GuiFormSectionSpec[];
 }
 
 export interface GuiTextSectionSpec {
@@ -40,7 +53,7 @@ export interface GuiPageSpec {
   version: 1;
   title: string;
   description: string;
-  sections: (GuiFormSectionSpec | GuiTextSectionSpec)[];
+  sections: (GuiFormSectionSpec | GuiTextSectionSpec | GuiTabsSectionSpec)[];
 }
 
 /** A capability's page layout, as mcp_server validated it (ember_api passes it through).
