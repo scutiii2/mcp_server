@@ -13,8 +13,36 @@ const props = withDefaults(defineProps<{
   menu: boolean;
   /** The folder menu is open. */
   expanded?: boolean;
-}>(), { expanded: false });
-const emit = defineEmits<{ toggle: []; openMenu: [point: MenuPoint] }>();
+  /** The drag in progress may be dropped here. */
+  accepting?: boolean;
+  /** Shown in place of the rows while there are none and a drop is accepted. */
+  hint?: string | null;
+}>(), { expanded: false, accepting: false, hint: null });
+const emit = defineEmits<{ toggle: []; openMenu: [point: MenuPoint]; drop: [] }>();
+
+// The whole section is the zone, so a folded folder still takes a drop.
+const over = ref(false);
+
+function onDragOver(event: DragEvent): void {
+  if (!props.accepting) return;
+  event.preventDefault(); // without this the browser refuses the drop
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  over.value = true;
+}
+
+function onDragLeave(event: DragEvent): void {
+  // Moving between the zone's own children fires dragleave too; only leaving the zone counts.
+  const next = event.relatedTarget as Node | null;
+  if (next && (event.currentTarget as Node).contains(next)) return;
+  over.value = false;
+}
+
+function onDrop(event: DragEvent): void {
+  if (!props.accepting) return;
+  event.preventDefault();
+  over.value = false;
+  emit("drop");
+}
 
 const moreButton = ref<HTMLButtonElement | null>(null);
 
@@ -31,7 +59,12 @@ function openFromContext(event: MouseEvent): void {
 </script>
 
 <template>
-  <section class="section">
+  <section
+    :class="['section', { accepting, over: over && accepting }]"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <header v-if="title !== null" @contextmenu="openFromContext">
       <button
         v-if="collapsible"
@@ -72,6 +105,7 @@ function openFromContext(event: MouseEvent): void {
     <ul v-if="!collapsed" class="list">
       <slot />
     </ul>
+    <p v-if="accepting && hint && count === 0" class="hint">{{ hint }}</p>
   </section>
 </template>
 
@@ -80,6 +114,21 @@ function openFromContext(event: MouseEvent): void {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.accepting {
+  outline: 1px dashed var(--border);
+  outline-offset: -1px;
+  border-radius: 8px;
+}
+.over {
+  outline: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.hint {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 0.85em;
+  color: var(--muted);
 }
 header {
   display: flex;

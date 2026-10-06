@@ -19,13 +19,17 @@ const props = withDefaults(defineProps<{
   renaming: boolean;
   /** Its menu is open. */
   expanded?: boolean;
-}>(), { expanded: false });
+  /** It may be dragged to another section. */
+  draggable?: boolean;
+}>(), { expanded: false, draggable: false });
 const emit = defineEmits<{
   select: [];
   toggle: [];
   startRename: [];
   finishRename: [save: boolean, title: string];
   openMenu: [point: MenuPoint];
+  dragStart: [];
+  dragEnd: [];
 }>();
 
 const draft = ref("");
@@ -69,14 +73,35 @@ function openFromContext(event: MouseEvent): void {
   event.preventDefault();
   emit("openMenu", { x: event.clientX, y: event.clientY, trigger: moreButton.value });
 }
+
+const dragging = ref(false);
+
+function onDragStart(event: DragEvent): void {
+  if (!props.draggable) {
+    event.preventDefault();
+    return;
+  }
+  event.dataTransfer?.setData("text/plain", props.chat.id);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  dragging.value = true;
+  emit("dragStart");
+}
+
+function onDragEnd(): void {
+  dragging.value = false;
+  emit("dragEnd");
+}
 </script>
 
 <template>
   <li
-    :class="['row', { active, locked, ticked: selecting && ticked }]"
+    :class="['row', { active, locked, ticked: selecting && ticked, dragging }]"
+    :draggable="draggable"
     :title="chat.title"
     @click="onClick"
     @contextmenu="openFromContext"
+    @dragstart="onDragStart"
+    @dragend="onDragEnd"
   >
     <template v-if="selecting">
       <input
@@ -131,6 +156,9 @@ function openFromContext(event: MouseEvent): void {
 <style scoped>
 /* The row's own box (.row and its active / locked / ticked states) is styled by
  * the sidebar: a component's root element takes its parent's scoped styles too. */
+.dragging {
+  opacity: 0.45;
+}
 .title {
   flex: 1;
   overflow: hidden;

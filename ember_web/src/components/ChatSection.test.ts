@@ -91,3 +91,87 @@ describe("ChatSection", () => {
     expect(wrapper.find(".row-stub").exists()).toBe(true);
   });
 });
+
+describe("as a drop zone", () => {
+  const dragEvent = (type: string, relatedTarget: EventTarget | null = null) => {
+    const event = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+      dataTransfer: { dropEffect: string };
+      relatedTarget: EventTarget | null;
+    };
+    event.dataTransfer = { dropEffect: "" };
+    event.relatedTarget = relatedTarget;
+    return event;
+  };
+
+  // The hint depends on the number of rows (`count`), so these mount with no rows in the slot.
+  const mountEmpty = (props: Partial<Props> = {}) =>
+    mount(ChatSection, {
+      props: { title: "Work", count: 0, collapsible: true, collapsed: false, menu: true, ...props },
+      slots: { default: "" },
+    });
+
+  it("accepts a drop when it is accepting, and says so", async () => {
+    const wrapper = mountSection({ accepting: true });
+    const over = dragEvent("dragover");
+
+    wrapper.find("section").element.dispatchEvent(over);
+    await wrapper.vm.$nextTick();
+    expect(over.defaultPrevented).toBe(true); // that is what allows the drop
+    expect(over.dataTransfer.dropEffect).toBe("move");
+    expect(wrapper.find("section").classes()).toEqual(expect.arrayContaining(["accepting", "over"]));
+
+    const drop = dragEvent("drop");
+    wrapper.find("section").element.dispatchEvent(drop);
+    await wrapper.vm.$nextTick();
+    expect(drop.defaultPrevented).toBe(true);
+    expect(wrapper.emitted("drop")).toHaveLength(1);
+    expect(wrapper.find("section").classes()).not.toContain("over");
+  });
+
+  it("refuses a drop when it is not accepting", async () => {
+    const wrapper = mountSection({ accepting: false });
+    const over = dragEvent("dragover");
+
+    wrapper.find("section").element.dispatchEvent(over);
+    wrapper.find("section").element.dispatchEvent(dragEvent("drop"));
+    await wrapper.vm.$nextTick();
+
+    expect(over.defaultPrevented).toBe(false);
+    expect(wrapper.emitted("drop")).toBeUndefined();
+    expect(wrapper.find("section").classes()).not.toContain("accepting");
+  });
+
+  it("is still a drop zone while collapsed", async () => {
+    const wrapper = mountSection({ accepting: true, collapsed: true });
+
+    wrapper.find("section").element.dispatchEvent(dragEvent("drop"));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find("ul").exists()).toBe(false);
+    expect(wrapper.emitted("drop")).toHaveLength(1);
+  });
+
+  it("stops highlighting when the pointer leaves the zone, but not when it moves between its children", async () => {
+    const wrapper = mountSection({ accepting: true });
+    const section = wrapper.find("section").element;
+    section.dispatchEvent(dragEvent("dragover"));
+    await wrapper.vm.$nextTick();
+
+    section.dispatchEvent(dragEvent("dragleave", wrapper.find("header").element));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("section").classes()).toContain("over");
+
+    section.dispatchEvent(dragEvent("dragleave", document.body));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("section").classes()).not.toContain("over");
+  });
+
+  it("shows its hint while accepting and empty", () => {
+    expect(mountEmpty({ accepting: true, hint: "Drop here to pin" }).text()).toContain("Drop here to pin");
+  });
+
+  it("shows no hint when it has rows or is not accepting", () => {
+    expect(mountSection({ accepting: true, hint: "Drop here to pin", count: 2 }).text()).not.toContain("Drop here");
+    expect(mountEmpty({ accepting: false, hint: "Drop here to pin" }).text()).not.toContain("Drop here");
+  });
+});

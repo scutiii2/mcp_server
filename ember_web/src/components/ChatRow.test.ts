@@ -169,3 +169,45 @@ describe("ChatRow", () => {
     expect(wrapper.find("li").classes()).toEqual(expect.arrayContaining(["row", "active", "locked", "ticked"]));
   });
 });
+
+describe("dragging", () => {
+  const dragEvent = (type: string) => {
+    const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
+    const event = new Event(type, { bubbles: true, cancelable: true }) as Event & { dataTransfer: typeof dataTransfer };
+    event.dataTransfer = dataTransfer;
+    return { event, dataTransfer };
+  };
+
+  it("is not draggable unless it is allowed to be", () => {
+    expect(mountRow().find("li").attributes("draggable")).toBe("false");
+    expect(mountRow({ draggable: true }).find("li").attributes("draggable")).toBe("true");
+  });
+
+  it("puts the chat id in the drag data and reports the start and the end", async () => {
+    const wrapper = mountRow({ draggable: true });
+    const { event, dataTransfer } = dragEvent("dragstart");
+
+    wrapper.find("li").element.dispatchEvent(event);
+    await wrapper.vm.$nextTick();
+
+    expect(dataTransfer.setData).toHaveBeenCalledWith("text/plain", "c1");
+    expect(dataTransfer.effectAllowed).toBe("move");
+    expect(wrapper.emitted("dragStart")).toHaveLength(1);
+    expect(wrapper.find("li").classes()).toContain("dragging");
+
+    wrapper.find("li").element.dispatchEvent(dragEvent("dragend").event);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.emitted("dragEnd")).toHaveLength(1);
+    expect(wrapper.find("li").classes()).not.toContain("dragging");
+  });
+
+  it("cancels a drag that is not allowed", () => {
+    const wrapper = mountRow();
+    const { event } = dragEvent("dragstart");
+
+    wrapper.find("li").element.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(wrapper.emitted("dragStart")).toBeUndefined();
+  });
+});
