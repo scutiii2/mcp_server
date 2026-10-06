@@ -65,26 +65,34 @@ watch(name, load);
 </script>
 
 <template>
-  <div class="page">
-    <p><RouterLink to="/capabilities">← Capabilities</RouterLink></p>
-    <p v-if="loading" class="muted">Loading…</p>
-    <p v-else-if="problem" class="error" role="alert">{{ problem }}</p>
-    <template v-else-if="page">
-      <h2>{{ page.title }}</h2>
-      <p v-if="page.description" class="muted">{{ page.description }}</p>
-      <template v-for="s in page.sections" :key="s.id">
-        <section v-if="s.type === 'text'" class="note">
-          <h3 v-if="s.title">{{ s.title }}</h3>
-          <p>{{ s.text }}</p>
-        </section>
-        <GuiFormSection v-else-if="tools[s.tool]" :section="s" :tool="tools[s.tool]" :run-tool="runTool" />
-        <p v-else class="error">The tool {{ s.tool }} is not available right now.</p>
+  <div class="scroll">
+    <div class="page">
+      <p><RouterLink to="/capabilities">← Capabilities</RouterLink></p>
+      <p v-if="loading" class="muted">Loading…</p>
+      <p v-else-if="problem" class="error" role="alert">{{ problem }}</p>
+      <template v-else-if="page">
+        <h2>{{ page.title }}</h2>
+        <p v-if="page.description" class="muted">{{ page.description }}</p>
+        <template v-for="s in page.sections" :key="s.id">
+          <section v-if="s.type === 'text'" class="note">
+            <h3 v-if="s.title">{{ s.title }}</h3>
+            <p>{{ s.text }}</p>
+          </section>
+          <GuiFormSection v-else-if="tools[s.tool]" :section="s" :tool="tools[s.tool]" :run-tool="runTool" />
+          <p v-else class="error">The tool {{ s.tool }} is not available right now.</p>
+        </template>
       </template>
-    </template>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* The shell gives views no scroll of their own; this one scrolls itself. */
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .page {
   max-width: 760px;
   margin: 0 auto;
