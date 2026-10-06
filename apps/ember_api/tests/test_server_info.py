@@ -17,7 +17,8 @@ CAPABILITIES = [
 ]
 GUI_PAGE = {"version": 1, "title": "Server", "description": "", "sections": [{"id": "list", "title": "Apps", "tool": "tool_srv_listApps"}]}
 EXTENSIONS = [
-    {"id": "notes", "label": "Notes", "description": "", "status": "connected", "error": None, "tools": ["notes__add"]}
+    {"id": "notes", "label": "Notes", "description": "", "status": "connected", "error": None, "tools": ["notes__add"],
+     "web_url": "http://127.0.0.1:5174"}
 ]
 
 

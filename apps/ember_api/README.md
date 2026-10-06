@@ -182,7 +182,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/capabilities` | `tools.use` | mcp_server's built-in capabilities: `[{name, label, enabled, tools, resources, has_gui}]`. |
 | `GET` | `/api/capabilities/{name}/gui` | `tools.use` | The capability's page layout (`{version, title, description, sections}`) as mcp_server validated it; `404` when it has no page. |
 | `PATCH` | `/api/capabilities/{name}` | `admin.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
-| `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools}]`. |
+| `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools, web_url}]`. `web_url` is the extension's own web app (an http(s) address from mcp_server's config, or `null`); ember_web links to it. |
 | `POST` | `/api/extensions` | `admin.manage` | `{label, url, description?}` (http/https URL) -> `201` the extension; mcp_server connects to it and saves it (an unreachable one is still added, `status: "error"`). |
 | `DELETE` | `/api/extensions/{id}` | `admin.manage` | `204`; `404` unknown id. |
 | `GET` | `/api/watchers` | `watchers.view` | `{watchers, errors}`: every capability's background watchers (from each `tool_<alias>_listWatchers` tool), each row tagged with `capability`; `errors` names capabilities that didn't answer. `502` if mcp_server is unreachable or none answered. |

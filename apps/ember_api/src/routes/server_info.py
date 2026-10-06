@@ -98,6 +98,8 @@ class ExtensionOut(BaseModel):
     status: str
     error: str | None = None
     tools: list[str] = []
+    # The extension's own web app, from mcp_server's config; ember_web links to it.
+    web_url: str | None = None
 
 
 class OptionOut(BaseModel):
