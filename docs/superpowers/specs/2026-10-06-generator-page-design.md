@@ -58,7 +58,7 @@ All under `apps/ember_web/src`.
 - `components/GuiTabsSection.vue` (new): tab bar (`role="tablist"`, left and right arrow keys, `aria-selected`) and the active panel. Panels sit inside `<KeepAlive>`, so each tab keeps its control values when you switch away.
 - `components/GuiFormSection.vue`:
   - Inside tabs it renders without its own card and title, result first and controls below.
-  - With `live`: runs on mount and on valid changes, debounced about 300 ms. The existing `runId` check drops stale responses. A run in flight is never doubled.
+  - With `live`: runs on mount and on valid changes, debounced about 300 ms. The existing `runId` check drops stale responses. A newer run supersedes an older one in flight (only the last result is shown), and the Generate again button is disabled while a run is in flight.
   - On deactivate (tab hidden) it stops the `refresh_after` countdown and resumes it on activate.
   - The countdown text becomes `components/CountdownRing.vue` (new, small SVG) beside the code.
 - `components/ToolRunForm.vue`: new `live` prop. It emits the built args whenever a field changes and validates. `range` widgets emit on `change` (slider release), not on every `input` tick. In live mode the Run button is hidden, range fields show a value readout, and checkbox fields draw as toggle chips. Default behaviour is unchanged, so the Tools page and chat command form look as they do today apart from the new sliders.
@@ -67,7 +67,7 @@ All under `apps/ember_web/src`.
 
 ## Behaviour decisions
 
-- Live runs fire on committed changes only: chip, select or checkbox changes, slider release, and typed text after the debounce. Dragging a slider does not call the tool per tick, because each call puts a real secret through the chat-side plumbing (the generator README warns results may reach logs).
+- Live runs fire on committed changes only: chip, select or checkbox changes, slider release, and text fields, which run when committed (on blur or Enter), not on every keystroke. Dragging a slider does not call the tool per tick, because each call puts a real secret through the chat-side plumbing (the generator README warns results may reach logs).
 - The first live run happens when a tab is first opened, not when the page loads, so hidden tabs make no calls.
 - Switching tabs keeps settings but does not regenerate.
 
