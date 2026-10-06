@@ -73,6 +73,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -174,6 +175,26 @@ class ExtensionConfig:
     # ``_meta.requester`` on each proxied call. Off by default so an
     # extension never receives identity data it did not ask for.
     forward_requester: bool = False
+    # The extension's own web app, if it has one (an http(s) address the
+    # user's browser can reach, not necessarily the MCP url). ember's
+    # Extensions page links to it; nothing here ever requests it.
+    web_url: str | None = None
+
+
+def _web_url(entry: dict[str, Any], *, id_: str, config_path: Path) -> str | None:
+    """The optional ``web_url`` of an entry: absent -> None, else a non-empty
+    http(s) URL with a host. Anything else (a ``javascript:`` link, a
+    relative path) is rejected so it can never reach a browser as a link."""
+    if "web_url" not in entry:
+        return None
+    value = entry["web_url"]
+    problem = f"Config file {config_path}: '{id_}.web_url' must be an http:// or https:// address"
+    if not isinstance(value, str):
+        raise ValueError(problem)
+    parts = urlsplit(value.strip())
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise ValueError(problem)
+    return value.strip()
 
 
 def _resolve_placeholder(name: str, *, where: str, config_path: Path) -> str:
@@ -426,13 +447,15 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
     if not isinstance(forward_requester, bool):
         raise ValueError(f"Config file {config_path}: '{id_}.forward_requester' must be true or false")
 
+    web_url = _web_url(entry, id_=id_, config_path=config_path)
+
     if has_url:
         url = str(required("url")).strip()
         if not url:
             raise ValueError(f"Config file {config_path}: '{id_}.url' must not be empty")
         return ExtensionConfig(
             id=id_, label=label, description=description, transport="http", url=url, headers=dict(headers),
-            forward_requester=forward_requester,
+            forward_requester=forward_requester, web_url=web_url,
         )
 
     args = entry.get("args", [])
@@ -447,6 +470,7 @@ def _build_extension(id_: str, entry: Any, *, config_path: Path) -> ExtensionCon
         command=str(required("command")),
         args=[str(item) for item in args],
         forward_requester=forward_requester,
+        web_url=web_url,
     )
 
 
@@ -507,6 +531,8 @@ def save_extension_config(config_path: Path, config: ExtensionConfig) -> None:
     else:
         entry["command"] = config.command
         entry["args"] = config.args
+    if config.web_url:
+        entry["web_url"] = config.web_url
     data[config.id] = entry
 
     _write_config(config_path, data)

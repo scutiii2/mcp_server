@@ -817,3 +817,42 @@ def test_forward_requester_must_be_a_bool(tmp_path: Path):
 
     with pytest.raises(ValueError, match=r"'remote\.forward_requester' must be true or false"):
         load_extensions_config(path)
+
+
+def test_web_url_defaults_to_none_and_parses_for_both_transports(tmp_path: Path):
+    path = _write(
+        tmp_path,
+        {
+            "plain": {"label": "P", "url": "http://127.0.0.1:9000/mcp"},
+            "http": {"label": "H", "url": "http://127.0.0.1:9001/mcp", "web_url": " http://127.0.0.1:5174 "},
+            "local": {"label": "L", "command": "python", "web_url": "https://tools.example/app"},
+        },
+    )
+
+    loaded = load_extensions_config(path)
+
+    assert loaded["plain"].web_url is None
+    assert loaded["http"].web_url == "http://127.0.0.1:5174"
+    assert loaded["local"].web_url == "https://tools.example/app"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["javascript:alert(1)", "ftp://host/app", "//host/app", "http://", "not a url", "", 5, ["http://x"]],
+)
+def test_web_url_must_be_an_http_or_https_url(tmp_path: Path, bad):
+    path = _write(tmp_path, {"remote": {"label": "R", "url": "http://x/mcp", "web_url": bad}})
+
+    with pytest.raises(ValueError, match=r"'remote\.web_url'"):
+        load_extensions_config(path)
+
+
+def test_web_url_survives_a_save(tmp_path: Path):
+    path = _write(tmp_path, {})
+    config = ExtensionConfig(
+        id="remote", label="R", description="", transport="http", url="http://x/mcp", web_url="http://x:5174"
+    )
+
+    save_extension_config(path, config)
+
+    assert load_extensions_config(path)["remote"].web_url == "http://x:5174"

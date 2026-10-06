@@ -15,8 +15,12 @@ GET /extensions returns a JSON array shaped exactly like::
       "description": "...",
       "status": "connected",
       "error": null,
-      "tools": ["reference__echo", "reference__add"]
+      "tools": ["reference__echo", "reference__add"],
+      "web_url": null
     }
+
+``web_url`` is the extension's own web app (an http(s) address from its
+config entry, or null); ember's Extensions page links to it.
 
 That shape is a contract another agent is building chat_app's sidebar
 against concurrently - it is not this file's to redesign. POST
@@ -81,6 +85,7 @@ def _status_json(status: extensions.ExtensionStatus) -> dict[str, object]:
         "status": status.status,
         "error": status.error,
         "tools": status.tools,
+        "web_url": status.web_url,
     }
 
 

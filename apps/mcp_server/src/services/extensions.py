@@ -209,6 +209,9 @@ class ExtensionStatus:
     status: str
     error: str | None = None
     tools: list[str] = field(default_factory=list)
+    # The extension's own web app, shown as a link by ember; reported even
+    # when the MCP connection failed, since the app can work without it.
+    web_url: str | None = None
 
 
 @dataclass
@@ -328,6 +331,7 @@ class ExtensionRegistry:
                 description=config.description,
                 status="error",
                 error=str(error) or type(error).__name__,
+                web_url=config.web_url,
             )
             self._statuses.append(status)
             return status
@@ -374,6 +378,7 @@ class ExtensionRegistry:
             status="connected",
             error=None,
             tools=tool_names,
+            web_url=config.web_url,
         )
         self._statuses.append(status)
         return status

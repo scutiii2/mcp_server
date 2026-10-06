@@ -196,6 +196,25 @@ async def test_tools_are_registered_under_extension_id_double_underscore_name(mo
 
 
 @pytest.mark.anyio
+async def test_status_carries_the_web_url_whether_connected_or_not(monkeypatch: pytest.MonkeyPatch):
+    """The web app of an extension is reachable even when its MCP endpoint is not."""
+    monkeypatch.setattr(
+        extensions, "load_extensions_config", lambda path: {"reference": _config(web_url="http://127.0.0.1:5174")}
+    )
+
+    _install_fake_connection(monkeypatch, _FakeSession(tools=[_echo_tool()]))
+    connected = extensions.ExtensionRegistry()
+    await connected.connect_all(Path("unused.json"))
+    assert connected.statuses()[0].web_url == "http://127.0.0.1:5174"
+
+    _install_fake_connection(monkeypatch, RuntimeError("down"))
+    failed = extensions.ExtensionRegistry()
+    await failed.connect_all(Path("unused.json"))
+    assert failed.statuses()[0].status == "error"
+    assert failed.statuses()[0].web_url == "http://127.0.0.1:5174"
+
+
+@pytest.mark.anyio
 async def test_connected_status_lists_the_namespaced_tool_names(monkeypatch: pytest.MonkeyPatch):
     session = _FakeSession(tools=[_echo_tool()])
     _install_fake_connection(monkeypatch, session)

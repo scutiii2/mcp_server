@@ -55,8 +55,24 @@ def test_a_connected_extension_reports_its_tools(client, monkeypatch):
             "status": "connected",
             "error": None,
             "tools": ["reference__echo", "reference__add"],
+            "web_url": None,
         }
     ]
+
+
+def test_an_extension_with_a_web_app_reports_its_address(client, monkeypatch):
+    monkeypatch.setattr(
+        extensions,
+        "current_statuses",
+        lambda: [
+            extensions.ExtensionStatus(
+                id="pdf", label="PDF", description="", status="connected", tools=["pdf__merge"],
+                web_url="http://127.0.0.1:5174",
+            )
+        ],
+    )
+
+    assert client.get("/extensions").json()[0]["web_url"] == "http://127.0.0.1:5174"
 
 
 def test_an_errored_extension_reports_a_message_and_no_tools(client, monkeypatch):
@@ -150,6 +166,7 @@ def test_post_creates_an_http_extension(client, monkeypatch):
         "status": "connected",
         "error": None,
         "tools": ["my_extension__echo"],
+        "web_url": None,
     }
     assert captured["config"].transport == "http"
     assert captured["config"].url == "http://127.0.0.1:9000/mcp"
