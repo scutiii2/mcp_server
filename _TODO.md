@@ -93,52 +93,6 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 **Revisit when**: user wants it built.
 
-## Video downloader app (added 2026-10-06)
+## Video downloader app
 
-**Idea**: A Python app that downloads videos from YouTube, TikTok and other sites. Build it on `yt-dlp` (handles site extraction, formats, playlists, subtitles, metadata) with FFmpeg to merge separate audio and video streams. Not designed yet. Decided 2026-10-06: build it the way pdf_merger is built, as a standalone backend service plus a separate web UI (see Structure below), not as an mcp_server capability.
-
-**Minimal example**:
-
-```python
-import yt_dlp
-
-url = input("Enter video URL: ")
-
-options = {
-    "format": "bestvideo+bestaudio/best",
-    "merge_output_format": "mp4",
-    "outtmpl": "%(title)s.%(ext)s",
-}
-
-with yt_dlp.YoutubeDL(options) as downloader:
-    downloader.download([url])
-```
-
-Install: `pip install yt-dlp`, plus FFmpeg on the system.
-
-**Possible features**:
-- Sites: YouTube, TikTok, Facebook, Instagram, X/Twitter, Vimeo, Reddit, Twitch, and the rest `yt-dlp` supports.
-- MP4/WebM video, MP3/M4A audio extraction.
-- Resolution choice: 360p, 720p, 1080p, 1440p, 4K.
-- Playlists, subtitles, thumbnails, metadata.
-- Download progress and several downloads at once.
-- Clipboard URL auto-detection.
-- Download history.
-- Desktop GUI (PySide6, PyQt or Tkinter); PySide6 + yt-dlp + FFmpeg suggested for Windows.
-
-**Architecture sketch**: GUI (URL input, format and resolution selectors, output folder, progress bar) -> downloader engine (`yt-dlp`) -> media processing (FFmpeg), plus a download history store.
-
-**Limits**: Some sites need login cookies. DRM-protected content cannot be downloaded this way. Download only content you have permission for or that the service and copyright rules allow.
-
-**Structure (copy the pdf_merger pattern)**:
-- Backend: FastAPI service with one facade (a `DownloadService` wrapping `yt-dlp`). REST routers for the web UI and MCP tools at `/mcp` (token required) both call the facade only. Reached by mcp_server as an HTTP extension (entry in `apps/mcp_server/configs/config_extensions.json`, `X-Internal-Token` header, `forward_requester`). Likely a persona in `apps/ai_agent/agents/` like pdf-assistant.
-- Web UI: separate Vite + Vue 3 + TypeScript app (Pinia, Vitest), Vite proxies `/api` to the backend so the session cookie is same-origin. Same toolchain as `pdf_merger_web` and ember_web.
-- Own folder, own git repo, `AGENTS.md`, `run.bat`, and a note in `Brain/Projects/`. Use the `root-project-scaffold` skill for the top-level shape.
-
-**Open design points**:
-- Downloads are long, so use a job queue with SSE progress (like pdf_merger `jobs/`); the MCP tool is start, poll status, get result, not one blocking call (client limit ~120 s).
-- Files go through MCP as IDs and signed download links with a TTL store, never as base64.
-- FFmpeg is a system dependency; check it at startup.
-- Output folder, size limits, concurrent download limit, and cookies for login-only sites need settings.
-
-**Revisit when**: user wants this built; start with brainstorming a design.
+Built on 2026-10-06 as `Python/VideoDownloader` (service `video_downloader` plus web app `video_downloader_web`). See its README and `_TODO.md` for deferred features.
