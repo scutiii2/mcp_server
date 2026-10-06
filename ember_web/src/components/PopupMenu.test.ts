@@ -1,0 +1,249 @@
+import { mount, type VueWrapper } from "@vue/test-utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
+import type { MenuItem } from "../utils/chatMenu";
+import PopupMenu from "./PopupMenu.vue";
+
+const ITEMS: MenuItem[] = [
+  { id: "pin", label: "Pin" },
+  {
+    id: "move",
+    label: "Move to...",
+    children: [
+      { id: "move:none", label: "No folder", checked: false },
+      { id: "move:1", label: "Work", checked: true },
+    ],
+  },
+  { id: "sep", label: "", separator: true },
+  { id: "off", label: "Off", disabled: true },
+  { id: "delete", label: "Delete", danger: true },
+];
+
+let wrapper: VueWrapper | null = null;
+
+function open(items: MenuItem[] = ITEMS) {
+  wrapper = mount(PopupMenu, { props: { items, x: 40, y: 60, label: "Chat actions" }, attachTo: document.body });
+  return wrapper;
+}
+
+afterEach(() => {
+  wrapper?.unmount();
+  wrapper = null;
+});
+
+const q = (selector: string) => document.body.querySelector<HTMLElement>(selector);
+const all = (selector: string) => [...document.body.querySelectorAll<HTMLElement>(selector)];
+const key = (el: Element | null, name: string) => {
+  el?.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true }));
+  return nextTick();
+};
+
+describe("PopupMenu", () => {
+  it("renders the items in the page body, at the given place, with a label", () => {
+    const w = open();
+
+    expect(w.element.parentElement).not.toBe(document.body); // teleported away from the mount point
+    expect(q('[role="menu"]')?.getAttribute("aria-label")).toBe("Chat actions");
+    expect(all('[role="menuitem"]').map((b) => b.textContent?.replace("›", "").trim())).toEqual([
+      "Pin",
+      "Move to...",
+      "Off",
+      "Delete",
+    ]);
+    expect(q('[role="menu"]')?.style.left).toBe("40px");
+    expect(q('[role="menu"]')?.style.top).toBe("60px");
+  });
+
+  it("selects an item by click and reports its id", async () => {
+    const w = open();
+
+    q('[role="menuitem"]')!.click();
+
+    expect(w.emitted("select")).toEqual([["pin"]]);
+  });
+
+  it("does not select a disabled item", () => {
+    const w = open();
+
+    all('[role="menuitem"]').find((b) => b.textContent?.includes("Off"))!.click();
+
+    expect(w.emitted("select")).toBeUndefined();
+  });
+
+  it("marks a dangerous item", () => {
+    open();
+
+    expect(all('[role="menuitem"]').find((b) => b.textContent?.includes("Delete"))?.classList.contains("danger")).toBe(true);
+  });
+
+  it("focuses the first enabled item when it opens", async () => {
+    open();
+    await nextTick();
+
+    expect(document.activeElement?.textContent).toContain("Pin");
+  });
+
+  it("moves focus with the arrow keys, skipping disabled items, and wraps", async () => {
+    open();
+    await nextTick();
+    const menu = q('[role="menu"]');
+
+    await key(menu, "ArrowDown");
+    expect(document.activeElement?.textContent).toContain("Move to...");
+    await key(menu, "ArrowDown");
+    expect(document.activeElement?.textContent).toContain("Delete"); // "Off" is skipped
+    await key(menu, "ArrowDown");
+    expect(document.activeElement?.textContent).toContain("Pin");
+    await key(menu, "ArrowUp");
+    expect(document.activeElement?.textContent).toContain("Delete");
+  });
+
+  it("Home and End jump to the first and last item", async () => {
+    open();
+    await nextTick();
+    const menu = q('[role="menu"]');
+
+    await key(menu, "End");
+    expect(document.activeElement?.textContent).toContain("Delete");
+    await key(menu, "Home");
+    expect(document.activeElement?.textContent).toContain("Pin");
+  });
+
+  it("Enter activates the focused item", async () => {
+    const w = open();
+    await nextTick();
+
+    (document.activeElement as HTMLElement).click(); // Enter on a button is a click
+
+    expect(w.emitted("select")).toEqual([["pin"]]);
+  });
+
+  it("opens the flyout on click, shows the current choice, and selects a child", async () => {
+    const w = open();
+
+    all('[role="menuitem"]').find((b) => b.textContent?.includes("Move to..."))!.click();
+    await nextTick();
+    const radios = all('[role="menuitemradio"]');
+
+    expect(radios.map((r) => [r.textContent?.replace("✓", "").trim(), r.getAttribute("aria-checked")])).toEqual([
+      ["No folder", "false"],
+      ["Work", "true"],
+    ]);
+    radios[1]!.click();
+    expect(w.emitted("select")).toEqual([["move:1"]]);
+  });
+
+  it("ArrowRight opens the flyout and focuses its first item; ArrowLeft closes it", async () => {
+    open();
+    await nextTick();
+    const menu = q('[role="menu"]');
+    await key(menu, "ArrowDown"); // on Move to...
+
+    await key(document.activeElement, "ArrowRight");
+    await nextTick();
+    expect(document.activeElement?.textContent).toContain("No folder");
+
+    await key(document.activeElement, "ArrowLeft");
+    await nextTick();
+    expect(all('[role="menuitemradio"]')).toHaveLength(0);
+    expect(document.activeElement?.textContent).toContain("Move to...");
+  });
+
+  it("Esc closes the flyout first, then the menu", async () => {
+    const w = open();
+    await nextTick();
+    all('[role="menuitem"]').find((b) => b.textContent?.includes("Move to..."))!.click();
+    await nextTick();
+
+    await key(document.activeElement, "Escape");
+    await nextTick();
+    expect(all('[role="menuitemradio"]')).toHaveLength(0);
+    expect(w.emitted("close")).toBeUndefined();
+    expect(document.activeElement?.textContent).toContain("Move to...");
+
+    await key(document.activeElement, "Escape");
+    expect(w.emitted("close")).toHaveLength(1);
+  });
+
+  it("closes on a press outside, but not on a press inside", () => {
+    const w = open();
+
+    q('[role="menu"]')!.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(w.emitted("close")).toBeUndefined();
+
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(w.emitted("close")).toHaveLength(1);
+  });
+
+  it("closes on Tab", async () => {
+    const w = open();
+    await nextTick();
+
+    await key(q('[role="menu"]'), "Tab");
+
+    expect(w.emitted("close")).toHaveLength(1);
+  });
+
+  it("hover opens one flyout at a time and moves focus with the pointer", async () => {
+    open([
+      { id: "a", label: "A", children: [{ id: "a:1", label: "A1" }] },
+      { id: "b", label: "B", children: [{ id: "b:1", label: "B1" }] },
+      { id: "c", label: "C" },
+    ]);
+    await nextTick();
+    const hover = (label: string) => {
+      all('[role="menuitem"]').find((b) => b.textContent?.includes(label))!.dispatchEvent(new MouseEvent("mouseenter"));
+      return nextTick();
+    };
+
+    await hover("A");
+    expect(all('[role="menuitemradio"]').map((r) => r.textContent?.trim())).toEqual(["A1"]);
+    await hover("B");
+    expect(all('[role="menuitemradio"]').map((r) => r.textContent?.trim())).toEqual(["B1"]);
+    expect(all(".flyout")).toHaveLength(1);
+    expect(document.activeElement?.textContent).toContain("B");
+    await hover("C");
+    expect(all(".flyout")).toHaveLength(0);
+    expect(document.activeElement?.textContent).toContain("C");
+  });
+
+  it("removes its document and window listeners when it goes away", () => {
+    // Spies, not events: Vue drops an emit from an unmounted component, so a
+    // leaked listener would not show up as a `close`.
+    const docAdd = vi.spyOn(document, "addEventListener");
+    const docRemove = vi.spyOn(document, "removeEventListener");
+    const winAdd = vi.spyOn(window, "addEventListener");
+    const winRemove = vi.spyOn(window, "removeEventListener");
+    try {
+      const w = open();
+      const pointer = docAdd.mock.calls.find(([type]) => type === "pointerdown")?.[1];
+      const resize = winAdd.mock.calls.find(([type]) => type === "resize")?.[1];
+      expect(pointer).toBeTypeOf("function");
+      expect(resize).toBeTypeOf("function");
+
+      w.unmount();
+      wrapper = null;
+
+      expect(docRemove).toHaveBeenCalledWith("pointerdown", pointer);
+      expect(winRemove).toHaveBeenCalledWith("resize", resize);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("closes on a window resize", () => {
+    const w = open();
+
+    window.dispatchEvent(new Event("resize"));
+
+    expect(w.emitted("close")).toHaveLength(1);
+  });
+
+  it("does not open the flyout of a disabled parent", () => {
+    open([{ id: "move", label: "Move to...", disabled: true, children: [{ id: "x", label: "X" }] }]);
+
+    q('[role="menuitem"]')!.click();
+
+    expect(all('[role="menuitemradio"]')).toHaveLength(0);
+  });
+});
