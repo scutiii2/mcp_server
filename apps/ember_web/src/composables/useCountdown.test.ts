@@ -49,16 +49,34 @@ describe("useCountdown", () => {
     expect(onZero).not.toHaveBeenCalled();
   });
 
-  it("does not tick while the tab is hidden and re-syncs when it returns", () => {
+  function setHidden(hidden: boolean): void {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+  }
+
+  afterEach(() => setHidden(false));
+
+  it("does not tick while the tab is hidden and carries on from where it stopped when it returns", () => {
     const { countdown, onZero } = make();
     countdown.start(10);
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    setHidden(true);
     vi.advanceTimersByTime(4000);
     expect(countdown.remaining.value).toBe(10);
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
-    document.dispatchEvent(new Event("visibilitychange"));
+    expect(onZero).not.toHaveBeenCalled();
+    setHidden(false);
     vi.advanceTimersByTime(1000);
     expect(countdown.remaining.value).toBe(9);
     expect(onZero).not.toHaveBeenCalled();
+  });
+
+  it("does not fire onZero while hidden, only after the tab returns and the time has run", () => {
+    const { countdown, onZero } = make();
+    countdown.start(2);
+    setHidden(true);
+    vi.advanceTimersByTime(5000);
+    expect(onZero).not.toHaveBeenCalled();
+    expect(countdown.remaining.value).toBe(2);
+    setHidden(false);
+    vi.advanceTimersByTime(2000);
+    expect(onZero).toHaveBeenCalledTimes(1);
   });
 });
