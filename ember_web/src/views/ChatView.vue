@@ -7,16 +7,20 @@ import ChatSettingsMenu from "../components/ChatSettingsMenu.vue";
 import CommandFormModal from "../components/CommandFormModal.vue";
 import ElapsedTime from "../components/ElapsedTime.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
+import FolderDialogs from "../components/FolderDialogs.vue";
 import MessageList from "../components/MessageList.vue";
 import ShareDialog from "../components/ShareDialog.vue";
 import TemplatesModal from "../components/TemplatesModal.vue";
 import { useEntryAgentStore } from "../stores/entryAgent";
 import { useChatStore } from "../stores/chat";
+import { useFoldersStore } from "../stores/folders";
 import { useTemplatesStore } from "../stores/templates";
 import type { CommandInfo } from "../api/CommandsClient";
+import type { ChatFolder } from "../api/FoldersClient";
 import type { JsonSchema } from "../api/types";
 import { useChatRoute } from "../composables/useChatRoute";
 import { useChatShortcuts } from "../composables/useChatShortcuts";
+import { useFolderCollapse } from "../composables/useFolderCollapse";
 import { useSidebarCollapse } from "../composables/useSidebarCollapse";
 import { agentLabelFor } from "../utils/agentLabels";
 import { questionHistory } from "../utils/attachments";
@@ -58,6 +62,24 @@ const {
   searchError,
 } = storeToRefs(chat);
 onMounted(() => void chat.loadCommands());
+
+// Chat folders: the list, which of them are folded, and the new / rename /
+// delete dialogs the sidebar's menus open.
+const folderStore = useFoldersStore();
+const folderCollapse = useFolderCollapse();
+const folderDialogs = ref<InstanceType<typeof FolderDialogs> | null>(null);
+onMounted(() => void folderStore.ensureLoaded());
+
+/** Every chat filed in the folder, pinned ones included: deleting it deletes them all. */
+function chatsIn(folder: ChatFolder): number {
+  return sortedConversations.value.filter((c) => c.folderId === folder.id).length;
+}
+
+/** "Move to > New folder...": make the folder, then put the chat in it. */
+function moveToNewFolder(chatId: string): void {
+  folderDialogs.value?.openCreate((folder) => chat.setChatFolder(chatId, folder.id));
+}
+
 const entryAgent = useEntryAgentStore();
 const agentLabels = computed(() => entryAgent.labels);
 const templates = useTemplatesStore();
@@ -231,7 +253,17 @@ useChatShortcuts({
       @rename="chat.renameChat"
       @delete-all="chat.deleteAllChats"
       @delete-many="chat.deleteChats"
+      :folders="folderStore.folders"
+      :collapsed-folders="folderCollapse.collapsed.value"
+      @pin="chat.setChatPinned"
+      @move="chat.setChatFolder"
+      @move-new="moveToNewFolder"
+      @toggle-folder="folderCollapse.toggle"
+      @new-folder="folderDialogs?.openCreate()"
+      @rename-folder="(f: ChatFolder) => folderDialogs?.openRename(f)"
+      @delete-folder="(f: ChatFolder) => folderDialogs?.openDelete(f, chatsIn(f))"
     />
+    <FolderDialogs ref="folderDialogs" />
     <div v-if="drawerOpen" class="backdrop" @click="drawerOpen = false" />
     <button
       type="button"

@@ -29,6 +29,14 @@ export interface StoredChat {
   agent_id: string;
   messages: Record<string, unknown>[];
   running: boolean;
+  folder_id?: number | null;
+  pinned?: boolean;
+}
+
+export interface StoredFolder {
+  id: number;
+  name: string;
+  position: number;
 }
 
 export interface FakeApi {
@@ -37,6 +45,7 @@ export interface FakeApi {
   /** The bodies of the questions the page sent, as JSON. */
   turns: Record<string, unknown>[];
   chats: Map<string, StoredChat>;
+  folders: Map<number, StoredFolder>;
 }
 
 const NO_USAGE = {
@@ -69,6 +78,8 @@ const summary = (chat: StoredChat) => ({
   created_at: "2026-10-03T09:00:00",
   updated_at: "2026-10-03T09:00:00",
   running: chat.running,
+  folder_id: chat.folder_id ?? null,
+  pinned: chat.pinned ?? false,
 });
 
 const event = (sequence: number, body: Record<string, unknown>) =>
@@ -79,7 +90,7 @@ export const ANSWER_PIECES = ["The capital ", "of France ", "is Paris."];
 export const ANSWER = ANSWER_PIECES.join("");
 
 export async function installFakeApi(page: Page): Promise<FakeApi> {
-  const api: FakeApi = { unexpected: [], turns: [], chats: new Map() };
+  const api: FakeApi = { unexpected: [], turns: [], chats: new Map(), folders: new Map() };
   let loggedIn = false;
 
   await page.route("**/api/**", async (route) => {
@@ -114,9 +125,50 @@ export async function installFakeApi(page: Page): Promise<FakeApi> {
     // The page also tries to open a notification stream; "not offered" is a valid answer.
     if (method === "GET" && path === "/api/mcp/agents/agent-1") return route.fulfill({ status: 405, body: "" });
 
+    // Chat folders, as ember_api keeps them: names unique per account (any
+    // case), and deleting a folder deletes every chat in it, pinned or not.
+    if (method === "GET" && path === "/api/chat-folders") {
+      return json(route, [...api.folders.values()].map((f) => ({ ...f, chat_count: chatsIn(api, f.id) })));
+    }
+    if (method === "POST" && path === "/api/chat-folders") {
+      const { name } = request.postDataJSON() as { name: string };
+      if ([...api.folders.values()].some((f) => f.name.toLowerCase() === name.toLowerCase())) {
+        return json(route, { detail: "A folder with that name already exists" }, 409);
+      }
+      const id = Math.max(0, ...api.folders.keys()) + 1;
+      api.folders.set(id, { id, name, position: id });
+      return json(route, { id, name, position: id, chat_count: 0 }, 201);
+    }
+    const folderPath = /^\/api\/chat-folders\/(\d+)$/.exec(path);
+    if (folderPath) {
+      const id = Number(folderPath[1]);
+      const found = api.folders.get(id);
+      if (!found) return json(route, { detail: "Folder not found" }, 404);
+      if (method === "PATCH") {
+        const body = request.postDataJSON() as { name?: string; position?: number };
+        if (body.name !== undefined) found.name = body.name;
+        if (body.position !== undefined) found.position = body.position;
+        return json(route, { ...found, chat_count: chatsIn(api, id) });
+      }
+      if (method === "DELETE") {
+        for (const [chatId, c] of api.chats) if (c.folder_id === id) api.chats.delete(chatId);
+        api.folders.delete(id);
+        return route.fulfill({ status: 204, body: "" });
+      }
+    }
+
     const chatPath = /^\/api\/chats\/([A-Za-z0-9-]+)(\/[a-z]+)?$/.exec(path);
     if (chatPath) {
       const [, id, tail] = chatPath;
+      if (method === "PATCH" && !tail) {
+        const chat = api.chats.get(id!);
+        if (!chat) return json(route, { detail: "Chat not found" }, 404);
+        const body = request.postDataJSON() as { title?: string; folder_id?: number | null; pinned?: boolean };
+        if (body.title !== undefined) chat.title = body.title;
+        if ("folder_id" in body) chat.folder_id = body.folder_id ?? null;
+        if (body.pinned !== undefined) chat.pinned = body.pinned;
+        return json(route, summary(chat));
+      }
       if (method === "GET" && !tail) {
         const chat = api.chats.get(id!);
         return chat ? json(route, { ...summary(chat), messages: chat.messages }) : json(route, { detail: "Not found" }, 404);
@@ -130,6 +182,10 @@ export async function installFakeApi(page: Page): Promise<FakeApi> {
   });
 
   return api;
+}
+
+function chatsIn(api: FakeApi, folderId: number): number {
+  return [...api.chats.values()].filter((c) => c.folder_id === folderId).length;
 }
 
 function startTurn(route: Route, api: FakeApi, id: string) {
