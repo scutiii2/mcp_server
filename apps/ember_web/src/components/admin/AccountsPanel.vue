@@ -141,7 +141,7 @@ function sendVerification(account: AdminAccount): Promise<void> {
 
 const confirmText = computed(() => {
   const p = pending.value;
-  if (!p) return { title: "", message: "", label: "" };
+  if (!p) return { title: "", message: "", label: "", requireText: "" };
   const name = p.account.username;
   switch (p.kind) {
     case "disable":
@@ -149,14 +149,21 @@ const confirmText = computed(() => {
         title: "Disable account",
         message: `Disable '${name}'? They are logged out and can't log in until enabled.`,
         label: "Disable",
+        requireText: "",
       };
     case "delete":
-      return { title: "Delete account", message: `Delete '${name}' permanently? This can't be undone.`, label: "Delete" };
+      return {
+        title: "Delete account",
+        message: `Delete '${name}' permanently? This can't be undone.`,
+        label: "Delete",
+        requireText: name,
+      };
     case "removeRole":
       return {
         title: "Remove role",
         message: `Remove role '${p.role.name}' from '${name}'?`,
         label: "Remove",
+        requireText: "",
       };
   }
 });
@@ -250,6 +257,7 @@ async function confirm(): Promise<void> {
       :title="confirmText.title"
       :message="confirmText.message"
       :confirm-label="confirmText.label"
+      :require-text="confirmText.requireText"
       danger
       :busy="busy"
       @confirm="confirm"

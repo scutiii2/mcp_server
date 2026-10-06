@@ -83,10 +83,13 @@ function save(): void {
       <button v-if="!editing" type="button" class="small" :disabled="busy" @click="startEdit">
         {{ role.is_protected ? "Edit description" : "Edit details" }}
       </button>
-      <button v-if="!role.is_protected" type="button" class="small danger" :disabled="busy" @click="emit('remove')">
-        Delete role
-      </button>
     </div>
+
+    <section v-if="!role.is_protected" class="danger-zone">
+      <h4>Danger zone</h4>
+      <p class="muted description">Accounts holding this role lose its permissions. This can't be undone.</p>
+      <button type="button" class="small danger" :disabled="busy" @click="emit('remove')">Delete role</button>
+    </section>
   </section>
 </template>
 

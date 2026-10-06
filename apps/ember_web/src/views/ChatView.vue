@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
+import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import EntryAgentTag from "../components/EntryAgentTag.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ChatSettingsMenu from "../components/ChatSettingsMenu.vue";
@@ -218,18 +219,38 @@ function exportActive(): void {
   );
 }
 
+// Clear and compact ask first, in the confirmation dialog.
+const pendingChatAction = ref<"clear" | "compact" | null>(null);
+
+const chatActionCopy = computed(() => {
+  if (pendingChatAction.value === "clear") {
+    return {
+      title: "Start afresh",
+      message: `Start "${active.value?.title ?? ""}" afresh? The agent forgets the earlier messages; they stay readable as a collapsed log.`,
+      label: "Start afresh",
+    };
+  }
+  return {
+    title: "Condense messages",
+    message:
+      "Condense the earlier messages into a summary? The agent keeps only the summary from now on; the messages stay readable as a collapsed log.",
+    label: "Condense",
+  };
+});
+
 function clearActive(): void {
-  const conversation = active.value;
-  if (!conversation) return;
-  const question = `Start "${conversation.title}" afresh? The agent forgets the earlier messages; they stay readable as a collapsed log.`;
-  if (confirm(question)) void chat.clearChat();
+  if (active.value) pendingChatAction.value = "clear";
 }
 
 function summarizeActive(): void {
-  const conversation = active.value;
-  if (!conversation) return;
-  const question = "Condense the earlier messages into a summary? The agent keeps only the summary from now on; the messages stay readable as a collapsed log.";
-  if (confirm(question)) void chat.summarizeChat();
+  if (active.value) pendingChatAction.value = "compact";
+}
+
+function runChatAction(): void {
+  const action = pendingChatAction.value;
+  pendingChatAction.value = null;
+  if (action === "clear") void chat.clearChat();
+  else if (action === "compact") void chat.summarizeChat();
 }
 
 // Share of the agent's context the last answer used; worth watching past
@@ -416,6 +437,15 @@ useChatShortcuts({
         <CommandFormModal :command="formCommand" :schema="formSchema" @submit="runCommandForm" @close="closeCommandForm" />
         <TemplatesModal :open="templatesOpen" :draft="templatesDraft" @close="templatesOpen = false" />
         <ShareDialog :open="shareOpen" :chat-id="activeId" @close="shareOpen = false" />
+        <ConfirmModal
+          v-if="pendingChatAction"
+          open
+          :title="chatActionCopy.title"
+          :message="chatActionCopy.message"
+          :confirm-label="chatActionCopy.label"
+          @confirm="runChatAction"
+          @close="pendingChatAction = null"
+        />
       </div>
     </div>
   </section>

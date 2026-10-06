@@ -230,6 +230,24 @@ describe("RolesPanel", () => {
     expect(client.deleteRole).not.toHaveBeenCalled();
   });
 
+  it("makes you type the role name before deleting a role that accounts hold", async () => {
+    const wrapper = await panel();
+    await listItem(wrapper, "Member").trigger("click");
+    await clickIn(editor(wrapper), "Delete role");
+
+    expect(confirmDialog(wrapper).props("requireText")).toBe("Member");
+    await confirmDialog(wrapper).get(".confirm").trigger("click");
+    expect(client.deleteRole).not.toHaveBeenCalled();
+  });
+
+  it("asks for no typing when no account holds the role", async () => {
+    const wrapper = await panel();
+    await listItem(wrapper, "Ops").trigger("click");
+    await clickIn(editor(wrapper), "Delete role");
+
+    expect(confirmDialog(wrapper).props("requireText")).toBe("");
+  });
+
   it("does nothing when the delete question is cancelled", async () => {
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
@@ -247,6 +265,7 @@ describe("RolesPanel", () => {
     await listItem(wrapper, "Member").trigger("click");
 
     await clickIn(editor(wrapper), "Delete role");
+    await confirmDialog(wrapper).get(".require input").setValue("Member");
     await confirmDialog(wrapper).get(".confirm").trigger("click");
     await flushPromises();
 
@@ -262,6 +281,7 @@ describe("RolesPanel", () => {
     await listItem(wrapper, "Member").trigger("click");
 
     await clickIn(editor(wrapper), "Delete role");
+    await confirmDialog(wrapper).get(".require input").setValue("Member");
     await confirmDialog(wrapper).get(".confirm").trigger("click");
     await flushPromises();
 

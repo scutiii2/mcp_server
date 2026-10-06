@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { sharesClient, type ShareCreated, type ShareExpiry, type ShareInfo } from "../api/SharesClient";
 import { errorMessage, formatUtc } from "../utils/errors";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 import CopyButton from "./CopyButton.vue";
 
 /** Makes, lists and revokes read-only share links for one chat. A link's
@@ -87,8 +88,11 @@ async function create(): Promise<void> {
   }
 }
 
+// Turning a link off asks first, in the confirmation dialog.
+const pendingRevoke = ref<ShareInfo | null>(null);
+
 async function revoke(link: ShareInfo): Promise<void> {
-  if (!confirm("Turn this link off? Anyone who has it will no longer be able to open the chat.")) return;
+  pendingRevoke.value = null;
   const started = generation;
   error.value = "";
   try {
@@ -155,10 +159,20 @@ const hasLinks = computed(() => links.value.length > 0);
           <span>Created {{ formatUtc(l.created_at) }}<template v-if="l.id === fresh?.id"> (new)</template></span>
           <span class="muted">{{ expiryText(l) }} · {{ l.message_count }} messages</span>
         </div>
-        <button type="button" class="link danger" @click="revoke(l)">Turn off</button>
+        <button type="button" class="link danger" @click="pendingRevoke = l">Turn off</button>
       </li>
     </ul>
     <p class="muted small">Deleting the chat also turns its links off.</p>
+    <ConfirmModal
+      v-if="pendingRevoke"
+      open
+      title="Turn off link"
+      message="Turn this link off? Anyone who has it will no longer be able to open the chat."
+      confirm-label="Turn off"
+      danger
+      @confirm="revoke(pendingRevoke)"
+      @close="pendingRevoke = null"
+    />
   </dialog>
 </template>
 

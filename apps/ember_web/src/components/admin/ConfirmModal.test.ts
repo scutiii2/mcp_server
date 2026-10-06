@@ -42,4 +42,34 @@ describe("ConfirmModal", () => {
   it("marks a dangerous action", () => {
     expect(mount(ConfirmModal, { props: { ...props, danger: true } }).get(".confirm").classes()).toContain("danger");
   });
+
+  it("keeps confirm locked until the required text is typed", async () => {
+    const wrapper = mount(ConfirmModal, { props: { ...props, danger: true, requireText: "maria" } });
+    const confirm = wrapper.get(".confirm");
+
+    expect(wrapper.text()).toContain("to confirm");
+    expect(confirm.attributes("disabled")).toBeDefined();
+    await wrapper.get(".require input").setValue("mari");
+    expect(confirm.attributes("disabled")).toBeDefined();
+    expect(wrapper.get(".count").text()).toBe("4/5");
+
+    await wrapper.get(".require input").setValue("maria");
+    expect(confirm.attributes("disabled")).toBeUndefined();
+    await confirm.trigger("click");
+    expect(wrapper.emitted("confirm")).toHaveLength(1);
+  });
+
+  it("clears the typed text when it reopens", async () => {
+    const wrapper = mount(ConfirmModal, { props: { ...props, requireText: "maria" } });
+    await wrapper.get(".require input").setValue("maria");
+
+    await wrapper.setProps({ open: false });
+    await wrapper.setProps({ open: true });
+
+    expect((wrapper.get(".require input").element as HTMLInputElement).value).toBe("");
+  });
+
+  it("shows no text field without requireText", () => {
+    expect(mount(ConfirmModal, { props }).find(".require").exists()).toBe(false);
+  });
 });

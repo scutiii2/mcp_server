@@ -1,10 +1,21 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatSearchHit } from "../api/ChatsClient";
 import type { ChatFolder } from "../api/FoldersClient";
 import type { Conversation } from "../api/types";
 import { usageClient } from "../api/UsageClient";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 import ConversationSidebar from "./ConversationSidebar.vue";
+
+// jsdom has no <dialog> methods.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  };
+});
 
 // The gauges at the bottom read the account usage; not under test here.
 vi.mock("../api/UsageClient", () => ({ usageClient: { mine: vi.fn(() => new Promise(() => {})) } }));
@@ -48,6 +59,8 @@ afterEach(() => {
   for (const wrapper of mounted.splice(0)) wrapper.unmount();
   document.body.innerHTML = "";
 });
+
+const dialog = (wrapper: ReturnType<typeof mountSidebar>) => wrapper.getComponent(ConfirmModal);
 
 const searching = (hits: ChatSearchHit[], extra: Partial<Props> = {}) =>
   mountSidebar({ query: "ab", searchActive: true, hits, ...extra });
@@ -282,35 +295,36 @@ describe("select mode", () => {
   });
 
   it("deletes the ticked chats after confirming, then leaves select mode", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const wrapper = await selecting();
     await rows(wrapper)[0]!.trigger("click");
     await rows(wrapper)[2]!.trigger("click");
 
     await bar(wrapper).find("button.danger").trigger("click");
 
-    expect(confirmSpy).toHaveBeenCalledWith("Delete 2 chats? This can't be undone.");
+    expect(dialog(wrapper).props("message")).toBe("Delete 2 chats? This can't be undone.");
+    expect(wrapper.emitted("deleteMany")).toBeUndefined();
+    await dialog(wrapper).get(".confirm").trigger("click");
+
     expect(wrapper.emitted("deleteMany")).toEqual([[["1", "3"]]]);
     expect(bar(wrapper).exists()).toBe(false);
     expect(ticks(wrapper)).toHaveLength(0);
   });
 
   it("says 'chat', not 'chats', for one", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const wrapper = await selecting();
     await rows(wrapper)[0]!.trigger("click");
 
     await bar(wrapper).find("button.danger").trigger("click");
 
-    expect(confirmSpy).toHaveBeenCalledWith("Delete 1 chat? This can't be undone.");
+    expect(dialog(wrapper).props("message")).toBe("Delete 1 chat? This can't be undone.");
   });
 
   it("deletes nothing when the confirmation is declined, and stays in select mode", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     const wrapper = await selecting();
     await rows(wrapper)[0]!.trigger("click");
 
     await bar(wrapper).find("button.danger").trigger("click");
+    await dialog(wrapper).get(".cancel").trigger("click");
 
     expect(wrapper.emitted("deleteMany")).toBeUndefined();
     expect(bar(wrapper).text()).toContain("1 selected");
@@ -504,41 +518,55 @@ describe("the row menu", () => {
   });
 
   it("Delete asks first, then reports the chat", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const wrapper = mountSidebar();
 
     await menuButton(wrapper).trigger("click");
     menuItem("Delete")!.click();
     await flushPromises();
 
-    expect(confirmSpy).toHaveBeenCalledWith('Delete "Chat 1"? This can\'t be undone.');
+    expect(dialog(wrapper).props("message")).toBe("Delete \"Chat 1\"? This can't be undone.");
+    expect(wrapper.emitted("delete")).toBeUndefined();
+    await dialog(wrapper).get(".confirm").trigger("click");
+
     expect(wrapper.emitted("delete")).toEqual([["1"]]);
   });
 
   it("Delete closes the menu before the confirmation shows", async () => {
-    let menuWhenAsked: Element | null | undefined;
-    vi.spyOn(window, "confirm").mockImplementation(() => {
-      menuWhenAsked = openMenu();
-      return false;
-    });
     const wrapper = mountSidebar();
 
     await menuButton(wrapper).trigger("click");
     menuItem("Delete")!.click();
     await flushPromises();
 
-    expect(menuWhenAsked).toBeNull();
+    expect(wrapper.findComponent(ConfirmModal).exists()).toBe(true);
+    expect(openMenu()).toBeNull();
   });
 
   it("Delete does nothing when the confirmation is declined", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     const wrapper = mountSidebar();
 
     await menuButton(wrapper).trigger("click");
     menuItem("Delete")!.click();
     await flushPromises();
+    await dialog(wrapper).get(".cancel").trigger("click");
 
     expect(wrapper.emitted("delete")).toBeUndefined();
+    expect(wrapper.findComponent(ConfirmModal).exists()).toBe(false);
+  });
+
+  it("Delete all needs the phrase typed before it reports", async () => {
+    const wrapper = mountSidebar();
+
+    await wrapper.get(".delete-all").trigger("click");
+    expect(dialog(wrapper).props("message")).toBe("Delete all 2 chats? This can't be undone.");
+    expect(dialog(wrapper).props("requireText")).toBe("delete all");
+
+    await dialog(wrapper).get(".confirm").trigger("click");
+    expect(wrapper.emitted("deleteAll")).toBeUndefined();
+
+    await dialog(wrapper).get(".require input").setValue("delete all");
+    await dialog(wrapper).get(".confirm").trigger("click");
+    expect(wrapper.emitted("deleteAll")).toHaveLength(1);
   });
 
   it("Move to... reports the chosen folder, None, or a new folder", async () => {

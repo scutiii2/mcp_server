@@ -6,6 +6,7 @@ import type { Conversation } from "../api/types";
 import { chatMenuItems, folderMenuItems, parseChatChoice } from "../utils/chatMenu";
 import { dropOps, type DropTarget } from "../utils/chatDrop";
 import { buildLayout } from "../utils/chatSections";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 import ChatRow from "./ChatRow.vue";
 import ChatSection from "./ChatSection.vue";
 import PopupMenu from "./PopupMenu.vue";
@@ -243,8 +244,6 @@ async function chooseFromMenu(id: string): Promise<void> {
       renamingId.value = chat.id;
       break;
     case "delete":
-      // The native dialog blocks rendering: let the menu leave the page first.
-      await nextTick();
       confirmDelete(chat);
       break;
     case "move":
@@ -256,13 +255,52 @@ async function chooseFromMenu(id: string): Promise<void> {
   }
 }
 
+// A delete waits here for the confirmation dialog. Friction scales with what is
+// lost: one chat or a ticked few ask once, "Delete all" asks for a typed phrase.
+type PendingDelete = { kind: "one"; chat: Conversation } | { kind: "chosen"; ids: string[] } | { kind: "all" };
+const pendingDelete = ref<PendingDelete | null>(null);
+
+const DELETE_ALL_PHRASE = "delete all";
+
+function chatCount(n: number): string {
+  return `${n} chat${n === 1 ? "" : "s"}`;
+}
+
+const deleteCopy = computed(() => {
+  const p = pendingDelete.value;
+  if (!p) return { title: "", message: "", requireText: "" };
+  switch (p.kind) {
+    case "one":
+      return { title: "Delete chat", message: `Delete "${p.chat.title}"? This can't be undone.`, requireText: "" };
+    case "chosen":
+      return { title: "Delete chats", message: `Delete ${chatCount(p.ids.length)}? This can't be undone.`, requireText: "" };
+    case "all":
+      return {
+        title: "Delete all chats",
+        message: `Delete all ${chatCount(props.conversations.length)}? This can't be undone.`,
+        requireText: DELETE_ALL_PHRASE,
+      };
+  }
+});
+
 function confirmDelete(c: Conversation): void {
-  if (confirm(`Delete "${c.title}"? This can't be undone.`)) emit("delete", c.id);
+  pendingDelete.value = { kind: "one", chat: c };
 }
 
 function confirmDeleteAll(): void {
-  const count = props.conversations.length;
-  if (confirm(`Delete all ${count} chat${count === 1 ? "" : "s"}? This can't be undone.`)) emit("deleteAll");
+  pendingDelete.value = { kind: "all" };
+}
+
+function runPendingDelete(): void {
+  const p = pendingDelete.value;
+  pendingDelete.value = null;
+  if (!p) return;
+  if (p.kind === "one") emit("delete", p.chat.id);
+  else if (p.kind === "all") emit("deleteAll");
+  else {
+    emit("deleteMany", p.ids);
+    stopSelecting();
+  }
 }
 
 // Select mode: tick chats, then delete the ticked ones together.
@@ -310,10 +348,7 @@ function toggleAll(): void {
 }
 
 function confirmDeleteChosen(): void {
-  const ids = chosen.value; // the Delete button is off while this is empty
-  if (!confirm(`Delete ${ids.length} chat${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
-  emit("deleteMany", ids);
-  stopSelecting();
+  pendingDelete.value = { kind: "chosen", ids: chosen.value }; // the Delete button is off while this is empty
 }
 
 // Search results replace the list; there is nothing to tick in them.
@@ -467,6 +502,17 @@ watch(
       </button>
     </div>
     <UsageGauges :busy="busy" />
+    <ConfirmModal
+      v-if="pendingDelete"
+      open
+      :title="deleteCopy.title"
+      :message="deleteCopy.message"
+      :require-text="deleteCopy.requireText"
+      confirm-label="Delete"
+      danger
+      @confirm="runPendingDelete"
+      @close="pendingDelete = null"
+    />
   </aside>
 </template>
 

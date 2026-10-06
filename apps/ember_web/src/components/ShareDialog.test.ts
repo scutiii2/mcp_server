@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/http";
 import { sharesClient, type ShareCreated, type ShareInfo } from "../api/SharesClient";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 import ShareDialog from "./ShareDialog.vue";
 
 vi.mock("../api/SharesClient", () => ({ sharesClient: { create: vi.fn(), list: vi.fn(), revoke: vi.fn(), read: vi.fn() } }));
@@ -266,14 +267,17 @@ describe("turning links off", () => {
   it("asks first, then revokes and removes the row", async () => {
     client.list.mockResolvedValue([info(2), info(1)]);
     client.revoke.mockResolvedValue(undefined);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     const wrapper = await openDialog();
 
     await wrapper.findAll(".links li")[0]!.find("button.danger").trigger("click");
     expect(client.revoke).not.toHaveBeenCalled();
-    expect(confirm.mock.calls[0]![0]).toContain("no longer be able to open");
+    expect(wrapper.getComponent(ConfirmModal).props("message")).toContain("no longer be able to open");
+    await wrapper.getComponent(ConfirmModal).get(".cancel").trigger("click");
+    expect(wrapper.findComponent(ConfirmModal).exists()).toBe(false);
+    expect(client.revoke).not.toHaveBeenCalled();
 
     await wrapper.findAll(".links li")[0]!.find("button.danger").trigger("click");
+    await wrapper.getComponent(ConfirmModal).get(".confirm").trigger("click");
     await flushPromises();
 
     expect(client.revoke).toHaveBeenCalledExactlyOnceWith(2);
@@ -283,11 +287,11 @@ describe("turning links off", () => {
   it("removes the just-made link's secret from view when that link is turned off", async () => {
     client.create.mockResolvedValue(created(1));
     client.revoke.mockResolvedValue(undefined);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const wrapper = await openDialog();
     await submit(wrapper);
 
     await wrapper.find(".links li button.danger").trigger("click");
+    await wrapper.getComponent(ConfirmModal).get(".confirm").trigger("click");
     await flushPromises();
 
     expect(wrapper.find(".fresh").exists()).toBe(false);
@@ -297,10 +301,10 @@ describe("turning links off", () => {
   it("keeps the row and says why when revoking fails", async () => {
     client.list.mockResolvedValue([info(1)]);
     client.revoke.mockRejectedValue(new ApiError(500, "database is locked"));
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const wrapper = await openDialog();
 
     await wrapper.find(".links li button.danger").trigger("click");
+    await wrapper.getComponent(ConfirmModal).get(".confirm").trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe("database is locked");

@@ -133,10 +133,13 @@ function onAddRole(event: Event): void {
       <button v-if="!account.email_verified" type="button" class="small" :disabled="busy" @click="emit('sendVerification')">
         Send verification
       </button>
-      <button v-if="!isSelf" type="button" class="small danger" :disabled="busy" @click="emit('remove')">
-        Delete account
-      </button>
     </div>
+
+    <section v-if="!locked && !isSelf" class="danger-zone">
+      <h4>Danger zone</h4>
+      <p class="muted small-text">Removes the account for good. This can't be undone.</p>
+      <button type="button" class="small danger" :disabled="busy" @click="emit('remove')">Delete account</button>
+    </section>
   </aside>
 </template>
 

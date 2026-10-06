@@ -238,6 +238,9 @@ describe("AccountsPanel", () => {
     await clickIn(drawer(wrapper), "Delete account");
     expect(confirmDialog(wrapper).props("message")).toContain("Delete 'maria' permanently?");
     await confirmDialog(wrapper).get(".confirm").trigger("click");
+    expect(client.deleteAccount).not.toHaveBeenCalled();
+    await confirmDialog(wrapper).get(".require input").setValue("maria");
+    await confirmDialog(wrapper).get(".confirm").trigger("click");
     await flushPromises();
 
     expect(client.deleteAccount).toHaveBeenCalledWith(2);

@@ -162,6 +162,7 @@ onMounted(load);
       :message="deleteMessage"
       confirm-label="Delete"
       danger
+      :require-text="pendingDelete && pendingDelete.account_count > 0 ? pendingDelete.name : ''"
       :busy="busy"
       @confirm="confirmDelete"
       @close="pendingDelete = null"
