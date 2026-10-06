@@ -35,13 +35,31 @@ describe("SettingsPanel", () => {
     expect(text).toContain("Allow for this chat");
   });
 
-  it("saves the switch when it is flipped", async () => {
+  it("says the setting applies to every account", async () => {
+    expect((await panel(false)).text()).toContain("Applies to all accounts");
+  });
+
+  it("holds a flip as an unsaved change until Save", async () => {
     const wrapper = await panel(false);
+    expect(wrapper.find(".save-bar").exists()).toBe(false);
 
     await box(wrapper).setValue(true);
+
+    expect(client.set).not.toHaveBeenCalled();
+    expect(wrapper.get(".save-bar").text()).toContain("unsaved change");
+    expect(wrapper.get(".save-bar").text()).toContain("on applies to every account");
+  });
+
+  it("saves the draft on Save, then shows Saved", async () => {
+    const wrapper = await panel(false);
+    await box(wrapper).setValue(true);
+
+    await wrapper.get(".save-bar .primary").trigger("click");
     await flushPromises();
 
     expect(client.set).toHaveBeenCalledWith("force_tool_approval", true);
+    expect(wrapper.find(".save-bar").exists()).toBe(false);
+    expect(wrapper.get(".chip.saved").text()).toBe("Saved");
     expect((box(wrapper).element as HTMLInputElement).checked).toBe(true);
   });
 
@@ -49,20 +67,43 @@ describe("SettingsPanel", () => {
     const wrapper = await panel(true);
 
     await box(wrapper).setValue(false);
+    await wrapper.get(".save-bar .primary").trigger("click");
     await flushPromises();
 
     expect(client.set).toHaveBeenCalledWith("force_tool_approval", false);
   });
 
-  it("shows the error and the stored value when saving fails", async () => {
+  it("drops the draft on Cancel without saving", async () => {
     const wrapper = await panel(false);
-    client.set.mockRejectedValue(new ApiError(403, "Missing permission: admin.manage"));
+    await box(wrapper).setValue(true);
+
+    await wrapper.get(".save-bar button:not(.primary)").trigger("click");
+
+    expect(client.set).not.toHaveBeenCalled();
+    expect(wrapper.find(".save-bar").exists()).toBe(false);
+    expect((box(wrapper).element as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("flipping back to the stored value clears the unsaved change", async () => {
+    const wrapper = await panel(false);
 
     await box(wrapper).setValue(true);
+    await box(wrapper).setValue(false);
+
+    expect(wrapper.find(".save-bar").exists()).toBe(false);
+  });
+
+  it("shows the error and keeps the draft when saving fails", async () => {
+    const wrapper = await panel(false);
+    client.set.mockRejectedValue(new ApiError(403, "Missing permission: admin.manage"));
+    await box(wrapper).setValue(true);
+
+    await wrapper.get(".save-bar .primary").trigger("click");
     await flushPromises();
 
     expect(wrapper.text()).toContain("Missing permission: admin.manage");
-    expect((box(wrapper).element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.find(".save-bar").exists()).toBe(true);
+    expect(wrapper.find(".chip.saved").exists()).toBe(false);
   });
 
   it("shows an error when the setting cannot be read", async () => {
