@@ -137,11 +137,23 @@ const scroller = ref<HTMLElement | null>(null);
 // Follow new content only while the user is at the bottom; scrolling up to
 // read something stops it, scrolling back down resumes it.
 const stickToBottom = ref(true);
+// Something arrived while the user was reading further up: shows the
+// "New messages" pill, which brings them back down.
+const hasNew = ref(false);
 
 function onScroll(): void {
   const el = scroller.value;
   if (!el) return;
   stickToBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
+  if (stickToBottom.value) hasNew.value = false;
+}
+
+function jumpToNew(): void {
+  const el = scroller.value;
+  if (!el) return;
+  stickToBottom.value = true;
+  hasNew.value = false;
+  el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
 }
 
 async function scrollToBottomIfSticking(): Promise<void> {
@@ -153,15 +165,19 @@ async function scrollToBottomIfSticking(): Promise<void> {
 
 watch(
   () => props.messages.length,
-  () => {
+  (count, before) => {
     // Sending a question always jumps back to the bottom.
     if (props.messages.at(-1)?.role === "user") stickToBottom.value = true;
+    if (!stickToBottom.value && count > before) hasNew.value = true;
     void scrollToBottomIfSticking();
   },
 );
 watch(
   () => [props.streaming, props.activity, props.steps.length],
-  () => void scrollToBottomIfSticking(),
+  () => {
+    if (!stickToBottom.value) hasNew.value = true;
+    void scrollToBottomIfSticking();
+  },
 );
 
 const FLASH_MS = 1600;
@@ -199,6 +215,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <div class="list">
   <div ref="scroller" class="scroller" @scroll.passive="onScroll">
     <div class="column">
       <WelcomeCard v-if="messages.length === 0 && !busy" :commands="commands ?? []" />
@@ -369,11 +386,55 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
+  <Transition name="pill">
+    <button v-if="hasNew && !stickToBottom" type="button" class="new-pill" @click="jumpToNew">↓ New messages</button>
+  </Transition>
+  </div>
 </template>
 
 <style scoped>
+.list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
 .scroller {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+}
+.new-pill {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  translate: -50% 0;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.25);
+}
+.pill-enter-active,
+.pill-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+.pill-enter-from,
+.pill-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pill-enter-active,
+  .pill-leave-active {
+    transition: none;
+  }
 }
 .column {
   max-width: 820px;
