@@ -117,7 +117,11 @@ function endDrag(): void {
   draggingId.value = null;
 }
 
-// An Esc-cancelled drag, or a row that unmounted mid-drag, may never deliver dragend to the sidebar.
+// An Esc-cancelled drag may never deliver dragend to the row, so the window listens too.
+// A row that unmounted mid-drag (chat deleted elsewhere) is caught by the watch.
+watch(dragging, (chat) => {
+  if (chat === null) endDrag();
+});
 onMounted(() => window.addEventListener("dragend", endDrag));
 onBeforeUnmount(() => {
   window.removeEventListener("dragend", endDrag);

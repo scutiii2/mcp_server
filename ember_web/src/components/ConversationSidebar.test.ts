@@ -919,6 +919,19 @@ describe("drag and drop", () => {
     expect(headers(wrapper)).toEqual(["Work"]);
   });
 
+  it("the drag ends when the dragged chat disappears (deleted in another tab)", async () => {
+    const wrapper = mountSidebar({
+      conversations: [inFolder("1", 1), inFolder("2", 1)],
+      folders: [folder(1, "Work")],
+    });
+    await startDrag(wrapper, "Chat 1");
+    expect(headers(wrapper)).toEqual(["Pinned", "Work", "Chats"]);
+
+    await wrapper.setProps({ conversations: [inFolder("2", 1)] });
+
+    expect(headers(wrapper)).toEqual(["Work"]);
+  });
+
   it("a dragstart followed by dragend before the timer runs never shows the zones", async () => {
     const wrapper = mountSidebar({ conversations: [inFolder("1", 1)], folders: [folder(1, "Work")] });
 
