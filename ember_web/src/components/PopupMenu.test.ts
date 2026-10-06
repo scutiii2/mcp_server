@@ -140,6 +140,54 @@ describe("PopupMenu", () => {
     expect(w.emitted("select")).toEqual([["move:1"]]);
   });
 
+  describe("flyout placement", () => {
+    const mockRects = (flyoutTop: number, flyoutHeight: number, innerHeight: number) => {
+      vi.stubGlobal("innerHeight", innerHeight);
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        const isFlyout = this.classList.contains("flyout");
+        const top = isFlyout ? flyoutTop : 0;
+        const height = isFlyout ? flyoutHeight : 100;
+        return { top, bottom: top + height, left: 0, right: 200, width: 200, height, x: 0, y: top, toJSON() {} } as DOMRect;
+      });
+    };
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+    const openMove = async () => {
+      all('[role="menuitem"]').find((b) => b.textContent?.includes("Move to..."))!.click();
+      await nextTick();
+      await nextTick();
+    };
+
+    it("shifts a flyout that would leave the window up, and caps its height", async () => {
+      mockRects(700, 300, 800);
+      open();
+      await openMove();
+
+      // bottom 1000 must land at 800 - 8: shifted up by 208
+      expect(q(".flyout")!.style.top).toBe("-208px");
+      expect(q(".flyout")!.style.maxHeight).toBe("784px");
+    });
+
+    it("never lifts a tall flyout above the top margin", async () => {
+      mockRects(500, 900, 800);
+      open();
+      await openMove();
+
+      // capped to 784px, its top is placed 8px from the window top: 8 - 500
+      expect(q(".flyout")!.style.top).toBe("-492px");
+    });
+
+    it("leaves a flyout that fits where it is", async () => {
+      mockRects(100, 120, 800);
+      open();
+      await openMove();
+
+      expect(q(".flyout")!.style.top).toBe("");
+    });
+  });
+
   it("ArrowRight opens the flyout and focuses its first item; ArrowLeft closes it", async () => {
     open();
     await nextTick();

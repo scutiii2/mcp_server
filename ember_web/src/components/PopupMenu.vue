@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { MenuItem } from "../utils/chatMenu";
 
 // A small popup menu at a point of the page, with an optional flyout for items
@@ -22,6 +22,36 @@ const openId = ref<string | null>(null);
 // A flyout needs room to the right; without it (or on touch screens, which have
 // no hover) it opens over the main menu instead.
 const overlay = ref(false);
+
+// Inline placement of the open flyout, set once it is on the page and measured:
+// it hangs from its entry's top, which for a row near the bottom of the window
+// would put the folders below the edge. `top` moves it up (negative, from its
+// entry), `maxHeight` makes it scroll inside the window.
+const flyoutStyle = ref<Record<string, string>>({});
+
+function placeFlyout(): void {
+  const box = root.value?.querySelector<HTMLElement>(".flyout")?.getBoundingClientRect();
+  if (!box) return;
+  const room = window.innerHeight - 2 * MARGIN;
+  const height = Math.min(box.height, room);
+  // Bottom edge inside the window, but the top never above the top margin.
+  const wanted = Math.max(MARGIN, Math.min(box.top, window.innerHeight - MARGIN - height));
+  const shift = Math.round(wanted - box.top);
+  flyoutStyle.value = { maxHeight: `${room}px`, ...(shift !== 0 ? { top: `${shift}px` } : {}) };
+}
+
+// Post flush: the flyout is in the DOM by then, however it was opened (hover,
+// click, key).
+watch(
+  openId,
+  async (id) => {
+    flyoutStyle.value = {};
+    if (id === null) return;
+    await nextTick();
+    placeFlyout();
+  },
+  { flush: "post" },
+);
 
 function touchOnly(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia("(hover: none)").matches;
@@ -208,6 +238,7 @@ onBeforeUnmount(() => {
           <div
             v-if="item.children && openId === item.id"
             :class="['flyout', { overlay }]"
+            :style="flyoutStyle"
             role="menu"
             :aria-label="item.label"
           >

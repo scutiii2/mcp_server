@@ -199,17 +199,21 @@ describe("forgetFolder", () => {
     expect(client.remove).not.toHaveBeenCalled();
   });
 
-  it("a list that was requested before the folder was deleted cannot bring its chats back", async () => {
+  it("a list that was requested before the folder was deleted cannot bring its chats back, and the list is fetched again", async () => {
     const chat = await setup([summary("a", { folder_id: 3 }), summary("d")]);
     let finish: (list: ChatSummary[]) => void = () => {};
     client.list.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    client.list.mockResolvedValueOnce([summary("d"), summary("e")]); // the server after the delete
+    const calls = client.list.mock.calls.length;
 
     const reloading = chat.reload();
     chat.forgetFolder(3);
     finish([summary("a", { folder_id: 3 }), summary("d")]); // what the server said before it deleted the folder
     await reloading;
+    await flushPromises();
 
-    expect(chat.sortedConversations.map((c) => c.id)).toEqual(["d"]);
+    expect(client.list.mock.calls.length).toBe(calls + 2);
+    expect(chat.sortedConversations.map((c) => c.id).sort()).toEqual(["d", "e"]);
   });
 
   it("closes the open chat when it was in the folder", async () => {

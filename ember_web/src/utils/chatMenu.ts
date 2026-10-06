@@ -34,11 +34,12 @@ export function chatMenuItems(chat: Conversation, folders: ChatFolder[], answeri
   ];
 }
 
-/** The menu of a folder header. */
-export function folderMenuItems(): MenuItem[] {
+/** The menu of a folder header. `deleteDisabled`: the chats are still loading,
+ * so the count a delete would report is not known yet. */
+export function folderMenuItems(deleteDisabled: boolean): MenuItem[] {
   return [
     { id: "rename", label: "Rename" },
-    { id: "delete", label: "Delete", danger: true },
+    { id: "delete", label: "Delete", danger: true, disabled: deleteDisabled },
   ];
 }
 

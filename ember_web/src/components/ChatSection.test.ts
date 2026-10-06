@@ -27,6 +27,18 @@ describe("ChatSection", () => {
     expect(wrapper.find("button.toggle").attributes("aria-expanded")).toBe("false");
   });
 
+  it("the ... button reports an open menu and stays visible", async () => {
+    const wrapper = mountSection();
+    const button = () => wrapper.find("button.more");
+    expect(button().attributes("aria-expanded")).toBe("false");
+    expect(button().classes()).not.toContain("expanded");
+
+    await wrapper.setProps({ expanded: true });
+
+    expect(button().attributes("aria-expanded")).toBe("true");
+    expect(button().classes()).toContain("expanded");
+  });
+
   it("toggles from the header", async () => {
     const wrapper = mountSection();
 

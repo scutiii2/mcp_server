@@ -312,10 +312,17 @@ export const useChatStore = defineStore("chat", () => {
     if (accountId === undefined) return;
     listLoading.value = true;
     loadError.value = "";
+    // This list was requested before something changed the server's state (a
+    // folder deleted): it is thrown away and fetched again.
+    let stale = false;
     try {
       await importLegacy(accountId);
       const fresh = await storage.list();
-      if (started !== generation || seq !== listSeq) return;
+      if (started !== generation) return;
+      if (seq !== listSeq) {
+        stale = true;
+        return;
+      }
       conversations.value = fresh.map((c) => {
         const known = find(c.id);
         const unchanged = known?.messagesLoaded && known.updatedAt === c.updatedAt && !known.running;
@@ -337,6 +344,9 @@ export const useChatStore = defineStore("chat", () => {
         listReady.value = true;
       }
       scheduleBackgroundPoll();
+      // Each folder delete bumps `listSeq` once and the new call captures the
+      // new value, so this cannot loop.
+      if (stale) void loadList();
     }
   }
 

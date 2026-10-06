@@ -9,7 +9,7 @@ import type { MenuPoint } from "./menuPoint";
 // lockedHere: this chat is the one answering, so it can't be ticked.
 // Its actions (pin, move, rename, delete) live in a menu the sidebar owns:
 // the "..." button and a right-click ask for it (`openMenu`).
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   chat: Conversation;
   active: boolean;
   locked: boolean;
@@ -17,7 +17,9 @@ const props = defineProps<{
   selecting: boolean;
   ticked: boolean;
   renaming: boolean;
-}>();
+  /** Its menu is open. */
+  expanded?: boolean;
+}>(), { expanded: false });
 const emit = defineEmits<{
   select: [];
   toggle: [];
@@ -38,6 +40,7 @@ watch(
     finished = false;
     draft.value = props.chat.title;
     await nextTick();
+    renameInput.value?.focus();
     renameInput.value?.select();
   },
   { immediate: true },
@@ -107,10 +110,11 @@ function openFromContext(event: MouseEvent): void {
       <button
         ref="moreButton"
         type="button"
-        class="icon more"
+        :class="['icon', 'more', { expanded }]"
         title="Chat actions"
         aria-label="Chat actions"
         aria-haspopup="menu"
+        :aria-expanded="expanded"
         @pointerdown.stop
         @click.stop="openFromButton"
       >
@@ -149,6 +153,7 @@ function openFromContext(event: MouseEvent): void {
   opacity: 0;
 }
 .row:hover .icon,
+.icon.expanded,
 .icon:focus-visible {
   opacity: 1;
 }

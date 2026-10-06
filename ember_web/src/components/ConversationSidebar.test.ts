@@ -509,9 +509,25 @@ describe("the row menu", () => {
 
     await menuButton(wrapper).trigger("click");
     menuItem("Delete")!.click();
+    await flushPromises();
 
     expect(confirmSpy).toHaveBeenCalledWith('Delete "Chat 1"? This can\'t be undone.');
     expect(wrapper.emitted("delete")).toEqual([["1"]]);
+  });
+
+  it("Delete closes the menu before the confirmation shows", async () => {
+    let menuWhenAsked: Element | null | undefined;
+    vi.spyOn(window, "confirm").mockImplementation(() => {
+      menuWhenAsked = openMenu();
+      return false;
+    });
+    const wrapper = mountSidebar();
+
+    await menuButton(wrapper).trigger("click");
+    menuItem("Delete")!.click();
+    await flushPromises();
+
+    expect(menuWhenAsked).toBeNull();
   });
 
   it("Delete does nothing when the confirmation is declined", async () => {
@@ -520,6 +536,7 @@ describe("the row menu", () => {
 
     await menuButton(wrapper).trigger("click");
     menuItem("Delete")!.click();
+    await flushPromises();
 
     expect(wrapper.emitted("delete")).toBeUndefined();
   });
@@ -543,7 +560,7 @@ describe("the row menu", () => {
   });
 
   it("the chat that is answering cannot be moved or deleted from its menu", async () => {
-    const wrapper = mountSidebar({ conversations: [chat("1")], activeId: "1", locked: true });
+    const wrapper = mountSidebar({ conversations: [chat("1")], activeId: "1", locked: true, busy: true });
 
     await menuButton(wrapper).trigger("click");
 
@@ -551,6 +568,63 @@ describe("the row menu", () => {
     expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
     expect(menuItem("Pin")!.hasAttribute("disabled")).toBe(false);
     expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("a chat that is running cannot be moved or deleted, even when the sidebar is not locked", async () => {
+    const wrapper = mountSidebar({ conversations: [{ ...chat("1"), running: true }], locked: false });
+
+    await menuButton(wrapper).trigger("click");
+
+    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(true);
+    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
+    expect(menuItem("Pin")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("the open chat is answering while the sidebar is busy, even when not locked", async () => {
+    const wrapper = mountSidebar({ conversations: [chat("1"), chat("2")], activeId: "1", locked: false, busy: true });
+
+    await menuButton(wrapper, 0).trigger("click");
+    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(true);
+    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
+    expect(menuItem("Pin")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+
+    await menuButton(wrapper, 1).trigger("click"); // another chat is not the one answering
+    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("a chat that is not answering has every action", async () => {
+    const wrapper = mountSidebar({ activeId: "1", locked: false, busy: false });
+
+    await menuButton(wrapper).trigger("click");
+
+    for (const label of ["Pin", "Move to...", "Rename", "Delete"]) {
+      expect(menuItem(label)!.hasAttribute("disabled")).toBe(false);
+    }
+  });
+
+  it("the ... button reports that its menu is open", async () => {
+    const wrapper = mountSidebar();
+    expect(menuButton(wrapper, 0).attributes("aria-expanded")).toBe("false");
+
+    await menuButton(wrapper, 0).trigger("click");
+
+    expect(menuButton(wrapper, 0).attributes("aria-expanded")).toBe("true");
+    expect(menuButton(wrapper, 1).attributes("aria-expanded")).toBe("false");
+  });
+
+  it("a folder's Delete is off while the chats are still loading", async () => {
+    const wrapper = mountSidebar({ conversations: [], folders: [folder(1, "Work")], loading: true });
+
+    await wrapper.find("header button.more").trigger("click");
+
+    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
+    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+
+    await wrapper.setProps({ loading: false });
+    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(false);
   });
 
   it("closes on Escape and gives focus back to its button", async () => {
@@ -718,6 +792,7 @@ describe("the row menu", () => {
     await wrapper.vm.$nextTick();
     await wrapper.find("header button.more").trigger("click");
     menuItem("Delete")!.click();
+    await flushPromises();
 
     expect(wrapper.emitted("renameFolder")).toEqual([[folder(1, "Work")]]);
     expect(wrapper.emitted("deleteFolder")).toEqual([[folder(1, "Work")]]);

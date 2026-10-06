@@ -5,13 +5,15 @@ import type { MenuPoint } from "./menuPoint";
 // One block of the chat list: a header (title, count, a "..." menu button) and
 // the rows in the default slot. A folder can fold; Pinned and "Chats" cannot.
 // With title null it is just the list, which is how an ungrouped list looks.
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   title: string | null;
   count: number;
   collapsible: boolean;
   collapsed: boolean;
   menu: boolean;
-}>();
+  /** The folder menu is open. */
+  expanded?: boolean;
+}>(), { expanded: false });
 const emit = defineEmits<{ toggle: []; openMenu: [point: MenuPoint] }>();
 
 const moreButton = ref<HTMLButtonElement | null>(null);
@@ -52,10 +54,11 @@ function openFromContext(event: MouseEvent): void {
         v-if="menu"
         ref="moreButton"
         type="button"
-        class="more"
+        :class="['more', { expanded }]"
         title="Folder actions"
         aria-label="Folder actions"
         aria-haspopup="menu"
+        :aria-expanded="expanded"
         @pointerdown.stop
         @click="openFromButton"
       >
@@ -143,6 +146,7 @@ header {
   opacity: 0;
 }
 header:hover .more,
+.more.expanded,
 .more:focus-visible {
   opacity: 1;
 }

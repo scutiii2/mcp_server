@@ -1,5 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 import type { Conversation } from "../api/types";
 import ChatRow from "./ChatRow.vue";
 
@@ -111,6 +112,28 @@ describe("ChatRow", () => {
     await input.trigger("blur");
 
     expect(wrapper.emitted("finishRename")).toEqual([[true, "Renamed"]]);
+  });
+
+  it("focuses the rename box when renaming starts", async () => {
+    const wrapper = mountRow({}, true);
+
+    await wrapper.setProps({ renaming: true });
+    await nextTick();
+
+    expect(document.activeElement).toBe(wrapper.find("input.rename").element);
+    wrapper.unmount();
+  });
+
+  it("the ... button reports an open menu and stays visible", async () => {
+    const wrapper = mountRow();
+    const button = () => wrapper.find("button.more");
+    expect(button().attributes("aria-expanded")).toBe("false");
+    expect(button().classes()).not.toContain("expanded");
+
+    await wrapper.setProps({ expanded: true });
+
+    expect(button().attributes("aria-expanded")).toBe("true");
+    expect(button().classes()).toContain("expanded");
   });
 
   it("Esc cancels the edit", async () => {

@@ -67,8 +67,9 @@ README API table updated.
 ### Data
 
 - `api/FoldersClient.ts`: `list`, `create`, `rename`, `reorder`, `remove`
-  through `apiRequest`. `ChatsClient` gains `setFolder` and `setPinned`.
-- `Conversation` gains `folderId?: string | null` and `pinned?: boolean`.
+  through `apiRequest`. `ChatsClient` gains `update` (`chatsClient.update`); the chat store
+  exposes `setChatFolder` and `setChatPinned`.
+- `Conversation` gains `folderId?: number | null` and `pinned?: boolean`.
 - New Pinia store `stores/folders.ts`, reset when the account changes, like
   `stores/chat.ts`.
 - Collapsed-folder state is kept in `localStorage`, keyed per account, wrapped

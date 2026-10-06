@@ -121,7 +121,7 @@ const menuKey = computed(() => (menu.value ? `${menu.value.kind}:${menu.value.id
 const menuItems = computed(() => {
   const owner = menuOwner.value;
   if (!owner) return [];
-  return owner.kind === "chat" ? chatMenuItems(owner.chat, props.folders, isLocked(owner.chat)) : folderMenuItems();
+  return owner.kind === "chat" ? chatMenuItems(owner.chat, props.folders, answering(owner.chat)) : folderMenuItems(props.loading);
 });
 
 // A press on the "..." button of the menu that is open closes it (the button
@@ -145,7 +145,7 @@ async function dismissMenu(): Promise<void> {
   trigger?.focus();
 }
 
-function chooseFromMenu(id: string): void {
+async function chooseFromMenu(id: string): Promise<void> {
   const open = menuOwner.value;
   menu.value = null; // a choice hands focus on (a rename box, a dialog), so it is not given back
   if (!open) return;
@@ -168,6 +168,8 @@ function chooseFromMenu(id: string): void {
       renamingId.value = chat.id;
       break;
     case "delete":
+      // The native dialog blocks rendering: let the menu leave the page first.
+      await nextTick();
       confirmDelete(chat);
       break;
     case "move":
@@ -192,7 +194,13 @@ function confirmDeleteAll(): void {
 const selecting = ref(false);
 const ticked = ref<Set<string>>(new Set());
 
-/** A chat that is answering right now can't be deleted from under its turn. */
+/** An answer is being written for this chat (it runs, or it is the open chat of
+ * a busy page): it can be neither moved nor deleted from under its turn. */
+function answering(c: Conversation): boolean {
+  return c.running === true || (props.busy && c.id === props.activeId);
+}
+
+/** A chat that is answering right now can't be ticked for deletion. */
 function isLocked(c: Conversation): boolean {
   return props.locked && c.id === props.activeId;
 }
@@ -308,6 +316,7 @@ watch(
         :collapsible="s.kind === 'folder'"
         :collapsed="s.kind === 'folder' && s.folder !== null && collapsedFolders.includes(s.folder.id)"
         :menu="s.kind === 'folder' && !selecting"
+        :expanded="s.kind === 'folder' && menu?.kind === 'folder' && menu.id === s.folder?.id"
         @toggle="s.folder && emit('toggleFolder', s.folder.id)"
         @open-menu="(point) => s.folder && openFolderMenu(s.folder, point)"
       >
@@ -321,6 +330,7 @@ watch(
           :selecting="selecting"
           :ticked="ticked.has(c.id)"
           :renaming="renamingId === c.id"
+          :expanded="menu?.kind === 'chat' && menu.id === c.id"
           @select="emit('select', c.id)"
           @toggle="toggle(c)"
           @start-rename="renamingId = c.id"

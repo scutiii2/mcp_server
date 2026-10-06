@@ -113,6 +113,13 @@ test("make a folder, file and pin a chat, then delete the folder with it", async
   await expect(pinnedHeader).toHaveCount(0);
   expect(api.chats.has("seed-chat-0001")).toBe(false);
 
+  // After a reload the server's state shows the same: the chat and both headers are gone.
+  await page.reload();
+  await expect(page.getByPlaceholder(/Ask something/)).toBeVisible();
+  await expect(sidebar.getByRole("listitem").filter({ hasText: "Seeded chat" })).toHaveCount(0);
+  await expect(sidebar.getByRole("button", { name: /^Work/ })).toHaveCount(0);
+  await expect(sidebar.getByRole("heading", { name: /^Pinned/ })).toHaveCount(0);
+
   // The fake knew every request the page made.
   expect(api.unexpected).toEqual([]);
 });

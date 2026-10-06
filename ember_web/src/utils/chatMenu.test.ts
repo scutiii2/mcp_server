@@ -63,7 +63,15 @@ describe("chatMenuItems", () => {
 
 describe("folderMenuItems", () => {
   it("offers Rename and Delete", () => {
-    expect(folderMenuItems().map((i) => i.id)).toEqual(["rename", "delete"]);
+    expect(folderMenuItems(false).map((i) => i.id)).toEqual(["rename", "delete"]);
+  });
+
+  it("can switch Delete off, leaving Rename on", () => {
+    const items = folderMenuItems(true);
+
+    expect(items.find((i) => i.id === "delete")?.disabled).toBe(true);
+    expect(items.find((i) => i.id === "rename")?.disabled).toBeFalsy();
+    expect(folderMenuItems(false).find((i) => i.id === "delete")?.disabled).toBeFalsy();
   });
 });
 
