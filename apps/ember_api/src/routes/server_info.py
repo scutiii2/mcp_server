@@ -1,4 +1,5 @@
-"""/api/commands, /api/capabilities and /api/extensions: mcp_server's command
+"""/api/commands, /api/capabilities (and /api/capabilities/{name}/gui, a
+capability's page layout) and /api/extensions: mcp_server's command
 registry, capability help, capability switchboard and extensions, passed
 through. Reading needs tools.use (extensions: chat.use or tools.use, since
 the chat picks which ones the agent may use); switching a capability or
@@ -81,6 +82,8 @@ class CapabilityOut(BaseModel):
     label: str | None = None
     tools: list[str] = []
     resources: list[str] = []
+    # Whether the capability ships a page ember_web can draw.
+    has_gui: bool = False
 
 
 class CapabilitySwitch(BaseModel):
@@ -265,6 +268,16 @@ async def list_capabilities(
     account: Account = Depends(require_tools), info: McpServerInfo = Depends(get_server_info)
 ) -> list[CapabilityOut]:
     return [CapabilityOut(**r) for r in await _call(info.capabilities(account)) if isinstance(r, dict)]
+
+
+@router.get("/capabilities/{name}/gui")
+async def capability_page(
+    name: str = Path(pattern=NAME_PATTERN),
+    account: Account = Depends(require_tools),
+    info: McpServerInfo = Depends(get_server_info),
+) -> dict[str, Any]:
+    """A capability's page layout, as mcp_server validated it; ember_web draws it."""
+    return await _call(info.capability_page(account, name))
 
 
 @router.patch("/capabilities/{name}")

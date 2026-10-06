@@ -12,8 +12,10 @@ from tests.test_registration import as_admin
 
 COMMANDS = [{"capability": "srv", "name": "list", "description": "List apps", "tool_name": "tool_srv_listApps"}]
 CAPABILITIES = [
-    {"name": "server_manager", "enabled": True, "label": "Server Manager", "tools": ["tool_srv_listApps"], "resources": []}
+    {"name": "server_manager", "enabled": True, "label": "Server Manager", "tools": ["tool_srv_listApps"], "resources": [],
+     "has_gui": True}
 ]
+GUI_PAGE = {"version": 1, "title": "Server", "description": "", "sections": [{"id": "list", "title": "Apps", "tool": "tool_srv_listApps"}]}
 EXTENSIONS = [
     {"id": "notes", "label": "Notes", "description": "", "status": "connected", "error": None, "tools": ["notes__add"]}
 ]
@@ -32,6 +34,10 @@ def mcp_server(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"error": "Unknown capability 'nope'"})
     if path == "/capabilities":
         return httpx.Response(200, json=CAPABILITIES)
+    if path == "/capabilities/server_manager/gui":
+        return httpx.Response(200, json=GUI_PAGE)
+    if path.startswith("/capabilities/") and path.endswith("/gui"):
+        return httpx.Response(404, json={"error": "Capability 'nope' has no page"})
     if path == "/capabilities/server_manager" and request.method == "PATCH":
         return httpx.Response(200, json={**CAPABILITIES[0], "enabled": json.loads(request.content)["enabled"]})
     if path == "/extensions" and request.method == "GET":
@@ -83,6 +89,26 @@ def test_capabilities_list_and_admin_switch(client_factory, email: FakeEmailSend
     login(member, "alice")
     assert member.get("/api/capabilities").status_code == 200  # tools.use
     assert member.patch("/api/capabilities/server_manager", json={"enabled": True}).status_code == 403
+
+
+def test_capability_page_is_passed_through(client: TestClient, upstream: FakeUpstream) -> None:
+    upstream.handler = mcp_server
+    as_admin(client)
+
+    assert client.get("/api/capabilities/server_manager/gui").json() == GUI_PAGE
+    missing = client.get("/api/capabilities/nope/gui")
+    assert (missing.status_code, missing.json()["detail"]) == (404, "Capability 'nope' has no page")
+    assert upstream.requests[0].headers["x-requester-username"] == "root"
+
+
+def test_capability_page_needs_tools_use(client_factory, email: FakeEmailSender, upstream: FakeUpstream) -> None:
+    upstream.handler = mcp_server
+    unverified = client_factory()  # an unverified member has no tools.use
+    make_member(unverified, email, "kim", verify=False)
+    login(unverified, "kim")
+
+    assert unverified.get("/api/capabilities/server_manager/gui").status_code == 403
+    assert len(upstream.requests) == 0
 
 
 def test_server_info_needs_tools_use_and_handles_outages(client: TestClient, upstream: FakeUpstream) -> None:

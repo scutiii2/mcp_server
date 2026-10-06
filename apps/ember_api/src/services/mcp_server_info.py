@@ -108,6 +108,11 @@ class McpServerInfo:
         body = await self._request("GET", "/capabilities", account)
         return body if isinstance(body, list) else []
 
+    async def capability_page(self, account: Account, name: str) -> dict[str, Any]:
+        """A capability's GUI page (the declarative layout ember_web draws)."""
+        body = await self._request("GET", f"/capabilities/{quote(name, safe='')}/gui", account)
+        return body if isinstance(body, dict) else {}
+
     async def set_capability(self, account: Account, name: str, enabled: bool) -> dict[str, Any]:
         return await self._request("PATCH", f"/capabilities/{quote(name, safe='')}", account, json={"enabled": enabled})
 
