@@ -73,4 +73,30 @@ describe("GuiFormSection", () => {
     const w = mount(GuiFormSection, { props: { section, tool: TOOL, runTool: vi.fn() } });
     expect(w.text()).toContain("How long");
   });
+
+  it("does not restart the countdown when a run resolves after unmount", async () => {
+    const section = { ...SECTION, result: { kind: "secret", field: "code", refresh_after: "seconds_remaining" } } as GuiFormSectionSpec;
+    let resolve!: (r: ToolRunResult) => void;
+    const runTool = vi.fn().mockReturnValue(new Promise<ToolRunResult>((r) => { resolve = r; }));
+    const w = mount(GuiFormSection, { props: { section, tool: TOOL, runTool } });
+    await w.get("form").trigger("submit");
+    w.unmount();
+    resolve(ok({ code: "1", seconds_remaining: 2 }));
+    await flushPromises();
+    vi.advanceTimersByTime(10_000);
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the newest result when an older run resolves last", async () => {
+    const resolvers: Array<(r: ToolRunResult) => void> = [];
+    const runTool = vi.fn().mockImplementation(() => new Promise<ToolRunResult>((r) => { resolvers.push(r); }));
+    const w = mount(GuiFormSection, { props: { section: SECTION, tool: TOOL, runTool } });
+    await w.get("form").trigger("submit");
+    await w.get("form").trigger("submit");
+    resolvers[1](ok({ code: "new" }));
+    await flushPromises();
+    resolvers[0](ok({ code: "old" }));
+    await flushPromises();
+    expect(w.get("[data-test=secret]").text()).toBe("new");
+  });
 });

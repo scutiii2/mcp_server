@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onScopeDispose, ref } from "vue";
 import type { GuiFormSectionSpec } from "../api/CapabilityPagesClient";
 import type { ToolInfo, ToolRunResult } from "../api/types";
 import { useCountdown } from "../composables/useCountdown";
@@ -22,24 +22,34 @@ const running = ref(false);
 const result = ref<ToolRunResult | null>(null);
 const error = ref("");
 let lastArgs: Record<string, unknown> = {};
+let runId = 0;
+let disposed = false;
+onScopeDispose(() => {
+  disposed = true;
+});
 
 const countdown = useCountdown(() => void run(lastArgs));
 
 async function run(args: Record<string, unknown>): Promise<void> {
   lastArgs = args;
+  const id = ++runId;
   running.value = true;
   error.value = "";
   countdown.stop();
   try {
-    result.value = await props.runTool(props.tool.name, args);
+    const res = await props.runTool(props.tool.name, args);
+    // A disposed section or an older run must not touch state or restart the countdown.
+    if (disposed || id !== runId) return;
+    result.value = res;
     const after = props.section.result.refresh_after;
-    const seconds = after && !result.value.isError ? resultValue(result.value, after) : undefined;
+    const seconds = after && !res.isError ? resultValue(res, after) : undefined;
     if (typeof seconds === "number" && seconds > 0) countdown.start(seconds);
   } catch (err) {
+    if (disposed || id !== runId) return;
     result.value = null;
     error.value = errorMessage(err);
   } finally {
-    running.value = false;
+    if (!disposed && id === runId) running.value = false;
   }
 }
 </script>

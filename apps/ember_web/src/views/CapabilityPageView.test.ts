@@ -79,4 +79,54 @@ describe("CapabilityPageView", () => {
     const w = await open("/capabilities/zzz");
     expect(w.text()).toMatch(/unknown/i);
   });
+
+  describe("overlapping loads", () => {
+    function deferred<T>() {
+      let resolve!: (v: T) => void;
+      let reject!: (e: unknown) => void;
+      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    }
+    const CAP_B: CapabilityInfo = { ...CAP, name: "other", label: "Other", tools: ["tool_a"] };
+
+    async function openAThenB() {
+      const pageA = deferred<unknown>();
+      const pageB = deferred<unknown>();
+      mocks.capabilities.mockResolvedValue([CAP, CAP_B]);
+      mocks.page.mockImplementation((n: string) => (n === "gen" ? pageA.promise : pageB.promise));
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: "/capabilities", component: { template: "<div />" } },
+          { path: "/capabilities/:name", component: CapabilityPageView },
+        ],
+      });
+      await router.push("/capabilities/gen");
+      const w = mount(CapabilityPageView, { global: { plugins: [createPinia(), router] } });
+      await flushPromises();
+      await router.push("/capabilities/other");
+      await flushPromises();
+      return { w, pageA, pageB };
+    }
+
+    it("shows the newer page when the older load resolves last", async () => {
+      const { w, pageA, pageB } = await openAThenB();
+      pageB.resolve({ ...PAGE, title: "Page B" });
+      await flushPromises();
+      pageA.resolve({ ...PAGE, title: "Page A" });
+      await flushPromises();
+      expect(w.text()).toContain("Page B");
+      expect(w.text()).not.toContain("Page A");
+    });
+
+    it("ignores an older load's failure after the newer one succeeded", async () => {
+      const { w, pageA, pageB } = await openAThenB();
+      pageB.resolve({ ...PAGE, title: "Page B" });
+      await flushPromises();
+      pageA.reject(new Error("older failure"));
+      await flushPromises();
+      expect(w.text()).toContain("Page B");
+      expect(w.text()).not.toContain("older failure");
+    });
+  });
 });

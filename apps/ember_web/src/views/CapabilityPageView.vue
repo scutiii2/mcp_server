@@ -22,14 +22,21 @@ const page = ref<GuiPageSpec | null>(null);
 const label = ref("");
 const tools = ref<Record<string, ToolInfo>>({});
 
+// Only the latest load may write state; a slower earlier one is dropped.
+let current = 0;
+
 async function load(): Promise<void> {
+  const seq = ++current;
   loading.value = true;
   problem.value = "";
   page.value = null;
+  tools.value = {};
   try {
-    const capability = (await commandsClient.capabilities()).find((c) => c.name === name.value);
+    const requested = name.value;
+    const capability = (await commandsClient.capabilities()).find((c) => c.name === requested);
+    if (seq !== current) return;
     if (!capability) {
-      problem.value = `Unknown capability '${name.value}'.`;
+      problem.value = `Unknown capability '${requested}'.`;
       return;
     }
     label.value = capability.label ?? capability.name;
@@ -37,15 +44,17 @@ async function load(): Promise<void> {
       problem.value = `${label.value} is turned off.`;
       return;
     }
-    const [raw, allTools] = await Promise.all([capabilityPagesClient.get(name.value), server.listTools()]);
+    const [raw, allTools] = await Promise.all([capabilityPagesClient.get(requested), server.listTools()]);
+    if (seq !== current) return;
     page.value = parseGuiPage(raw, capability.tools);
     tools.value = Object.fromEntries(allTools.map((t) => [t.name, t]));
   } catch (err) {
+    if (seq !== current) return;
     if (err instanceof GuiPageError) problem.value = `This page's layout is invalid: ${err.message}`;
     else if (err instanceof ApiError && err.status === 404) problem.value = `${label.value || name.value} has no page.`;
     else problem.value = errorMessage(err);
   } finally {
-    loading.value = false;
+    if (seq === current) loading.value = false;
   }
 }
 
