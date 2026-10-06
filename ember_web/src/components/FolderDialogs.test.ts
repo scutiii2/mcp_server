@@ -26,6 +26,9 @@ function setup() {
   return wrapper.vm as unknown as Exposed;
 }
 
+const realShowModal = HTMLDialogElement.prototype.showModal;
+const realClose = HTMLDialogElement.prototype.close;
+
 beforeEach(() => {
   vi.clearAllMocks();
   // jsdom does not implement <dialog>.showModal; give it the open flag the component reads.
@@ -38,6 +41,8 @@ beforeEach(() => {
   };
 });
 afterEach(() => {
+  HTMLDialogElement.prototype.showModal = realShowModal;
+  HTMLDialogElement.prototype.close = realClose;
   wrapper?.unmount();
   wrapper = null;
 });
@@ -227,6 +232,133 @@ describe("delete", () => {
     await flushPromises();
 
     expect(client.remove).not.toHaveBeenCalled();
+    expect(dialog()).toBeNull();
+  });
+});
+
+async function type(value: string) {
+  input().value = value;
+  input().dispatchEvent(new Event("input"));
+  await flushPromises();
+}
+
+describe("details", () => {
+  it("collapses inner whitespace before creating", async () => {
+    client.create.mockResolvedValue(folder(1, "Work stuff"));
+    const dialogs = setup();
+    dialogs.openCreate();
+    await flushPromises();
+    await type("  Work   stuff ");
+    button("Save").click();
+    await flushPromises();
+    expect(client.create).toHaveBeenCalledWith("Work stuff");
+  });
+
+  it("does not call the server when only inner whitespace differs", async () => {
+    const dialogs = setup();
+    dialogs.openRename(folder(1, "Work stuff"));
+    await flushPromises();
+    await type("Work  stuff");
+    button("Save").click();
+    await flushPromises();
+    expect(client.rename).not.toHaveBeenCalled();
+    expect(dialog()).toBeNull();
+  });
+
+  it("keeps the delete dialog open and enables Delete again after a 409", async () => {
+    client.remove.mockRejectedValue(new ApiError(409, "still writing"));
+    const dialogs = setup();
+    dialogs.openDelete(folder(1, "Work"), 2);
+    await flushPromises();
+    button("Delete").click();
+    await flushPromises();
+    expect(dialog()).not.toBeNull();
+    expect(button("Delete").hasAttribute("disabled")).toBe(false);
+  });
+
+  it("just closes when the server says the folder is already gone", async () => {
+    client.remove.mockRejectedValue(new ApiError(404, "Folder not found"));
+    const dialogs = setup();
+    dialogs.openDelete(folder(1, "Work"), 2);
+    await flushPromises();
+    button("Delete").click();
+    await flushPromises();
+    expect(dialog()).toBeNull();
+  });
+
+  it("does not call onCreated when create fails", async () => {
+    client.create.mockRejectedValue(new ApiError(409, "exists"));
+    const onCreated = vi.fn();
+    const dialogs = setup();
+    dialogs.openCreate(onCreated);
+    await flushPromises();
+    await type("Work");
+    button("Save").click();
+    await flushPromises();
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("calls onCreated after the dialog closed, and survives it throwing", async () => {
+    client.create.mockResolvedValue(folder(1, "Work"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let openAtCall: boolean | null = null;
+    const dialogs = setup();
+    dialogs.openCreate(() => {
+      openAtCall = dialog() !== null;
+      throw new Error("boom");
+    });
+    await flushPromises();
+    await type("Work");
+    button("Save").click();
+    await flushPromises();
+    expect(openAtCall).toBe(false);
+    expect(dialog()).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("a save that outlives its dialog", () => {
+  async function startSave() {
+    let settle!: { resolve: (f: ChatFolder) => void; reject: (e: unknown) => void };
+    client.create.mockReturnValueOnce(new Promise<ChatFolder>((resolve, reject) => (settle = { resolve, reject })));
+    const onCreated = vi.fn();
+    const dialogs = setup();
+    dialogs.openCreate(onCreated);
+    await flushPromises();
+    await type("Work");
+    button("Save").click();
+    await flushPromises();
+    dialogs.openRename(folder(2, "Other"));
+    await flushPromises();
+    return { settle, dialogs, onCreated };
+  }
+
+  it("does not close the new dialog when the old save succeeds", async () => {
+    const { settle, onCreated } = await startSave();
+    settle.resolve(folder(9, "Work"));
+    await flushPromises();
+    expect(dialog()?.getAttribute("aria-label")).toBe("Rename folder");
+    expect(input().value).toBe("Other");
+    expect(onCreated).toHaveBeenCalledWith(folder(9, "Work"));
+  });
+
+  it("does not show the old save's error in the new dialog or clear its busy flag", async () => {
+    const { settle } = await startSave();
+    // make the new dialog busy so a stray `finally` would be visible
+    let settleRename!: (f: ChatFolder) => void;
+    client.rename.mockReturnValueOnce(new Promise<ChatFolder>((r) => (settleRename = r)));
+    await type("Another");
+    button("Save").click();
+    await flushPromises();
+    expect(button("Saving …").hasAttribute("disabled")).toBe(true);
+
+    settle.reject(new ApiError(409, "A folder with that name already exists"));
+    await flushPromises();
+    expect(dialog()?.querySelector('[role="alert"]')).toBeNull();
+    expect(button("Saving …").hasAttribute("disabled")).toBe(true); // still busy with its own save
+    settleRename(folder(2, "Another"));
+    await flushPromises();
     expect(dialog()).toBeNull();
   });
 });

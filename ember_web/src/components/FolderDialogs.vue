@@ -70,25 +70,40 @@ function dismiss(): void {
   mode.value = null;
 }
 
+// An open* call can arrive while a request of the previous dialog is still in
+// flight. Each dialog is its own `mode` object, so a request only acts on the
+// screen while its dialog is still the current one.
 async function save(): Promise<void> {
   const m = mode.value;
   if (!m || m.kind === "delete" || !canSave.value) return;
   const trimmed = name.value.replace(/\s+/g, " ").trim();
   busy.value = true;
   error.value = "";
+  let created: ChatFolder | null = null;
   try {
-    if (m.kind === "create") {
-      const folder = await store.create(trimmed);
-      dismiss();
-      m.onCreated?.(folder);
-    } else {
-      if (trimmed !== m.folder.name) await store.rename(m.folder.id, trimmed);
-      dismiss();
-    }
+    if (m.kind === "create") created = await store.create(trimmed);
+    else if (trimmed !== m.folder.name) await store.rename(m.folder.id, trimmed);
+    if (mode.value === m) dismiss();
   } catch (err) {
-    error.value = errorMessage(err);
+    if (mode.value === m) error.value = errorMessage(err);
   } finally {
-    busy.value = false;
+    if (mode.value === m) busy.value = false;
+  }
+  if (created && m.kind === "create") await notifyCreated(m.onCreated, created);
+}
+
+/** Tells the caller which folder was made, once the dialog is gone. A failure in
+ * the callback is only logged: callers must not rely on the dialog to show
+ * their own errors. */
+async function notifyCreated(onCreated: ((folder: ChatFolder) => void) | undefined, folder: ChatFolder): Promise<void> {
+  if (!onCreated) return;
+  // BaseModal closes its <dialog> one tick after `mode` is cleared.
+  await nextTick();
+  await nextTick();
+  try {
+    onCreated(folder);
+  } catch (err) {
+    console.warn("FolderDialogs: onCreated failed", err);
   }
 }
 
@@ -99,14 +114,13 @@ async function confirmDelete(): Promise<void> {
   error.value = "";
   try {
     await store.remove(m.folder.id);
-    dismiss();
+    if (mode.value === m) dismiss();
   } catch (err) {
-    error.value = errorMessage(err);
+    if (mode.value === m) error.value = errorMessage(err);
   } finally {
-    busy.value = false;
+    if (mode.value === m) busy.value = false;
   }
-}
-</script>
+}</script>
 
 <template>
   <BaseModal :open="mode !== null" :title="title" @close="requestClose">
