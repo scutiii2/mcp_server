@@ -167,7 +167,20 @@ describe("PopupMenu", () => {
 
       // bottom 1000 must land at 800 - 8: shifted up by 208
       expect(q(".flyout")!.style.top).toBe("-208px");
-      expect(q(".flyout")!.style.maxHeight).toBe("784px");
+      // the cap is the height it was measured at, so it cannot grow after the shift
+      expect(q(".flyout")!.style.maxHeight).toBe("300px");
+    });
+
+    it("keeps the height the browser gave it (the 60vh CSS cap), never the whole window", async () => {
+      // 30 folders: taller than the window, but the stylesheet caps the flyout at 60vh = 480px.
+      // The shift is worked out from those 480px, so the inline cap must stay 480px: lifting it
+      // to the window height would let the list grow past the bottom edge again.
+      mockRects(700, 480, 800);
+      open();
+      await openMove();
+
+      expect(q(".flyout")!.style.maxHeight).toBe("480px");
+      expect(q(".flyout")!.style.top).toBe("-388px"); // bottom 1180 lands at 792
     });
 
     it("never lifts a tall flyout above the top margin", async () => {

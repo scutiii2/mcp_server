@@ -26,7 +26,7 @@ const overlay = ref(false);
 // Inline placement of the open flyout, set once it is on the page and measured:
 // it hangs from its entry's top, which for a row near the bottom of the window
 // would put the folders below the edge. `top` moves it up (negative, from its
-// entry), `maxHeight` makes it scroll inside the window.
+// entry), `maxHeight` pins the measured height so a long list scrolls inside the flyout.
 const flyoutStyle = ref<Record<string, string>>({});
 
 function placeFlyout(): void {
@@ -37,7 +37,9 @@ function placeFlyout(): void {
   // Bottom edge inside the window, but the top never above the top margin.
   const wanted = Math.max(MARGIN, Math.min(box.top, window.innerHeight - MARGIN - height));
   const shift = Math.round(wanted - box.top);
-  flyoutStyle.value = { maxHeight: `${room}px`, ...(shift !== 0 ? { top: `${shift}px` } : {}) };
+  // The cap is the height just measured (already limited by the stylesheet's 60vh and by the
+  // window), not the window: a looser cap would let the list grow after the shift was worked out.
+  flyoutStyle.value = { maxHeight: `${height}px`, ...(shift !== 0 ? { top: `${shift}px` } : {}) };
 }
 
 // Post flush: the flyout is in the DOM by then, however it was opened (hover,
