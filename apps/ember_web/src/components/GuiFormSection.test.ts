@@ -1,4 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
+import { defineComponent, h, KeepAlive } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuiFormSectionSpec } from "../api/CapabilityPagesClient";
 import type { ToolInfo, ToolRunResult } from "../api/types";
@@ -98,5 +99,116 @@ describe("GuiFormSection", () => {
     resolvers[0](ok({ code: "old" }));
     await flushPromises();
     expect(w.get("[data-test=secret]").text()).toBe("new");
+  });
+
+  it("shows a ring beside the countdown text", async () => {
+    const section = { ...SECTION, result: { kind: "secret", field: "code", refresh_after: "seconds_remaining" } } as GuiFormSectionSpec;
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1", seconds_remaining: 30 }));
+    const w = mount(GuiFormSection, { props: { section, tool: TOOL, runTool } });
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    expect(w.find("svg.ring").exists()).toBe(true);
+    expect(w.text()).toContain("New code in 30 s");
+  });
+});
+
+const LIVE_TOOL: ToolInfo = {
+  name: "tool_a",
+  title: "A",
+  description: "",
+  inputSchema: { type: "object", properties: { length: { type: "integer", minimum: 8, maximum: 128, default: 20, input: "range" } } },
+};
+const LIVE: GuiFormSectionSpec = { ...SECTION, live: true };
+
+describe("GuiFormSection live", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] }));
+  afterEach(() => vi.useRealTimers());
+
+  it("runs as soon as it opens, with no Run button", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "abc" }));
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(runTool).toHaveBeenCalledWith("tool_a", { length: 20 });
+    expect(w.find("button.run").exists()).toBe(false);
+    expect(w.get("[data-test=secret]").text()).toBe("abc");
+  });
+
+  it("waits 300 ms after a change and runs once for a burst of changes", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "abc" }));
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    const slider = w.get("input[type=range]");
+    for (const value of ["30", "40", "50"]) {
+      await slider.setValue(value);
+      await slider.trigger("change");
+    }
+    vi.advanceTimersByTime(299);
+    expect(runTool).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+    expect(runTool).toHaveBeenLastCalledWith("tool_a", { length: 50 });
+  });
+
+  it("Generate again runs with the same arguments", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "abc" }));
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    await w.get("[data-test=again]").trigger("click");
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+    expect(runTool).toHaveBeenLastCalledWith("tool_a", { length: 20 });
+  });
+
+  it("a form that is not live has no Generate again button", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "abc" }));
+    const w = mount(GuiFormSection, { props: { section: SECTION, tool: TOOL, runTool } });
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    expect(w.find("[data-test=again]").exists()).toBe(false);
+  });
+
+  it("drops the title and description when embedded, and shows the result before the form", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "abc" }));
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: { ...LIVE_TOOL, description: "Makes a thing." }, runTool, embedded: true } });
+    await flushPromises();
+    expect(w.find("h3").exists()).toBe(false);
+    expect(w.text()).not.toContain("Makes a thing.");
+    expect(w.classes()).toContain("embedded");
+  });
+});
+
+describe("GuiFormSection inside KeepAlive", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] }));
+  afterEach(() => vi.useRealTimers());
+
+  const REFRESHING = { ...SECTION, result: { kind: "secret", field: "code", refresh_after: "seconds_remaining" } } as GuiFormSectionSpec;
+
+  function host(runTool: ReturnType<typeof vi.fn>) {
+    return mount(
+      defineComponent({
+        props: { on: { type: Boolean, default: true } },
+        setup: (props) => () =>
+          h(KeepAlive, null, { default: () => (props.on ? h(GuiFormSection, { section: REFRESHING, tool: TOOL, runTool }) : null) }),
+      }),
+    );
+  }
+
+  it("stops refreshing while hidden and refreshes again when shown", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1", seconds_remaining: 5 }));
+    const w = host(runTool);
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+
+    await w.setProps({ on: false });
+    vi.advanceTimersByTime(20_000);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+
+    await w.setProps({ on: true });
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
   });
 });
