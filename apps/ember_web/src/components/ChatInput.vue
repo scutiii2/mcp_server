@@ -501,7 +501,9 @@ function onKeydown(event: KeyboardEvent): void {
   font-size: 0.9em;
 }
 .suggestions li.active {
-  background: var(--bg);
+  /* --bg on the --surface popup is barely different; the accent tint is clearly visible in both themes. */
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 3px 0 var(--accent);
 }
 .suggestions code {
   font-family: var(--mono);
