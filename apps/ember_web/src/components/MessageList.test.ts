@@ -5,6 +5,7 @@ import type { ChatMessage } from "../api/types";
 import { useChatStore } from "../stores/chat";
 import { useEntryAgentStore } from "../stores/entryAgent";
 import { withAttachments } from "../utils/attachments";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 import MessageList from "./MessageList.vue";
 
 // <AgentActivity> reads the chat store, which loads chats when it starts.
@@ -31,9 +32,15 @@ function mountList(props: Partial<Props> = {}) {
   });
 }
 
-// jsdom doesn't lay anything out and has no scrollIntoView.
+// jsdom doesn't lay anything out and has no scrollIntoView or <dialog> methods.
 let scrollIntoView: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  };
   scrollIntoView = vi.fn();
   Element.prototype.scrollIntoView = scrollIntoView as unknown as Element["scrollIntoView"];
 });
@@ -146,40 +153,39 @@ describe("editing a question", () => {
 
     expect((area.element as HTMLTextAreaElement).value).toBe("q1");
     await area.setValue("q1 edited");
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     await wrapper.find("button.primary").trigger("click");
+    await wrapper.getComponent(ConfirmModal).get(".confirm").trigger("click");
 
     expect(wrapper.emitted("edit")).toEqual([[0, "q1 edited"]]);
     expect(wrapper.find("textarea").exists()).toBe(false);
   });
 
   it("asks before discarding later exchanges, and stays open on 'no'", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const wrapper = mountList();
     await editButtons(wrapper)[0]!.trigger("click"); // q1 has q2 after it
     await wrapper.find("textarea").setValue("changed");
 
     await wrapper.find("button.primary").trigger("click");
+    expect(wrapper.getComponent(ConfirmModal).props("message")).toContain("discards the messages after it");
+    await wrapper.getComponent(ConfirmModal).get(".cancel").trigger("click");
 
-    expect(confirm).toHaveBeenCalledOnce();
+    expect(wrapper.findComponent(ConfirmModal).exists()).toBe(false);
     expect(wrapper.emitted("edit")).toBeUndefined();
     expect(wrapper.find("textarea").exists()).toBe(true);
   });
 
   it("does not ask when editing the last question", async () => {
-    const confirm = vi.spyOn(window, "confirm");
     const wrapper = mountList();
     await editButtons(wrapper)[1]!.trigger("click"); // q2 is the last
     await wrapper.find("textarea").setValue("q2 edited");
 
     await wrapper.find("button.primary").trigger("click");
 
-    expect(confirm).not.toHaveBeenCalled();
+    expect(wrapper.findComponent(ConfirmModal).exists()).toBe(false);
     expect(wrapper.emitted("edit")).toEqual([[2, "q2 edited"]]);
   });
 
   it("Enter saves, Shift+Enter does not, Esc cancels", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const wrapper = mountList();
     await editButtons(wrapper)[1]!.trigger("click");
     const area = wrapper.find("textarea");
@@ -202,7 +208,6 @@ describe("editing a question", () => {
     const wrapper = mountList({
       messages: [user("plain"), assistant("a"), user(withAttachments("with file", [FILE])), assistant("b")],
     });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     await editButtons(wrapper)[0]!.trigger("click");
     await wrapper.find("textarea").setValue("   ");

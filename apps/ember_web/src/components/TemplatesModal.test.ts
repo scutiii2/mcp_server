@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/http";
 import { templatesClient, type PromptTemplate } from "../api/TemplatesClient";
 import { useAuthStore } from "../stores/auth";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 import TemplatesModal from "./TemplatesModal.vue";
 
 vi.mock("../api/TemplatesClient", async (importOriginal) => ({
@@ -184,15 +185,18 @@ describe("editing and deleting", () => {
 
   it("Delete asks first, then removes", async () => {
     client.remove.mockResolvedValue(undefined);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     const wrapper = await openModal();
     const deleteFirst = () => wrapper.findAll(".list li")[0]!.find("button.danger");
 
     await deleteFirst().trigger("click");
     expect(client.remove).not.toHaveBeenCalled();
-    expect(confirm).toHaveBeenLastCalledWith('Delete the prompt "Summarize"?');
+    expect(wrapper.getComponent(ConfirmModal).props("message")).toBe('Delete the prompt "Summarize"?');
+    await wrapper.getComponent(ConfirmModal).get(".cancel").trigger("click");
+    expect(wrapper.findComponent(ConfirmModal).exists()).toBe(false);
+    expect(client.remove).not.toHaveBeenCalled();
 
     await deleteFirst().trigger("click");
+    await wrapper.getComponent(ConfirmModal).get(".confirm").trigger("click");
     await flushPromises();
     expect(client.remove).toHaveBeenCalledWith(1);
     expect(wrapper.findAll(".list li strong").map((s) => s.text())).toEqual(["Review"]);
@@ -200,10 +204,10 @@ describe("editing and deleting", () => {
 
   it("shows why a delete failed and keeps the prompt", async () => {
     client.remove.mockRejectedValue(new ApiError(500, "database is locked"));
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const wrapper = await openModal();
 
     await wrapper.findAll(".list li")[0]!.find("button.danger").trigger("click");
+    await wrapper.getComponent(ConfirmModal).get(".confirm").trigger("click");
     await flushPromises();
 
     expect(errorText(wrapper)).toBe("database is locked");

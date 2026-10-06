@@ -4,6 +4,7 @@ import { TEMPLATE_BODY_MAX, TEMPLATE_NAME_MAX, type PromptTemplate } from "../ap
 import { useTemplatesStore } from "../stores/templates";
 import { errorMessage } from "../utils/errors";
 import { preview } from "../utils/templates";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 
 /** Create, edit and delete the account's saved prompts. Opened with
  * `draft` (the text typed in the chat input) it starts on a new template
@@ -70,8 +71,11 @@ async function save(): Promise<void> {
   }
 }
 
+// Deleting a prompt asks first, in the confirmation dialog.
+const pendingDelete = ref<PromptTemplate | null>(null);
+
 async function remove(template: PromptTemplate): Promise<void> {
-  if (!confirm(`Delete the prompt "${template.name}"?`)) return;
+  pendingDelete.value = null;
   error.value = "";
   try {
     await store.remove(template.id);
@@ -126,7 +130,7 @@ function onCancel(): void {
             <span class="muted">{{ preview(t.body, 70) }}</span>
           </div>
           <button type="button" class="link" @click="startEdit(t)">Edit</button>
-          <button type="button" class="link danger" @click="remove(t)">Delete</button>
+          <button type="button" class="link danger" @click="pendingDelete = t">Delete</button>
         </li>
       </ul>
       <p v-if="error && !store.loadError" class="error" role="alert">{{ error }}</p>
@@ -134,6 +138,16 @@ function onCancel(): void {
         <button type="button" class="primary" @click="startEdit(null)">New prompt</button>
       </div>
     </template>
+    <ConfirmModal
+      v-if="pendingDelete"
+      open
+      title="Delete prompt"
+      :message="`Delete the prompt &quot;${pendingDelete.name}&quot;?`"
+      confirm-label="Delete"
+      danger
+      @confirm="remove(pendingDelete)"
+      @close="pendingDelete = null"
+    />
   </dialog>
 </template>
 

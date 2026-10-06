@@ -7,6 +7,7 @@ import { FILE_ONLY_QUESTION, splitAttachments } from "../utils/attachments";
 import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
 import { clockTime, dayDividers, fullTime } from "../utils/messageTime";
 import { toolTitle } from "../utils/toolTitles";
+import ConfirmModal from "./admin/ConfirmModal.vue";
 import AgentActivity from "./AgentActivity.vue";
 import CopyButton from "./CopyButton.vue";
 import DownloadCards from "./DownloadCards.vue";
@@ -108,6 +109,10 @@ function cancelEdit(): void {
   editingIndex.value = null;
 }
 
+// Editing a question that has later exchanges asks before dropping them; the
+// edit stays open behind the dialog until it is answered.
+const confirmingEdit = ref(false);
+
 function saveEdit(): void {
   const index = editingIndex.value;
   if (index === null) return;
@@ -115,7 +120,19 @@ function saveEdit(): void {
   if (!editDraft.value.trim() && !hasFiles) return;
   // Everything after this question goes: ask before dropping later exchanges.
   const later = props.messages.slice(index + 1).some((m) => m.role === "user" && !m.kind);
-  if (later && !confirm("Editing this question discards the messages after it. Continue?")) return;
+  if (later) {
+    confirmingEdit.value = true;
+    return;
+  }
+  sendEdit(index);
+}
+
+function confirmEdit(): void {
+  confirmingEdit.value = false;
+  if (editingIndex.value !== null) sendEdit(editingIndex.value);
+}
+
+function sendEdit(index: number): void {
   editingIndex.value = null;
   emit("edit", index, editDraft.value);
 }
@@ -402,6 +419,15 @@ onBeforeUnmount(() => {
   <Transition name="pill">
     <button v-if="hasNew && !stickToBottom" type="button" class="new-pill" @click="jumpToNew">↓ New messages</button>
   </Transition>
+  <ConfirmModal
+    v-if="confirmingEdit"
+    open
+    title="Edit question"
+    message="Editing this question discards the messages after it. Continue?"
+    confirm-label="Discard and resend"
+    @confirm="confirmEdit"
+    @close="confirmingEdit = false"
+  />
   </div>
 </template>
 
