@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { authClient, type KnownDevice } from "../api/AuthClient";
+import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage, formatUtc } from "../utils/errors";
 
@@ -53,7 +54,11 @@ async function loadDevices(): Promise<void> {
   }
 }
 
+// Forgetting a device asks first, in the confirmation dialog.
+const pendingForget = ref<KnownDevice | null>(null);
+
 async function forgetDevice(device: KnownDevice): Promise<void> {
+  pendingForget.value = null;
   try {
     await authClient.forgetDevice(device.id);
     devices.value = devices.value.filter((d) => d.id !== device.id);
@@ -113,67 +118,83 @@ async function changePassword(): Promise<void> {
         </dd>
       </dl>
 
-      <h3>Change email</h3>
-      <p v-if="auth.account?.email_verification_required === false" class="muted hint">
-        You'll get a code at the new address. Verifying it is optional.
-      </p>
-      <p v-else class="muted hint">You'll get a code at the new address. Until you enter it, your permissions are paused.</p>
-      <form class="stack" @submit.prevent="changeEmail">
-        <label>
-          New email
-          <input v-model="emailForm.email" type="email" autocomplete="email" required />
-        </label>
-        <label>
-          Current password
-          <input v-model="emailForm.password" type="password" autocomplete="current-password" required />
-        </label>
-        <p v-if="emailForm.error" class="error">{{ emailForm.error }}</p>
-        <p v-else-if="emailForm.success" class="notice">{{ emailForm.success }}</p>
-        <button class="primary" :disabled="emailForm.busy">Change email</button>
-      </form>
+      <section class="card" aria-labelledby="account-email">
+        <h3 id="account-email">Change email</h3>
+        <p v-if="auth.account?.email_verification_required === false" class="muted hint">
+          You'll get a code at the new address. Verifying it is optional.
+        </p>
+        <p v-else class="muted hint">You'll get a code at the new address. Until you enter it, your permissions are paused.</p>
+        <form class="stack" @submit.prevent="changeEmail">
+          <label>
+            New email
+            <input v-model="emailForm.email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            Current password
+            <input v-model="emailForm.password" type="password" autocomplete="current-password" required />
+          </label>
+          <p v-if="emailForm.error" class="error">{{ emailForm.error }}</p>
+          <p v-else-if="emailForm.success" class="notice">{{ emailForm.success }}</p>
+          <button class="primary" :disabled="emailForm.busy">Change email</button>
+        </form>
+      </section>
 
-      <h3>Change password</h3>
-      <p class="muted hint">Other devices where you're logged in will be logged out.</p>
-      <form class="stack" @submit.prevent="changePassword">
-        <label>
-          New password
-          <input v-model="passwordForm.next" type="password" autocomplete="new-password" minlength="8" required />
-        </label>
-        <label>
-          Repeat new password
-          <input v-model="passwordForm.confirm" type="password" autocomplete="new-password" required />
-        </label>
-        <label>
-          Current password
-          <input v-model="passwordForm.current" type="password" autocomplete="current-password" required />
-        </label>
-        <p v-if="passwordMismatch" class="error">The new passwords don't match.</p>
-        <p v-else-if="passwordForm.error" class="error">{{ passwordForm.error }}</p>
-        <p v-else-if="passwordForm.done" class="notice">Password changed.</p>
-        <button class="primary" :disabled="passwordForm.busy || passwordMismatch">Change password</button>
-      </form>
+      <section class="card" aria-labelledby="account-password">
+        <h3 id="account-password">Change password</h3>
+        <p class="muted hint">Other devices where you're logged in will be logged out.</p>
+        <form class="stack" @submit.prevent="changePassword">
+          <label>
+            New password
+            <input v-model="passwordForm.next" type="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <label>
+            Repeat new password
+            <input v-model="passwordForm.confirm" type="password" autocomplete="new-password" required />
+          </label>
+          <label>
+            Current password
+            <input v-model="passwordForm.current" type="password" autocomplete="current-password" required />
+          </label>
+          <p v-if="passwordMismatch" class="error">The new passwords don't match.</p>
+          <p v-else-if="passwordForm.error" class="error">{{ passwordForm.error }}</p>
+          <p v-else-if="passwordForm.done" class="notice">Password changed.</p>
+          <button class="primary" :disabled="passwordForm.busy || passwordMismatch">Change password</button>
+        </form>
+      </section>
 
-      <h3>Devices</h3>
-      <p class="muted hint">
-        Where you logged in from, told apart by browser and network. A login from a new one is noted in the activity log.
-      </p>
-      <p v-if="devicesError" class="error">{{ devicesError }}</p>
-      <p v-else-if="devices.length === 0" class="muted">None recorded yet.</p>
-      <ul v-else class="devices">
-        <li v-for="d in devices" :key="d.id">
-          <div class="device">
-            <strong>{{ d.label }}</strong>
-            <span v-if="d.current" class="badge">this device</span>
-            <span class="muted">{{ d.ip_subnet }}</span>
-          </div>
-          <div class="muted small">
-            last used {{ formatUtc(d.last_seen_at) }} · first {{ formatUtc(d.first_seen_at) }}
-          </div>
-          <div class="muted small ua" :title="d.user_agent">{{ d.user_agent || "(no browser name)" }}</div>
-          <button v-if="!d.current" type="button" class="forget" @click="forgetDevice(d)">Forget</button>
-        </li>
-      </ul>
+      <section class="card" aria-labelledby="account-devices">
+        <h3 id="account-devices">Devices</h3>
+        <p class="muted hint">
+          Where you logged in from, told apart by browser and network. A login from a new one is noted in the activity log.
+        </p>
+        <p v-if="devicesError" class="error">{{ devicesError }}</p>
+        <p v-else-if="devices.length === 0" class="muted">None recorded yet.</p>
+        <ul v-else class="devices">
+          <li v-for="d in devices" :key="d.id">
+            <div class="device">
+              <strong>{{ d.label }}</strong>
+              <span v-if="d.current" class="badge">this device</span>
+              <span class="muted">{{ d.ip_subnet }}</span>
+            </div>
+            <div class="muted small">
+              last used {{ formatUtc(d.last_seen_at) }} · first {{ formatUtc(d.first_seen_at) }}
+            </div>
+            <div class="muted small ua" :title="d.user_agent">{{ d.user_agent || "(no browser name)" }}</div>
+            <button v-if="!d.current" type="button" class="forget" @click="pendingForget = d">Forget</button>
+          </li>
+        </ul>
+      </section>
     </div>
+
+    <ConfirmModal
+      v-if="pendingForget"
+      open
+      title="Forget device"
+      :message="`Forget ${pendingForget.label}? Its next login is noted in the activity log as a new device.`"
+      confirm-label="Forget"
+      @confirm="forgetDevice(pendingForget)"
+      @close="pendingForget = null"
+    />
   </section>
 </template>
 
@@ -184,17 +205,27 @@ async function changePassword(): Promise<void> {
   overflow-y: auto;
 }
 .column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   max-width: 820px;
   margin: 0 auto;
   padding: 24px 16px;
 }
 h2 {
-  margin: 0 0 16px;
+  margin: 0;
   font-size: 1.2em;
 }
 h3 {
-  margin: 28px 0 4px;
+  margin: 0 0 4px;
   font-size: 1em;
+}
+/* One block per task; the profile above is the same kind of card. */
+.card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
 }
 .profile {
   display: grid;
@@ -289,8 +320,8 @@ h3 {
   position: relative;
   padding: 10px 90px 10px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  border-radius: var(--radius-md);
+  background: var(--bg);
 }
 .device {
   display: flex;
