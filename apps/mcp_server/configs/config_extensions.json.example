@@ -20,5 +20,14 @@
     "headers": { "X-Internal-Token": "${INTERNAL_API_TOKEN}" },
     "forward_requester": true,
     "web_url": "http://127.0.0.1:5174"
+  },
+  "video_downloader": {
+    "_comment": "video_downloader's MCP endpoint (Python/VideoDownloader/video_downloader). It requires the shared internal token, sent here as a header. Start video_downloader before mcp_server so the connection succeeds at startup. forward_requester gives each asking user their own file session. web_url is video_downloader_web, linked from ember's Extensions page: it must be an address the user's browser can reach (use this machine's LAN address, not 127.0.0.1, when others open ember from elsewhere). Downloads are started and polled, never awaited: the tools return a job_id and tool_video_status reports progress.",
+    "label": "Video Downloader",
+    "description": "Download a video or its audio from YouTube, TikTok and other sites; returns a download link. Start a job, then poll its status.",
+    "url": "http://127.0.0.1:8050/mcp",
+    "headers": { "X-Internal-Token": "${INTERNAL_API_TOKEN}" },
+    "forward_requester": true,
+    "web_url": "http://127.0.0.1:5175"
   }
 }
