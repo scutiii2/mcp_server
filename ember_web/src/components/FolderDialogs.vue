@@ -21,6 +21,7 @@ const name = ref("");
 const error = ref("");
 const busy = ref(false);
 const nameInput = ref<HTMLInputElement | null>(null);
+const cancelButton = ref<HTMLButtonElement | null>(null);
 
 const title = computed(() => {
   switch (mode.value?.kind) {
@@ -47,7 +48,8 @@ function begin(next: Mode, initialName = ""): void {
   error.value = "";
   busy.value = false;
   // BaseModal opens its <dialog> one tick after `open` flips, so wait for it.
-  void nextTick().then(nextTick).then(() => nameInput.value?.focus());
+  // A delete dialog focuses Cancel, so a stray Enter does not delete.
+  void nextTick().then(nextTick).then(() => (next.kind === "delete" ? cancelButton : nameInput).value?.focus());
 }
 
 function openCreate(onCreated?: (folder: ChatFolder) => void): void {
@@ -139,7 +141,7 @@ async function confirmDelete(): Promise<void> {
       <p class="confirm">{{ deleteText }}</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <div class="buttons">
-        <button type="button" class="ghost" @click="requestClose">Cancel</button>
+        <button ref="cancelButton" type="button" class="ghost" @click="requestClose">Cancel</button>
         <button type="button" class="danger" :disabled="busy" @click="confirmDelete">{{ busy ? "Deleting …" : "Delete" }}</button>
       </div>
     </div>

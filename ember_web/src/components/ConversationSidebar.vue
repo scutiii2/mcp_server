@@ -31,6 +31,8 @@ const props = withDefaults(
     searching?: boolean;
     searchError?: string;
     folders?: ChatFolder[];
+    /** Why the folder list could not be loaded; empty when it could. */
+    folderError?: string;
     /** Ids of the folders shown folded. */
     collapsedFolders?: number[];
   }>(),
@@ -42,6 +44,7 @@ const props = withDefaults(
     searching: false,
     searchError: "",
     folders: () => [],
+    folderError: "",
     collapsedFolders: () => [],
   },
 );
@@ -61,6 +64,7 @@ const emit = defineEmits<{
   moveNew: [id: string];
   toggleFolder: [id: number];
   newFolder: [];
+  retryFolders: [];
   renameFolder: [folder: ChatFolder];
   deleteFolder: [folder: ChatFolder];
 }>();
@@ -418,6 +422,10 @@ watch(
         />
       </ChatSection>
     </div>
+    <p v-if="folderError && !searchActive" class="empty error folder-error" role="alert">
+      Folders failed to load: {{ folderError }}
+      <button type="button" class="link" @click="emit('retryFolders')">Retry</button>
+    </p>
 
     <PopupMenu
       v-if="menu"

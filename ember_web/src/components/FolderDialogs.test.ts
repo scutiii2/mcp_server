@@ -196,6 +196,15 @@ describe("delete", () => {
     expect(dialog()?.textContent).toContain(`Delete folder "Work" and its 1 chat? This can't be undone.`);
   });
 
+  it("focuses Cancel, not Delete, when it opens", async () => {
+    const dialogs = setup();
+
+    dialogs.openDelete(folder(1, "Work"), 2);
+    await flushPromises();
+
+    expect(document.activeElement).toBe(button("Cancel"));
+  });
+
   it("deletes, tells the chat store, and closes", async () => {
     client.remove.mockResolvedValue(undefined);
     const dialogs = setup();

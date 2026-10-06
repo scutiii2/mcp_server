@@ -564,10 +564,10 @@ describe("the row menu", () => {
 
     await menuButton(wrapper).trigger("click");
 
-    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(true);
-    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
-    expect(menuItem("Pin")!.hasAttribute("disabled")).toBe(false);
-    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Move to...")!.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Delete")!.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Pin")!.getAttribute("aria-disabled")).toBeNull();
+    expect(menuItem("Rename")!.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("a chat that is running cannot be moved or deleted, even when the sidebar is not locked", async () => {
@@ -575,24 +575,24 @@ describe("the row menu", () => {
 
     await menuButton(wrapper).trigger("click");
 
-    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(true);
-    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
-    expect(menuItem("Pin")!.hasAttribute("disabled")).toBe(false);
-    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Move to...")!.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Delete")!.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Pin")!.getAttribute("aria-disabled")).toBeNull();
+    expect(menuItem("Rename")!.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("the open chat is answering while the sidebar is busy, even when not locked", async () => {
     const wrapper = mountSidebar({ conversations: [chat("1"), chat("2")], activeId: "1", locked: false, busy: true });
 
     await menuButton(wrapper, 0).trigger("click");
-    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(true);
-    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
-    expect(menuItem("Pin")!.hasAttribute("disabled")).toBe(false);
-    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Move to...")!.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Delete")!.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Pin")!.getAttribute("aria-disabled")).toBeNull();
+    expect(menuItem("Rename")!.getAttribute("aria-disabled")).toBeNull();
 
     await menuButton(wrapper, 1).trigger("click"); // another chat is not the one answering
-    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(false);
-    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Move to...")!.getAttribute("aria-disabled")).toBeNull();
+    expect(menuItem("Delete")!.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("a chat that is not answering has every action", async () => {
@@ -601,7 +601,7 @@ describe("the row menu", () => {
     await menuButton(wrapper).trigger("click");
 
     for (const label of ["Pin", "Move to...", "Rename", "Delete"]) {
-      expect(menuItem(label)!.hasAttribute("disabled")).toBe(false);
+      expect(menuItem(label)!.getAttribute("aria-disabled")).toBeNull();
     }
   });
 
@@ -620,11 +620,11 @@ describe("the row menu", () => {
 
     await wrapper.find("header button.more").trigger("click");
 
-    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
-    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Delete")!.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Rename")!.getAttribute("aria-disabled")).toBeNull();
 
     await wrapper.setProps({ loading: false });
-    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Delete")!.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("closes on Escape and gives focus back to its button", async () => {
@@ -1064,5 +1064,21 @@ describe("drag and drop", () => {
     await wrapper.find(".select-bar button:last-child").trigger("click"); // Cancel
 
     expect(acceptingNames(wrapper)).toEqual([]);
+  });
+});
+
+describe("folder load error", () => {
+  it("shows the error with a Retry button that asks to reload the folders", async () => {
+    const wrapper = mountSidebar({ folderError: "offline" });
+
+    expect(wrapper.find(".folder-error").text()).toContain("Folders failed to load: offline");
+    await wrapper.find(".folder-error button").trigger("click");
+
+    expect(wrapper.emitted("retryFolders")).toHaveLength(1);
+  });
+
+  it("shows nothing without an error, or while searching", () => {
+    expect(mountSidebar().find(".folder-error").exists()).toBe(false);
+    expect(searching([hit("1")], { folderError: "offline" }).find(".folder-error").exists()).toBe(false);
   });
 });

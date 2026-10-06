@@ -73,7 +73,7 @@ function levelButtons(from: Element | null): HTMLButtonElement[] {
   const flyout = from?.closest(".flyout");
   const scope = flyout ?? root.value;
   if (!scope) return [];
-  const all = [...scope.querySelectorAll<HTMLButtonElement>("button[role^='menuitem']:not([disabled])")];
+  const all = [...scope.querySelectorAll<HTMLButtonElement>("button[role^='menuitem']:not([aria-disabled='true'])")];
   return flyout ? all : all.filter((b) => !b.closest(".flyout"));
 }
 
@@ -103,7 +103,7 @@ async function openFlyout(item: MenuItem, focusChild: boolean): Promise<void> {
   openId.value = item.id;
   if (!focusChild) return;
   await nextTick();
-  root.value?.querySelector<HTMLButtonElement>(".flyout button:not([disabled])")?.focus();
+  root.value?.querySelector<HTMLButtonElement>(".flyout button:not([aria-disabled='true'])")?.focus();
 }
 
 async function closeFlyout(): Promise<void> {
@@ -134,7 +134,7 @@ function hover(item: MenuItem, event: MouseEvent): void {
   // Focus follows the pointer, so focus is never left on a flyout item that
   // this hover removes (keys would then go to <body>, not the menu).
   if (!item.disabled) (event.currentTarget as HTMLButtonElement).focus();
-  // A disabled item cannot take focus; if focus is in the flyout this hover
+  // A disabled item is skipped by the arrow keys and not focused by hover; if focus is in the flyout this hover
   // closes, put it on that flyout's parent before the flyout goes.
   else if (openId.value !== null && document.activeElement?.closest(".flyout")) focusMainItem(openId.value);
   // One `openId`: a hover replaces the open flyout, never adds a second one.
@@ -228,7 +228,7 @@ onBeforeUnmount(() => {
             role="menuitem"
             :data-id="item.id"
             :class="['item', { danger: item.danger }]"
-            :disabled="item.disabled"
+            :aria-disabled="item.disabled ? 'true' : undefined"
             :aria-haspopup="item.children ? 'menu' : undefined"
             :aria-expanded="item.children ? openId === item.id : undefined"
             @click="activate(item)"
@@ -253,7 +253,7 @@ onBeforeUnmount(() => {
                 :aria-checked="child.checked ?? false"
                 :data-id="child.id"
                 :class="['item', { danger: child.danger }]"
-                :disabled="child.disabled"
+                :aria-disabled="child.disabled ? 'true' : undefined"
                 @click="activate(child)"
               >
                 <span class="check" aria-hidden="true">{{ child.checked ? "✓" : "" }}</span>
@@ -302,12 +302,12 @@ onBeforeUnmount(() => {
   color: var(--text);
   background: transparent;
 }
-.item:hover:not(:disabled),
+.item:hover:not([aria-disabled='true']),
 .item:focus-visible {
   outline: none;
   background: var(--bg);
 }
-.item:disabled {
+.item[aria-disabled='true'] {
   cursor: default;
   opacity: 0.45;
 }
