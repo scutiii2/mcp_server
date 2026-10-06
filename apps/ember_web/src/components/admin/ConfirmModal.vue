@@ -18,7 +18,7 @@ const emit = defineEmits<{ confirm: []; close: [] }>();
     <p class="message">{{ message }}</p>
     <div class="actions">
       <button type="button" class="cancel" :disabled="busy" @click="emit('close')">Cancel</button>
-      <DeleteButton v-if="danger" :label="confirmLabel" :busy="busy" @click="emit('confirm')" />
+      <DeleteButton v-if="danger" class="confirm danger" :label="confirmLabel" :busy="busy" @click="emit('confirm')" />
       <button v-else type="button" class="confirm" :disabled="busy" @click="emit('confirm')">
         {{ confirmLabel }}
       </button>
@@ -51,7 +51,7 @@ button:disabled {
   color: var(--text);
   background: transparent;
 }
-.confirm {
+.confirm:not(.danger) {
   border: none;
   font-weight: 600;
   color: var(--accent-contrast);
