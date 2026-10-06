@@ -62,3 +62,23 @@ Overlaps with the config-consolidation item above: `config_extensions.json` woul
 **Why not built now**: user asked to log it instead of implementing.
 
 **Revisit when**: user wants this built. Start with step 1.
+
+## Chat folders: reordering and folder names in search (added 2026-10-06)
+
+**Context**: Chat folders, pins and drag and drop are merged to `main` (spec: `docs/superpowers/specs/2026-10-05-chat-folders-pins-design.md`). Two parts were left out on purpose; each needs its own design.
+
+- **Folder reordering UI**: the API already supports it (`PATCH /api/chat-folders/{id}` with `position`, and `foldersClient.reorder` / the folders store `reorder` exist). Missing: a way to reorder in the sidebar (drag a folder header, or Move up / Move down in the folder "..." menu).
+- **Folder names in search hits**: search results are a flat list and do not say which folder a chat is in. Show the folder name on each hit (needs `folder_id` in the search hit rows from ember_api, or a lookup in the store).
+
+**Revisit when**: user wants these built.
+
+## More Ember ideas (added 2026-10-06)
+
+Ideas from the "what more can we add" discussion; none designed yet.
+
+- **Attachments with the pdf-assistant**: attach files to a chat message and let the pdf-assistant read them.
+- **Per-user quotas**: limit usage per account (builds on the existing usage gauges).
+- **Notifications when a long answer finishes**: for example a browser notification or a title badge when the tab is in the background.
+- **Mobile and PWA support**: installable app, touch layout, offline shell.
+
+**Revisit when**: user picks one; start with brainstorming a design.
