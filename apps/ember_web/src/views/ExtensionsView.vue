@@ -31,8 +31,16 @@ const selectedId = ref<string | null>(null);
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 const canChat = computed(() => auth.hasPermission("chat.use"));
-// An extension's page runs its tools, which needs tools.use.
+// An extension's tools page runs its tools, which needs tools.use.
 const canTools = computed(() => auth.hasPermission("tools.use"));
+
+/** Where "Open page" leads: the extension's own web UI when it names a usable
+ * one (a new tab), else our tools page for it (needs tools.use), else nowhere. */
+function pageLink(e: ExtensionInfo): { href: string; external: boolean } | null {
+  const web = safeWebUrl(e.web_url);
+  if (web) return { href: web, external: true };
+  return canTools.value ? { href: `/extensions/${encodeURIComponent(e.id)}`, external: false } : null;
+}
 const enabled = computed(() => new Set(enabledExtensions.value));
 // Gone from the list (removed) closes the details with it.
 const selected = computed(() => extensions.value.find((e) => e.id === selectedId.value) ?? null);
@@ -109,10 +117,10 @@ onMounted(load);
               <template v-else>{{ e.tools.length }} tool{{ e.tools.length === 1 ? "" : "s" }}</template>
             </span>
           </button>
-          <footer v-if="canTools || safeWebUrl(e.web_url) || canChat || isAdmin">
+          <footer v-if="pageLink(e) || canChat || isAdmin">
             <span class="links">
-              <RouterLink v-if="canTools" :to="`/extensions/${encodeURIComponent(e.id)}`">Open page</RouterLink>
-              <a v-if="safeWebUrl(e.web_url)" :href="safeWebUrl(e.web_url)!" target="_blank" rel="noopener noreferrer">Open app</a>
+              <a v-if="pageLink(e)?.external" :href="pageLink(e)!.href" target="_blank" rel="noopener noreferrer">Open page</a>
+              <RouterLink v-else-if="pageLink(e)" :to="pageLink(e)!.href">Open page</RouterLink>
             </span>
             <ToggleSwitch
               v-if="canChat"

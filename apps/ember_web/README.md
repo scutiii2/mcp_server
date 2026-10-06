@@ -137,13 +137,14 @@ URL, token or key.
 - Extensions page: mcp_server's extensions (other MCP servers) with their
   status and tools; switch on the ones the agent may use in your chats
   (remembered per account, shown in the chat header). Admins add and
-  remove extensions. An extension whose config entry names a `web_url`
-  (for example `pdf_merger` and its web app) shows an "Open app" link on
-  its tile, opened in a new tab; only http(s) addresses become links.
-  With `tools.use`, every tile also has an "Open page" link to
-  `/extensions/<id>`: the extension's label, description, web app link and
-  its tools as rows that open the same run form as the Capabilities page
-  (an extension that is not connected shows its error and no tools).
+  remove extensions. Each tile has one "Open page" button. For an
+  extension whose config entry names a `web_url` (for example `pdf_merger`
+  and its web app) it opens that web UI in a new tab; only http(s)
+  addresses count, and it works without `tools.use` and when the extension
+  is not connected. Any other extension (with `tools.use`) opens
+  `/extensions/<id>`: its label, description, web app link and its tools
+  as rows that open the same run form as the Capabilities page (a failed
+  extension shows its error and no tools).
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with
   the oldest age, succeeded, failed), a timeline with one lane per capability

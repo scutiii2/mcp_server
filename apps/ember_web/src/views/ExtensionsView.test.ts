@@ -32,6 +32,7 @@ const ACCOUNT: Account = {
   roles: [],
   permissions: ["chat.use"],
 };
+const WITH_TOOLS = ["chat.use", "tools.use"];
 
 async function show(extensions: ExtensionInfo[], permissions = ACCOUNT.permissions) {
   mocks.list.mockResolvedValue(extensions);
@@ -51,7 +52,9 @@ async function show(extensions: ExtensionInfo[], permissions = ACCOUNT.permissio
   return wrapper;
 }
 
-const links = (w: Awaited<ReturnType<typeof show>>) => w.findAll("a").filter((a) => a.text() === "Open app");
+type Wrapper = Awaited<ReturnType<typeof show>>;
+const pageLinks = (w: Wrapper) => w.findAll("a").filter((a) => a.text() === "Open page");
+const hrefs = (w: Wrapper) => pageLinks(w).map((a) => a.attributes("href"));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -64,57 +67,59 @@ beforeEach(() => {
   };
 });
 
-describe("ExtensionsView web app link", () => {
-  it("links an extension that has a web app, in a new tab, and only that one", async () => {
-    const w = await show([ext("pdf", "http://127.0.0.1:5174"), ext("notes", null), ext("plain")]);
+describe("ExtensionsView Open page", () => {
+  it("opens the web UI of an extension that has one, in a new tab", async () => {
+    const w = await show([ext("pdf", "http://127.0.0.1:5174")], WITH_TOOLS);
 
-    const found = links(w);
-    expect(found).toHaveLength(1);
-    expect(found[0].attributes("href")).toBe("http://127.0.0.1:5174/");
-    expect(found[0].attributes("target")).toBe("_blank");
-    expect(found[0].attributes("rel")).toBe("noopener noreferrer");
+    const [link] = pageLinks(w);
+    expect(link.attributes("href")).toBe("http://127.0.0.1:5174/");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
   });
 
-  it("still links the web app when the extension is not connected", async () => {
-    const w = await show([ext("pdf", "https://pdf.example", "error")]);
+  it("opens the tools page of an extension without a web UI", async () => {
+    const w = await show([ext("notes"), ext("odd id/x", null)], WITH_TOOLS);
 
-    expect(links(w)).toHaveLength(1);
+    expect(hrefs(w)).toEqual(["/extensions/notes", "/extensions/odd%20id%2Fx"]);
+    expect(pageLinks(w).some((a) => a.attributes("target") === "_blank")).toBe(false);
   });
 
-  it("never draws a link for a non-http address", async () => {
-    const w = await show([ext("a", "javascript:alert(1)"), ext("b", "data:text/html,x"), ext("c", "/relative")]);
+  it("has one Open page button per tile and no separate Open app link", async () => {
+    const w = await show([ext("pdf", "http://127.0.0.1:5174"), ext("notes")], WITH_TOOLS);
 
-    expect(links(w)).toHaveLength(0);
+    expect(pageLinks(w)).toHaveLength(2);
+    expect(w.findAll("a").some((a) => a.text() === "Open app")).toBe(false);
+  });
+
+  it("still opens the web UI when the extension is not connected", async () => {
+    const w = await show([ext("pdf", "https://pdf.example", "error")], WITH_TOOLS);
+
+    expect(hrefs(w)).toEqual(["https://pdf.example/"]);
+  });
+
+  it("without tools.use only an extension with a web UI has a button", async () => {
+    const w = await show([ext("pdf", "http://127.0.0.1:5174"), ext("notes"), ext("plain", null)]);
+
+    expect(hrefs(w)).toEqual(["http://127.0.0.1:5174/"]);
+  });
+
+  it("never links a non-http address as a web UI; the tools page is used instead", async () => {
+    const w = await show([ext("a", "javascript:alert(1)"), ext("b", "data:text/html,x"), ext("c", "/relative")], WITH_TOOLS);
+
+    expect(hrefs(w)).toEqual(["/extensions/a", "/extensions/b", "/extensions/c"]);
+  });
+
+  it("without tools.use a non-http address gives no button at all", async () => {
+    const w = await show([ext("a", "javascript:alert(1)")]);
+
+    expect(pageLinks(w)).toHaveLength(0);
   });
 
   it("opening the link does not open the details of the tile", async () => {
-    const w = await show([ext("pdf", "http://127.0.0.1:5174")]);
+    const w = await show([ext("pdf", "http://127.0.0.1:5174")], WITH_TOOLS);
 
-    await links(w)[0].trigger("click");
+    await pageLinks(w)[0].trigger("click");
 
     expect(w.find("dialog[open]").exists()).toBe(false);
-  });
-});
-
-describe("ExtensionsView page link", () => {
-  const pageLinks = (w: Awaited<ReturnType<typeof show>>) => w.findAll("a").filter((a) => a.text() === "Open page");
-
-  it("links every extension to its own page for an account that may run tools", async () => {
-    const w = await show(
-      [ext("pdf", "http://127.0.0.1:5174"), ext("notes"), ext("odd id/x", null, "error")],
-      ["chat.use", "tools.use"],
-    );
-
-    expect(pageLinks(w).map((a) => a.attributes("href"))).toEqual([
-      "/extensions/pdf",
-      "/extensions/notes",
-      "/extensions/odd%20id%2Fx",
-    ]);
-  });
-
-  it("shows no page link without tools.use, because the page runs tools", async () => {
-    const w = await show([ext("pdf"), ext("notes")]);
-
-    expect(pageLinks(w)).toHaveLength(0);
   });
 });
