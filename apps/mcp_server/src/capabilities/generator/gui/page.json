@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "title": "Generator",
+  "description": "Random passwords, passphrases, PINs and TOTP codes. Nothing is stored; a value is shown once.",
+  "sections": [
+    {
+      "id": "password",
+      "title": "Password",
+      "tool": "tool_gen_generatePassword",
+      "submit": "Generate",
+      "result": { "kind": "secret", "field": "password", "detail": "message" }
+    },
+    {
+      "id": "passphrase",
+      "title": "Passphrase",
+      "tool": "tool_gen_generatePassphrase",
+      "submit": "Generate",
+      "result": { "kind": "secret", "field": "passphrase", "detail": "message" }
+    },
+    {
+      "id": "pin",
+      "title": "PIN or one-time code",
+      "tool": "tool_gen_generatePin",
+      "submit": "Generate",
+      "result": { "kind": "secret", "field": "pin", "detail": "message" }
+    },
+    {
+      "id": "totp-secret",
+      "title": "New TOTP secret",
+      "tool": "tool_gen_generateTotpSecret",
+      "submit": "Generate",
+      "result": { "kind": "secret", "field": "secret", "detail": "message" }
+    },
+    {
+      "id": "totp",
+      "title": "Current TOTP code",
+      "tool": "tool_gen_getTotpCode",
+      "submit": "Show code",
+      "result": { "kind": "secret", "field": "code", "detail": "message", "refresh_after": "seconds_remaining" }
+    }
+  ]
+}
