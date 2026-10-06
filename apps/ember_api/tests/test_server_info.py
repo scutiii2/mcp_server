@@ -7,7 +7,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from tests.conftest import FakeEmailSender, FakeUpstream
-from tests.test_admin import login, make_member
+from tests.test_admin import login, make_member, role_by_name
 from tests.test_registration import as_admin
 
 COMMANDS = [{"capability": "srv", "name": "list", "description": "List apps", "tool_name": "tool_srv_listApps"}]
@@ -103,12 +103,24 @@ def test_capability_page_is_passed_through(client: TestClient, upstream: FakeUps
 
 def test_capability_page_needs_tools_use(client_factory, email: FakeEmailSender, upstream: FakeUpstream) -> None:
     upstream.handler = mcp_server
-    unverified = client_factory()  # an unverified member has no tools.use
-    make_member(unverified, email, "kim", verify=False)
-    login(unverified, "kim")
+    member = client_factory()
+    make_member(member, email)  # verified, so only the permission can refuse
+    admin = as_admin(client_factory())
+    role = role_by_name(admin, "Member")
+    assert admin.delete(f"/api/admin/roles/{role['id']}/permissions/tools.use").status_code == 200
+    login(member, "alice")
 
-    assert unverified.get("/api/capabilities/server_manager/gui").status_code == 403
+    refused = member.get("/api/capabilities/server_manager/gui")
+
+    assert (refused.status_code, refused.json()["detail"]) == (403, "Missing permission: tools.use")
     assert len(upstream.requests) == 0
+
+
+def test_capability_page_reports_an_unreachable_mcp_server(client: TestClient, upstream: FakeUpstream) -> None:
+    as_admin(client)
+    upstream.unreachable = True
+
+    assert client.get("/api/capabilities/server_manager/gui").status_code == 502
 
 
 def test_server_info_needs_tools_use_and_handles_outages(client: TestClient, upstream: FakeUpstream) -> None:
