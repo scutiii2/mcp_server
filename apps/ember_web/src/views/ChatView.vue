@@ -23,6 +23,7 @@ import { useChatShortcuts } from "../composables/useChatShortcuts";
 import { useFolderCollapse } from "../composables/useFolderCollapse";
 import { useSidebarCollapse } from "../composables/useSidebarCollapse";
 import { agentLabelFor } from "../utils/agentLabels";
+import { builtinCommand, type BuiltinCommand } from "../utils/builtinCommands";
 import { questionHistory } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
@@ -133,7 +134,32 @@ function closeCommandForm(): void {
 /** A question ember_api did not take (no entry agent, limit reached ...) goes
  * back into the box, as typed, along with its files. */
 async function onSend(question: string): Promise<void> {
+  const builtin = builtinCommand(question);
+  if (builtin) {
+    if (!runBuiltin(builtin)) input.value?.restore(question);
+    return;
+  }
   if (!(await chat.send(question))) input.value?.restore(question);
+}
+
+/** /clear, /compact, /export and /share: the same as the buttons above the
+ * composer, with the same confirms and the same rules. False when refused (an
+ * error says why), so the typed text is given back. */
+function runBuiltin(command: BuiltinCommand): boolean {
+  if (!active.value || messages.value.length === 0) {
+    sendError.value = `/${command}: this chat has no messages yet.`;
+    return false;
+  }
+  if ((command === "clear" || command === "compact") && (busy.value || working.value)) {
+    sendError.value = `/${command}: wait for the current answer to finish.`;
+    return false;
+  }
+  sendError.value = "";
+  if (command === "clear") clearActive();
+  else if (command === "compact") summarizeActive();
+  else if (command === "export") exportActive();
+  else shareOpen.value = true;
+  return true;
 }
 
 function runCommandForm(text: string): void {

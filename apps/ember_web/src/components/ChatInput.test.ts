@@ -481,6 +481,35 @@ describe("saved prompts", () => {
     expect(wrapper.find(".hint").text()).toContain("Enter runs");
   });
 
+  it("offers the built-in commands, even with no tools loaded", async () => {
+    const wrapper = mountInput();
+
+    await wrapper.find("textarea").setValue("/");
+    expect(rows(wrapper)).toEqual(["/clear", "/compact", "/export", "/share"]);
+
+    await wrapper.find("textarea").setValue("/co");
+    expect(rows(wrapper)).toEqual(["/compact"]);
+  });
+
+  it("lists the built-ins before /help and the capabilities", async () => {
+    const wrapper = mountInput({ commands: [{ capability: "cal", name: "now", description: "Time", tool_name: "t" }] });
+
+    await wrapper.find("textarea").setValue("/");
+
+    expect(rows(wrapper).slice(0, 5)).toEqual(["/clear", "/compact", "/export", "/share", "/help"]);
+  });
+
+  it("picking a built-in puts it in the box, and Enter sends it", async () => {
+    const wrapper = mountInput();
+    await wrapper.find("textarea").setValue("/exp");
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+    expect(valueOf(wrapper)).toBe("/export ");
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Enter" });
+    expect(wrapper.emitted("send")).toEqual([["/export"]]);
+  });
+
   it("keeps the highlighted suggestion in view when the arrows move it", async () => {
     const wrapper = mountInput({
       templates: TEMPLATES,

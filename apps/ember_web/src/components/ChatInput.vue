@@ -4,6 +4,7 @@ import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
 import type { JsonSchema } from "../api/types";
+import { BUILTIN_COMMANDS } from "../utils/builtinCommands";
 import { splitAttachments, withAttachments } from "../utils/attachments";
 import { paramSuggestions } from "../utils/commandParams";
 import { errorMessage } from "../utils/errors";
@@ -206,10 +207,12 @@ const suggestions = computed<Suggestion[]>(() => {
       .slice(0, MAX_SUGGESTIONS)
       .map((t) => ({ text: t.name, description: preview(t.body, 60), template: t }));
   }
-  if (!props.commands.length || !/^\/\S*( \S*)?$/.test(typed)) return [];
+  if (!/^\/\S*( \S*)?$/.test(typed)) return [];
   const needle = typed.toLowerCase();
   const all: Suggestion[] = [
-    { text: "/help", description: "Every capability and its commands" },
+    // The built-ins work without any tools, so they are offered even before commands load.
+    ...BUILTIN_COMMANDS.map((c) => ({ text: `/${c.name}`, description: c.description })),
+    ...(props.commands.length ? [{ text: "/help", description: "Every capability and its commands" }] : []),
     ...[...new Set(props.commands.map((c) => c.capability))].map((cap) => ({
       text: `/${cap} help`,
       description: `How to use ${cap}`,
