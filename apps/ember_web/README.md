@@ -179,6 +179,19 @@ URL, token or key.
   ("Require approval for every tool": every account's answers then ask before
   each tool, the "Ask before tools" checkbox is locked on, and "Allow for this
   chat" is not offered).
+- Capability pages (`/capabilities/<name>`, needs `tools.use`): a capability
+  that ships a `gui/page.json` gets its own page, and its card on the
+  Capabilities page shows an "Open page" link while the capability is on.
+  `CapabilityPageView` draws it with a fixed set of widgets (a form per tool
+  built from the tool's own input schema, plain text notes, and the result
+  kinds secret, message, table and fields); nothing in the file runs as code.
+  The layout comes from mcp_server via ember_api
+  (`GET /api/capabilities/{name}/gui`); buttons call the capability's own tools
+  through the `/api/mcp/server` proxy. A capability with no page, or one that is
+  off, shows "This capability has no page". Results and typed secrets stay in
+  component memory only: never in `localStorage`, the URL or ember_api. A result
+  with `refresh_after` shows a countdown and re-runs the tool at zero; it stops
+  when you leave the page and while the tab is hidden.
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
   `admin.manage`, `watchers.view`, `logs.*`, `traffic.view`, `config.issues.view`);
   ember_api enforces the same rules on every call.

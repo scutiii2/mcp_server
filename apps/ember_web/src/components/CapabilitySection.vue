@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CapabilityInfo } from "../api/CommandsClient";
+import { RouterLink } from "vue-router";
 import ToggleSwitch from "./ToggleSwitch.vue";
 
 /** One built-in capability as a collapsible card: the header (name, how much
@@ -37,6 +38,12 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
           </template>
         </span>
       </button>
+      <RouterLink
+        v-if="capability.has_gui && capability.enabled"
+        class="page-link"
+        :to="`/capabilities/${encodeURIComponent(capability.name)}`"
+        @click.stop
+      >Open page</RouterLink>
       <template v-if="hideState" />
       <ToggleSwitch
         v-else-if="isAdmin"
@@ -71,6 +78,11 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
   align-items: center;
   gap: 12px;
   padding-right: 14px;
+}
+.page-link {
+  margin-right: 10px;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 .head-button {
   display: flex;

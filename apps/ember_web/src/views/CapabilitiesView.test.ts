@@ -37,7 +37,7 @@ const tool = (name: string, title: string, description = ""): ToolInfo => ({
 });
 
 const CAPS: CapabilityInfo[] = [
-  { name: "pdf", enabled: true, label: "PDF files", tools: ["tool_pdf_merge", "tool_pdf_split"], resources: ["pdf_help"] },
+  { name: "pdf", enabled: true, label: "PDF files", tools: ["tool_pdf_merge", "tool_pdf_split"], resources: ["pdf_help"], has_gui: true },
   { name: "services", enabled: true, label: null, tools: ["tool_srv_restart"], resources: [] },
   { name: "legacy", enabled: false, label: "Legacy", tools: [], resources: [] },
 ];
@@ -67,7 +67,10 @@ async function show(options: { admin?: boolean; query?: string } = {}) {
   };
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/capabilities", component: CapabilitiesView }],
+    routes: [
+      { path: "/capabilities", component: CapabilitiesView },
+      { path: "/capabilities/:name", component: { template: "<div />" } },
+    ],
   });
   await router.push(options.query ? `/capabilities?q=${options.query}` : "/capabilities");
   const wrapper = mount(CapabilitiesView, { global: { plugins: [pinia, router] } });
@@ -103,6 +106,15 @@ beforeEach(() => {
 });
 
 describe("CapabilitiesView", () => {
+  it("links a capability that has a page to it, and only that one", async () => {
+    const w = await show();
+
+    const links = w.findAll("a").filter((a) => a.text() === "Open page");
+
+    expect(links).toHaveLength(1);
+    expect(links[0].attributes("href")).toBe("/capabilities/pdf");
+  });
+
   it("lists every capability collapsed, with what it brings", async () => {
     const w = await show();
 

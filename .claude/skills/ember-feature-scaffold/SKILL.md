@@ -154,6 +154,9 @@ send it too (`identity_headers()` in `services/mcp_session.py` does).
   from ember_web with `McpServerClient` (`api/McpServerClient.ts`).
   mcp_server's plain HTTP routes (`/commands`, `/capabilities`, ...) go
   through `services/mcp_server_info.py` + `routes/server_info.py`.
+- **A page for one mcp_server capability** is declared in that capability's
+  `gui/page.json` (see mcp_server's capabilities README), not added as a new
+  Vue view: `CapabilityPageView` at `/capabilities/<name>` draws it.
 - **Chat with ai_agent** runs inside ember_api, never through the proxy:
   `services/turns.py` (TurnRegistry) calls the agent through
   `services/agent_gateway.py` (the `mcp` SDK), saves the answer and records

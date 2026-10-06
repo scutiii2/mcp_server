@@ -42,6 +42,12 @@ export const router = createRouter({
       meta: { permission: "tools.use" },
     },
     {
+      path: "/capabilities/:name",
+      name: "capability-page",
+      component: () => import("../views/CapabilityPageView.vue"),
+      meta: { permission: "tools.use" },
+    },
+    {
       path: "/extensions",
       name: "extensions",
       component: () => import("../views/ExtensionsView.vue"),

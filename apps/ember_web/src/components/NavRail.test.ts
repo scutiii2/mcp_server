@@ -31,6 +31,7 @@ function setup(account: Account | null) {
     history: createMemoryHistory(),
     routes: [
       ...NAV_PAGES.map((p) => ({ path: p.to, component: stub })),
+      { path: "/capabilities/:name", name: "capability-page", component: stub },
       { path: "/account", component: stub },
       { path: "/config-issues", component: stub },
       { path: "/login", name: "login", component: stub },
@@ -75,6 +76,16 @@ describe("NavRail", () => {
     await flushPromises();
 
     const current = pageLinks(wrapper).filter((l) => l.classes().includes("router-link-exact-active"));
+
+    expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Capabilities"]);
+  });
+
+  it("keeps Capabilities marked while one of its pages is open", async () => {
+    const { wrapper, router } = setup(ACCOUNT);
+    await router.push("/capabilities/pdf");
+    await flushPromises();
+
+    const current = pageLinks(wrapper).filter((l) => l.classes().includes("current"));
 
     expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Capabilities"]);
   });

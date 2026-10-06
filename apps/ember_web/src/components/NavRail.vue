@@ -31,6 +31,14 @@ const alertLabel = computed(() => {
   return `Config issues: ${parts.join(", ")}`;
 });
 
+// A chat opened by id and a capability's own page have no rail item of their
+// own, so they keep their parent page marked.
+function isOpenedFromHere(to: string): boolean {
+  return (
+    (to === "/" && route.name === "chat-id") || (to === "/capabilities" && route.name === "capability-page")
+  );
+}
+
 async function logout(): Promise<void> {
   await auth.logout();
   await router.replace({ name: "login" });
@@ -49,7 +57,7 @@ async function logout(): Promise<void> {
         :to="p.to"
         :data-label="p.label"
         :aria-label="p.label"
-        :class="{ current: p.to === '/' && route.name === 'chat-id' }"
+        :class="{ current: isOpenedFromHere(p.to) }"
       >
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
           <path v-for="d in p.icon" :key="d" :d="d" />
