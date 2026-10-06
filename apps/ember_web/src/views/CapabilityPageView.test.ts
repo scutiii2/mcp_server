@@ -68,6 +68,22 @@ describe("CapabilityPageView", () => {
     expect(w.text()).toContain("tool_zzz");
   });
 
+  it("draws a tabs section as tabs", async () => {
+    mocks.capabilities.mockResolvedValue([{ ...CAP, tools: ["tool_a", "tool_b"] }]);
+    mocks.listTools.mockResolvedValue([TOOL, { ...TOOL, name: "tool_b", title: "B" }]);
+    mocks.page.mockResolvedValue({
+      version: 1,
+      title: "Generator page",
+      description: "",
+      sections: [{ id: "g", tabs: [
+        { id: "a", title: "Alpha", tool: "tool_a", result: { kind: "message" } },
+        { id: "b", title: "Beta", tool: "tool_b", result: { kind: "message" } },
+      ] }],
+    });
+    const w = await open();
+    expect(w.findAll("[role=tab]").map((t) => t.text())).toEqual(["Alpha", "Beta"]);
+  });
+
   it("says when the capability is off", async () => {
     mocks.capabilities.mockResolvedValue([{ ...CAP, enabled: false }]);
     const w = await open();

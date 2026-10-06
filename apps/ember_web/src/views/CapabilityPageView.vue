@@ -7,6 +7,7 @@ import { ApiError } from "../api/http";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ToolInfo } from "../api/types";
 import GuiFormSection from "../components/GuiFormSection.vue";
+import GuiTabsSection from "../components/GuiTabsSection.vue";
 import { errorMessage } from "../utils/errors";
 import { GuiPageError, parseGuiPage } from "../utils/guiPage";
 
@@ -78,8 +79,9 @@ watch(name, load);
             <h3 v-if="s.title">{{ s.title }}</h3>
             <p>{{ s.text }}</p>
           </section>
-          <GuiFormSection v-else-if="s.type === 'form' && tools[s.tool]" :section="s" :tool="tools[s.tool]" :run-tool="runTool" />
-          <p v-else-if="s.type === 'form'" class="error">The tool {{ s.tool }} is not available right now.</p>
+          <GuiTabsSection v-else-if="s.type === 'tabs'" :section="s" :tools="tools" :run-tool="runTool" />
+          <GuiFormSection v-else-if="tools[s.tool]" :section="s" :tool="tools[s.tool]" :run-tool="runTool" />
+          <p v-else class="error">The tool {{ s.tool }} is not available right now.</p>
         </template>
       </template>
     </div>
