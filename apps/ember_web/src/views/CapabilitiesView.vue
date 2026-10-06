@@ -5,6 +5,7 @@ import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
 import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
+import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import CapabilitySection from "../components/CapabilitySection.vue";
 import MarkdownContent from "../components/MarkdownContent.vue";
 import ToolCard from "../components/ToolCard.vue";
@@ -126,12 +127,30 @@ async function load(): Promise<void> {
   }
 }
 
-async function toggleCapability(capability: CapabilityInfo): Promise<void> {
+// Switching a capability reaches every mcp_server client, so it asks first, in
+// the confirmation dialog (turning one off is the riskier way round).
+const pendingSwitch = ref<CapabilityInfo | null>(null);
+
+const switchCopy = computed(() => {
+  const capability = pendingSwitch.value;
+  if (!capability) return { title: "", message: "", label: "" };
+  const verb = capability.enabled ? "Turn off" : "Turn on";
+  return {
+    title: `${verb} capability`,
+    message: `${verb} "${capability.label ?? capability.name}" for every mcp_server client (chat_app, agents, ember)?`,
+    label: verb,
+  };
+});
+
+function toggleCapability(capability: CapabilityInfo): void {
+  pendingSwitch.value = capability;
+}
+
+async function runSwitch(): Promise<void> {
+  const capability = pendingSwitch.value;
+  pendingSwitch.value = null;
+  if (!capability) return;
   const next = !capability.enabled;
-  const verb = next ? "Turn on" : "Turn off";
-  if (!confirm(`${verb} "${capability.label ?? capability.name}" for every mcp_server client (chat_app, agents, ember)?`)) {
-    return;
-  }
   actionError.value = "";
   switching.value = capability.name;
   try {
@@ -323,6 +342,17 @@ onMounted(load);
         </section>
       </template>
     </div>
+
+    <ConfirmModal
+      v-if="pendingSwitch"
+      open
+      :title="switchCopy.title"
+      :message="switchCopy.message"
+      :confirm-label="switchCopy.label"
+      :danger="pendingSwitch.enabled"
+      @confirm="runSwitch"
+      @close="pendingSwitch = null"
+    />
 
     <ToolRunModal
       :tool="selectedTool"

@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import type { CapabilityInfo } from "../api/CommandsClient";
 import type { ResourceInfo, ToolInfo } from "../api/types";
+import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
 import CapabilitiesView from "./CapabilitiesView.vue";
 
@@ -109,7 +110,6 @@ beforeEach(() => {
   mocks.extensions.mockResolvedValue([]);
   mocks.runTool.mockResolvedValue({ text: "merged ok", isError: false });
   mocks.readResource.mockResolvedValue("# Help text");
-  vi.stubGlobal("confirm", vi.fn(() => true));
 });
 
 describe("CapabilitiesView", () => {
@@ -318,20 +318,33 @@ describe("CapabilitiesView", () => {
     const w = await show({ admin: true });
 
     await w.findAll("input[type=checkbox]")[2]!.trigger("click");
+    expect(mocks.setCapability).not.toHaveBeenCalled();
+    expect(w.getComponent(ConfirmModal).props("message")).toContain('Turn on "Legacy"');
+    expect(w.getComponent(ConfirmModal).props("danger")).toBe(false);
+    await w.getComponent(ConfirmModal).get(".confirm").trigger("click");
     await flushPromises();
 
-    expect(confirm).toHaveBeenCalled();
     expect(mocks.setCapability).toHaveBeenCalledWith("legacy", true);
     expect(head(w, "Legacy").text()).toContain("0 tools");
   });
 
   it("does not switch anything when the admin declines", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => false));
+    const w = await show({ admin: true });
+
+    await w.findAll("input[type=checkbox]")[0]!.trigger("click");
+    await w.getComponent(ConfirmModal).get(".cancel").trigger("click");
+
+    expect(w.findComponent(ConfirmModal).exists()).toBe(false);
+    expect(mocks.setCapability).not.toHaveBeenCalled();
+  });
+
+  it("marks turning a capability off as a dangerous action", async () => {
     const w = await show({ admin: true });
 
     await w.findAll("input[type=checkbox]")[0]!.trigger("click");
 
-    expect(mocks.setCapability).not.toHaveBeenCalled();
+    expect(w.getComponent(ConfirmModal).props("message")).toContain("Turn off");
+    expect(w.getComponent(ConfirmModal).props("danger")).toBe(true);
   });
 
   it("shows other users a plain On/Off badge and no switch", async () => {
