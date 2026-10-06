@@ -6,11 +6,10 @@ import { nextTick, ref, watch } from "vue";
  * bin with a spinning ring; when `busy` ends it grows back. The animation only
  * follows `busy`, so it never delays or replaces the action itself. A click
  * while busy is ignored. */
-const props = withDefaults(defineProps<{ label?: string; busy?: boolean; disabled?: boolean; small?: boolean }>(), {
+const props = withDefaults(defineProps<{ label?: string; busy?: boolean; disabled?: boolean }>(), {
   label: "Delete",
   busy: false,
   disabled: false,
-  small: false,
 });
 const emit = defineEmits<{ click: [] }>();
 
@@ -75,7 +74,7 @@ watch(
   <button
     ref="button"
     type="button"
-    :class="['delete-button', { collapsed, small }]"
+    :class="['delete-button', { collapsed }]"
     :aria-label="label"
     :aria-busy="busy"
     :aria-disabled="disabled || busy"
@@ -114,22 +113,6 @@ watch(
   color: var(--danger);
   background: transparent;
   transition: width 0.35s cubic-bezier(0.6, 0, 0.3, 1);
-}
-/* For a row of small controls: the size of a .small button elsewhere. */
-.delete-button.small {
-  --size: 26px;
-  height: var(--size);
-  padding: 0 12px 0 28px;
-  font-size: 0.85em;
-}
-.small .bin {
-  top: 5px;
-  left: 9px;
-  width: 14px;
-  height: 14px;
-}
-.small.collapsed .bin {
-  left: calc(50% - 7px);
 }
 .delete-button:disabled {
   cursor: default;

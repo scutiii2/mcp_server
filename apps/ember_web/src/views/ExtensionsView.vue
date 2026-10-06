@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref } from "vue";
+import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { extensionsClient, EXTENSION_SEPARATOR, type ExtensionInfo } from "../api/ExtensionsClient";
 import AddExtensionModal from "../components/AddExtensionModal.vue";
 import BaseModal from "../components/BaseModal.vue";
-import DeleteButton from "../components/DeleteButton.vue";
 import "../components/infoPage.css";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useAuthStore } from "../stores/auth";
@@ -26,6 +26,8 @@ const extensions = ref<ExtensionInfo[]>([]);
 const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
+// The extension the confirm dialog asks about, and the id of the one being removed.
+const pendingRemove = ref<ExtensionInfo | null>(null);
 const removing = ref<string | null>(null);
 const addOpen = ref(false);
 const selectedId = ref<string | null>(null);
@@ -69,8 +71,15 @@ function onAdded(created: ExtensionInfo): void {
   chat.refreshCommands();
 }
 
-async function remove(extension: ExtensionInfo): Promise<void> {
-  if (!confirm(`Remove "${extension.label}"? Its tools stop being offered to every mcp_server client.`)) return;
+const removeMessage = computed(() =>
+  pendingRemove.value
+    ? `Remove "${pendingRemove.value.label}"? Its tools stop being offered to every mcp_server client.`
+    : "",
+);
+
+async function confirmRemove(): Promise<void> {
+  const extension = pendingRemove.value;
+  if (!extension) return;
   actionError.value = "";
   removing.value = extension.id;
   try {
@@ -82,6 +91,7 @@ async function remove(extension: ExtensionInfo): Promise<void> {
     actionError.value = errorMessage(err);
   } finally {
     removing.value = null;
+    pendingRemove.value = null;
   }
 }
 
@@ -129,7 +139,7 @@ onMounted(load);
               :checked="enabled.has(e.id)"
               @change="chat.setExtensionEnabled(e.id, ($event.target as HTMLInputElement).checked)"
             />
-            <DeleteButton v-if="isAdmin" small label="Remove" :busy="removing === e.id" @click="remove(e)" />
+            <button v-if="isAdmin" type="button" class="danger" @click="pendingRemove = e">Remove</button>
           </footer>
         </article>
       </div>
@@ -148,6 +158,18 @@ onMounted(load);
         <p v-else-if="selected.status === 'connected'" class="muted">No tools.</p>
       </template>
     </BaseModal>
+
+    <ConfirmModal
+      v-if="isAdmin"
+      :open="pendingRemove !== null"
+      title="Remove extension"
+      :message="removeMessage"
+      confirm-label="Remove"
+      danger
+      :busy="removing !== null"
+      @confirm="confirmRemove"
+      @close="pendingRemove = null"
+    />
 
     <AddExtensionModal v-if="isAdmin" :open="addOpen" @close="addOpen = false" @added="onAdded" />
   </section>
