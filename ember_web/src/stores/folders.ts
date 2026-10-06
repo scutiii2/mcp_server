@@ -20,6 +20,8 @@ export const useFoldersStore = defineStore("folders", () => {
   const loading = ref(false);
   const loadError = ref("");
   let loaded = false;
+  // The load in progress, so a second ask waits for it instead of returning early.
+  let inflight: Promise<void> | null = null;
   // Bumped on every account change: a load started for the previous account
   // is ignored when it arrives.
   let generation = 0;
@@ -33,15 +35,23 @@ export const useFoldersStore = defineStore("folders", () => {
       generation += 1;
       items.value = [];
       loaded = false;
+      inflight = null;
       loading.value = false;
       loadError.value = "";
     },
   );
 
-  /** Loads the list once; a failed load can be retried by calling this again. */
-  async function ensureLoaded(): Promise<void> {
-    if (loaded || loading.value || !auth.hasPermission("chat.use")) return;
-    await reload();
+  /** Loads the list once; a failed load can be retried by calling this again.
+   * Asked while a load is running, it waits for that load. */
+  function ensureLoaded(): Promise<void> {
+    if (loaded || !auth.hasPermission("chat.use")) return Promise.resolve();
+    if (inflight) return inflight;
+    const started = generation;
+    const run = reload().finally(() => {
+      if (inflight === run && started === generation) inflight = null;
+    });
+    inflight = run;
+    return run;
   }
 
   async function reload(): Promise<void> {

@@ -204,6 +204,8 @@ export const useChatStore = defineStore("chat", () => {
   // Bumped on every account change: results of loads and saves started for
   // the previous account are ignored when they arrive.
   let generation = 0;
+  // Bumped by forgetFolder: a chat list requested earlier is discarded when it arrives.
+  let listSeq = 0;
   let pending: SaveOp[] = [];
   let saving = false;
   // The one live event stream (the open chat's); aborted on switching away.
@@ -305,6 +307,7 @@ export const useChatStore = defineStore("chat", () => {
 
   async function loadList(): Promise<void> {
     const started = generation;
+    const seq = listSeq;
     const accountId = auth.account?.id;
     if (accountId === undefined) return;
     listLoading.value = true;
@@ -312,7 +315,7 @@ export const useChatStore = defineStore("chat", () => {
     try {
       await importLegacy(accountId);
       const fresh = await storage.list();
-      if (started !== generation) return;
+      if (started !== generation || seq !== listSeq) return;
       conversations.value = fresh.map((c) => {
         const known = find(c.id);
         const unchanged = known?.messagesLoaded && known.updatedAt === c.updatedAt && !known.running;
@@ -974,6 +977,7 @@ export const useChatStore = defineStore("chat", () => {
   /** A folder was deleted on the server, which deleted its chats: drop them
    * from the screen. Nothing is sent to ember_api; it already did it. */
   function forgetFolder(folderId: number): void {
+    listSeq += 1;
     const doomed = new Set(conversations.value.filter((c) => c.folderId === folderId).map((c) => c.id));
     if (doomed.size === 0) return;
     if (activeId.value !== null && doomed.has(activeId.value)) {

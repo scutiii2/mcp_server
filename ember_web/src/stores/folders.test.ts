@@ -52,6 +52,24 @@ describe("loading", () => {
     expect(store.folders.map((f) => f.id)).toEqual([1, 2]);
   });
 
+  it("a second ask waits for the load already running", async () => {
+    let finish: (list: ChatFolder[]) => void = () => {};
+    client.list.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const { store } = setup();
+
+    const first = store.ensureLoaded();
+    let secondDone = false;
+    const second = store.ensureLoaded().then(() => (secondDone = true));
+    await flushPromises();
+    expect(secondDone).toBe(false);
+
+    finish([folder(1)]);
+    await Promise.all([first, second]);
+
+    expect(client.list).toHaveBeenCalledOnce();
+    expect(store.folders.map((f) => f.id)).toEqual([1]);
+  });
+
   it("shows the error and tries again on the next ask", async () => {
     client.list.mockRejectedValueOnce(new Error("down"));
     const { store } = setup();
@@ -102,10 +120,11 @@ describe("changing folders", () => {
 
   it("create passes ember_api's error on", async () => {
     const { store } = setup();
+    await store.ensureLoaded();
     client.create.mockRejectedValue(new ApiError(409, "A folder with that name already exists"));
 
     await expect(store.create("Work")).rejects.toThrow("A folder with that name already exists");
-    expect(store.folders).toEqual([]);
+    expect(store.folders.map((f) => f.id)).toEqual([1, 2]);
   });
 
   it("rename replaces the folder", async () => {
