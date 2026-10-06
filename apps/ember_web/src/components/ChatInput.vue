@@ -38,6 +38,8 @@ const emit = defineEmits<{
 }>();
 
 const draft = ref("");
+/** Counts sends; non-zero while the paper plane is in the air (also its :key, so each send restarts it). */
+const flights = ref(0);
 // Browsing past questions: which one is shown (null = not browsing). It
 // starts only from an empty box, so ↓ past the newest returns to empty.
 const recallIndex = ref<number | null>(null);
@@ -280,6 +282,7 @@ function submit(): void {
   // Slash commands run a tool, not the agent: attachments wait for a question.
   const files = isCommand.value ? [] : ready.value;
   emit("send", withAttachments(typed, files.map((a) => ({ filename: a.filename, chars: a.chars, truncated: a.truncated, text: a.text }))));
+  flights.value++;
   draft.value = "";
   recallIndex.value = null;
   if (!isCommand.value) attachments.value = attachments.value.filter((a) => a.state !== "ready");
@@ -377,23 +380,29 @@ function onKeydown(event: KeyboardEvent): void {
         @keydown="onKeydown"
         @paste="onPaste"
       />
-      <button v-if="busy" type="button" class="round stop" title="Stop (Esc)" @click="emit('stop')">
-        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-          <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
+      <span class="send-slot">
+        <button v-if="busy" type="button" class="round stop" title="Stop (Esc)" @click="emit('stop')">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
+          </svg>
+        </button>
+        <button v-else type="submit" class="round send" :title="reading ? 'Reading attachments …' : 'Send'" :disabled="!canSend">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path
+              d="M12 19V5M5 12l7-7 7 7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+        <!-- Outlives the Send button, which turns into Stop the moment a turn starts. -->
+        <svg v-if="flights" :key="flights" class="plane" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" @animationend="flights = 0">
+          <path d="M22 2 2 9.5l7.5 3L12.5 22z" fill="currentColor" />
         </svg>
-      </button>
-      <button v-else type="submit" class="round send" :title="reading ? 'Reading attachments …' : 'Send'" :disabled="!canSend">
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-          <path
-            d="M12 19V5M5 12l7-7 7 7"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
+      </span>
     </div>
   </form>
 </template>
@@ -549,5 +558,33 @@ textarea {
 .stop {
   color: var(--bg);
   background: var(--text);
+}
+.send-slot {
+  position: relative;
+  display: grid;
+  flex-shrink: 0;
+}
+.plane {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  pointer-events: none;
+  color: var(--accent);
+  animation: plane-fly 0.65s cubic-bezier(0.4, 0, 0.8, 0.6) forwards;
+}
+@keyframes plane-fly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(46px, -52px) scale(0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plane {
+    display: none;
+  }
 }
 </style>
