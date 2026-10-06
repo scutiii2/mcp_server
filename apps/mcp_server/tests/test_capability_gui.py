@@ -4,7 +4,9 @@ reads gui/page.json from a capability folder, and every page we ship."""
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
+import typing
 from pathlib import Path
 
 import pytest
@@ -72,6 +74,18 @@ def test_tool_of_another_capability_is_refused():
         {"sections": [{"id": "a", "title": "A", "tool": "t", "result": {"kind": "bogus"}}]},
         {"sections": [{"id": "a", "title": "A", "tool": "t", "result": {"refresh_after": "not an id"}}]},
         {"sections": [{"id": "bad id", "title": "A", "tool": "t"}]},
+        {"title": ""},
+        {"sections": [{"id": "a", "title": "", "tool": "t"}]},
+        {"sections": [{"id": "a", "title": "A", "tool": ""}]},
+        {"sections": [{"id": "a", "title": "A", "tool": "t", "submit": ""}]},
+        {"sections": [{"id": "a", "text": ""}]},
+        {"sections": [{"id": "a", "title": "", "text": "x"}]},
+        {"sections": [{"id": "a", "title": "A", "tool": "t", "fields": [{"param": ""}]}]},
+        *[
+            {"sections": [{"id": "a", "title": "A", "tool": "t", "result": {"kind": "secret", "field": "x", key: bad}}]}
+            for key in ("field", "detail", "refresh_after")
+            for bad in ("code\n", "a-b")
+        ],
     ],
 )
 def test_invalid_pages_are_rejected(changes):
@@ -140,8 +154,14 @@ def test_shipped_pages_parse_and_name_only_their_own_tools(path):
     page = parse_page(path.read_text(encoding="utf-8"), None)
 
     for section in page.sections:
-        if isinstance(section, GuiFormSection):
-            assert hasattr(module, section.tool), f"{folder} page names {section.tool}, not defined in its tool.py"
+        if not isinstance(section, GuiFormSection):
+            continue
+        assert hasattr(module, section.tool), f"{folder} page names {section.tool}, not defined in its tool.py"
+        function = inspect.unwrap(getattr(module, section.tool))
+        result_model = typing.get_type_hints(function)["return"]
+        named = {section.result.field, section.result.detail, section.result.refresh_after} - {None}
+        missing = named - set(result_model.model_fields)
+        assert not missing, f"{folder}/{section.id}: {sorted(missing)} not in {result_model.__name__}"
 
 
 def test_there_is_at_least_one_shipped_page():
@@ -190,3 +210,27 @@ def test_list_reports_has_gui(client, widgets):
     widgets.write_text(json.dumps(PAGE), encoding="utf-8")
 
     assert client.get("/capabilities").json()[0]["has_gui"] is True
+
+
+def _nulls(value, path="$"):
+    if value is None:
+        yield path
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _nulls(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _nulls(item, f"{path}[{index}]")
+
+
+def test_gui_route_serves_no_nulls(client, widgets):
+    page = {"version": 1, "title": "T", "sections": [
+        {"id": "a", "title": "A", "tool": "make_widget", "fields": [{"param": "p"}]},
+        {"id": "n", "text": "hi"},
+    ]}
+    widgets.write_text(json.dumps(page), encoding="utf-8")
+
+    body = client.get("/capabilities/widgets/gui").json()
+
+    assert list(_nulls(body)) == []
+    assert body["sections"][0]["fields"][0]["param"] == "p"

@@ -75,7 +75,7 @@ async def capability_gui_page(request: Request) -> JSONResponse:
     page = capability_gui.load_page(name)
     if page is None:
         return JSONResponse({"error": f"Capability {name!r} has no page"}, status_code=404)
-    return JSONResponse(page.model_dump())
+    return JSONResponse(page.model_dump(mode="json", exclude_none=True))
 
 
 async def update_capability(request: Request) -> JSONResponse:

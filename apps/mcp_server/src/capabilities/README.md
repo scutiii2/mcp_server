@@ -120,8 +120,8 @@ widget set.
 - `refresh_after` names a numeric result field; the page counts it down and
   calls the tool again at zero.
 - A page may only name its own capability's tools.
-- An invalid file is logged and hidden (`has_gui: false`, route 404); it
-  never breaks the server or other capabilities.
+- An invalid file is logged and hidden, and so is the page of a disabled
+  capability (`has_gui: false`, route 404); it never breaks the server or other capabilities.
 
 ## Output formatting
 

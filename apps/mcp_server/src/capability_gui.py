@@ -25,12 +25,12 @@ from src.services import capability_meta, capability_registry
 logger = logging.getLogger(__name__)
 
 _CAPABILITIES_DIR = Path(__file__).resolve().parent / "capabilities"
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _SECTION_ID = r"^[A-Za-z0-9_-]{1,64}$"
 
 
 def _identifier(value: str | None) -> str | None:
-    if value is not None and not _IDENTIFIER.match(value):
+    if value is not None and not _IDENTIFIER.fullmatch(value):
         raise ValueError(f"{value!r} is not a result field name")
     return value
 
@@ -39,7 +39,7 @@ class GuiField(BaseModel):
     """Overrides for one of the tool's own parameters; the form itself is built from the tool's schema."""
 
     model_config = ConfigDict(extra="ignore")
-    param: str
+    param: str = Field(min_length=1)
     label: str | None = None
     order: int | None = None
     hidden: bool = False
@@ -66,9 +66,9 @@ class GuiResult(BaseModel):
 class GuiFormSection(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(pattern=_SECTION_ID)
-    title: str
-    tool: str
-    submit: str = "Run"
+    title: str = Field(min_length=1)
+    tool: str = Field(min_length=1)
+    submit: str = Field(default="Run", min_length=1)
     fields: list[GuiField] = Field(default_factory=list)
     result: GuiResult = Field(default_factory=GuiResult)
 
@@ -76,8 +76,8 @@ class GuiFormSection(BaseModel):
 class GuiTextSection(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(pattern=_SECTION_ID)
-    title: str | None = None
-    text: str
+    title: str | None = Field(default=None, min_length=1)
+    text: str = Field(min_length=1)
 
 
 def _section_kind(value: Any) -> str:
@@ -95,7 +95,7 @@ GuiSection = Annotated[
 class GuiPage(BaseModel):
     model_config = ConfigDict(extra="ignore")
     version: Literal[1]
-    title: str
+    title: str = Field(min_length=1)
     description: str = ""
     sections: list[GuiSection] = Field(min_length=1)
 
