@@ -16,6 +16,8 @@ const selectedId = ref<number | null>(null);
 const loadError = ref("");
 const actionError = ref("");
 const busy = ref(false);
+// The last change to the open role went through; shown as a "Saved" chip.
+const saved = ref(false);
 const pendingDelete = ref<Role | null>(null);
 
 const creating = ref(false);
@@ -40,17 +42,20 @@ function replace(updated: Role): void {
 function select(role: Role): void {
   selectedId.value = role.id;
   actionError.value = "";
+  saved.value = false;
 }
 
 /** Runs one admin call for `role`. When the logged-in account holds the
  * role, its permissions may have changed, so the account is re-read. */
 async function act(role: Role, call: () => Promise<void>): Promise<void> {
   actionError.value = "";
+  saved.value = false;
   busy.value = true;
   const held = auth.account?.roles.includes(role.name) ?? false;
   try {
     await call();
     if (held) await auth.refresh();
+    saved.value = true;
   } catch (err) {
     actionError.value = errorMessage(err);
   } finally {
@@ -137,6 +142,7 @@ onMounted(load);
         :permissions="permissions"
         :busy="busy"
         :error="actionError"
+        :saved="saved"
         @save="(changes) => saveDetails(selected!, changes)"
         @toggle-permission="(name, granted) => togglePermission(selected!, name, granted)"
         @remove="pendingDelete = selected"

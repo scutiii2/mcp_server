@@ -39,6 +39,14 @@ describe("ChatSettingsMenu", () => {
     expect(gear(w).attributes("aria-expanded")).toBe("false");
   });
 
+  it("says its switches apply instantly and stay on this device", async () => {
+    const w = open();
+
+    await gear(w).trigger("click");
+
+    expect(panel(w).get(".note").text()).toBe("Applies instantly. Saved on this device.");
+  });
+
   it("opens and closes from the gear", async () => {
     const w = open();
 

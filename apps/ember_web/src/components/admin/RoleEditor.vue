@@ -13,6 +13,8 @@ const props = defineProps<{
   permissions: PermissionInfo[];
   busy: boolean;
   error: string;
+  /** The last change went through. */
+  saved?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -62,6 +64,11 @@ function save(): void {
 
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="role.is_protected" class="muted note">This role always holds every permission and can't be renamed or deleted.</p>
+
+    <p class="apply muted">
+      <span>Permission switches apply instantly.</span>
+      <span v-if="saved && !error" class="chip saved" role="status">Saved</span>
+    </p>
 
     <ul class="permissions">
       <li v-for="p in permissions" :key="p.name">
@@ -119,10 +126,21 @@ header {
   margin: 8px 0 0;
   font-size: 0.85em;
 }
+.apply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 0.85em;
+}
+.chip.saved {
+  color: var(--success);
+  border-color: var(--success);
+}
 .permissions {
   display: flex;
   flex-direction: column;
-  margin: 12px 0 0;
+  margin: 4px 0 0;
   padding: 0;
   list-style: none;
 }

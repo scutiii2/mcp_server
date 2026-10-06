@@ -121,6 +121,20 @@ describe("RolesPanel", () => {
     expect(box.checked).toBe(true);
   });
 
+  it("shows Saved after a permission change, and clears it on another role", async () => {
+    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "admin.manage"] });
+    const wrapper = await panel();
+    await listItem(wrapper, "Member").trigger("click");
+    expect(editor(wrapper).find(".chip.saved").exists()).toBe(false);
+
+    await editor(wrapper).get('input[aria-label="admin.manage"]').trigger("click");
+    await flushPromises();
+    expect(editor(wrapper).get(".chip.saved").text()).toBe("Saved");
+
+    await listItem(wrapper, "Ops").trigger("click");
+    expect(editor(wrapper).find(".chip.saved").exists()).toBe(false);
+  });
+
   it("revokes a permission", async () => {
     client.revokePermission.mockResolvedValue({ ...MEMBER, permissions: [] });
     const wrapper = await panel();

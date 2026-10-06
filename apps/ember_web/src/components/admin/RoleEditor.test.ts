@@ -27,7 +27,7 @@ const ADMIN: Role = {
   account_count: 1,
 };
 
-function editor(role: Role = MEMBER, props: { busy?: boolean; error?: string } = {}) {
+function editor(role: Role = MEMBER, props: { busy?: boolean; error?: string; saved?: boolean } = {}) {
   return mount(RoleEditor, { props: { role, permissions: PERMISSIONS, busy: false, error: "", ...props } });
 }
 
@@ -36,6 +36,16 @@ const click = (wrapper: ReturnType<typeof editor>, label: string) =>
   wrapper.findAll("button").find((b) => b.text() === label)!.trigger("click");
 
 describe("RoleEditor", () => {
+  it("says the permission switches apply instantly", () => {
+    expect(editor().text()).toContain("Permission switches apply instantly.");
+  });
+
+  it("shows a Saved chip once a change went through, but not beside an error", () => {
+    expect(editor().find(".chip.saved").exists()).toBe(false);
+    expect(editor(MEMBER, { saved: true }).get(".chip.saved").text()).toBe("Saved");
+    expect(editor(MEMBER, { saved: true, error: "boom" }).find(".chip.saved").exists()).toBe(false);
+  });
+
   it("shows the role, its description and its account count", () => {
     const text = editor().text();
 

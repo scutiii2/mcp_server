@@ -70,6 +70,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
     </button>
 
     <div v-if="open" class="panel" role="group" aria-label="Chat settings" @keydown.esc.stop="closeWithEscape">
+      <p class="note">Applies instantly. Saved on this device.</p>
       <ToggleSwitch
         small
         title="Ask the agent for short, terse answers"
@@ -153,6 +154,11 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   height: 8px;
   border-radius: var(--radius-full);
   background: var(--accent);
+}
+.note {
+  margin: 0;
+  font-size: 0.8em;
+  color: var(--muted);
 }
 .panel {
   position: absolute;
