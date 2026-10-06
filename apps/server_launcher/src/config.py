@@ -61,6 +61,8 @@ _PROJECT_PORT_ENV = {
     "catalog_service": ("CATALOG_PORT", 8020),
     "pdf_merger": ("PDF_MERGER_PORT", 8040),
     "pdf_merger_web": ("PDF_MERGER_WEB_PORT", 5174),
+    "video_downloader": ("VIDEO_DOWNLOADER_PORT", 8050),
+    "video_downloader_web": ("VIDEO_DOWNLOADER_WEB_PORT", 5175),
 }
 
 _POLL_MS = 500
