@@ -345,7 +345,7 @@ describe("the clock of a running answer", () => {
 describe("a slash command", () => {
   const appended = () => client.append.mock.calls.at(-1)![2] as ChatMessage[];
 
-  it("saves how long the call took on its reply, and nothing on the command itself", async () => {
+  it("saves how long the call took on its reply, and nothing on the command itself but its time", async () => {
     const chat = await storeWith({ c1: TWO });
     await chat.selectChat("c1");
     runCommand.mockImplementation(async () => {
@@ -357,8 +357,14 @@ describe("a slash command", () => {
     await flushPromises();
 
     const [command, reply] = appended();
-    expect(command).toEqual({ role: "user", kind: "command", content: "/files list" });
-    expect(reply).toEqual({ role: "assistant", kind: "command", content: "two files", duration_s: 2.3 });
+    expect(command).toEqual({ role: "user", kind: "command", content: "/files list", at: "2026-10-01T10:00:00.000Z" });
+    expect(reply).toEqual({
+      role: "assistant",
+      kind: "command",
+      content: "two files",
+      duration_s: 2.3,
+      at: "2026-10-01T10:00:02.340Z",
+    });
   });
 
   it("runs a clock while it works, and clears it after", async () => {

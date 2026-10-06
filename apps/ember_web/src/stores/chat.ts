@@ -596,8 +596,8 @@ export const useChatStore = defineStore("chat", () => {
       const seconds = Number(((Date.now() - began) / 1000).toFixed(1));
       await appendMessages(
         [
-          { role: "user", kind: "command", content: text },
-          { role: "assistant", kind: "command", content: result, duration_s: seconds },
+          { role: "user", kind: "command", content: text, at: new Date(began).toISOString() },
+          { role: "assistant", kind: "command", content: result, duration_s: seconds, at: new Date().toISOString() },
         ],
         text,
       );
@@ -649,8 +649,10 @@ export const useChatStore = defineStore("chat", () => {
     }
     const id = conversation.id;
     const previous = conversation.messages;
+    // ember_api stamps the saved question; this is what shows until then.
+    const shown: ChatMessage = { role: "user", content: question, at: new Date().toISOString() };
     conversation.messages =
-      truncateTo === undefined ? [...previous, { role: "user", content: question }] : [...previous.slice(0, truncateTo), { role: "user", content: question }];
+      truncateTo === undefined ? [...previous, shown] : [...previous.slice(0, truncateTo), shown];
     starting.value = true;
     const began = Date.now();
     clockStart.value = began;

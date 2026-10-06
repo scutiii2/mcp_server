@@ -5,6 +5,7 @@ import type { CommandInfo } from "../api/CommandsClient";
 import { agentLabelFor } from "../utils/agentLabels";
 import { FILE_ONLY_QUESTION, splitAttachments } from "../utils/attachments";
 import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
+import { clockTime, dayDividers, fullTime } from "../utils/messageTime";
 import { toolTitle } from "../utils/toolTitles";
 import AgentActivity from "./AgentActivity.vue";
 import CopyButton from "./CopyButton.vue";
@@ -125,6 +126,10 @@ watch(
   () => (editingIndex.value = null),
 );
 
+// The day label above the first message of each day (null: none). `now` is
+// read when the list changes, so "Today" can be stale after midnight until then.
+const dividers = computed(() => dayDividers(props.messages));
+
 // A question's attached files, shown collapsed under what was typed.
 const userParts = computed(() =>
   props.messages.map((m) => (m.role === "user" && !m.kind ? splitAttachments(m.content) : null)),
@@ -220,7 +225,9 @@ onBeforeUnmount(() => {
     <div class="column">
       <WelcomeCard v-if="messages.length === 0 && !busy" :commands="commands ?? []" />
 
-      <div v-for="(m, i) in messages" :key="i" :class="['msg', { flash: flashIndex === i }]" :data-index="i">
+      <template v-for="(m, i) in messages" :key="i">
+      <div v-if="dividers[i]" class="day-divider" role="separator"><span>{{ dividers[i] }}</span></div>
+      <div :class="['msg', { flash: flashIndex === i }]" :data-index="i">
         <!-- Raw messages a summary or clear replaced: kept for reading, never
              sent to the agent again. -->
         <details v-if="m.kind === 'log_attachment'" class="log">
@@ -235,7 +242,10 @@ onBeforeUnmount(() => {
         <div v-else-if="m.kind === 'command'" class="assistant">
           <MarkdownContent class="command-result" :text="parseDownloads(m.content).text" />
           <DownloadCards :downloads="parseDownloads(m.content).downloads" />
-          <div class="actions"><UsageChip :message="m" :agent-label="agentLabel(m)" /></div>
+          <div class="actions">
+            <time v-if="m.at" class="stamp" :datetime="m.at" :title="fullTime(m.at)">{{ clockTime(m.at) }}</time>
+            <UsageChip :message="m" :agent-label="agentLabel(m)" />
+          </div>
         </div>
         <!-- Only model output is rendered as markdown; the user's own text stays literal. -->
         <div v-else-if="m.role === 'user' && editingIndex === i" class="user-row editing">
@@ -266,6 +276,7 @@ onBeforeUnmount(() => {
             </details>
           </div>
           <div class="actions user-actions">
+            <time v-if="m.at" class="stamp" :datetime="m.at" :title="fullTime(m.at)">{{ clockTime(m.at) }}</time>
             <CopyButton :text="userParts[i]?.text || m.content" label="Copy message" />
             <SaveButton
               v-if="savedPrompts && savableText(i)"
@@ -293,6 +304,7 @@ onBeforeUnmount(() => {
           <MarkdownContent :text="parseDownloads(m.content).text" />
           <DownloadCards :downloads="parseDownloads(m.content).downloads" />
           <div class="actions">
+            <time v-if="m.at" class="stamp" :datetime="m.at" :title="fullTime(m.at)">{{ clockTime(m.at) }}</time>
             <CopyButton :text="parseDownloads(m.content).text" label="Copy answer" />
             <button
               v-if="canChange && i === messages.length - 1 && regenerateIndex !== undefined && regenerateIndex >= 0"
@@ -338,6 +350,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      </template>
 
       <div v-if="busy" class="assistant live">
         <ToolSteps v-if="steps.length" :steps="steps" live />
@@ -485,6 +498,24 @@ onBeforeUnmount(() => {
 .user-actions {
   margin-top: 0;
 }
+.stamp {
+  font-size: 0.75em;
+  color: var(--muted);
+}
+/* A line with the day in the middle, between the messages of two days. */
+.day-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.75em;
+  color: var(--muted);
+}
+.day-divider::before,
+.day-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
 .action {
   display: inline-flex;
   align-items: center;
@@ -501,14 +532,17 @@ onBeforeUnmount(() => {
 }
 /* Shown on hover or keyboard focus; always on touch screens. */
 .user-actions,
+.assistant .actions .stamp,
 .assistant .actions :deep(.copy),
 .assistant .actions .action {
   opacity: 0;
   transition: opacity 0.1s;
 }
 .user-row:hover .user-actions,
+.assistant:hover .actions .stamp,
 .assistant:hover .actions :deep(.copy),
 .assistant:hover .actions .action,
+.actions:focus-within .stamp,
 .actions:focus-within :deep(.copy),
 .actions:focus-within .action,
 .user-actions:focus-within {
@@ -516,6 +550,7 @@ onBeforeUnmount(() => {
 }
 @media (hover: none) {
   .user-actions,
+  .assistant .actions .stamp,
   .assistant .actions :deep(.copy),
   .assistant .actions .action {
     opacity: 1;
