@@ -532,7 +532,7 @@ function onKeydown(event: KeyboardEvent): void {
 }
 textarea {
   flex: 1;
-  max-height: calc(1.55em * 8); /* about 8 lines, then it scrolls */
+  max-height: calc(1.55em * 5); /* 5 lines, then it scrolls */
   padding: 6px 0;
   border: none;
   outline: none;
