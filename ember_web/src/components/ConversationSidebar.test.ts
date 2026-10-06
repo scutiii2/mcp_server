@@ -606,6 +606,83 @@ describe("the row menu", () => {
     expect(menuItem("Pin")).toBeDefined();
   });
 
+  it("another owner's ... button opens a new menu at that button, with focus in it and no old flyout", async () => {
+    const wrapper = mountSidebar({ folders: [folder(1, "Work")] });
+    const at = (el: Element, left: number, bottom: number) => {
+      el.getBoundingClientRect = () => ({ left, bottom, top: bottom - 20, right: left + 20, width: 20, height: 20, x: left, y: bottom - 20, toJSON: () => ({}) });
+    };
+    const first = menuButton(wrapper, 0);
+    const second = menuButton(wrapper, 1);
+    const header = wrapper.find("header button.more");
+    at(first.element, 20, 40);
+    at(second.element, 30, 80);
+    at(header.element, 50, 120);
+
+    await first.trigger("click");
+    await flushPromises();
+    const firstMenu = openMenu();
+    menuItem("Move to...")!.click(); // opens the flyout
+    await flushPromises();
+    expect(document.body.querySelector(".flyout")).not.toBeNull();
+
+    await second.trigger("click");
+    await flushPromises();
+    const secondMenu = openMenu() as HTMLElement;
+    expect(secondMenu).not.toBe(firstMenu);
+    expect(secondMenu.style.left).toBe("30px");
+    expect(secondMenu.style.top).toBe("80px");
+    expect(secondMenu.contains(document.activeElement)).toBe(true);
+    expect(document.body.querySelector(".flyout")).toBeNull();
+
+    await header.trigger("click"); // chat menu to folder menu
+    await flushPromises();
+    const folderMenu = openMenu() as HTMLElement;
+    expect(folderMenu).not.toBe(secondMenu);
+    expect(folderMenu.getAttribute("aria-label")).toBe("Folder actions");
+    expect(folderMenu.style.left).toBe("50px");
+    expect(folderMenu.style.top).toBe("120px");
+    expect(folderMenu.contains(document.activeElement)).toBe(true);
+  });
+
+  it("closes when its chat leaves the list", async () => {
+    const wrapper = mountSidebar();
+    await menuButton(wrapper).trigger("click");
+
+    await wrapper.setProps({ conversations: [chat("2")] });
+
+    expect(openMenu()).toBeNull();
+  });
+
+  it("closes when its folder goes away", async () => {
+    const wrapper = mountSidebar({ conversations: [], folders: [folder(1, "Work"), folder(2, "Home")] });
+    await wrapper.find("header button.more").trigger("click");
+
+    await wrapper.setProps({ folders: [folder(2, "Home")] });
+
+    expect(openMenu()).toBeNull();
+  });
+
+  it("stays open, and follows the chat, when the list changes in other ways", async () => {
+    const wrapper = mountSidebar();
+    await menuButton(wrapper).trigger("click");
+    expect(menuItem("Pin")).toBeDefined();
+
+    await wrapper.setProps({ conversations: [{ ...chat("1"), pinned: true }, chat("2")] });
+
+    expect(openMenu()).not.toBeNull();
+    expect(menuItem("Unpin")).toBeDefined();
+  });
+
+  it("a folder menu reports the folder as it is now", async () => {
+    const wrapper = mountSidebar({ conversations: [], folders: [folder(1, "Work")] });
+    await wrapper.find("header button.more").trigger("click");
+
+    await wrapper.setProps({ folders: [folder(1, "Renamed")] });
+    menuItem("Rename")!.click();
+
+    expect(wrapper.emitted("renameFolder")).toEqual([[folder(1, "Renamed")]]);
+  });
+
   it("closes when the sidebar scrolls, since it would drift away from its row", async () => {
     const wrapper = mountSidebar();
     await menuButton(wrapper).trigger("click");

@@ -92,30 +92,49 @@ function titleOf(section: { kind: "pinned" | "folder" | "unfiled"; folder: ChatF
   return section.kind === "folder" ? (section.folder?.name ?? "") : SECTION_TITLES[section.kind];
 }
 
-// The open popup menu: for a chat row or for a folder header, with where it
-// opened and the button that gets focus back after Esc.
-type OpenMenu =
-  | ({ kind: "chat"; chat: Conversation } & MenuPoint)
-  | ({ kind: "folder"; folder: ChatFolder } & MenuPoint);
+// The open popup menu: for a chat row or for a folder header (by id, so it
+// always works on the chat or folder as it is now), with where it opened and
+// the button that gets focus back after Esc.
+type OpenMenu = ({ kind: "chat"; id: string } & MenuPoint) | ({ kind: "folder"; id: number } & MenuPoint);
 const menu = ref<OpenMenu | null>(null);
 
-const menuItems = computed(() => {
+/** What the open menu is for, as it is now; null once it has gone away. */
+const menuOwner = computed(() => {
   const m = menu.value;
-  if (!m) return [];
-  return m.kind === "chat" ? chatMenuItems(m.chat, props.folders, isLocked(m.chat)) : folderMenuItems();
+  if (!m) return null;
+  if (m.kind === "chat") {
+    const chat = props.conversations.find((c) => c.id === m.id);
+    return chat ? { kind: "chat" as const, chat } : null;
+  }
+  const folder = props.folders.find((f) => f.id === m.id);
+  return folder ? { kind: "folder" as const, folder } : null;
+});
+
+// The chat or folder went away (deleted elsewhere, the list reloaded): the menu goes too.
+watch(menuOwner, (owner) => {
+  if (!owner) menu.value = null;
+});
+
+/** A new owner gets a new menu, so it is placed and focused afresh and no old flyout stays open. */
+const menuKey = computed(() => (menu.value ? `${menu.value.kind}:${menu.value.id}` : ""));
+
+const menuItems = computed(() => {
+  const owner = menuOwner.value;
+  if (!owner) return [];
+  return owner.kind === "chat" ? chatMenuItems(owner.chat, props.folders, isLocked(owner.chat)) : folderMenuItems();
 });
 
 // A press on the "..." button of the menu that is open closes it (the button
 // keeps its pointerdown from the menu, which would otherwise close it first and
 // let the click reopen it). Another row's button replaces the menu.
 function openChatMenu(chat: Conversation, point: MenuPoint): void {
-  if (menu.value?.kind === "chat" && menu.value.chat.id === chat.id) void dismissMenu();
-  else menu.value = { kind: "chat", chat, ...point };
+  if (menu.value?.kind === "chat" && menu.value.id === chat.id) void dismissMenu();
+  else menu.value = { kind: "chat", id: chat.id, ...point };
 }
 
 function openFolderMenu(folder: ChatFolder, point: MenuPoint): void {
-  if (menu.value?.kind === "folder" && menu.value.folder.id === folder.id) void dismissMenu();
-  else menu.value = { kind: "folder", folder, ...point };
+  if (menu.value?.kind === "folder" && menu.value.id === folder.id) void dismissMenu();
+  else menu.value = { kind: "folder", id: folder.id, ...point };
 }
 
 /** Esc, a press outside, Tab or a resize: focus goes back to the button. */
@@ -127,7 +146,7 @@ async function dismissMenu(): Promise<void> {
 }
 
 function chooseFromMenu(id: string): void {
-  const open = menu.value;
+  const open = menuOwner.value;
   menu.value = null; // a choice hands focus on (a rename box, a dialog), so it is not given back
   if (!open) return;
   if (open.kind === "folder") {
@@ -313,6 +332,7 @@ watch(
 
     <PopupMenu
       v-if="menu"
+      :key="menuKey"
       :items="menuItems"
       :x="menu.x"
       :y="menu.y"

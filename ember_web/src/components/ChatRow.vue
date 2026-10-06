@@ -157,12 +157,8 @@ function openFromContext(event: MouseEvent): void {
     opacity: 1;
   }
 }
-.icon:hover:not(:disabled) {
+.icon:hover {
   color: var(--text);
-}
-.icon:disabled {
-  cursor: default;
-  opacity: 0;
 }
 .running {
   width: 7px;
