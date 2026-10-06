@@ -32,7 +32,7 @@ from src.db import Database
 from src.services import summarization
 from src.services.agent_directory import AgentEntry
 from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
-from src.services.chat_service import ChatNotFound, ChatService, decode_messages
+from src.services.chat_service import ChatNotFound, ChatService, decode_messages, message_time
 from src.services.log_service import LogWriter
 from src.services.usage_service import UsageService, usage_rows
 
@@ -525,6 +525,7 @@ class TurnRegistry:
         """Appends the answer to the chat as it is now (it may have been
         renamed, or deleted, meanwhile), then ends the turn for watchers."""
         message = answer if isinstance(answer, dict) else {"role": "assistant", "content": answer}
+        message = {**message, "at": message_time()}
         if turn.steps:
             # The step id only matters to a live viewer (snapshot); it is not saved.
             message = {**message, "steps": [{k: v for k, v in s.items() if k != "id"} for s in turn.steps]}

@@ -418,3 +418,26 @@ def test_put_refuses_negative_usage_fields(client: TestClient) -> None:
 
     assert put(client, new_id(), messages=[bad]).status_code == 422
     assert put(client, new_id(), messages=[{**bad, "duration_s": 1, "input_tokens": -5}]).status_code == 422
+
+
+# --- message times ---------------------------------------------------------------------------
+
+
+def test_a_saved_chat_keeps_the_time_of_its_messages(client: TestClient) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    stamped = {"role": "user", "content": "hi", "at": "2026-10-06T14:03:09.123Z"}
+    old = {"role": "assistant", "content": "hello!"}  # saved before times existed
+
+    assert put(client, chat_id, messages=[stamped, old]).status_code == 200
+
+    assert client.get(f"/api/chats/{chat_id}").json()["messages"] == [stamped, old]
+
+
+@pytest.mark.parametrize("bad", ["yesterday", "2026-10-06", "2026-10-06T14:03:09", "2026-10-06T14:03:09+02:00", 5])
+def test_a_message_time_must_be_utc_iso(client: TestClient, bad) -> None:
+    as_admin(client)
+
+    response = put(client, new_id(), messages=[{"role": "user", "content": "hi", "at": bad}])
+
+    assert response.status_code == 422

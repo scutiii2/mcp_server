@@ -43,6 +43,7 @@ from src.services.chat_service import (
     ImportedChat,
     NotABranchPoint,
     decode_messages,
+    message_time,
 )
 from src.services.folder_service import FolderNotFound
 from src.services.permissions import CHAT_USE
@@ -120,12 +121,19 @@ class AgentUsageIn(BaseModel):
     total_tokens: int = Field(ge=0)
 
 
+# What message_time() makes: 2026-10-06T14:03:09.123Z (a fraction is optional).
+MESSAGE_TIME_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$"
+
+
 class MessageIn(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     # summary / log_attachment: written by summarize and clear; command: a
     # slash command's call and its result, shown but never asked about.
     kind: Literal["summary", "log_attachment", "command"] | None = None
+    # When the message was written (UTC, as message_time makes it). Set by the
+    # server for questions and answers; a browser sends back what it was given.
+    at: str | None = Field(default=None, pattern=MESSAGE_TIME_PATTERN)
     model: str | None = Field(default=None, max_length=120)
     # The ember agent id that wrote an answer (saved by the turn).
     agent: str | None = Field(default=None, max_length=120)
@@ -592,7 +600,7 @@ async def start_turn(
     if block is not None:
         raise _limit_reached(block)
 
-    question = {"role": "user", "content": body.question}
+    question = {"role": "user", "content": body.question, "at": message_time()}
     try:
         try:
             existing = decode_messages(await chats.get(chat_id))

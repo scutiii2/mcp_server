@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import uuid
@@ -14,6 +15,8 @@ from tests.test_admin import login, make_member
 from tests.test_registration import as_admin
 
 AGENT_ID = AGENTS[0]["id"]
+# A message's "at": 2026-10-06T14:03:09.123Z
+MESSAGE_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
 
 def new_id() -> str:
@@ -69,6 +72,10 @@ def test_turn_creates_chat_answers_and_saves(client: TestClient, agent: FakeAgen
     answer = saved["messages"][1]
     duration = answer.pop("duration_s")
     assert isinstance(duration, float) and 0 <= duration < 60
+    # Both messages are stamped by the server; the answer's is no earlier than the question's.
+    asked_at, answered_at = (m.pop("at") for m in saved["messages"])
+    assert MESSAGE_TIME.match(asked_at) and MESSAGE_TIME.match(answered_at)
+    assert asked_at <= answered_at
     assert saved["messages"] == [
         {"role": "user", "content": "What is up?"},
         {
@@ -391,7 +398,9 @@ def test_agent_error_is_saved_and_streamed(client: TestClient, agent: FakeAgent)
     stream = events(client, chat_id)
 
     assert stream[-1] == {"type": "error", "message": "provider is down", "sequence": stream[-1]["sequence"]}
-    assert chat(client, chat_id)["messages"][-1] == {"role": "assistant", "content": "error: provider is down"}
+    failed = chat(client, chat_id)["messages"][-1]
+    assert MESSAGE_TIME.match(failed.pop("at"))
+    assert failed == {"role": "assistant", "content": "error: provider is down"}
     assert client.get("/api/usage").json()["six_hour"]["used"] == 0
 
 

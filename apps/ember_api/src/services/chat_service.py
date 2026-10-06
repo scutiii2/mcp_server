@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -44,8 +44,15 @@ class NotABranchPoint(Exception):
 # {"role": "user" | "assistant", "content": str} plus optional "kind"
 # ("summary", "log_attachment", "command"), "model", "total_tokens",
 # "input_tokens", "output_tokens", "duration_s", "context_tokens",
-# "context_window", "agent_usage" - validated by the route.
+# "context_window", "agent_usage", "at" (when it was written, UTC, see
+# message_time) - validated by the route.
 ChatMessage = dict[str, Any]
+
+
+def message_time() -> str:
+    """Now as the "at" of a message: ISO 8601 UTC with milliseconds, e.g.
+    2026-10-06T14:03:09.123Z. Messages saved before this existed have none."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 @dataclass(frozen=True)
