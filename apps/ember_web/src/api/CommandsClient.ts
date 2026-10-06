@@ -16,6 +16,8 @@ export interface CapabilityInfo {
   label: string | null;
   tools: string[];
   resources: string[];
+  /** A page to open at /capabilities/<name> (mcp_server's gui/page.json). */
+  has_gui?: boolean;
 }
 
 export type HelpTarget = "all" | "tools" | "commands" | "workflow";
