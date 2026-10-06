@@ -207,9 +207,9 @@ h4 {
 @media (max-width: 720px) {
   .drawer {
     position: fixed;
-    inset: auto 0 0 0;
+    inset: auto 0 var(--rail-height) 0;
     z-index: 5;
-    max-height: 75vh;
+    max-height: calc(75vh - var(--rail-height));
     overflow-y: auto;
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   }

@@ -260,7 +260,7 @@ svg {
   .rail {
     flex-direction: row;
     width: 100%;
-    height: 52px;
+    height: var(--rail-height);
     padding: 0 8px;
     border-right: none;
     border-top: 1px solid var(--border);

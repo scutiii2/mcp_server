@@ -48,6 +48,10 @@
   --radius-xl: 16px; /* modal, sheet */
   --radius-full: 9999px; /* single-line pill, avatar, toggle only */
 
+  /* Height of the bottom nav bar on narrow screens; sheets pinned to the
+     bottom of the page sit above it, not under it. */
+  --rail-height: 52px;
+
   color-scheme: light dark;
   font: 15px/1.55 var(--sans);
   color: var(--text);
