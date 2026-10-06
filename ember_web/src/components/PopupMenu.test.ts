@@ -33,6 +33,13 @@ afterEach(() => {
 
 const q = (selector: string) => document.body.querySelector<HTMLElement>(selector);
 const all = (selector: string) => [...document.body.querySelectorAll<HTMLElement>(selector)];
+// The text of the focused menu item, or "" when focus is not on one. Reading
+// `document.activeElement.textContent` directly would pass by accident when
+// focus falls to <body>, whose text holds every label.
+const focused = () => {
+  const el = document.activeElement;
+  return el instanceof HTMLElement && el.matches("[role^='menuitem']") ? (el.textContent ?? "") : "";
+};
 const key = (el: Element | null, name: string) => {
   el?.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true }));
   return nextTick();
@@ -40,9 +47,9 @@ const key = (el: Element | null, name: string) => {
 
 describe("PopupMenu", () => {
   it("renders the items in the page body, at the given place, with a label", () => {
-    const w = open();
+    open();
 
-    expect(w.element.parentElement).not.toBe(document.body); // teleported away from the mount point
+    expect(q('[role="menu"]')!.parentElement).toBe(document.body); // teleported, not inside the mount container
     expect(q('[role="menu"]')?.getAttribute("aria-label")).toBe("Chat actions");
     expect(all('[role="menuitem"]').map((b) => b.textContent?.replace("›", "").trim())).toEqual([
       "Pin",
@@ -80,7 +87,7 @@ describe("PopupMenu", () => {
     open();
     await nextTick();
 
-    expect(document.activeElement?.textContent).toContain("Pin");
+    expect(focused()).toContain("Pin");
   });
 
   it("moves focus with the arrow keys, skipping disabled items, and wraps", async () => {
@@ -89,13 +96,13 @@ describe("PopupMenu", () => {
     const menu = q('[role="menu"]');
 
     await key(menu, "ArrowDown");
-    expect(document.activeElement?.textContent).toContain("Move to...");
+    expect(focused()).toContain("Move to...");
     await key(menu, "ArrowDown");
-    expect(document.activeElement?.textContent).toContain("Delete"); // "Off" is skipped
+    expect(focused()).toContain("Delete"); // "Off" is skipped
     await key(menu, "ArrowDown");
-    expect(document.activeElement?.textContent).toContain("Pin");
+    expect(focused()).toContain("Pin");
     await key(menu, "ArrowUp");
-    expect(document.activeElement?.textContent).toContain("Delete");
+    expect(focused()).toContain("Delete");
   });
 
   it("Home and End jump to the first and last item", async () => {
@@ -104,9 +111,9 @@ describe("PopupMenu", () => {
     const menu = q('[role="menu"]');
 
     await key(menu, "End");
-    expect(document.activeElement?.textContent).toContain("Delete");
+    expect(focused()).toContain("Delete");
     await key(menu, "Home");
-    expect(document.activeElement?.textContent).toContain("Pin");
+    expect(focused()).toContain("Pin");
   });
 
   it("Enter activates the focused item", async () => {
@@ -141,12 +148,12 @@ describe("PopupMenu", () => {
 
     await key(document.activeElement, "ArrowRight");
     await nextTick();
-    expect(document.activeElement?.textContent).toContain("No folder");
+    expect(focused()).toContain("No folder");
 
     await key(document.activeElement, "ArrowLeft");
     await nextTick();
     expect(all('[role="menuitemradio"]')).toHaveLength(0);
-    expect(document.activeElement?.textContent).toContain("Move to...");
+    expect(focused()).toContain("Move to...");
   });
 
   it("Esc closes the flyout first, then the menu", async () => {
@@ -159,7 +166,7 @@ describe("PopupMenu", () => {
     await nextTick();
     expect(all('[role="menuitemradio"]')).toHaveLength(0);
     expect(w.emitted("close")).toBeUndefined();
-    expect(document.activeElement?.textContent).toContain("Move to...");
+    expect(focused()).toContain("Move to...");
 
     await key(document.activeElement, "Escape");
     expect(w.emitted("close")).toHaveLength(1);
@@ -201,10 +208,53 @@ describe("PopupMenu", () => {
     await hover("B");
     expect(all('[role="menuitemradio"]').map((r) => r.textContent?.trim())).toEqual(["B1"]);
     expect(all(".flyout")).toHaveLength(1);
-    expect(document.activeElement?.textContent).toContain("B");
+    expect(focused()).toContain("B");
     await hover("C");
     expect(all(".flyout")).toHaveLength(0);
-    expect(document.activeElement?.textContent).toContain("C");
+    expect(focused()).toContain("C");
+  });
+
+  it("hovering a disabled item while focus is in the flyout closes it and keeps focus in the menu", async () => {
+    open();
+    await nextTick();
+    await key(q('[role="menu"]'), "ArrowDown"); // on Move to...
+    await key(document.activeElement, "ArrowRight");
+    await nextTick();
+    expect(focused()).toContain("No folder");
+
+    all('[role="menuitem"]').find((b) => b.textContent?.includes("Off"))!.dispatchEvent(new MouseEvent("mouseenter"));
+    await nextTick();
+
+    expect(all(".flyout")).toHaveLength(0);
+    expect(focused()).toContain("Move to...");
+    await key(document.activeElement, "ArrowDown");
+    expect(focused()).toContain("Delete");
+  });
+
+  it("ArrowUp from the menu itself (no item focused) lands on the last enabled item", async () => {
+    open();
+    await nextTick();
+    const menu = q('[role="menu"]')!;
+    menu.focus(); // the menu box is focusable (tabindex -1), e.g. after a press on its padding
+    expect(document.activeElement).toBe(menu);
+
+    await key(menu, "ArrowUp");
+
+    expect(focused()).toContain("Delete");
+  });
+
+  it("a hover-opened flyout closes when the arrow keys move to another main item", async () => {
+    open();
+    await nextTick();
+    all('[role="menuitem"]').find((b) => b.textContent?.includes("Move to..."))!.dispatchEvent(new MouseEvent("mouseenter"));
+    await nextTick();
+    expect(all(".flyout")).toHaveLength(1);
+
+    await key(document.activeElement, "ArrowDown");
+
+    expect(focused()).toContain("Delete");
+    expect(all(".flyout")).toHaveLength(0);
+    expect(q('[data-id="move"]')?.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("removes its document and window listeners when it goes away", () => {

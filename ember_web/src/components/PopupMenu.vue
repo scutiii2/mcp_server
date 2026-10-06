@@ -56,8 +56,14 @@ function move(step: 1 | -1 | "first" | "last"): void {
   let next: number;
   if (step === "first") next = 0;
   else if (step === "last") next = buttons.length - 1;
+  // Focus not on an item yet (on the menu box): Down starts at the top, Up at
+  // the bottom, instead of stepping from index -1.
+  else if (at < 0) next = step === 1 ? 0 : buttons.length - 1;
   else next = (at + step + buttons.length) % buttons.length;
   buttons[next]!.focus();
+  // Moving within the main menu leaves the item whose flyout was open (opened
+  // by hover), so that flyout closes and its aria-expanded goes back to false.
+  if (!buttons[next]!.closest(".flyout")) openId.value = null;
 }
 
 async function openFlyout(item: MenuItem, focusChild: boolean): Promise<void> {
@@ -73,10 +79,14 @@ async function closeFlyout(): Promise<void> {
   if (id === null) return;
   openId.value = null;
   await nextTick();
-  // Compare ids directly: an id is free text and could break a CSS selector.
-  levelButtons(root.value?.querySelector("button") ?? null)
-    .find((b) => b.dataset.id === id)
-    ?.focus();
+  focusMainItem(id);
+}
+
+/** Focus the main-menu button of item `id`, or the menu box if it has none.
+ * Ids are compared directly: an id is free text and could break a selector. */
+function focusMainItem(id: string): void {
+  const button = levelButtons(root.value?.querySelector("button") ?? null).find((b) => b.dataset.id === id);
+  (button ?? root.value)?.focus();
 }
 
 function activate(item: MenuItem): void {
@@ -92,6 +102,9 @@ function hover(item: MenuItem, event: MouseEvent): void {
   // Focus follows the pointer, so focus is never left on a flyout item that
   // this hover removes (keys would then go to <body>, not the menu).
   if (!item.disabled) (event.currentTarget as HTMLButtonElement).focus();
+  // A disabled item cannot take focus; if focus is in the flyout this hover
+  // closes, put it on that flyout's parent before the flyout goes.
+  else if (openId.value !== null && document.activeElement?.closest(".flyout")) focusMainItem(openId.value);
   // One `openId`: a hover replaces the open flyout, never adds a second one.
   openId.value = item.children && !item.disabled ? item.id : null;
 }
@@ -170,6 +183,7 @@ onBeforeUnmount(() => {
       ref="root"
       class="popup"
       role="menu"
+      tabindex="-1"
       :aria-label="label"
       :style="{ left: `${left}px`, top: `${top}px` }"
       @keydown="onKey"
@@ -221,6 +235,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.popup:focus {
+  outline: none;
+}
 .popup {
   position: fixed;
   z-index: 50;
@@ -283,6 +300,7 @@ hr {
   top: 0;
   left: 100%;
   min-width: 170px;
+  max-width: 260px;
   max-height: 60vh;
   padding: 4px;
   overflow-y: auto;
@@ -297,6 +315,7 @@ hr {
   left: 0;
   right: 0;
   min-width: 100%;
+  max-width: none;
 }
 .flyout .item {
   justify-content: flex-start;
