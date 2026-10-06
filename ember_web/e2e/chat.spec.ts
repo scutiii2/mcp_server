@@ -123,3 +123,72 @@ test("make a folder, file and pin a chat, then delete the folder with it", async
   // The fake knew every request the page made.
   expect(api.unexpected).toEqual([]);
 });
+
+test("drag chats onto a folder and onto Pinned", async ({ page }) => {
+  const api = await installFakeApi(page);
+  api.folders.set(1, { id: 1, name: "Work", position: 1 });
+  for (const [id, title] of [["seed-chat-0001", "Alpha"], ["seed-chat-0002", "Beta"]] as const) {
+    api.chats.set(id, {
+      id,
+      title,
+      agent_id: "agent-1",
+      messages: [
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "hello" },
+      ],
+      running: false,
+    });
+  }
+
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/login/);
+  await page.getByLabel("Username").fill(ACCOUNT.username);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByPlaceholder(/Ask something/)).toBeVisible();
+
+  const sidebar = page.getByRole("complementary");
+  const row = (title: string) => sidebar.getByRole("listitem").filter({ hasText: title });
+  // `has` is looked up inside each section, so it starts from `page`, not the sidebar.
+  const workHeader = page.getByRole("button", { name: /^Work\b/ });
+  const workSection = sidebar.locator("section").filter({ has: workHeader });
+  const pinnedSection = sidebar.locator("section").filter({ has: page.getByRole("heading", { name: /^Pinned\b/ }) });
+  const chatsSection = sidebar.locator("section").filter({ has: page.getByRole("heading", { name: /^Chats\b/ }) });
+  await expect(row("Alpha")).toBeVisible();
+  await expect(row("Beta")).toBeVisible();
+
+  // Drag by hand: press on the row, move a little so the drag starts, wait until the zone
+  // takes the drop, then go to it (read where it is only now) and let go. `dragTo` is not
+  // enough: it reads the target's place before the drag starts, but the empty Pinned and
+  // Chats zones appear once it starts and push the sections below them down.
+  async function dragByHand(title: string, zone: typeof workSection): Promise<void> {
+    await row(title).hover();
+    const box = (await row(title).boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.down();
+    await page.mouse.move(x + 5, y + 5, { steps: 5 });
+    await expect(zone).toBeVisible();
+    await expect(zone).toHaveClass(/\baccepting\b/);
+    await zone.hover();
+    await page.mouse.up();
+  }
+
+  // Alpha onto the Work folder: it is filed there.
+  await dragByHand("Alpha", workSection);
+  await expect.poll(() => api.chats.get("seed-chat-0001")?.folder_id).toBe(1);
+  await expect(workSection.getByRole("listitem").filter({ hasText: "Alpha" })).toBeVisible();
+
+  // Beta onto Pinned: it is pinned.
+  await dragByHand("Beta", pinnedSection);
+  await expect.poll(() => api.chats.get("seed-chat-0002")?.pinned).toBe(true);
+  await expect(pinnedSection.getByRole("listitem").filter({ hasText: "Beta" })).toBeVisible();
+
+  // Alpha, from Work, onto Chats: every chat is filed or pinned, so that zone too appears only while dragging.
+  await dragByHand("Alpha", chatsSection);
+  await expect.poll(() => api.chats.get("seed-chat-0001")?.folder_id).toBeNull();
+  await expect(chatsSection.getByRole("listitem").filter({ hasText: "Alpha" })).toBeVisible();
+
+  // The fake knew every request the page made.
+  expect(api.unexpected).toEqual([]);
+});
