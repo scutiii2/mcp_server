@@ -83,6 +83,16 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 **Revisit when**: user picks one; start with brainstorming a design.
 
+## server_manager capability page (added 2026-10-06)
+
+**Context**: Capability pages are built (spec: `docs/superpowers/specs/2026-10-06-capability-pages-design.md`); only `generator` has a `gui/page.json`. `server_manager` (start, stop, restart, list Docker apps on the host; fetch an app's log) is the other built-in capability. Skipped for now.
+
+- **Simple page, no code change**: a `gui/page.json` with an app list `table` (`tool_srv_listApps`) and one form each for start, stop and restart (typed container name; a dropdown needs an `options_url` on the tool's `name` parameter).
+- **Proper control panel, needs the page format extended**: row actions on a table (a Start/Stop/Restart button per app), download cards (so the log download works on the page), and several tools in one section (a list that refreshes after an action).
+- Note: these tools are not approval-gated; anyone with `tools.use` could stop any app on the host (see the capability README).
+
+**Revisit when**: user wants it built.
+
 ## Video downloader app (added 2026-10-06)
 
 **Idea**: A Python app that downloads videos from YouTube, TikTok and other sites. Build it on `yt-dlp` (handles site extraction, formats, playlists, subtitles, metadata) with FFmpeg to merge separate audio and video streams. Not designed yet. Decided 2026-10-06: build it the way pdf_merger is built, as a standalone backend service plus a separate web UI (see Structure below), not as an mcp_server capability.
