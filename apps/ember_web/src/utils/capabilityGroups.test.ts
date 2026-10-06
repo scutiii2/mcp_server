@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CapabilityInfo } from "../api/CommandsClient";
+import type { ExtensionInfo } from "../api/ExtensionsClient";
 import type { ToolInfo } from "../api/types";
 import { groupTools } from "./capabilityGroups";
 
@@ -73,6 +74,47 @@ describe("groupTools", () => {
   it("filters the tools no capability claims too", () => {
     expect(names(groupTools(CAPS, TOOLS, "extension").otherTools)).toEqual(["ext__echo"]);
     expect(groupTools(CAPS, TOOLS, "merge").otherTools).toEqual([]);
+  });
+
+  describe("with extensions", () => {
+    const ext = (id: string, tools: string[], extra: Partial<ExtensionInfo> = {}): ExtensionInfo => ({
+      id,
+      label: id.toUpperCase(),
+      description: "",
+      status: "connected",
+      error: null,
+      tools,
+      ...extra,
+    });
+    const EXTS = [ext("ext", ["ext__echo"]), ext("down", [], { status: "error", error: "refused" })];
+
+    it("moves an extension's tools out of 'other' into its own group", () => {
+      const { extensionGroups, otherTools } = groupTools(CAPS, [...TOOLS, tool("stray")], "", EXTS);
+
+      expect(extensionGroups.map((g) => g.extension.id)).toEqual(["ext", "down"]);
+      expect(names(extensionGroups[0]!.tools)).toEqual(["ext__echo"]);
+      expect(extensionGroups[1]!.tools).toEqual([]);
+      expect(names(otherTools)).toEqual(["stray"]);
+    });
+
+    it("finds a tool by the extension's namespace even if its tool list lacks it", () => {
+      const { extensionGroups } = groupTools([], TOOLS, "", [ext("ext", [])]);
+
+      expect(names(extensionGroups[0]!.tools)).toEqual(["ext__echo"]);
+    });
+
+    it("never takes a tool a capability already lists", () => {
+      const { groups, extensionGroups } = groupTools(CAPS, TOOLS, "", [ext("tool", ["tool_pdf_merge"])]);
+
+      expect(names(groups[0]!.tools)).toEqual(["tool_pdf_merge", "tool_pdf_split"]);
+      expect(extensionGroups[0]!.tools).toEqual([]);
+    });
+
+    it("filters extensions like capabilities", () => {
+      expect(groupTools(CAPS, TOOLS, "echo", EXTS).extensionGroups.map((g) => g.extension.id)).toEqual(["ext"]);
+      expect(groupTools(CAPS, TOOLS, "DOWN", EXTS).extensionGroups.map((g) => g.extension.id)).toEqual(["down"]);
+      expect(groupTools(CAPS, TOOLS, "merge", EXTS).extensionGroups).toEqual([]);
+    });
   });
 
   it("treats a blank query as no filter", () => {

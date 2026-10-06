@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue";
 import { useRoute } from "vue-router";
 import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
+import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
 import CapabilitySection from "../components/CapabilitySection.vue";
@@ -9,9 +10,10 @@ import MarkdownContent from "../components/MarkdownContent.vue";
 import ToolCard from "../components/ToolCard.vue";
 import ToolRunModal from "../components/ToolRunModal.vue";
 import { useAuthStore } from "../stores/auth";
-import { groupTools } from "../utils/capabilityGroups";
+import { groupTools, inExtensionNamespace } from "../utils/capabilityGroups";
 import { errorMessage } from "../utils/errors";
 import { formatToolResult } from "../utils/toolResultFormat";
+import { safeWebUrl } from "../utils/webUrl";
 
 /** mcp_server's built-in capabilities, each with the tools it brings (run
  * them in place) and its resources to read; admins can switch a capability on
@@ -25,6 +27,7 @@ const server = new McpServerClient();
 const capabilities = ref<CapabilityInfo[]>([]);
 const tools = ref<ToolInfo[]>([]);
 const resources = ref<ResourceInfo[]>([]);
+const extensions = ref<ExtensionInfo[]>([]);
 const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
@@ -60,36 +63,62 @@ const readError = ref("");
 const reader = useTemplateRef<HTMLElement>("reader");
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
-const grouped = computed(() => groupTools(capabilities.value, tools.value, query.value));
+const grouped = computed(() => groupTools(capabilities.value, tools.value, query.value, extensions.value));
 const selectedTool = computed(() => tools.value.find((t) => t.name === openTool.value) ?? null);
 
-/** Resources no capability claims (from extensions). */
-const otherResources = computed(() => {
+/** Resources no capability claims. */
+const unclaimedResources = computed(() => {
   const claimed = new Set(capabilities.value.flatMap((c) => c.resources));
   return resources.value.filter((r) => !claimed.has(r.name) && !claimed.has(r.uri));
 });
+/** Those namespaced under an extension ("<id>__<name>") belong to it. */
+const extensionResources = computed(() => {
+  const owned = new Map<string, ResourceInfo[]>();
+  for (const e of extensions.value) {
+    owned.set(e.id, unclaimedResources.value.filter((r) => inExtensionNamespace(e.id, r.name)));
+  }
+  return owned;
+});
+const otherResources = computed(() => {
+  const owned = new Set([...extensionResources.value.values()].flat());
+  return unclaimedResources.value.filter((r) => !owned.has(r));
+});
 const showOther = computed(() => grouped.value.otherTools.length > 0 || (!filtering.value && otherResources.value.length > 0));
 const otherCapability: CapabilityInfo = { name: "extensions", label: "Other tools", enabled: true, tools: [], resources: [] };
+
+/** An extension drawn as a capability card; it has no on/off switch here. */
+function extensionCapability(extension: ExtensionInfo): CapabilityInfo {
+  return { name: extension.id, label: extension.label, enabled: true, tools: [], resources: [] };
+}
+const extensionKey = (id: string): string => `\0ext:${id}`;
+function resourcesOfExtension(extension: ExtensionInfo): ResourceInfo[] {
+  return filtering.value ? [] : (extensionResources.value.get(extension.id) ?? []);
+}
 
 function resourcesOf(capability: CapabilityInfo): ResourceInfo[] {
   const names = new Set(capability.resources);
   return resources.value.filter((r) => names.has(r.name) || names.has(r.uri));
 }
 
-const nothingShown = computed(() => grouped.value.groups.length === 0 && !showOther.value);
+const nothingShown = computed(
+  () => grouped.value.groups.length === 0 && grouped.value.extensionGroups.length === 0 && !showOther.value,
+);
 
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    const [caps, toolList, res] = await Promise.all([
+    const [caps, toolList, res, exts] = await Promise.all([
       commandsClient.capabilities(),
       server.listTools(),
       server.listResources().catch(() => [] as ResourceInfo[]),
+      // Only for grouping: without it the extension tools sit under "Other tools".
+      extensionsClient.list().catch(() => [] as ExtensionInfo[]),
     ]);
     capabilities.value = caps;
     tools.value = [...toolList].sort((a, b) => a.title.localeCompare(b.title));
     resources.value = res;
+    extensions.value = exts;
   } catch (err) {
     loadError.value = errorMessage(err);
   } finally {
@@ -217,6 +246,43 @@ onMounted(load);
               </li>
             </ul>
           </template>
+        </CapabilitySection>
+
+        <CapabilitySection
+          v-for="g in grouped.extensionGroups"
+          :key="g.extension.id"
+          :capability="extensionCapability(g.extension)"
+          :open="isOpen(extensionKey(g.extension.id))"
+          :tool-count="g.tools.length"
+          :resource-count="resourcesOfExtension(g.extension).length"
+          :is-admin="false"
+          :switching="false"
+          hide-state
+          @toggle="toggleSection(extensionKey(g.extension.id))"
+        >
+          <p v-if="g.extension.status === 'error'" class="error">
+            Not connected{{ g.extension.error ? `: ${g.extension.error}` : "" }}
+          </p>
+          <p v-else-if="g.tools.length === 0 && resourcesOfExtension(g.extension).length === 0" class="muted">
+            Nothing registered.
+          </p>
+          <a
+            v-if="safeWebUrl(g.extension.web_url)"
+            class="link"
+            :href="safeWebUrl(g.extension.web_url)!"
+            target="_blank"
+            rel="noopener noreferrer"
+          >Open app</a>
+          <ul v-if="g.tools.length" class="cards">
+            <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
+          </ul>
+          <ul v-if="resourcesOfExtension(g.extension).length" class="resources">
+            <li v-for="r in resourcesOfExtension(g.extension)" :key="r.uri">
+              <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
+              <code class="name">{{ r.uri }}</code>
+              <span v-if="r.description" class="muted">{{ r.description }}</span>
+            </li>
+          </ul>
         </CapabilitySection>
 
         <CapabilitySection

@@ -15,6 +15,12 @@ const mocks = vi.hoisted(() => ({
   listResources: vi.fn(),
   readResource: vi.fn(),
   runTool: vi.fn(),
+  extensions: vi.fn(),
+}));
+
+vi.mock("../api/ExtensionsClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/ExtensionsClient")>()),
+  extensionsClient: { list: mocks.extensions },
 }));
 
 vi.mock("../api/CommandsClient", () => ({
@@ -100,6 +106,7 @@ beforeEach(() => {
   mocks.capabilities.mockResolvedValue(CAPS);
   mocks.listTools.mockResolvedValue(TOOLS);
   mocks.listResources.mockResolvedValue(RESOURCES);
+  mocks.extensions.mockResolvedValue([]);
   mocks.runTool.mockResolvedValue({ text: "merged ok", isError: false });
   mocks.readResource.mockResolvedValue("# Help text");
   vi.stubGlobal("confirm", vi.fn(() => true));
@@ -143,6 +150,65 @@ describe("CapabilitiesView", () => {
     await head(w, "Other tools").trigger("click");
 
     expect(toolTitles(w)).toEqual(["Echo"]);
+  });
+
+  describe("extensions", () => {
+    const EXT = {
+      id: "ext",
+      label: "Echo server",
+      description: "",
+      status: "connected",
+      error: null,
+      tools: ["ext__echo"],
+      web_url: "https://echo.example/app",
+    };
+
+    it("gives each extension its own accordion instead of 'Other tools'", async () => {
+      mocks.extensions.mockResolvedValue([EXT]);
+      const w = await show();
+
+      expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "Echo server"]);
+      expect(head(w, "Echo server").text()).toContain("1 tool");
+
+      await head(w, "Echo server").trigger("click");
+      expect(toolTitles(w)).toEqual(["Echo"]);
+      expect(w.get("a[href='https://echo.example/app']").text()).toBe("Open app");
+    });
+
+    it("lists its resources, namespaced by its id, and keeps the rest under 'Other tools'", async () => {
+      mocks.extensions.mockResolvedValue([EXT]);
+      mocks.listResources.mockResolvedValue([
+        ...RESOURCES,
+        { uri: "x://notes", name: "ext__notes", description: "", template: false },
+        { uri: "x://stray", name: "stray", description: "", template: false },
+      ]);
+      const w = await show();
+
+      expect(head(w, "Echo server").text()).toContain("1 tool · 1 resource");
+      await head(w, "Echo server").trigger("click");
+      expect(w.findAll("button.link").map((b) => b.text())).toEqual(["ext__notes"]);
+
+      await head(w, "Other tools").trigger("click");
+      expect(w.findAll("button.link").map((b) => b.text())).toEqual(["ext__notes", "stray"]);
+    });
+
+    it("shows why an extension that is not connected has no tools", async () => {
+      mocks.extensions.mockResolvedValue([{ ...EXT, status: "error", error: "refused", tools: [], web_url: null }]);
+      mocks.listTools.mockResolvedValue(TOOLS.filter((t) => t.name !== "ext__echo"));
+      const w = await show();
+
+      await head(w, "Echo server").trigger("click");
+
+      expect(w.text()).toContain("Not connected: refused");
+      expect(w.find("a[target=_blank]").exists()).toBe(false);
+    });
+
+    it("still loads the page when the extensions list fails", async () => {
+      mocks.extensions.mockRejectedValue(new Error("403"));
+      const w = await show();
+
+      expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "Other tools"]);
+    });
   });
 
   it("explains a capability that is switched off", async () => {

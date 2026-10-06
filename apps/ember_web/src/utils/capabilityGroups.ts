@@ -1,4 +1,5 @@
 import type { CapabilityInfo } from "../api/CommandsClient";
+import { EXTENSION_SEPARATOR, type ExtensionInfo } from "../api/ExtensionsClient";
 import type { ToolInfo } from "../api/types";
 
 /** One capability and the tools of it that are shown. */
@@ -7,10 +8,31 @@ export interface CapabilityGroup {
   tools: ToolInfo[];
 }
 
+/** One extension and the tools of it that are shown. */
+export interface ExtensionGroup {
+  extension: ExtensionInfo;
+  tools: ToolInfo[];
+}
+
 export interface GroupedTools {
   groups: CapabilityGroup[];
-  /** Tools no capability lists (e.g. from an extension). */
+  /** Tools no capability lists that an extension brings. */
+  extensionGroups: ExtensionGroup[];
+  /** Tools neither a capability nor an extension lists. */
   otherTools: ToolInfo[];
+}
+
+/** Whether `name` is namespaced under extension `id` ("<id>__<name>"). */
+export function inExtensionNamespace(id: string, name: string): boolean {
+  return name.startsWith(`${id}${EXTENSION_SEPARATOR}`);
+}
+
+function ownedByExtension(extension: ExtensionInfo, tool: ToolInfo): boolean {
+  return extension.tools.includes(tool.name) || inExtensionNamespace(extension.id, tool.name);
+}
+
+function extensionMatches(extension: ExtensionInfo, q: string): boolean {
+  return extension.id.toLowerCase().includes(q) || extension.label.toLowerCase().includes(q);
 }
 
 function toolMatches(tool: ToolInfo, q: string): boolean {
@@ -26,8 +48,14 @@ function capabilityMatches(capability: CapabilityInfo, q: string): boolean {
 /** Sorts `tools` under the capability that lists them, narrowed by `query`
  * (blank = everything). A capability whose own name or label matches keeps all
  * its tools; otherwise it stays only with the tools that match, and a group
- * left with none is dropped. */
-export function groupTools(capabilities: CapabilityInfo[], tools: ToolInfo[], query: string): GroupedTools {
+ * left with none is dropped. Tools no capability lists then go under the
+ * extension that brings them, by the same rules; the rest are `otherTools`. */
+export function groupTools(
+  capabilities: CapabilityInfo[],
+  tools: ToolInfo[],
+  query: string,
+  extensions: ExtensionInfo[] = [],
+): GroupedTools {
   const q = query.trim().toLowerCase();
   const byName = new Map(tools.map((t) => [t.name, t]));
   const claimed = new Set(capabilities.flatMap((c) => c.tools));
@@ -44,6 +72,18 @@ export function groupTools(capabilities: CapabilityInfo[], tools: ToolInfo[], qu
       if (matching.length) groups.push({ capability, tools: matching });
     }
   }
-  const others = tools.filter((t) => !claimed.has(t.name));
-  return { groups, otherTools: q ? others.filter((t) => toolMatches(t, q)) : others };
+  let others = tools.filter((t) => !claimed.has(t.name));
+
+  const extensionGroups: ExtensionGroup[] = [];
+  for (const extension of extensions) {
+    const own = others.filter((t) => ownedByExtension(extension, t));
+    if (!q || extensionMatches(extension, q)) {
+      extensionGroups.push({ extension, tools: own });
+    } else {
+      const matching = own.filter((t) => toolMatches(t, q));
+      if (matching.length) extensionGroups.push({ extension, tools: matching });
+    }
+    others = others.filter((t) => !own.includes(t));
+  }
+  return { groups, extensionGroups, otherTools: q ? others.filter((t) => toolMatches(t, q)) : others };
 }
