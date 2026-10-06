@@ -28,7 +28,7 @@ function warnUnknown(where: string, obj: Obj, known: string[]): void {
 
 function text(obj: Obj, key: string, where: string, required = true): string | undefined {
   const value = obj[key];
-  if (value === undefined && !required) return undefined;
+  if (value == null && !required) return undefined;
   if (typeof value !== "string" || value === "") throw new GuiPageError(`${where}: '${key}' must be a non-empty string`);
   return value;
 }

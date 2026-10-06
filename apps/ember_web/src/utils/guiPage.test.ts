@@ -13,6 +13,86 @@ const RAW = {
   ],
 };
 
+// The generator page in the shape mcp_server's model_dump() produces before
+// null-stripping: every unset optional is present as null.
+const SERVED_WITH_NULLS = {
+  "version": 1,
+  "title": "Generator",
+  "description": "Random passwords, passphrases, PINs and TOTP codes. Nothing is stored; a value is shown once.",
+  "sections": [
+    {
+      "id": "password",
+      "title": "Password",
+      "tool": "tool_gen_generatePassword",
+      "submit": "Generate",
+      "fields": [],
+      "result": {
+        "kind": "secret",
+        "field": "password",
+        "detail": "message",
+        "refresh_after": null
+      }
+    },
+    {
+      "id": "passphrase",
+      "title": "Passphrase",
+      "tool": "tool_gen_generatePassphrase",
+      "submit": "Generate",
+      "fields": [],
+      "result": {
+        "kind": "secret",
+        "field": "passphrase",
+        "detail": "message",
+        "refresh_after": null
+      }
+    },
+    {
+      "id": "pin",
+      "title": "PIN or one-time code",
+      "tool": "tool_gen_generatePin",
+      "submit": "Generate",
+      "fields": [],
+      "result": {
+        "kind": "secret",
+        "field": "pin",
+        "detail": "message",
+        "refresh_after": null
+      }
+    },
+    {
+      "id": "totp-secret",
+      "title": "New TOTP secret",
+      "tool": "tool_gen_generateTotpSecret",
+      "submit": "Generate",
+      "fields": [],
+      "result": {
+        "kind": "secret",
+        "field": "secret",
+        "detail": "message",
+        "refresh_after": null
+      }
+    },
+    {
+      "id": "totp",
+      "title": "Current TOTP code",
+      "tool": "tool_gen_getTotpCode",
+      "submit": "Show code",
+      "fields": [],
+      "result": {
+        "kind": "secret",
+        "field": "code",
+        "detail": "message",
+        "refresh_after": "seconds_remaining"
+      }
+    },
+    {
+      "id": "note",
+      "title": null,
+      "text": "Nothing is stored."
+    }
+  ]
+};
+
 describe("parseGuiPage", () => {
   it("accepts a valid page and tags section types", () => {
     const page = parseGuiPage(RAW, ["tool_a"]);
@@ -42,8 +122,27 @@ describe("parseGuiPage", () => {
     ["bad result kind", { ...RAW, sections: [{ id: "a", title: "A", tool: "tool_a", result: { kind: "bogus" } }] }],
     ["secret without field", { ...RAW, sections: [{ id: "a", title: "A", tool: "tool_a", result: { kind: "secret" } }] }],
     ["duplicate ids", { ...RAW, sections: [{ id: "a", title: "A", tool: "tool_a" }, { id: "a", text: "x" }] }],
+    ["bad section id", { ...RAW, sections: [{ id: "bad id", title: "A", tool: "tool_a" }] }],
+    ["empty page title", { ...RAW, title: "" }],
+    ["empty form title", { ...RAW, sections: [{ id: "a", title: "", tool: "tool_a" }] }],
+    ["empty text", { ...RAW, sections: [{ id: "a", text: "" }] }],
+    ...(["field", "detail", "refresh_after"] as const).flatMap((key) =>
+      ["a-b", "code\n"].map((bad): [string, unknown] => [
+        `${key} '${JSON.stringify(bad).slice(1, -1)}'`,
+        { ...RAW, sections: [{ id: "a", title: "A", tool: "tool_a", result: { kind: "secret", field: "x", [key]: bad } }] },
+      ]),
+    ),
   ])("rejects %s", (_name, raw) => {
     expect(() => parseGuiPage(raw, ["tool_a"])).toThrow(GuiPageError);
+  });
+
+  it("accepts the page as mcp_server's model_dump writes it, nulls included", () => {
+    const tools = SERVED_WITH_NULLS.sections.flatMap((s) => ("tool" in s && typeof s.tool === "string" ? [s.tool] : []));
+    const page = parseGuiPage(SERVED_WITH_NULLS, tools);
+    expect(page.sections).toHaveLength(6);
+    expect(page.sections[4]).toMatchObject({ type: "form", result: { kind: "secret", field: "code", refresh_after: "seconds_remaining" } });
+    expect(page.sections[0]).toMatchObject({ result: { refresh_after: undefined } });
+    expect(page.sections[5]).toMatchObject({ type: "text", title: undefined });
   });
 
   it("treats a section with text as prose and ignores a stray tool", () => {
