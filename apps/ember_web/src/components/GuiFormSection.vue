@@ -36,6 +36,9 @@ let lastArgs: Record<string, unknown> = {};
 let ran = false;
 let runId = 0;
 let disposed = false;
+// False while hidden inside <KeepAlive>; a result then is kept but starts no countdown.
+let active = true;
+let activatedBefore = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
 
 function clearDebounce(): void {
@@ -64,7 +67,7 @@ async function run(args: Record<string, unknown>): Promise<void> {
     result.value = res;
     const after = props.section.result.refresh_after;
     const seconds = after && !res.isError ? resultValue(res, after) : undefined;
-    if (typeof seconds === "number" && seconds > 0) {
+    if (active && typeof seconds === "number" && seconds > 0) {
       countdownTotal.value = seconds;
       countdown.start(seconds);
     }
@@ -95,10 +98,17 @@ function again(): void {
 
 // Inside <KeepAlive> (tabs): a hidden form must not keep calling the tool.
 onDeactivated(() => {
+  active = false;
   countdown.stop();
   clearDebounce();
 });
 onActivated(() => {
+  active = true;
+  // The first activation is the mount itself: the form has already run once.
+  if (!activatedBefore) {
+    activatedBefore = true;
+    return;
+  }
   if (ran && props.section.result.refresh_after) void run(lastArgs);
 });
 </script>

@@ -169,7 +169,7 @@ describe("GuiFormSection live", () => {
     expect(w.find("[data-test=again]").exists()).toBe(false);
   });
 
-  it("drops the title and description when embedded, and shows the result before the form", async () => {
+  it("drops the title and description and adds the embedded class when embedded", async () => {
     const runTool = vi.fn().mockResolvedValue(ok({ code: "abc" }));
     const w = mount(GuiFormSection, { props: { section: LIVE, tool: { ...LIVE_TOOL, description: "Makes a thing." }, runTool, embedded: true } });
     await flushPromises();
@@ -210,5 +210,132 @@ describe("GuiFormSection inside KeepAlive", () => {
     await w.setProps({ on: true });
     await flushPromises();
     expect(runTool).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("GuiFormSection lifecycle", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] }));
+  afterEach(() => vi.useRealTimers());
+
+  const REFRESH = { type: "secret", field: "code", refresh_after: "seconds_remaining" } as GuiFormSectionSpec["result"];
+  const REFRESHING = { ...SECTION, result: REFRESH } as GuiFormSectionSpec;
+  const LIVE_REFRESHING = { ...LIVE, result: REFRESH } as GuiFormSectionSpec;
+
+  function host(section: GuiFormSectionSpec, tool: ToolInfo, runTool: ReturnType<typeof vi.fn>) {
+    return mount(
+      defineComponent({
+        props: { on: { type: Boolean, default: true } },
+        setup: (props) => () =>
+          h(KeepAlive, null, { default: () => (props.on ? h(GuiFormSection, { section, tool, runTool }) : null) }),
+      }),
+    );
+  }
+  function deferred() {
+    let resolve!: (v: ToolRunResult) => void;
+    const promise = new Promise<ToolRunResult>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it("a run that resolves while hidden is stored but starts no countdown", async () => {
+    const late = deferred();
+    const runTool = vi.fn().mockResolvedValueOnce(ok({ code: "1", seconds_remaining: 5 })).mockReturnValueOnce(late.promise);
+    const w = host(REFRESHING, TOOL, runTool);
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+
+    await w.setProps({ on: false });
+    late.resolve(ok({ code: "2", seconds_remaining: 5 }));
+    await flushPromises();
+    vi.advanceTimersByTime(20_000);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+
+    await w.setProps({ on: true });
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(3);
+  });
+
+  it("a live section with refresh_after runs exactly once on first open", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1", seconds_remaining: 30 }));
+    host(LIVE_REFRESHING, LIVE_TOOL, runTool);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("a live section without refresh_after does not run again when re-activated", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1" }));
+    const w = host(LIVE, LIVE_TOOL, runTool);
+    await flushPromises();
+    await w.setProps({ on: false });
+    await w.setProps({ on: true });
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pending debounce is cleared on deactivate", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1" }));
+    const w = host(LIVE, LIVE_TOOL, runTool);
+    await flushPromises();
+    await w.get("input[type=range]").setValue("40");
+    await w.get("input[type=range]").trigger("change");
+    vi.advanceTimersByTime(100);
+    await w.setProps({ on: false });
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("unmounting during a pending debounce does not run", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1" }));
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    await w.get("input[type=range]").setValue("40");
+    await w.get("input[type=range]").trigger("change");
+    w.unmount();
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("unmounting during an in-flight run starts no countdown", async () => {
+    const pending = deferred();
+    const runTool = vi.fn().mockReturnValue(pending.promise);
+    const w = mount(GuiFormSection, { props: { section: LIVE_REFRESHING, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    w.unmount();
+    pending.resolve(ok({ code: "1", seconds_remaining: 5 }));
+    await flushPromises();
+    vi.advanceTimersByTime(20_000);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("a live change during a run drops the older result and shows the newest", async () => {
+    const first = deferred();
+    const second = deferred();
+    const runTool = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    await w.get("input[type=range]").setValue("40");
+    await w.get("input[type=range]").trigger("change");
+    vi.advanceTimersByTime(300);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+    second.resolve(ok({ code: "new" }));
+    await flushPromises();
+    first.resolve(ok({ code: "old" }));
+    await flushPromises();
+    expect(w.get("[data-test=secret]").text()).toBe("new");
+  });
+
+  it("a live run that rejects shows the error and starts no countdown", async () => {
+    const runTool = vi.fn().mockRejectedValue(new Error("mcp_server is unreachable"));
+    const w = mount(GuiFormSection, { props: { section: LIVE_REFRESHING, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    expect(w.text()).toContain("mcp_server is unreachable");
+    expect(w.find(".refresh").exists()).toBe(false);
   });
 });
