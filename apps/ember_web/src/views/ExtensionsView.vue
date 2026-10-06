@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from "vue";
 import { extensionsClient, EXTENSION_SEPARATOR, type ExtensionInfo } from "../api/ExtensionsClient";
 import AddExtensionModal from "../components/AddExtensionModal.vue";
 import BaseModal from "../components/BaseModal.vue";
+import DeleteButton from "../components/DeleteButton.vue";
 import "../components/infoPage.css";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useAuthStore } from "../stores/auth";
@@ -128,9 +129,7 @@ onMounted(load);
               :checked="enabled.has(e.id)"
               @change="chat.setExtensionEnabled(e.id, ($event.target as HTMLInputElement).checked)"
             />
-            <button v-if="isAdmin" type="button" class="danger" :disabled="removing === e.id" @click="remove(e)">
-              Remove
-            </button>
+            <DeleteButton v-if="isAdmin" label="Remove" :busy="removing === e.id" @click="remove(e)" />
           </footer>
         </article>
       </div>
