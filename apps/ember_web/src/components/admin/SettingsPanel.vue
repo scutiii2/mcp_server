@@ -83,7 +83,7 @@ onMounted(load);
         <span class="msg">
           You have an unsaved change. Turning it {{ draft ? "on" : "off" }} applies to every account.
         </span>
-        <button type="button" :disabled="saving" @click="cancel">Cancel</button>
+        <button type="button" class="small" :disabled="saving" @click="cancel">Cancel</button>
         <button type="button" class="primary" :disabled="saving" @click="save">Save</button>
       </div>
       <p v-if="saveError" class="error">{{ saveError }}</p>
