@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BaseModal from "../BaseModal.vue";
+import DeleteButton from "../DeleteButton.vue";
 
 /** Asks the user to confirm an action, in place of the browser's confirm().
  * The parent keeps `open`, runs the action on `confirm` and closes on `close`
@@ -17,7 +18,8 @@ const emit = defineEmits<{ confirm: []; close: [] }>();
     <p class="message">{{ message }}</p>
     <div class="actions">
       <button type="button" class="cancel" :disabled="busy" @click="emit('close')">Cancel</button>
-      <button type="button" :class="['confirm', { danger }]" :disabled="busy" @click="emit('confirm')">
+      <DeleteButton v-if="danger" :label="confirmLabel" :busy="busy" @click="emit('confirm')" />
+      <button v-else type="button" class="confirm" :disabled="busy" @click="emit('confirm')">
         {{ confirmLabel }}
       </button>
     </div>
@@ -54,10 +56,5 @@ button:disabled {
   font-weight: 600;
   color: var(--accent-contrast);
   background: var(--accent);
-}
-.confirm.danger {
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  background: transparent;
 }
 </style>

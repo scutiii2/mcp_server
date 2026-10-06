@@ -4,6 +4,7 @@ import { FOLDER_NAME_MAX, type ChatFolder } from "../api/FoldersClient";
 import { useFoldersStore } from "../stores/folders";
 import { errorMessage } from "../utils/errors";
 import BaseModal from "./BaseModal.vue";
+import DeleteButton from "./DeleteButton.vue";
 
 // The folder dialogs of the chat page (new, rename, delete), driven from the
 // outside through the exposed open* methods. One dialog at a time. Every
@@ -142,7 +143,7 @@ async function confirmDelete(): Promise<void> {
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <div class="buttons">
         <button ref="cancelButton" type="button" class="ghost" @click="requestClose">Cancel</button>
-        <button type="button" class="danger" :disabled="busy" @click="confirmDelete">{{ busy ? "Deleting …" : "Delete" }}</button>
+        <DeleteButton :busy="busy" @click="confirmDelete" />
       </div>
     </div>
   </BaseModal>
@@ -203,10 +204,6 @@ button:disabled {
   border-color: var(--accent);
   color: var(--accent-contrast);
   background: var(--accent);
-}
-.danger {
-  border-color: var(--danger);
-  color: var(--danger);
 }
 .ghost {
   background: transparent;
