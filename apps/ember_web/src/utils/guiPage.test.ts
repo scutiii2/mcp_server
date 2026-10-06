@@ -46,6 +46,14 @@ describe("parseGuiPage", () => {
     expect(() => parseGuiPage(raw, ["tool_a"])).toThrow(GuiPageError);
   });
 
+  it("treats a section with text as prose and ignores a stray tool", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const page = parseGuiPage({ version: 1, title: "T", sections: [{ id: "n", text: "hi", tool: "tool_zzz" }] }, ["tool_a"]);
+    expect(page.sections[0]).toMatchObject({ type: "text", text: "hi" });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("rejects a tool the capability does not own", () => {
     expect(() => parseGuiPage(RAW, ["tool_b"])).toThrow(/tool_a/);
   });

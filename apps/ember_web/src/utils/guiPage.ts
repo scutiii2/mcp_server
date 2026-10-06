@@ -77,7 +77,8 @@ function parseSection(raw: unknown, index: number): GuiFormSectionSpec | GuiText
   if (!isObj(raw)) throw new GuiPageError(`${where} must be an object`);
   const id = text(raw, "id", where)!;
   if (!SECTION_ID.test(id)) throw new GuiPageError(`${where}: bad id '${id}'`);
-  if ("text" in raw && !("tool" in raw)) {
+  // Any section with a `text` key is prose (as mcp_server reads it), even if it also names a tool.
+  if ("text" in raw) {
     warnUnknown(where, raw, ["id", "title", "text"]);
     return { type: "text", id, title: text(raw, "title", where, false), text: text(raw, "text", where)! };
   }
