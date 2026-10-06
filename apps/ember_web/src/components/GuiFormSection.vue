@@ -40,6 +40,8 @@ let disposed = false;
 let active = true;
 let activatedBefore = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
+// A debounced live change was waiting when the section was hidden.
+let pendingOnHide = false;
 
 function clearDebounce(): void {
   if (debounce !== null) clearTimeout(debounce);
@@ -100,6 +102,7 @@ function again(): void {
 onDeactivated(() => {
   active = false;
   countdown.stop();
+  pendingOnHide = debounce !== null;
   clearDebounce();
 });
 onActivated(() => {
@@ -109,7 +112,11 @@ onActivated(() => {
     activatedBefore = true;
     return;
   }
-  if (ran && props.section.result.refresh_after) void run(lastArgs);
+  // A change that was waiting when the tab was hidden runs now (once, which
+  // also covers the refresh_after re-run).
+  const hadPending = pendingOnHide;
+  pendingOnHide = false;
+  if (ran && (hadPending || props.section.result.refresh_after)) void run(lastArgs);
 });
 </script>
 
@@ -119,7 +126,7 @@ onActivated(() => {
     <p v-if="tool.description && !embedded" class="muted">{{ tool.description }}</p>
     <ToolRunForm :schema="schema" :running="running" :submit-label="section.submit" :live="live" @run="onFormRun" />
     <p v-if="error" class="error">{{ error }}</p>
-    <GuiResult v-if="result" class="result" :spec="section.result" :result="result" :can-regenerate="live" @again="again" />
+    <GuiResult v-if="result" class="result" :spec="section.result" :result="result" :can-regenerate="live" :running="running" @again="again" />
     <div v-if="countdown.running.value" class="refresh">
       <CountdownRing :remaining="countdown.remaining.value" :total="countdownTotal" />
       <span class="muted">New code in {{ countdown.remaining.value }} s</span>
@@ -144,8 +151,9 @@ onActivated(() => {
   background: none;
   gap: 14px;
 }
-/* Embedded: the result (and its refresh ring) lead, the controls follow. */
+/* Embedded: the result or error (and the refresh ring) lead, the controls follow. */
 .embedded .result,
+.embedded .error,
 .embedded .refresh {
   order: -1;
 }

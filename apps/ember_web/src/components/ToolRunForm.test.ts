@@ -54,12 +54,28 @@ describe("ToolRunForm live mode", () => {
     expect(w.emitted("run")).toEqual([[{ secret: "abc" }]]);
   });
 
-  it("hides the Run button and shows the slider's value", () => {
+  it("hides the Run button when live and shows the slider's value either way", () => {
     const live = mountForm({ live: true });
     expect(live.find("button.run").exists()).toBe(false);
     expect(live.get("output").text()).toBe("20");
     expect(mountForm().find("button.run").exists()).toBe(true);
-    expect(mountForm().find("output").exists()).toBe(false);
+    // A form that is not live shows the value too, and keeps its Run button.
+    const plain = mountForm();
+    expect(plain.get("output").text()).toBe("20");
+    expect(plain.find("button.run").exists()).toBe(true);
+  });
+
+  it("a number range field without a step takes any value, an integer one whole steps", () => {
+    const schema: JsonSchema = {
+      type: "object",
+      properties: {
+        ratio: { type: "number", minimum: 0, maximum: 1, default: 0.5, input: "range" },
+        count: { type: "integer", minimum: 1, maximum: 9, default: 3, input: "range" },
+      },
+    };
+    const w = mountForm({ schema });
+    expect(w.get("#field-ratio").attributes("step")).toBe("any");
+    expect(w.get("#field-count").attributes("step")).toBe("1");
   });
 
   it("a normal form ignores change events", async () => {

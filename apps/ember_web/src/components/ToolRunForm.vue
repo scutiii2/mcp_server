@@ -247,11 +247,11 @@ function inputType(field: ToolField): string {
             :id="`field-${f.name}`"
             v-model="values[f.name] as string"
             type="range"
-            :step="f.step ?? 1"
+            :step="f.step ?? (f.kind === 'integer' ? 1 : 'any')"
             :min="f.min"
             :max="f.max"
           />
-          <output v-if="live" class="readout" :for="`field-${f.name}`">{{ values[f.name] }}</output>
+          <output class="readout" :for="`field-${f.name}`">{{ values[f.name] }}</output>
         </div>
         <input
           v-else

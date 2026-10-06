@@ -119,6 +119,11 @@ const LIVE_TOOL: ToolInfo = {
   inputSchema: { type: "object", properties: { length: { type: "integer", minimum: 8, maximum: 128, default: 20, input: "range" } } },
 };
 const LIVE: GuiFormSectionSpec = { ...SECTION, live: true };
+function deferred() {
+  let resolve!: (v: ToolRunResult) => void;
+  const promise = new Promise<ToolRunResult>((r) => (resolve = r));
+  return { promise, resolve };
+}
 
 describe("GuiFormSection live", () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] }));
@@ -159,6 +164,29 @@ describe("GuiFormSection live", () => {
     await flushPromises();
     expect(runTool).toHaveBeenCalledTimes(2);
     expect(runTool).toHaveBeenLastCalledWith("tool_a", { length: 20 });
+  });
+
+  it("Generate again is disabled while a run is pending and enabled when it resolves", async () => {
+    const pending = deferred();
+    const runTool = vi.fn().mockReturnValueOnce(Promise.resolve(ok({ code: "abc" }))).mockReturnValueOnce(pending.promise);
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: LIVE_TOOL, runTool } });
+    await flushPromises();
+    expect(w.get("[data-test=again]").attributes("disabled")).toBeUndefined();
+    await w.get("[data-test=again]").trigger("click");
+    expect(w.get("[data-test=again]").attributes("disabled")).toBeDefined();
+    await w.get("[data-test=again]").trigger("click");
+    expect(runTool).toHaveBeenCalledTimes(2);
+    pending.resolve(ok({ code: "def" }));
+    await flushPromises();
+    expect(w.get("[data-test=again]").attributes("disabled")).toBeUndefined();
+  });
+
+  it("an embedded section shows a failed run's error in the embedded layout", async () => {
+    const runTool = vi.fn().mockRejectedValue(new Error("mcp_server is unreachable"));
+    const w = mount(GuiFormSection, { props: { section: LIVE, tool: LIVE_TOOL, runTool, embedded: true } });
+    await flushPromises();
+    expect(w.classes()).toContain("embedded");
+    expect(w.get("p.error").text()).toContain("mcp_server is unreachable");
   });
 
   it("a form that is not live has no Generate again button", async () => {
@@ -217,7 +245,7 @@ describe("GuiFormSection lifecycle", () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] }));
   afterEach(() => vi.useRealTimers());
 
-  const REFRESH = { type: "secret", field: "code", refresh_after: "seconds_remaining" } as GuiFormSectionSpec["result"];
+  const REFRESH: GuiFormSectionSpec["result"] = { kind: "secret", field: "code", refresh_after: "seconds_remaining" };
   const REFRESHING = { ...SECTION, result: REFRESH } as GuiFormSectionSpec;
   const LIVE_REFRESHING = { ...LIVE, result: REFRESH } as GuiFormSectionSpec;
 
@@ -229,11 +257,6 @@ describe("GuiFormSection lifecycle", () => {
           h(KeepAlive, null, { default: () => (props.on ? h(GuiFormSection, { section, tool, runTool }) : null) }),
       }),
     );
-  }
-  function deferred() {
-    let resolve!: (v: ToolRunResult) => void;
-    const promise = new Promise<ToolRunResult>((r) => (resolve = r));
-    return { promise, resolve };
   }
 
   it("a run that resolves while hidden is stored but starts no countdown", async () => {
@@ -286,6 +309,38 @@ describe("GuiFormSection lifecycle", () => {
     vi.advanceTimersByTime(1000);
     await flushPromises();
     expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("a change pending at deactivate runs once on re-activation with the new args", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1" }));
+    const w = host(LIVE, LIVE_TOOL, runTool);
+    await flushPromises();
+    await w.get("input[type=range]").setValue("40");
+    await w.get("input[type=range]").trigger("change");
+    vi.advanceTimersByTime(100);
+    await w.setProps({ on: false });
+    vi.advanceTimersByTime(1000);
+    await w.setProps({ on: true });
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+    expect(runTool).toHaveBeenLastCalledWith("tool_a", { length: 40 });
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("with refresh_after a pending change still gives exactly one run on re-activation", async () => {
+    const runTool = vi.fn().mockResolvedValue(ok({ code: "1", seconds_remaining: 30 }));
+    const w = host(LIVE_REFRESHING, LIVE_TOOL, runTool);
+    await flushPromises();
+    await w.get("input[type=range]").setValue("40");
+    await w.get("input[type=range]").trigger("change");
+    vi.advanceTimersByTime(100);
+    await w.setProps({ on: false });
+    await w.setProps({ on: true });
+    await flushPromises();
+    expect(runTool).toHaveBeenCalledTimes(2);
+    expect(runTool).toHaveBeenLastCalledWith("tool_a", { length: 40 });
   });
 
   it("unmounting during a pending debounce does not run", async () => {

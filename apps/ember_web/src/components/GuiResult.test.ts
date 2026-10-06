@@ -95,4 +95,11 @@ describe("GuiResult", () => {
     await w.get("[data-test=again]").trigger("click");
     expect(w.emitted("again")).toHaveLength(1);
   });
+
+  it("secret: Generate again is disabled while running and emits nothing", async () => {
+    const w = mount(GuiResult, { props: { spec: { kind: "secret", field: "p" }, result: result({ p: "x" }), canRegenerate: true, running: true } });
+    expect(w.get("[data-test=again]").attributes("disabled")).toBeDefined();
+    await w.get("[data-test=again]").trigger("click");
+    expect(w.emitted("again")).toBeUndefined();
+  });
 });

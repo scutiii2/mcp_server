@@ -7,7 +7,7 @@ import { groupText, segmentsOf, strengthOf } from "../utils/secretDisplay";
 
 /** One tool result drawn the way its page asked: a copyable secret, a message,
  * a table or a label/value list. Values stay in this component's memory. */
-const props = defineProps<{ spec: GuiResultSpec; result: ToolRunResult; canRegenerate?: boolean }>();
+const props = defineProps<{ spec: GuiResultSpec; result: ToolRunResult; canRegenerate?: boolean; running?: boolean }>();
 const emit = defineEmits<{ again: [] }>();
 
 const value = computed(() => (props.spec.field ? resultValue(props.result, props.spec.field) : undefined));
@@ -68,7 +68,7 @@ const scalars = computed(() =>
               <path v-if="!revealed" d="M4 4l16 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
             </svg>
           </button>
-          <button v-if="canRegenerate" type="button" class="icon" data-test="again" aria-label="Generate again" title="Generate again" @click="emit('again')">
+          <button v-if="canRegenerate" type="button" class="icon" data-test="again" aria-label="Generate again" title="Generate again" :disabled="running" @click="emit('again')">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
@@ -108,6 +108,7 @@ const scalars = computed(() =>
 .symbol { color: var(--success); }
 .icon, .copy { display: inline-flex; align-items: center; justify-content: center; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
 .icon { width: 34px; padding: 0; }
+.icon:disabled { cursor: default; opacity: 0.5; }
 .copy { padding: 0 14px; font-weight: 600; }
 .bar { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; }
 .fill { height: 100%; border-radius: 3px; transition: width 0.25s, background-color 0.25s; }
