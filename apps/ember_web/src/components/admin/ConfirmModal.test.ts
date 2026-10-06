@@ -69,6 +69,12 @@ describe("ConfirmModal", () => {
     expect((wrapper.get(".require input").element as HTMLInputElement).value).toBe("");
   });
 
+  it("autofocuses the text field so typing starts at once", () => {
+    const wrapper = mount(ConfirmModal, { props: { ...props, requireText: "maria" } });
+
+    expect(wrapper.get(".require input").attributes("autofocus")).toBeDefined();
+  });
+
   it("shows no text field without requireText", () => {
     expect(mount(ConfirmModal, { props }).find(".require").exists()).toBe(false);
   });

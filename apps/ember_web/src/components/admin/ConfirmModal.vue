@@ -44,7 +44,16 @@ function confirm(): void {
       <span>
         Type <code>{{ requireText }}</code> to confirm
       </span>
-      <input v-model="typed" type="text" autocomplete="off" spellcheck="false" :disabled="busy" @keydown.enter.prevent="confirm" />
+      <!-- autofocus: showModal() focuses it, so typing starts at once. -->
+      <input
+        v-model="typed"
+        type="text"
+        autofocus
+        autocomplete="off"
+        spellcheck="false"
+        :disabled="busy"
+        @keydown.enter.prevent="confirm"
+      />
       <span class="count" aria-hidden="true">{{ typed.length }}/{{ requireText.length }}</span>
     </label>
     <div class="actions">
