@@ -6,7 +6,7 @@ from __future__ import annotations
 
 _RAW = """
 able acid acorn actor adapt adult agent agree ahead alarm album alert alien alley allow alloy alone alpha
-alter amber ample angel anger angle ankle apple april apron arena argue arise armor array arrow aside asset
+alter amber ample angel anger angle ankle apple apron arena argue arise armor array arrow aside asset
 atlas atom attic audio avoid awake award aware bacon badge bagel baker balsa banjo barn basil basin batch
 beach beard beast begin bench berry bike bingo birch bison blade blank blast blaze blend bless blink bliss
 block bloom blues blunt board boast boat bonus boost booth bored bound brain brake brand brave bread break
@@ -20,7 +20,7 @@ daily daisy dance dandy dash dawn deal debut decay deck decor deep delta demo de
 diary diesel diner dingo dish ditch dive dizzy dock dodge doll donor donut dove dozen draft drain drama drape
 dream dress drift drill drink drive drone drum dry duck dusk dust duty eager eagle early earth ease easel
 echo edge eight elbow elder elite elm ember emerge empty enjoy enter entry envoy equal erase error essay
-event every exact exam exit extra fable face fact fade fairy faith false fame fancy fargo farm fast fault
+event every exact exam exit extra fable face fact fade fairy faith false fame fancy farm fast fault
 feast fence fern ferry fetch fever fiber field fiery fifth fifty fight film final finch find fire firm first
 fish fist fixed fizz flag flair flame flap flash flask fleet flesh flint float flock flood floor flour flow
 fluid flute foam focus fog foil folk food forge fork form fort forum fossil found fox frame frank fresh
@@ -33,7 +33,7 @@ hare harp haste hatch haven hawk hazel heart heat heavy hedge heel hello helm he
 hill hinge hint hippo hobby hockey hold holly home honey honor hood hoof hook hope horn horse host hotel
 hound hour house hover howl hub huge human humor hunt hurry hush hut hymn icon idea igloo image inch index
 inlet inner input iron isle issue ivory ivy jacket jade jaguar jam jar jazz jeans jelly jewel jig jingle
-job join joke jolly joy judge juice jumbo jump june jungle junior junk jury kayak keen keep kettle key kick
+job join joke jolly joy judge juice jumbo jump jungle junior junk jury kayak keen keep kettle key kick
 kid kind king kiosk kite kitten kiwi knee knife knit knob knock knot koala label lace ladder lady lake lamb
 lamp land lane lapel large laser lasso latch laugh lava lawn layer lazy leaf learn lease least leave ledge
 left lemon lend lens lentil level lever light lilac lily limb lime limit linen link lion lip list liter
@@ -55,7 +55,7 @@ pupil puppy purple purse puzzle quail quake quartz queen query quest quick quiet
 quota rabbit raccoon race radar radio raft rail rain raise rally ranch range rapid raven razor reach react
 ready realm rebel recipe reef relax relay remix renew reply rescue rest rhino rhyme rib rice rich ride ridge
 rifle right rigid ring rinse ripe rise risk ritual river road roast robin robot rock rocket rogue roll
-roman roof rook room root rope rose rough round route rover royal ruby rug ruin rule rumor run rural rush
+roof rook room root rope rose rough round route rover royal ruby rug ruin rule rumor run rural rush
 rust sable sack sadly safe sage sail salad salmon salon salt sand sandy satin sauce sauna savor scale scarf
 scene scent school scone scoop scout scrap screen script sea seal seat second seed seesaw sense serve set
 seven shade shadow shaft shake shape share shark sharp shawl sheep sheet shelf shell shine ship shirt shock
