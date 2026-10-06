@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { ChatSearchHit, MatchSpan } from "../api/ChatsClient";
 import { MAX_FOLDERS, type ChatFolder } from "../api/FoldersClient";
 import type { Conversation } from "../api/types";
 import { chatMenuItems, folderMenuItems, parseChatChoice } from "../utils/chatMenu";
+import { dropOps, type DropTarget } from "../utils/chatDrop";
 import { buildLayout } from "../utils/chatSections";
 import ChatRow from "./ChatRow.vue";
 import ChatSection from "./ChatSection.vue";
@@ -83,7 +84,73 @@ function finishRename(id: string, save: boolean, title: string): void {
   if (save) emit("rename", id, title);
 }
 
-const layout = computed(() => buildLayout(props.conversations, props.folders));
+// The chat being dragged. Set one tick after dragstart: Chrome cancels a drag
+// whose source DOM changes inside the dragstart handler, and showing the drop
+// zones changes the DOM.
+const draggingId = ref<string | null>(null);
+const dragging = computed(() => props.conversations.find((c) => c.id === draggingId.value) ?? null);
+let dragTimer: ReturnType<typeof setTimeout> | undefined;
+
+const layout = computed(() => buildLayout(props.conversations, props.folders, draggingId.value !== null));
+
+type SectionRef = { kind: "pinned" | "folder" | "unfiled"; folder: ChatFolder | null };
+
+function touchOnly(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(hover: none)").matches;
+}
+
+/** A row may be dragged unless something else owns it right now. */
+function canDrag(c: Conversation): boolean {
+  return !selecting.value && renamingId.value !== c.id && !answering(c) && !touchOnly();
+}
+
+function startDrag(c: Conversation): void {
+  menu.value = null;
+  clearTimeout(dragTimer);
+  dragTimer = setTimeout(() => {
+    draggingId.value = c.id;
+  }, 0);
+}
+
+function endDrag(): void {
+  clearTimeout(dragTimer);
+  draggingId.value = null;
+}
+
+// An Esc-cancelled drag, or a row that unmounted mid-drag, may never deliver dragend to the sidebar.
+onMounted(() => window.addEventListener("dragend", endDrag));
+onBeforeUnmount(() => {
+  window.removeEventListener("dragend", endDrag);
+  clearTimeout(dragTimer);
+});
+
+function targetOf(section: SectionRef): DropTarget | null {
+  if (section.kind === "pinned") return { kind: "pinned" };
+  if (section.kind === "unfiled") return { kind: "unfiled" };
+  return section.folder ? { kind: "folder", folderId: section.folder.id } : null;
+}
+
+function accepts(section: SectionRef): boolean {
+  const chat = dragging.value;
+  const target = targetOf(section);
+  return chat !== null && target !== null && dropOps(chat, target).length > 0;
+}
+
+function dropOn(section: SectionRef): void {
+  const chat = dragging.value;
+  const target = targetOf(section);
+  endDrag();
+  if (!chat || !target) return;
+  for (const op of dropOps(chat, target)) {
+    if (op.op === "move") emit("move", chat.id, op.folderId);
+    else emit("pin", chat.id, op.pinned);
+  }
+}
+
+const HINTS = { pinned: "Drop here to pin", unfiled: "Drop here to take it out of its folder" } as const;
+function hintOf(kind: "pinned" | "folder" | "unfiled"): string | null {
+  return kind === "folder" ? null : HINTS[kind];
+}
 
 const SECTION_TITLES = { pinned: "Pinned", unfiled: "Chats" } as const;
 /** A section's header; null (no header) while the list is flat. */
@@ -212,6 +279,7 @@ const allChosen = computed(() => selectable.value.length > 0 && chosen.value.len
 
 function startSelecting(): void {
   menu.value = null;
+  endDrag();
   renamingId.value = null;
   ticked.value = new Set();
   selecting.value = true;
@@ -247,6 +315,7 @@ watch(
     if (!active) return;
     stopSelecting();
     menu.value = null;
+    endDrag();
   },
 );
 // Nothing left to select.
@@ -317,8 +386,11 @@ watch(
         :collapsed="s.kind === 'folder' && s.folder !== null && collapsedFolders.includes(s.folder.id)"
         :menu="s.kind === 'folder' && !selecting"
         :expanded="s.kind === 'folder' && menu?.kind === 'folder' && menu.id === s.folder?.id"
+        :accepting="accepts(s)"
+        :hint="hintOf(s.kind)"
         @toggle="s.folder && emit('toggleFolder', s.folder.id)"
         @open-menu="(point) => s.folder && openFolderMenu(s.folder, point)"
+        @drop="dropOn(s)"
       >
         <ChatRow
           v-for="c in s.chats"
@@ -331,11 +403,14 @@ watch(
           :ticked="ticked.has(c.id)"
           :renaming="renamingId === c.id"
           :expanded="menu?.kind === 'chat' && menu.id === c.id"
+          :draggable="canDrag(c)"
           @select="emit('select', c.id)"
           @toggle="toggle(c)"
           @start-rename="renamingId = c.id"
           @finish-rename="(save, title) => finishRename(c.id, save, title)"
           @open-menu="(point) => openChatMenu(c, point)"
+          @drag-start="startDrag(c)"
+          @drag-end="endDrag"
         />
       </ChatSection>
     </div>

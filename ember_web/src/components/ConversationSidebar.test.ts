@@ -1,5 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatSearchHit } from "../api/ChatsClient";
 import type { ChatFolder } from "../api/FoldersClient";
 import type { Conversation } from "../api/types";
@@ -834,5 +834,222 @@ describe("the footer", () => {
     const wrapper = mountSidebar();
     await wrapper.find("button.link").trigger("click"); // Select
     expect(wrapper.find("button.new-folder").exists()).toBe(false);
+  });
+});
+
+describe("drag and drop", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  type Wrapper = ReturnType<typeof mountSidebar>;
+  const fire = (el: EventTarget, type: string) => {
+    const event = new Event(type, { bubbles: true, cancelable: true }) as Event & Record<string, unknown>;
+    event.dataTransfer = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
+    el.dispatchEvent(event);
+    return event;
+  };
+  const rowOf = (wrapper: Wrapper, title: string) => wrapper.findAll("li.row").find((r) => r.text().includes(title))!;
+  const sectionOf = (wrapper: Wrapper, title: string) =>
+    wrapper.findAll("section").find((s) => s.find(".name").exists() && s.find(".name").text() === title)!;
+  const startDrag = async (wrapper: Wrapper, title: string) => {
+    fire(rowOf(wrapper, title).element, "dragstart");
+    vi.runAllTimers();
+    await wrapper.vm.$nextTick();
+  };
+  const headers = (wrapper: Wrapper) => wrapper.findAll("header .name").map((n) => n.text());
+  const acceptingNames = (wrapper: Wrapper) =>
+    wrapper.findAll("section").filter((s) => s.classes().includes("accepting")).map((s) => s.find(".name").text());
+
+  const grouped = () =>
+    mountSidebar({
+      conversations: [chat("1"), inFolder("2", 1), { ...chat("3"), pinned: true }],
+      folders: [folder(1, "Work"), folder(2, "Home")],
+    });
+
+  it("rows are draggable in a grouped list", () => {
+    expect(rowOf(grouped(), "Chat 1").attributes("draggable")).toBe("true");
+  });
+
+  it("search result rows are not draggable", () => {
+    expect(searching([hit("1")]).find("li.row").attributes("draggable")).not.toBe("true");
+  });
+
+  it("nothing is draggable in select mode, while renaming, for an answering chat or on touch", async () => {
+    const selecting = grouped();
+    await selecting.find("button.link").trigger("click"); // Select
+    expect(rowOf(selecting, "Chat 1").attributes("draggable")).toBe("false");
+
+    const renaming = grouped();
+    const renamed = rowOf(renaming, "Chat 1");
+    await renamed.find(".title").trigger("dblclick");
+    expect(renamed.attributes("draggable")).toBe("false");
+
+    const busy = mountSidebar({ conversations: [{ ...chat("1"), running: true }], folders: [folder(1, "Work")] });
+    expect(rowOf(busy, "Chat 1").attributes("draggable")).toBe("false");
+
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    expect(rowOf(grouped(), "Chat 1").attributes("draggable")).toBe("false");
+  });
+
+  it("shows empty Pinned and Chats drop zones with hints while dragging, and hides them afterwards", async () => {
+    const wrapper = mountSidebar({ conversations: [inFolder("1", 1)], folders: [folder(1, "Work")] });
+    expect(headers(wrapper)).toEqual(["Work"]);
+
+    await startDrag(wrapper, "Chat 1");
+    expect(headers(wrapper)).toEqual(["Pinned", "Work", "Chats"]);
+    expect(wrapper.text()).toContain("Drop here to pin");
+    expect(wrapper.text()).toContain("Drop here to take it out of its folder");
+
+    fire(rowOf(wrapper, "Chat 1").element, "dragend");
+    await wrapper.vm.$nextTick();
+    expect(headers(wrapper)).toEqual(["Work"]);
+  });
+
+  it("a dragend on the window clears the drag (Esc, or a row that unmounted mid-drag)", async () => {
+    const wrapper = mountSidebar({ conversations: [inFolder("1", 1)], folders: [folder(1, "Work")] });
+    await startDrag(wrapper, "Chat 1");
+    expect(headers(wrapper)).toEqual(["Pinned", "Work", "Chats"]);
+
+    fire(window, "dragend");
+    await wrapper.vm.$nextTick();
+
+    expect(headers(wrapper)).toEqual(["Work"]);
+  });
+
+  it("a dragstart followed by dragend before the timer runs never shows the zones", async () => {
+    const wrapper = mountSidebar({ conversations: [inFolder("1", 1)], folders: [folder(1, "Work")] });
+
+    fire(rowOf(wrapper, "Chat 1").element, "dragstart");
+    fire(rowOf(wrapper, "Chat 1").element, "dragend");
+    vi.runAllTimers();
+    await wrapper.vm.$nextTick();
+
+    expect(headers(wrapper)).toEqual(["Work"]);
+  });
+
+  it("only sections that would change something accept the drag", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 2"); // filed in Work, not pinned
+
+    expect(acceptingNames(wrapper)).toEqual(["Pinned", "Home", "Chats"]); // not Work, where it already is
+  });
+
+  it("dropping on a folder moves the chat there", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 1");
+
+    fire(sectionOf(wrapper, "Home").element, "dragover");
+    fire(sectionOf(wrapper, "Home").element, "drop");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted("move")).toEqual([["1", 2]]);
+    expect(wrapper.emitted("pin")).toBeUndefined();
+  });
+
+  it("dropping a pinned chat on a folder moves it, then unpins it", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 3");
+
+    fire(sectionOf(wrapper, "Work").element, "drop");
+
+    expect(wrapper.emitted("move")).toEqual([["3", 1]]);
+    expect(wrapper.emitted("pin")).toEqual([["3", false]]);
+    expect(Object.keys(wrapper.emitted()).filter((k) => k === "move" || k === "pin")).toEqual(["move", "pin"]); // move first
+  });
+
+  it("dropping on Pinned pins the chat", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 1");
+
+    fire(sectionOf(wrapper, "Pinned").element, "drop");
+
+    expect(wrapper.emitted("pin")).toEqual([["1", true]]);
+    expect(wrapper.emitted("move")).toBeUndefined();
+  });
+
+  it("dropping on Chats takes the chat out of its folder", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 2");
+
+    fire(sectionOf(wrapper, "Chats").element, "drop");
+
+    expect(wrapper.emitted("move")).toEqual([["2", null]]);
+  });
+
+  it("a drop clears the drag", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 1");
+
+    fire(sectionOf(wrapper, "Home").element, "drop");
+    await wrapper.vm.$nextTick();
+
+    expect(acceptingNames(wrapper)).toEqual([]);
+  });
+
+  it("a drop on a section that does not accept it does nothing", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 2");
+
+    fire(sectionOf(wrapper, "Work").element, "drop"); // already there
+
+    expect(wrapper.emitted("move")).toBeUndefined();
+    expect(wrapper.emitted("pin")).toBeUndefined();
+  });
+
+  it("a collapsed folder still accepts a drop", async () => {
+    const wrapper = mountSidebar({ conversations: [chat("1")], folders: [folder(1, "Work")], collapsedFolders: [1] });
+    await startDrag(wrapper, "Chat 1");
+
+    fire(sectionOf(wrapper, "Work").element, "drop");
+
+    expect(wrapper.emitted("move")).toEqual([["1", 1]]);
+  });
+
+  it("the flat list shows no drop zones while dragging", async () => {
+    const wrapper = mountSidebar();
+    await startDrag(wrapper, "Chat 1");
+
+    expect(wrapper.find("header").exists()).toBe(false);
+  });
+
+  it("starting a drag closes an open menu", async () => {
+    const wrapper = grouped();
+    await menuButton(wrapper).trigger("click");
+    expect(openMenu()).not.toBeNull();
+
+    await startDrag(wrapper, "Chat 1");
+
+    expect(openMenu()).toBeNull();
+  });
+
+  it("the drag state is set after dragstart returns (Chrome cancels a drag whose DOM changes inside the handler)", () => {
+    const wrapper = mountSidebar({ conversations: [inFolder("1", 1)], folders: [folder(1, "Work")] });
+
+    fire(rowOf(wrapper, "Chat 1").element, "dragstart");
+
+    expect(headers(wrapper)).toEqual(["Work"]); // unchanged until the timer runs
+  });
+
+  it("a search starting clears a leftover drag", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 1");
+
+    await wrapper.setProps({ query: "ab", searchActive: true, hits: [hit("1")] });
+    await wrapper.setProps({ query: "", searchActive: false, hits: [] });
+
+    expect(acceptingNames(wrapper)).toEqual([]);
+  });
+
+  it("select mode starting clears a leftover drag", async () => {
+    const wrapper = grouped();
+    await startDrag(wrapper, "Chat 1");
+
+    await wrapper.find("button.link").trigger("click"); // Select
+    await wrapper.find(".select-bar button:last-child").trigger("click"); // Cancel
+
+    expect(acceptingNames(wrapper)).toEqual([]);
   });
 });
