@@ -83,7 +83,9 @@ All under `apps/ember_web/src`.
 - Component tests: `GuiTabsSection` (keyboard, keep-alive of settings); live `GuiFormSection` (debounce, stale response dropped, countdown paused while inactive, no run for a hidden tab); `ToolRunForm` live mode (emits on change not on input tick, no emit when invalid); `GuiResult` (strength levels, grouping, hide, copy raw value).
 - Full vitest and pytest suites, and the Playwright suite, pass. The e2e fake API may need a capability page route if a page-level test is added.
 
-## Open points
+## Decisions made during implementation
 
-- The tab bar for 8 tabs on a narrow screen: scroll horizontally or wrap. Decide during implementation by viewing it.
-- Whether to add a Playwright test for the page: only if the fake API can serve a capability page cheaply.
+- Many tabs on a narrow screen scroll horizontally (they do not wrap).
+- A newer live run supersedes an older one in flight (only the last result is shown), rather than queueing.
+- The hide/show control is an eye icon button with an accessible label; Copy stays a text button.
+- No Playwright test was added for the page, and the page was not checked in a browser during implementation; the first visual check is left to the person reviewing it.
