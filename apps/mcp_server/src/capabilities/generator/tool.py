@@ -25,7 +25,7 @@ from src.server import mcp
 @mcp.tool(meta={"keywords": ["generator", "password", "random", "secure", "generate"], "display_label": "Generating password"})
 @offload
 def tool_gen_generatePassword(
-    length: Annotated[int, Field(description="Password length in characters.", ge=8, le=128)] = 20,
+    length: Annotated[int, Field(description="Password length in characters.", ge=8, le=128, json_schema_extra={"input": "range"})] = 20,
     use_upper: Annotated[bool, Field(description="Include A-Z.")] = True,
     use_lower: Annotated[bool, Field(description="Include a-z.")] = True,
     use_digits: Annotated[bool, Field(description="Include 0-9.")] = True,
@@ -42,7 +42,7 @@ def tool_gen_generatePassword(
 @mcp.tool(meta={"keywords": ["generator", "passphrase", "words", "diceware", "random", "generate"], "display_label": "Generating passphrase"})
 @offload
 def tool_gen_generatePassphrase(
-    words: Annotated[int, Field(description="How many words.", ge=3, le=12)] = 6,
+    words: Annotated[int, Field(description="How many words.", ge=3, le=12, json_schema_extra={"input": "range"})] = 6,
     separator: Annotated[str, Field(description="Text between words (up to 3 characters).", max_length=3)] = "-",
     capitalize: Annotated[bool, Field(description="Capitalise each word.")] = False,
     add_number: Annotated[bool, Field(description="Append one random digit.")] = False,
@@ -57,7 +57,7 @@ def tool_gen_generatePassphrase(
 @mcp.tool(meta={"keywords": ["generator", "pin", "otp", "one-time", "code", "digits", "random", "generate"], "display_label": "Generating code"})
 @offload
 def tool_gen_generatePin(
-    length: Annotated[int, Field(description="How many digits.", ge=4, le=12)] = 6,
+    length: Annotated[int, Field(description="How many digits.", ge=4, le=12, json_schema_extra={"input": "range"})] = 6,
 ) -> PinResult:
     """Generate a random numeric PIN. Use it as a one-time code too: it is
     plain random digits with no time window or secret, so the caller must

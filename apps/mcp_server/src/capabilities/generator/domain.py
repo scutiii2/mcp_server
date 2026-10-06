@@ -115,6 +115,7 @@ def generate_pin(length: int = 6) -> PinResult:
     return PinResult(
         pin=pin,
         length=length,
+        entropy_bits=_entropy_bits(10, length),
         message=f"Generated a {length}-digit code. It is shown once and not stored.",
     )
 

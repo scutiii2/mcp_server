@@ -31,7 +31,7 @@ Generate random passwords, passphrases, PINs and one-time codes, create TOTP sec
 
 ## Page
 
-`gui/page.json` gives the capability a page at `/capabilities/gen` in ember_web.
+`gui/page.json` gives the capability a page at `/capabilities/gen` in ember_web: one tabbed card (Password, Passphrase and PIN regenerate live as you change a control; TOTP secret and TOTP code run on request) with a strength bar from `entropy_bits`.
 
 ## Configuration
 
@@ -41,7 +41,7 @@ No config or secrets, and nothing is stored: no files, no database, no audit tra
 - Passwords carry at least one character of every chosen type. `entropy_bits` is the pool-size estimate.
 - Passphrases draw from `utils/wordlist.py`: the EFF long word list (7,776 words, about 12.9 bits each), so 6 words is about 78 bits. Four entries contain a hyphen (`drop-down`, `felt-tip`, `t-shirt`, `yo-yo`); use a separator other than `-` if a passphrase must be split back into words.
 - The word list is © 2016 Electronic Frontier Foundation, licensed [CC BY 3.0 US](https://creativecommons.org/licenses/by/3.0/us/), from <https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt>. The words are unchanged; only the dice numbers were dropped.
-- `tool_gen_generatePin` is also the random one-time code: plain digits with no time window. The caller must keep and check it.
+- `tool_gen_generatePin` returns `entropy_bits` with the digits. It is also the random one-time code: plain digits with no time window. The caller must keep and check it.
 - TOTP follows RFC 6238 (HMAC-SHA1, 30 s, 6 digits by default), so codes match Google Authenticator and similar apps.
 
 **Privacy.** A generated value, and a TOTP secret passed to `tool_gen_getTotpCode`, travels through the chat and the agent transcript like any other tool result or argument. The tool does not log or store it, but chat history and agent logs may. Treat a value generated here as visible to whoever can read that chat; do not use it for something that must stay secret from them.

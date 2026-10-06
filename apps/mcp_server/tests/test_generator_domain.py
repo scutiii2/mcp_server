@@ -149,3 +149,32 @@ def test_totp_uri_shape():
 
 def test_totp_uri_without_names_still_valid():
     assert domain.generate_totp_secret().otpauth_uri.startswith("otpauth://totp/account?secret=")
+
+
+def test_pin_reports_its_entropy():
+    assert domain.generate_pin(6).entropy_bits == round(6 * math.log2(10), 1)
+    assert domain.generate_pin(12).entropy_bits > domain.generate_pin(4).entropy_bits
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "param"),
+    [
+        ("tool_gen_generatePassword", "length"),
+        ("tool_gen_generatePassphrase", "words"),
+        ("tool_gen_generatePin", "length"),
+    ],
+)
+def test_bounded_numbers_ask_for_a_slider(tool_name, param):
+    import inspect
+    import typing
+
+    from pydantic import TypeAdapter
+
+    from src.capabilities.generator import tool
+
+    function = inspect.unwrap(getattr(tool, tool_name))
+    annotation = typing.get_type_hints(function, include_extras=True)[param]
+    schema = TypeAdapter(annotation).json_schema()
+
+    assert schema["input"] == "range"
+    assert "minimum" in schema and "maximum" in schema

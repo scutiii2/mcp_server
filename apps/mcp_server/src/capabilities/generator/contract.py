@@ -23,6 +23,7 @@ class PassphraseResult(BaseModel):
 class PinResult(BaseModel):
     pin: str = Field(description="The generated digits, with leading zeros kept. Shown once; not stored.")
     length: int = Field(description="How many digits it has.")
+    entropy_bits: float = Field(description="Strength in bits (length x log2 of 10).")
     message: str = Field(description="Human-readable summary, safe to relay verbatim.")
 
 

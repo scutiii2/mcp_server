@@ -4,39 +4,45 @@
   "description": "Random passwords, passphrases, PINs and TOTP codes. Nothing is stored; a value is shown once.",
   "sections": [
     {
-      "id": "password",
-      "title": "Password",
-      "tool": "tool_gen_generatePassword",
-      "submit": "Generate",
-      "result": { "kind": "secret", "field": "password", "detail": "message" }
+      "id": "generate",
+      "tabs": [
+        {
+          "id": "password",
+          "title": "Password",
+          "tool": "tool_gen_generatePassword",
+          "live": true,
+          "result": { "kind": "secret", "field": "password", "detail": "message", "strength": "entropy_bits" }
+        },
+        {
+          "id": "passphrase",
+          "title": "Passphrase",
+          "tool": "tool_gen_generatePassphrase",
+          "live": true,
+          "result": { "kind": "secret", "field": "passphrase", "detail": "message", "strength": "entropy_bits" }
+        },
+        {
+          "id": "pin",
+          "title": "PIN",
+          "tool": "tool_gen_generatePin",
+          "live": true,
+          "result": { "kind": "secret", "field": "pin", "detail": "message", "strength": "entropy_bits" }
+        },
+        {
+          "id": "totp-secret",
+          "title": "TOTP secret",
+          "tool": "tool_gen_generateTotpSecret",
+          "submit": "Generate",
+          "result": { "kind": "secret", "field": "secret", "detail": "message" }
+        },
+        {
+          "id": "totp",
+          "title": "TOTP code",
+          "tool": "tool_gen_getTotpCode",
+          "submit": "Show code",
+          "result": { "kind": "secret", "field": "code", "detail": "message", "group": 3, "refresh_after": "seconds_remaining" }
+        }
+      ]
     },
-    {
-      "id": "passphrase",
-      "title": "Passphrase",
-      "tool": "tool_gen_generatePassphrase",
-      "submit": "Generate",
-      "result": { "kind": "secret", "field": "passphrase", "detail": "message" }
-    },
-    {
-      "id": "pin",
-      "title": "PIN or one-time code",
-      "tool": "tool_gen_generatePin",
-      "submit": "Generate",
-      "result": { "kind": "secret", "field": "pin", "detail": "message" }
-    },
-    {
-      "id": "totp-secret",
-      "title": "New TOTP secret",
-      "tool": "tool_gen_generateTotpSecret",
-      "submit": "Generate",
-      "result": { "kind": "secret", "field": "secret", "detail": "message" }
-    },
-    {
-      "id": "totp",
-      "title": "Current TOTP code",
-      "tool": "tool_gen_getTotpCode",
-      "submit": "Show code",
-      "result": { "kind": "secret", "field": "code", "detail": "message", "refresh_after": "seconds_remaining" }
-    }
+    { "id": "note", "text": "Nothing here is stored. A generated value travels through the chat like any tool result." }
   ]
 }
