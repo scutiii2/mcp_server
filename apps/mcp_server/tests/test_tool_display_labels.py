@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from src.capabilities.server_manager import tool as server_manager_tool  # noqa: F401
+from src.capabilities.generator import tool as generator_tool  # noqa: F401
 from src.server import mcp
 
 

@@ -57,6 +57,11 @@ from src.capabilities import server_manager  # noqa: E402
 with capability_registry.capturing(mcp, server_manager.META.id, label=server_manager.META.label):
     from src.capabilities.server_manager import tool as server_manager_tool  # noqa: E402,F401
 
+from src.capabilities import generator  # noqa: E402
+
+with capability_registry.capturing(mcp, generator.META.id, label=generator.META.label):
+    from src.capabilities.generator import tool as generator_tool  # noqa: E402,F401
+
 for _name in capability_registry.names():
     if not capability_enabled(_capabilities_config, _name):
         capability_registry.set_enabled(mcp, _name, False)

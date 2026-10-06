@@ -1,3 +1,4 @@
 {
-  "server": { "enabled": true }
+  "server": { "enabled": true },
+  "gen": { "enabled": true }
 }

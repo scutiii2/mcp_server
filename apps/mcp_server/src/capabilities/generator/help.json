@@ -1,0 +1,42 @@
+{
+  "summary": "Generate random passwords, passphrases, PINs and one-time codes, create TOTP secrets, and show the current TOTP code for a secret. Nothing generated is stored.",
+  "tools": [
+    {"name": "tool_gen_generatePassword", "purpose": "Random password with chosen character types.", "connection": "Local", "commands": ["password"]},
+    {"name": "tool_gen_generatePassphrase", "purpose": "Random-word passphrase.", "connection": "Local", "commands": ["passphrase"]},
+    {"name": "tool_gen_generatePin", "purpose": "Random numeric PIN or one-time code.", "connection": "Local", "commands": ["pin"]},
+    {"name": "tool_gen_generateTotpSecret", "purpose": "New TOTP secret and otpauth:// URI.", "connection": "Local", "commands": ["totp_secret"]},
+    {"name": "tool_gen_getTotpCode", "purpose": "Current TOTP code for a secret.", "connection": "Local", "commands": ["totp"]}
+  ],
+  "commands": [
+    {"name": "password", "tool": "tool_gen_generatePassword", "params": [
+      {"name": "length", "required": false, "default": "20", "description": "Password length (8 to 128)."},
+      {"name": "use_upper", "required": false, "default": "true", "description": "Include A-Z."},
+      {"name": "use_lower", "required": false, "default": "true", "description": "Include a-z."},
+      {"name": "use_digits", "required": false, "default": "true", "description": "Include 0-9."},
+      {"name": "use_symbols", "required": false, "default": "true", "description": "Include symbols."},
+      {"name": "exclude_ambiguous", "required": false, "default": "false", "description": "Leave out look-alike characters (I l 1 O 0 o)."}
+    ]},
+    {"name": "passphrase", "tool": "tool_gen_generatePassphrase", "params": [
+      {"name": "words", "required": false, "default": "6", "description": "How many words (3 to 12)."},
+      {"name": "separator", "required": false, "default": "-", "description": "Text between words (up to 3 characters)."},
+      {"name": "capitalize", "required": false, "default": "false", "description": "Capitalise each word."},
+      {"name": "add_number", "required": false, "default": "false", "description": "Append one random digit."}
+    ]},
+    {"name": "pin", "tool": "tool_gen_generatePin", "params": [
+      {"name": "length", "required": false, "default": "6", "description": "How many digits (4 to 12)."}
+    ]},
+    {"name": "totp_secret", "tool": "tool_gen_generateTotpSecret", "params": [
+      {"name": "issuer", "required": false, "default": "", "description": "Service name shown in the authenticator app."},
+      {"name": "account", "required": false, "default": "", "description": "Account name shown in the authenticator app."}
+    ]},
+    {"name": "totp", "tool": "tool_gen_getTotpCode", "params": [
+      {"name": "secret", "required": true, "default": null, "description": "Base32 TOTP secret."},
+      {"name": "digits", "required": false, "default": "6", "description": "Code length (6 to 8)."},
+      {"name": "period", "required": false, "default": "30", "description": "Seconds each code stays valid (15 to 120)."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_gen_generateTotpSecret", "ai_only_step": false, "explanation": "Create a secret and add it to an authenticator app."},
+    {"sequence": "2", "tool": "tool_gen_getTotpCode", "ai_only_step": false, "explanation": "Show the current code for that secret."}
+  ]
+}
