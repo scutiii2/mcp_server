@@ -37,7 +37,7 @@ const emit = defineEmits<{ open: [] }>();
   width: 100%;
   padding: 10px 14px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: calc(var(--radius-lg) - 1px);
   cursor: pointer;
   text-align: left;
   color: inherit;

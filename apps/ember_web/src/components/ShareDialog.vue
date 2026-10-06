@@ -272,7 +272,7 @@ h4 {
   min-width: 0;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: calc(var(--radius-lg) - 10px);
   color: var(--text);
   background: var(--bg);
   font-family: var(--mono);

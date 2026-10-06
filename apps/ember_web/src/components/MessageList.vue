@@ -700,7 +700,7 @@ onBeforeUnmount(() => {
   margin: 6px 0 0;
   padding: 8px;
   overflow: auto;
-  border-radius: var(--radius-md);
+  border-radius: calc(var(--radius-lg) - 10px);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: var(--mono);

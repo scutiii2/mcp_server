@@ -117,7 +117,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onOutside));
   width: 100%;
   padding: 5px 8px;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text);
   font: inherit;
