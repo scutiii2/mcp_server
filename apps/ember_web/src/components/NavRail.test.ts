@@ -32,6 +32,7 @@ function setup(account: Account | null) {
     routes: [
       ...NAV_PAGES.map((p) => ({ path: p.to, component: stub })),
       { path: "/capabilities/:name", name: "capability-page", component: stub },
+      { path: "/extensions/:id", name: "extension-page", component: stub },
       { path: "/account", component: stub },
       { path: "/config-issues", component: stub },
       { path: "/login", name: "login", component: stub },
@@ -88,6 +89,16 @@ describe("NavRail", () => {
     const current = pageLinks(wrapper).filter((l) => l.classes().includes("current"));
 
     expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Capabilities"]);
+  });
+
+  it("keeps Extensions marked while one extension's page is open", async () => {
+    const { wrapper, router } = setup(ACCOUNT);
+    await router.push("/extensions/pdf");
+    await flushPromises();
+
+    const current = pageLinks(wrapper).filter((l) => l.classes().includes("current"));
+
+    expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Extensions"]);
   });
 
   it("shows no pages while the email still has to be verified", () => {

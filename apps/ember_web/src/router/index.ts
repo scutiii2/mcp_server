@@ -54,6 +54,12 @@ export const router = createRouter({
       meta: { permission: "chat.use" },
     },
     {
+      path: "/extensions/:id",
+      name: "extension-page",
+      component: () => import("../views/ExtensionPageView.vue"),
+      meta: { permission: "tools.use" },
+    },
+    {
       path: "/watchers",
       name: "watchers",
       component: () => import("../views/WatchersView.vue"),

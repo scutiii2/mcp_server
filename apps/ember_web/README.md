@@ -140,6 +140,10 @@ URL, token or key.
   remove extensions. An extension whose config entry names a `web_url`
   (for example `pdf_merger` and its web app) shows an "Open app" link on
   its tile, opened in a new tab; only http(s) addresses become links.
+  With `tools.use`, every tile also has an "Open page" link to
+  `/extensions/<id>`: the extension's label, description, web app link and
+  its tools as rows that open the same run form as the Capabilities page
+  (an extension that is not connected shows its error and no tools).
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with
   the oldest age, succeeded, failed), a timeline with one lane per capability

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import type { ExtensionInfo } from "../api/ExtensionsClient";
 import { useAuthStore } from "../stores/auth";
@@ -32,12 +33,20 @@ const ACCOUNT: Account = {
   permissions: ["chat.use"],
 };
 
-async function show(extensions: ExtensionInfo[]) {
+async function show(extensions: ExtensionInfo[], permissions = ACCOUNT.permissions) {
   mocks.list.mockResolvedValue(extensions);
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().account = ACCOUNT;
-  const wrapper = mount(ExtensionsView, { global: { plugins: [pinia] } });
+  useAuthStore().account = { ...ACCOUNT, permissions };
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/extensions", component: ExtensionsView },
+      { path: "/extensions/:id", component: { template: "<div />" } },
+    ],
+  });
+  await router.push("/extensions");
+  const wrapper = mount(ExtensionsView, { global: { plugins: [pinia, router] } });
   await flushPromises();
   return wrapper;
 }
@@ -84,5 +93,28 @@ describe("ExtensionsView web app link", () => {
     await links(w)[0].trigger("click");
 
     expect(w.find("dialog[open]").exists()).toBe(false);
+  });
+});
+
+describe("ExtensionsView page link", () => {
+  const pageLinks = (w: Awaited<ReturnType<typeof show>>) => w.findAll("a").filter((a) => a.text() === "Open page");
+
+  it("links every extension to its own page for an account that may run tools", async () => {
+    const w = await show(
+      [ext("pdf", "http://127.0.0.1:5174"), ext("notes"), ext("odd id/x", null, "error")],
+      ["chat.use", "tools.use"],
+    );
+
+    expect(pageLinks(w).map((a) => a.attributes("href"))).toEqual([
+      "/extensions/pdf",
+      "/extensions/notes",
+      "/extensions/odd%20id%2Fx",
+    ]);
+  });
+
+  it("shows no page link without tools.use, because the page runs tools", async () => {
+    const w = await show([ext("pdf"), ext("notes")]);
+
+    expect(pageLinks(w)).toHaveLength(0);
   });
 });
