@@ -3,9 +3,12 @@ import { computed, nextTick, ref, watch } from "vue";
 import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
+import type { JsonSchema } from "../api/types";
 import { splitAttachments, withAttachments } from "../utils/attachments";
+import { paramSuggestions } from "../utils/commandParams";
 import { errorMessage } from "../utils/errors";
 import { appendToDraft, filterTemplates, preview, templateQuery } from "../utils/templates";
+import { fieldsFromSchema, type ToolField } from "../utils/toolSchema";
 import TemplatePicker from "./TemplatePicker.vue";
 
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
@@ -14,12 +17,14 @@ import TemplatePicker from "./TemplatePicker.vue";
 // brings them back one at a time, ↓ goes forward again.
 // templates: the account's saved prompts, for the picker button and for
 // "#..." suggestions; the parent loads them when asked (templatesNeeded).
+// schemaFor: a command's parameter schema, for "key=value" suggestions.
 const props = withDefaults(
   defineProps<{
     busy: boolean;
     commands?: CommandInfo[];
     history?: string[];
     templates?: PromptTemplate[];
+    schemaFor?: (command: CommandInfo) => Promise<JsonSchema | null>;
     templatesLoading?: boolean;
     templatesError?: string;
   }>(),
@@ -146,7 +151,38 @@ interface Suggestion {
   command?: CommandInfo;
   /** Set for a saved prompt: picking it puts its text in the box. */
   template?: PromptTemplate;
+  /** Set for a parameter ("key=" or "key=value"): picking it replaces the
+   * word being typed, which starts here, instead of the whole box. */
+  replaceFrom?: number;
 }
+
+/** The command being filled in ("/<capability> <command> " typed, parameters
+ * after it) with its parameters; null until its schema has loaded. */
+const typedCommand = computed(() => {
+  const match = /^\/(\S+) (\S+) /.exec(draft.value);
+  const command = match && props.commands.find((c) => c.capability === match[1] && c.name === match[2]);
+  return command ? { command, prefix: match[0].length } : null;
+});
+const schemas = ref<Record<string, ToolField[]>>({});
+watch(
+  () => typedCommand.value?.command,
+  async (command) => {
+    if (!command || !props.schemaFor || command.tool_name in schemas.value) return;
+    const schema = await props.schemaFor(command);
+    schemas.value[command.tool_name] = schema ? fieldsFromSchema(schema) : [];
+  },
+  { immediate: true },
+);
+// Extensions changed: the same command may now have another schema.
+watch(
+  () => props.commands,
+  () => (schemas.value = {}),
+);
+const paramContext = computed(() => {
+  const typed = typedCommand.value;
+  const fields = typed && schemas.value[typed.command.tool_name];
+  return typed && fields?.length ? { fields, prefix: typed.prefix } : null;
+});
 
 /** Typing "#..." looks up saved prompts by name. */
 const lookingUpTemplate = computed(() => templateQuery(draft.value) !== null);
@@ -158,6 +194,12 @@ watch(lookingUpTemplate, (on) => {
  * (suggestions stop once parameters are being typed). */
 const suggestions = computed<Suggestion[]>(() => {
   const typed = draft.value;
+  if (paramContext.value) {
+    const { fields, prefix } = paramContext.value;
+    return paramSuggestions(fields, typed.slice(prefix))
+      .slice(0, MAX_SUGGESTIONS)
+      .map((p) => ({ text: p.text, description: p.description, replaceFrom: prefix + p.start }));
+  }
   const query = templateQuery(typed);
   if (query !== null) {
     return filterTemplates(props.templates, query)
@@ -177,9 +219,23 @@ const suggestions = computed<Suggestion[]>(() => {
   return all.filter((s) => s.text.toLowerCase().startsWith(needle) && s.text !== typed).slice(0, MAX_SUGGESTIONS);
 });
 const highlighted = ref(0);
+const list = ref<HTMLUListElement | null>(null);
 watch(suggestions, () => (highlighted.value = 0));
+// Keep the highlighted row visible when the arrows move it past the list's edge.
+watch(highlighted, () => {
+  void nextTick(() => list.value?.querySelector<HTMLElement>("li.active")?.scrollIntoView?.({ block: "nearest" }));
+});
 
 function complete(suggestion: Suggestion): void {
+  if (suggestion.replaceFrom !== undefined) {
+    // "key=" stays open for its value; a finished "key=value" is followed by a space.
+    draft.value = `${draft.value.slice(0, suggestion.replaceFrom)}${suggestion.text}${suggestion.text.endsWith("=") ? "" : " "}`;
+    void nextTick(() => {
+      textarea.value?.focus();
+      autoGrow();
+    });
+    return;
+  }
   if (suggestion.template) {
     setDraft(suggestion.template.body);
     return;
@@ -320,7 +376,7 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <form class="composer" @submit.prevent="submit" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
-    <ul v-if="suggestions.length" class="suggestions" role="listbox" aria-label="Commands">
+    <ul v-if="suggestions.length" ref="list" class="suggestions" role="listbox" aria-label="Commands">
       <li
         v-for="(s, i) in suggestions"
         :key="s.text"
@@ -333,6 +389,7 @@ function onKeydown(event: KeyboardEvent): void {
         <span>{{ s.description }}</span>
       </li>
       <li v-if="lookingUpTemplate" class="hint" aria-hidden="true">Tab or Enter inserts the prompt</li>
+      <li v-else-if="paramContext" class="hint" aria-hidden="true">Tab picks · Enter runs</li>
       <li v-else class="hint" aria-hidden="true">Tab picks (a command opens its form) · Enter runs</li>
     </ul>
     <ul v-if="attachments.length" class="attachments">
@@ -420,7 +477,7 @@ function onKeydown(event: KeyboardEvent): void {
   right: 16px;
   bottom: calc(100% - 4px);
   left: 16px;
-  z-index: 10;
+  z-index: 16; /* above the settings menu (15) that sits over the composer */
   max-height: 280px;
   margin: 0;
   padding: 4px;

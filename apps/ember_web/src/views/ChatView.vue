@@ -377,6 +377,7 @@ useChatShortcuts({
           :busy="busy"
           :commands="commands"
           :history="history"
+          :schema-for="chat.commandSchema"
           :templates="templates.templates"
           :templates-loading="templates.loading"
           :templates-error="templates.loadError"

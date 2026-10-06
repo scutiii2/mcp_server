@@ -134,7 +134,7 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onOutside));
   position: absolute;
   bottom: calc(100% + 10px);
   left: -8px;
-  z-index: 10;
+  z-index: 16; /* above the settings menu (15) that sits over the composer */
   width: min(340px, calc(100vw - 48px));
   padding: 8px;
   border: 1px solid var(--border);

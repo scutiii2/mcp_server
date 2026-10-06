@@ -4,6 +4,8 @@ import { attachmentsClient } from "../api/AttachmentsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
 import { withAttachments } from "../utils/attachments";
 import ChatInput from "./ChatInput.vue";
+import inputSource from "./ChatInput.vue?raw";
+import menuSource from "./ChatSettingsMenu.vue?raw";
 
 vi.mock("../api/AttachmentsClient", () => ({ attachmentsClient: { text: vi.fn() } }));
 
@@ -477,6 +479,96 @@ describe("saved prompts", () => {
 
     expect(rows(wrapper)).toEqual(["/apps help", "/apps start"]);
     expect(wrapper.find(".hint").text()).toContain("Enter runs");
+  });
+
+  it("keeps the highlighted suggestion in view when the arrows move it", async () => {
+    const wrapper = mountInput({
+      templates: TEMPLATES,
+      commands: [{ capability: "apps", name: "start", description: "Start an app", tool_name: "t" }],
+    });
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+
+    await wrapper.find("textarea").setValue("/apps");
+    await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" });
+    await flushPromises();
+
+    expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("sits above the chat settings menu", () => {
+    const css = inputSource;
+    const menu = menuSource;
+    const z =(source: string, selector: string) =>
+      Number(new RegExp(`${selector}\\s*\\{[^}]*z-index:\\s*(\\d+)`).exec(source)![1]);
+
+    expect(z(css, "\\.suggestions")).toBeGreaterThan(z(menu, "\\.settings-menu"));
+  });
+
+  describe("a command's parameters", () => {
+    const COMMAND = { capability: "apps", name: "start", description: "Start an app", tool_name: "apps_start" };
+    const SCHEMA = {
+      type: "object",
+      required: ["name"],
+      properties: {
+        name: { type: "string", description: "App to start", examples: ["web", "api"] },
+        mode: { type: "string", enum: ["fast", "slow"] },
+        verbose: { type: "boolean" },
+      },
+    };
+
+    async function typing(value: string) {
+      const schemaFor = vi.fn().mockResolvedValue(SCHEMA);
+      const wrapper = mountInput({ commands: [COMMAND], schemaFor });
+      await wrapper.find("textarea").setValue(value);
+      await flushPromises();
+      return { wrapper, schemaFor };
+    }
+
+    it("suggests the parameters once the command is typed", async () => {
+      const { wrapper, schemaFor } = await typing("/apps start ");
+
+      expect(schemaFor).toHaveBeenCalledWith(COMMAND);
+      expect(rows(wrapper)).toEqual(["name=", "mode=", "verbose="]);
+      expect(wrapper.find("li[role=option] span").text()).toBe("required · App to start");
+    });
+
+    it("leaves out parameters already given", async () => {
+      const { wrapper } = await typing("/apps start name=web m");
+
+      expect(rows(wrapper)).toEqual(["mode="]);
+    });
+
+    it("suggests a parameter's choices, examples or true/false after its =", async () => {
+      expect(rows((await typing("/apps start mode=")).wrapper)).toEqual(["mode=fast", "mode=slow"]);
+      expect(rows((await typing("/apps start name=w")).wrapper)).toEqual(["name=web"]);
+      expect(rows((await typing("/apps start verbose=")).wrapper)).toEqual(["verbose=true", "verbose=false"]);
+    });
+
+    it("Tab completes only the word being typed", async () => {
+      const { wrapper } = await typing("/apps start name=web mo");
+
+      await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+
+      expect(valueOf(wrapper)).toBe("/apps start name=web mode=");
+    });
+
+    it("Tab after a value ends the word with a space", async () => {
+      const { wrapper } = await typing("/apps start mode=sl");
+
+      await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+
+      expect(valueOf(wrapper)).toBe("/apps start mode=slow ");
+    });
+
+    it("suggests nothing inside an open quote or for a tool without parameters", async () => {
+      expect(rows((await typing('/apps start name="a ')).wrapper)).toEqual([]);
+      const schemaFor = vi.fn().mockResolvedValue(null);
+      const wrapper = mountInput({ commands: [COMMAND], schemaFor });
+      await wrapper.find("textarea").setValue("/apps start ");
+      await flushPromises();
+      expect(wrapper.find(".suggestions").exists()).toBe(false);
+    });
   });
 
   it("the picker button inserts a prompt into an empty box, or after typed text on a new line", async () => {
