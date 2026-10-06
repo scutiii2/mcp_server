@@ -167,7 +167,7 @@ The drop target decides the placement, so a dropped chat always appears where it
 | The Pinned section | The chat is pinned; it keeps its folder. |
 | The Chats section | The chat leaves its folder and is unpinned. |
 
-- While a chat is being dragged, an empty Pinned section and an empty Chats section are shown as drop zones (with a short hint), so a chat can be pinned or taken out of a folder even when those sections are normally hidden. With no folders and no pins (the flat list) there is nothing to drop on and nothing changes.
+- While a chat is being dragged, an empty Pinned section and an empty Chats section are shown as drop zones (with a short hint), so a chat can be pinned or taken out of a folder even when those sections are normally hidden. An empty Pinned zone is placed after Chats so the folders do not move when the drag starts; a Pinned section that holds chats stays on top. With no folders and no pins (the flat list) there is nothing to drop on and nothing changes.
 - A section that would change nothing for the dragged chat (it is already there) does not accept the drop.
 - A chat that is answering cannot be dragged. Dragging is off on touch screens (`(hover: none)`), in select mode, while a row is being renamed, and in search results.
 - The sidebar reuses its existing `move(id, folderId)` and `pin(id, pinned)` events, so ChatView and the stores do not change. The "..." menu stays the main way to move chats.

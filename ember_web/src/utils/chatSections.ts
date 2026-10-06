@@ -20,7 +20,8 @@ export interface ChatLayout {
  * order given, then Unfiled. Folders always appear, even empty; Pinned and
  * Unfiled only when they hold chats. A chat in a folder this list does not
  * know (not loaded yet, or deleted elsewhere) counts as unfiled. While dragging,
- * a grouped list also shows empty Pinned and Chats sections as drop zones. */
+ * a grouped list also shows empty Chats and Pinned sections as drop zones, the
+ * empty Pinned one last so the folders do not move. */
 export function buildLayout(chats: Conversation[], folders: ChatFolder[], dragging = false): ChatLayout {
   const known = new Set(folders.map((f) => f.id));
   const pinned: Conversation[] = [];
@@ -44,10 +45,13 @@ export function buildLayout(chats: Conversation[], folders: ChatFolder[], draggi
   }
 
   const sections: ChatSection[] = [];
-  if (pinned.length > 0 || dragging) sections.push({ kind: "pinned", key: "pinned", folder: null, chats: pinned });
+  // An empty Pinned drop zone goes last, so showing it does not push the folders down.
+  const pinnedSection: ChatSection = { kind: "pinned", key: "pinned", folder: null, chats: pinned };
+  if (pinned.length > 0) sections.push(pinnedSection);
   for (const folder of folders) {
     sections.push({ kind: "folder", key: `folder-${folder.id}`, folder, chats: byFolder.get(folder.id) ?? [] });
   }
   if (unfiled.length > 0 || dragging) sections.push({ kind: "unfiled", key: "unfiled", folder: null, chats: unfiled });
+  if (pinned.length === 0 && dragging) sections.push(pinnedSection);
   return { grouped: true, sections };
 }

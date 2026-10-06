@@ -65,12 +65,18 @@ describe("buildLayout", () => {
     expect(ids(layout.sections[0]!.chats)).toEqual(["z", "y"]);
   });
 
-  it("adds empty Pinned and Chats drop zones while dragging a grouped list", () => {
+  it("adds empty Chats and Pinned drop zones below the folders while dragging with nothing pinned", () => {
     const layout = buildLayout([chat("a", { folderId: 1 })], [folder(1)], true);
 
-    expect(layout.sections.map((s) => s.key)).toEqual(["pinned", "folder-1", "unfiled"]);
-    expect(layout.sections[0]!.chats).toEqual([]);
+    expect(layout.sections.map((s) => s.key)).toEqual(["folder-1", "unfiled", "pinned"]);
+    expect(layout.sections[1]!.chats).toEqual([]);
     expect(layout.sections[2]!.chats).toEqual([]);
+  });
+
+  it("keeps Pinned on top while dragging when it holds chats", () => {
+    const layout = buildLayout([chat("p", { pinned: true }), chat("a", { folderId: 1 })], [folder(1)], true);
+
+    expect(layout.sections.map((s) => s.key)).toEqual(["pinned", "folder-1", "unfiled"]);
   });
 
   it("does not duplicate Pinned or Chats while dragging when they already have chats", () => {

@@ -899,7 +899,7 @@ describe("drag and drop", () => {
     expect(headers(wrapper)).toEqual(["Work"]);
 
     await startDrag(wrapper, "Chat 1");
-    expect(headers(wrapper)).toEqual(["Pinned", "Work", "Chats"]);
+    expect(headers(wrapper)).toEqual(["Work", "Chats", "Pinned"]);
     expect(wrapper.text()).toContain("Drop here to pin");
     expect(wrapper.text()).toContain("Drop here to take it out of its folder");
 
@@ -911,7 +911,7 @@ describe("drag and drop", () => {
   it("a dragend on the window clears the drag (Esc, or a row that unmounted mid-drag)", async () => {
     const wrapper = mountSidebar({ conversations: [inFolder("1", 1)], folders: [folder(1, "Work")] });
     await startDrag(wrapper, "Chat 1");
-    expect(headers(wrapper)).toEqual(["Pinned", "Work", "Chats"]);
+    expect(headers(wrapper)).toEqual(["Work", "Chats", "Pinned"]);
 
     fire(window, "dragend");
     await wrapper.vm.$nextTick();
@@ -925,7 +925,7 @@ describe("drag and drop", () => {
       folders: [folder(1, "Work")],
     });
     await startDrag(wrapper, "Chat 1");
-    expect(headers(wrapper)).toEqual(["Pinned", "Work", "Chats"]);
+    expect(headers(wrapper)).toEqual(["Work", "Chats", "Pinned"]);
 
     await wrapper.setProps({ conversations: [inFolder("2", 1)] });
 
