@@ -137,7 +137,9 @@ URL, token or key.
 - Extensions page: mcp_server's extensions (other MCP servers) with their
   status and tools; switch on the ones the agent may use in your chats
   (remembered per account, shown in the chat header). Admins add and
-  remove extensions.
+  remove extensions. An extension whose config entry names a `web_url`
+  (for example `pdf_merger` and its web app) shows an "Open app" link on
+  its tile, opened in a new tab; only http(s) addresses become links.
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with
   the oldest age, succeeded, failed), a timeline with one lane per capability

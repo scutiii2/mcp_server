@@ -9,6 +9,8 @@ export interface ExtensionInfo {
   status: "connected" | "error" | string;
   error: string | null;
   tools: string[];
+  /** The extension's own web app (an http(s) address from mcp_server's config). */
+  web_url?: string | null;
 }
 
 export interface ExtensionCreate {

@@ -9,6 +9,7 @@ import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
 import { errorMessage } from "../utils/errors";
+import { safeWebUrl } from "../utils/webUrl";
 
 /** mcp_server's extensions: other MCP servers whose tools it passes on
  * (port of chat_app's Extensions panel). Each extension is a tile with its
@@ -106,7 +107,8 @@ onMounted(load);
               <template v-else>{{ e.tools.length }} tool{{ e.tools.length === 1 ? "" : "s" }}</template>
             </span>
           </button>
-          <footer v-if="canChat || isAdmin">
+          <footer v-if="safeWebUrl(e.web_url) || canChat || isAdmin">
+            <a v-if="safeWebUrl(e.web_url)" class="web-link" :href="safeWebUrl(e.web_url)!" target="_blank" rel="noopener noreferrer">Open app</a>
             <ToggleSwitch
               v-if="canChat"
               title="Let the agent and slash commands use its tools in your chats"
@@ -193,6 +195,10 @@ onMounted(load);
   justify-content: space-between;
   gap: 10px;
   padding: 8px 14px 12px;
+}
+.web-link {
+  font-size: 0.85em;
+  white-space: nowrap;
 }
 .dot {
   display: inline-block;
