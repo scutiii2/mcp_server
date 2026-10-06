@@ -129,7 +129,7 @@ onMounted(load);
               :checked="enabled.has(e.id)"
               @change="chat.setExtensionEnabled(e.id, ($event.target as HTMLInputElement).checked)"
             />
-            <DeleteButton v-if="isAdmin" label="Remove" :busy="removing === e.id" @click="remove(e)" />
+            <DeleteButton v-if="isAdmin" small label="Remove" :busy="removing === e.id" @click="remove(e)" />
           </footer>
         </article>
       </div>
