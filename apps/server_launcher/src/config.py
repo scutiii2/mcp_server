@@ -52,12 +52,15 @@ _SKIP_RE = re.compile(r"^\s*REM\s+LAUNCHER:\s*skip\b", re.IGNORECASE | re.MULTIL
 
 # Port env var + default for a project whose bat doesn't `set` its own
 # port (mcp_server/catalog_service each read one straight from
-# their own config/run.py - see MCP_PORT/CATALOG_PORT).
+# their own config/run.py - see MCP_PORT/CATALOG_PORT; the PDFMerger
+# projects read theirs from the repo-root .env).
 # ai_agent needs no entry here: its bat already `set`s AI_AGENT_PORT
 # itself, picked up generically below.
 _PROJECT_PORT_ENV = {
     "mcp_server": ("MCP_PORT", 8010),
     "catalog_service": ("CATALOG_PORT", 8020),
+    "pdf_merger": ("PDF_MERGER_PORT", 8040),
+    "pdf_merger_web": ("PDF_MERGER_WEB_PORT", 5174),
 }
 
 _POLL_MS = 500
