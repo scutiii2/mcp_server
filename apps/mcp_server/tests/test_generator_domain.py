@@ -3,6 +3,7 @@ mocks; TOTP is checked against the RFC 6238 SHA1 test vectors."""
 
 from __future__ import annotations
 
+import math
 import re
 import string
 from urllib.parse import parse_qs, urlparse
@@ -15,10 +16,11 @@ from src.capabilities.generator.utils.wordlist import WORDS
 RFC_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"  # ASCII "12345678901234567890"
 
 
-def test_wordlist_is_unique_lowercase_and_large_enough():
-    assert len(WORDS) == len(set(WORDS))
-    assert len(WORDS) >= 1000
-    assert all(re.fullmatch(r"[a-z]{2,8}", word) for word in WORDS)
+def test_wordlist_is_the_eff_long_list():
+    assert len(WORDS) == len(set(WORDS)) == 7776
+    assert (WORDS[0], WORDS[-1]) == ("abacus", "zoom")
+    # Lowercase words; the published list has four hyphenated entries (drop-down, felt-tip, t-shirt, yo-yo).
+    assert all(re.fullmatch(r"[a-z]+(?:-[a-z]+)?", word) for word in WORDS)
 
 
 def test_password_has_requested_length_and_every_class():
@@ -68,12 +70,14 @@ def test_passphrase_words_and_separator():
     parts = result.passphrase.split(".")
     assert len(parts) == 5
     assert all(part in WORDS for part in parts)
-    assert result.entropy_bits > 50
+    assert result.entropy_bits == round(5 * math.log2(7776), 1)
 
 
 def test_passphrase_capitalize_and_number():
-    result = domain.generate_passphrase(words=4, capitalize=True, add_number=True)
-    *words, number = result.passphrase.split("-")
+    # A separator that cannot occur inside a word, so the split is exact.
+    result = domain.generate_passphrase(words=4, separator=".", capitalize=True, add_number=True)
+    *words, number = result.passphrase.split(".")
+    assert len(words) == 4
     assert all(word[0].isupper() for word in words)
     assert len(number) == 1 and number.isdigit()
     assert result.entropy_bits > domain.generate_passphrase(words=4).entropy_bits

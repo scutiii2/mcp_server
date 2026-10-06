@@ -48,7 +48,7 @@ def tool_gen_generatePassphrase(
     add_number: Annotated[bool, Field(description="Append one random digit.")] = False,
 ) -> PassphraseResult:
     """Generate a passphrase of random words from a bundled word list. Easier
-    to type and remember than a random password; 6 words is about 62 bits.
+    to type and remember than a random password; 6 words is about 78 bits.
     The value is returned once and not stored."""
     return domain.generate_passphrase(words, separator, capitalize, add_number)
 
