@@ -73,8 +73,8 @@ def test_get_lists_every_registered_capability(client):
 
     assert response.status_code == 200
     assert response.json() == [
-        {"name": "gadgets", "enabled": True, "label": "gadgets", "tools": ["make_gadget"], "resources": []},
-        {"name": "widgets", "enabled": True, "label": "widgets", "tools": ["make_widget"], "resources": []},
+        {"name": "gadgets", "enabled": True, "label": "gadgets", "tools": ["make_gadget"], "resources": [], "has_gui": False},
+        {"name": "widgets", "enabled": True, "label": "widgets", "tools": ["make_widget"], "resources": [], "has_gui": False},
     ]
 
 
@@ -95,7 +95,7 @@ def test_patch_disables_a_capability(client, test_mcp):
 
     assert response.status_code == 200
     assert response.json() == {
-        "name": "widgets", "enabled": False, "label": "widgets", "tools": ["make_widget"], "resources": [],
+        "name": "widgets", "enabled": False, "label": "widgets", "tools": ["make_widget"], "resources": [], "has_gui": False,
     }
     assert "make_widget" not in {t.name for t in test_mcp._tool_manager.list_tools()}
     # The sibling capability is untouched.
@@ -109,7 +109,7 @@ def test_patch_re_enables_a_capability(client, test_mcp):
 
     assert response.status_code == 200
     assert response.json() == {
-        "name": "widgets", "enabled": True, "label": "widgets", "tools": ["make_widget"], "resources": [],
+        "name": "widgets", "enabled": True, "label": "widgets", "tools": ["make_widget"], "resources": [], "has_gui": False,
     }
     assert "make_widget" in {t.name for t in test_mcp._tool_manager.list_tools()}
 

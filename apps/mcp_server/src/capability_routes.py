@@ -13,13 +13,18 @@ GET /capabilities returns a JSON array shaped exactly like::
         "enabled": true,
         "label": "Server Manager",
         "tools": ["tool_srv_listApps", ...],
-        "resources": []
+        "resources": [],
+        "has_gui": false
     }
 
 ``label``/``tools``/``resources`` let chat_app derive its Capabilities
 page grouping (which tool belongs to which capability, and what to call
 it) entirely from this one live response, instead of hand-maintaining
 its own copy - see chat_app's ``services/tool_capabilities.py``.
+
+GET /capabilities/{name}/gui returns that capability's GUI page (the
+validated ``gui/page.json``) or 404 when it has none; ``has_gui`` says
+which capabilities do.
 
 PATCH /capabilities/{name} takes ``{"enabled": bool}`` and returns that
 same shape for the capability just changed - 404 for an unknown name,
@@ -40,6 +45,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from src import capability_gui
 from src.config import settings
 from src.services import capability_registry
 from src.services.app_config import save_capabilities_config
@@ -53,11 +59,23 @@ def _status_json(name: str) -> dict[str, object]:
         "label": capability_registry.label(name),
         "tools": capability_registry.tool_names(name),
         "resources": capability_registry.resource_names(name),
+        # True only when a valid page exists and the capability is on, so a link never leads to a 404.
+        "has_gui": capability_gui.load_page(name) is not None,
     }
 
 
 async def list_capabilities(request: Request) -> JSONResponse:
     return JSONResponse([_status_json(name) for name in capability_registry.names()])
+
+
+async def capability_gui_page(request: Request) -> JSONResponse:
+    name = request.path_params["name"]
+    if name not in capability_registry.names():
+        return JSONResponse({"error": f"Unknown capability {name!r}"}, status_code=404)
+    page = capability_gui.load_page(name)
+    if page is None:
+        return JSONResponse({"error": f"Capability {name!r} has no page"}, status_code=404)
+    return JSONResponse(page.model_dump())
 
 
 async def update_capability(request: Request) -> JSONResponse:
@@ -82,4 +100,5 @@ async def update_capability(request: Request) -> JSONResponse:
 def install_capability_routes(app: Starlette) -> None:
     """Add the capability status/toggle routes to an existing Starlette app."""
     app.add_route("/capabilities", list_capabilities, methods=["GET"])
+    app.add_route("/capabilities/{name}/gui", capability_gui_page, methods=["GET"])
     app.add_route("/capabilities/{name}", update_capability, methods=["PATCH"])

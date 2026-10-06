@@ -146,3 +146,47 @@ def test_shipped_pages_parse_and_name_only_their_own_tools(path):
 
 def test_there_is_at_least_one_shipped_page():
     assert GUI_FILES
+
+
+from starlette.applications import Starlette  # noqa: E402
+from starlette.testclient import TestClient  # noqa: E402
+
+from src import capability_routes  # noqa: E402
+
+
+@pytest.fixture
+def client(widgets, monkeypatch, tmp_path):
+    monkeypatch.setattr(capability_routes, "mcp", FastMCP(name="routes"))
+    app = Starlette()
+    capability_routes.install_capability_routes(app)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def test_gui_route_serves_the_page(client, widgets):
+    widgets.write_text(json.dumps(PAGE), encoding="utf-8")
+
+    response = client.get("/capabilities/widgets/gui")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Widgets" and body["sections"][0]["tool"] == "make_widget"
+
+
+def test_gui_route_404_without_a_page(client):
+    response = client.get("/capabilities/widgets/gui")
+
+    assert response.status_code == 404
+    assert "no page" in response.json()["error"].lower()
+
+
+def test_gui_route_404_for_unknown_capability(client):
+    assert client.get("/capabilities/nope/gui").status_code == 404
+
+
+def test_list_reports_has_gui(client, widgets):
+    assert client.get("/capabilities").json()[0]["has_gui"] is False
+
+    widgets.write_text(json.dumps(PAGE), encoding="utf-8")
+
+    assert client.get("/capabilities").json()[0]["has_gui"] is True

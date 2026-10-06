@@ -19,6 +19,8 @@ top level is a **closed whitelist** - nothing else is allowed there:
 - **`tool.py`** - a few lines: load config, call the domain function,
   return its result. `@mcp.tool()` appears here and nowhere else.
 - **`help.json`** - see "Add a new capability" step 5c below.
+- **`gui/`** - `page.json` only: the page ember_web shows at
+  `/capabilities/<id>`. See "GUI pages" below.
 - **`README.md`** - this capability's domain/business logic: what it
   does, how its tools/contract/domain fit together. Never restates this
   file's convention rules - link back here instead.
@@ -72,6 +74,54 @@ re-exposed here under a namespaced name, rather than written by hand in
 this repo at all. Reach for a capability when you're wrapping logic
 that lives in this codebase; reach for an extension when you're
 exposing an MCP server that already exists elsewhere.
+
+## GUI pages
+
+A capability can ship `gui/page.json`; ember_web then draws a page for it at
+`/capabilities/<id>` and the capability card links there. `mcp_server` serves
+it at `GET /capabilities/{name}/gui` and reports `has_gui` in
+`GET /capabilities`. The file is data: the renderer draws only its fixed
+widget set.
+
+```json
+{
+  "version": 1,
+  "title": "Generator",
+  "description": "Random passwords and TOTP codes. Nothing is stored.",
+  "sections": [
+    {
+      "id": "password",
+      "title": "Password",
+      "tool": "tool_gen_generatePassword",
+      "submit": "Generate",
+      "result": { "kind": "secret", "field": "password", "detail": "message" }
+    },
+    {
+      "id": "totp",
+      "title": "TOTP code",
+      "tool": "tool_gen_getTotpCode",
+      "fields": [{ "param": "secret", "label": "Secret" }],
+      "result": { "kind": "secret", "field": "code", "refresh_after": "seconds_remaining" }
+    },
+    { "id": "note", "text": "Nothing here is stored." }
+  ]
+}
+```
+
+- Page keys: `version` (1), `title`, optional `description`, ordered `sections`.
+- Section types: a form bound to one `tool` (with `id`, `title`, optional
+  `submit`, `fields`, `result`), and a plain `text` section for notes.
+- Form fields come from the tool's own input schema, so types, ranges,
+  defaults and masked secret inputs need no extra JSON. `fields` is optional
+  and only overrides `label`, `order` or `hidden` per `param`.
+- Result `kind`: `secret` (monospace, copy button, hide/show), `message`
+  (plain text), `table` (uniform list), `fields` (default label/value list).
+  `field` and `detail` name result keys to show.
+- `refresh_after` names a numeric result field; the page counts it down and
+  calls the tool again at zero.
+- A page may only name its own capability's tools.
+- An invalid file is logged and hidden (`has_gui: false`, route 404); it
+  never breaks the server or other capabilities.
 
 ## Output formatting
 

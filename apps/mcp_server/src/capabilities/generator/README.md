@@ -29,6 +29,10 @@ Generate random passwords, passphrases, PINs and one-time codes, create TOTP sec
 | 1 | `tool_gen_generateTotpSecret` | Create a secret and add it to an authenticator app. |
 | 2 | `tool_gen_getTotpCode` | Show the current code for that secret. |
 
+## Page
+
+`gui/page.json` gives the capability a page at `/capabilities/gen` in ember_web.
+
 ## Configuration
 
 No config or secrets, and nothing is stored: no files, no database, no audit trail.
