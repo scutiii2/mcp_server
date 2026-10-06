@@ -14,7 +14,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
 from src import capability_gui
-from src.capability_gui import GuiFormSection, GuiTextSection, load_page, parse_page
+from src.capability_gui import GuiFormSection, GuiTabsSection, GuiTextSection, form_sections, load_page, parse_page
 from src.services import capability_meta, capability_registry
 
 PAGE = {
@@ -61,6 +61,78 @@ def test_unknown_keys_are_ignored():
 def test_tool_of_another_capability_is_refused():
     with pytest.raises(ValueError, match="make_widget"):
         parse_page(json.dumps(PAGE), {"other_tool"})
+
+
+TABS = {
+    "id": "gen",
+    "tabs": [
+        {"id": "a", "title": "A", "tool": "t1", "live": True,
+         "result": {"kind": "secret", "field": "v", "strength": "bits", "group": 3}},
+        {"id": "b", "title": "B", "tool": "t2"},
+    ],
+}
+
+
+def tabs_page(**section_changes) -> str:
+    return json.dumps({"version": 1, "title": "T", "sections": [{**TABS, **section_changes}]})
+
+
+def test_parse_tabs_page():
+    page = parse_page(tabs_page(), {"t1", "t2"})
+
+    (section,) = page.sections
+    assert isinstance(section, GuiTabsSection)
+    first, second = section.tabs
+    assert first.live is True and first.result.strength == "bits" and first.result.group == 3
+    assert second.live is False and second.result.strength is None and second.result.group is None
+
+
+def test_form_sections_walks_into_tabs():
+    raw = json.dumps({"version": 1, "title": "T", "sections": [
+        {"id": "top", "title": "Top", "tool": "t0"},
+        TABS,
+        {"id": "note", "text": "hi"},
+    ]})
+
+    assert [f.id for f in form_sections(parse_page(raw, None))] == ["top", "a", "b"]
+
+
+def test_a_tab_may_only_name_its_own_tools():
+    with pytest.raises(ValueError, match="t2"):
+        parse_page(tabs_page(), {"t1"})
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        tabs_page(tabs=TABS["tabs"][:1]),
+        tabs_page(tabs=[{"id": f"t{i}", "title": "T", "tool": "t"} for i in range(9)]),
+        tabs_page(tabs=[TABS["tabs"][0], {"id": "a", "title": "Again", "tool": "t"}]),
+        tabs_page(tabs=[TABS["tabs"][0], {"id": "x", "text": "not a form"}]),
+        tabs_page(id="bad id"),
+        json.dumps({"version": 1, "title": "T", "sections": [
+            {"id": "a", "title": "Top", "tool": "t0"}, TABS]}),
+        *[
+            tabs_page(tabs=[{"id": "a", "title": "A", "tool": "t", "result": result}, TABS["tabs"][1]])
+            for result in (
+                {"kind": "message", "strength": "bits"},
+                {"kind": "table", "field": "rows", "group": 3},
+                {"kind": "secret", "field": "v", "group": 1},
+                {"kind": "secret", "field": "v", "group": 9},
+                {"kind": "secret", "field": "v", "strength": "not an id"},
+            )
+        ],
+    ],
+)
+def test_invalid_tabs_pages_are_rejected(raw):
+    with pytest.raises(ValidationError):
+        parse_page(raw, None)
+
+
+def test_a_form_is_not_live_by_default():
+    page = parse_page(json.dumps({"version": 1, "title": "T", "sections": [{"id": "a", "title": "A", "tool": "t"}]}), None)
+
+    assert page.sections[0].live is False
 
 
 @pytest.mark.parametrize(
@@ -153,13 +225,11 @@ def test_shipped_pages_parse_and_name_only_their_own_tools(path):
     module = importlib.import_module(f"src.capabilities.{folder}.tool")
     page = parse_page(path.read_text(encoding="utf-8"), None)
 
-    for section in page.sections:
-        if not isinstance(section, GuiFormSection):
-            continue
+    for section in form_sections(page):
         assert hasattr(module, section.tool), f"{folder} page names {section.tool}, not defined in its tool.py"
         function = inspect.unwrap(getattr(module, section.tool))
         result_model = typing.get_type_hints(function)["return"]
-        named = {section.result.field, section.result.detail, section.result.refresh_after} - {None}
+        named = {section.result.field, section.result.detail, section.result.refresh_after, section.result.strength} - {None}
         missing = named - set(result_model.model_fields)
         assert not missing, f"{folder}/{section.id}: {sorted(missing)} not in {result_model.__name__}"
 
@@ -234,3 +304,17 @@ def test_gui_route_serves_no_nulls(client, widgets):
 
     assert list(_nulls(body)) == []
     assert body["sections"][0]["fields"][0]["param"] == "p"
+
+
+def test_gui_route_serves_a_tabs_page(client, widgets):
+    page = {"version": 1, "title": "T", "sections": [{"id": "g", "tabs": [
+        {"id": "a", "title": "A", "tool": "make_widget", "live": True},
+        {"id": "b", "title": "B", "tool": "make_widget"},
+    ]}]}
+    widgets.write_text(json.dumps(page), encoding="utf-8")
+
+    body = client.get("/capabilities/widgets/gui").json()
+
+    assert [t["id"] for t in body["sections"][0]["tabs"]] == ["a", "b"]
+    assert body["sections"][0]["tabs"][0]["live"] is True
+    assert list(_nulls(body)) == []

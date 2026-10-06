@@ -110,7 +110,13 @@ widget set.
 
 - Page keys: `version` (1), `title`, optional `description`, ordered `sections`.
 - Section types: a form bound to one `tool` (with `id`, `title`, optional
-  `submit`, `fields`, `result`), and a plain `text` section for notes.
+  `submit`, `fields`, `result`, `live`), a plain `text` section for notes,
+  and a `tabs` section (`id` plus 2 to 8 `tabs`, each one a form section; its
+  `title` is the tab label). Section ids are unique across the page, tab ids
+  included.
+- `live: true` on a form runs it when it first opens and again whenever a
+  control changes (ember_web waits 300 ms and does not run on every slider
+  tick). The result then offers a Generate again button.
 - Form fields come from the tool's own input schema, so types, ranges,
   defaults and masked secret inputs need no extra JSON. `fields` is optional
   and only overrides `label`, `order` or `hidden` per `param`.
@@ -119,6 +125,10 @@ widget set.
   `field` and `detail` name result keys to show.
 - `refresh_after` names a numeric result field; the page counts it down and
   calls the tool again at zero.
+- On a `secret` result, `strength` names a numeric result field (bits of
+  entropy) that draws a strength bar (Weak under 45, Fair under 70, Strong
+  under 100, Excellent above), and `group` (2 to 8) shows the value in groups
+  of that many characters while copying the whole value.
 - A page may only name its own capability's tools.
 - An invalid file is logged and hidden, and so is the page of a disabled
   capability (`has_gui: false`, route 404); it never breaks the server or other capabilities.
