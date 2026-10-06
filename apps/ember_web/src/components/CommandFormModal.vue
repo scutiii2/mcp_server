@@ -50,7 +50,7 @@ function run(args: Record<string, unknown>): void {
   padding: 18px 20px 20px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   color: var(--text);
   background: var(--surface);
 }

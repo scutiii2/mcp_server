@@ -17,7 +17,7 @@ defineProps<{ label: string; value: number | null; warn?: boolean }>();
   flex-direction: column;
   gap: 2px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--code-bg);
 }
 .label {

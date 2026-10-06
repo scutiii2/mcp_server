@@ -454,7 +454,7 @@ useChatShortcuts({
 .banner button {
   padding: 2px 12px;
   border: 1px solid var(--danger);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   color: var(--danger);
   background: transparent;
@@ -499,7 +499,7 @@ useChatShortcuts({
 .chat-actions button {
   padding: 2px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.8em;
   color: var(--muted);
@@ -533,7 +533,7 @@ useChatShortcuts({
   padding: 0;
   border: 1px solid var(--border);
   border-left: none;
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   cursor: pointer;
   color: var(--muted);
   background: var(--surface);
@@ -610,7 +610,7 @@ useChatShortcuts({
     width: 34px;
     height: 34px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     background: var(--bg);
   }

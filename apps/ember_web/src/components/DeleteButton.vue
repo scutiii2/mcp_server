@@ -105,7 +105,7 @@ watch(
   padding: 0 16px 0 38px;
   overflow: hidden;
   border: 1px solid var(--danger);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font: inherit;
   font-weight: 600;

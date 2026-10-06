@@ -73,7 +73,7 @@ async function add(): Promise<void> {
 .add input {
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   outline: none;
   color: var(--text);
   background: var(--bg);
@@ -97,7 +97,7 @@ async function add(): Promise<void> {
 .primary {
   padding: 5px 16px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
 }
 .ghost {

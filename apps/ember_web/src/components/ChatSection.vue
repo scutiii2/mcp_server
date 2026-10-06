@@ -132,7 +132,7 @@ function openFromContext(event: MouseEvent): void {
 .accepting {
   outline: 1px dashed var(--border);
   outline-offset: -1px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 .over {
   outline: 1px solid var(--accent);
@@ -160,7 +160,7 @@ header {
   margin: 0;
   padding: 5px 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--muted);
   background: transparent;
   font: inherit;
@@ -202,7 +202,7 @@ header {
   flex-shrink: 0;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--muted);
   background: transparent;

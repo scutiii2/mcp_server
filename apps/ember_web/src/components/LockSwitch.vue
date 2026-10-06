@@ -53,7 +53,7 @@ defineProps<{ title?: string }>();
   width: var(--w);
   height: var(--h);
   border: 2px solid var(--tone);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   color: var(--tone);
   transition: border-color 0.15s ease, color 0.15s ease;
 }
@@ -63,7 +63,7 @@ defineProps<{ title?: string }>();
   left: 3px;
   width: calc(var(--h) - 10px);
   height: calc(var(--h) - 10px);
-  border-radius: 6px;
+  border-radius: calc(var(--radius-md) - 5px);
   background: var(--tone);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: transform 0.15s ease, background 0.15s ease;

@@ -203,7 +203,7 @@ h3 {
   margin: 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .profile dt {
@@ -219,7 +219,7 @@ h3 {
 }
 .profile code {
   padding: 1px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 0.9em;
   background: var(--code-bg);
@@ -227,7 +227,7 @@ h3 {
 .badge {
   padding: 1px 8px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.75em;
   color: var(--muted);
   text-decoration: none;
@@ -253,7 +253,7 @@ h3 {
 .stack input {
   padding: 7px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--bg);
   font: inherit;
@@ -265,7 +265,7 @@ h3 {
   justify-self: start;
   padding: 7px 18px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-weight: 600;
   color: var(--accent-contrast);
@@ -289,7 +289,7 @@ h3 {
   position: relative;
   padding: 10px 90px 10px 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .device {
@@ -312,7 +312,7 @@ h3 {
   right: 12px;
   padding: 3px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   color: var(--text);
   background: var(--bg);

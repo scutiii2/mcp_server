@@ -149,7 +149,7 @@ const heading = computed(() => props.noun.charAt(0).toUpperCase() + props.noun.s
   min-height: 2px;
 }
 .seg.cap {
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 .col.active .seg {
   filter: brightness(1.12);

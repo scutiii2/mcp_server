@@ -165,7 +165,7 @@ label {
 input[type="text"] {
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   outline: none;
   color: var(--text);
   background: var(--bg);
@@ -190,7 +190,7 @@ input[type="text"]:focus {
 button {
   padding: 7px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--text);
   background: var(--bg);

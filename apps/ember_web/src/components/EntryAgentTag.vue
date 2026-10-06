@@ -59,7 +59,7 @@ onMounted(() => void store.refresh());
   height: 24px;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   cursor: pointer;
   color: var(--muted);
   background: transparent;

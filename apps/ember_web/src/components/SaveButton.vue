@@ -29,7 +29,7 @@ withDefaults(defineProps<{ saved: boolean; label?: string; savedLabel?: string; 
   gap: 6px;
   padding: 6px 16px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font: inherit;
   font-size: 0.9em;
@@ -58,7 +58,7 @@ withDefaults(defineProps<{ saved: boolean; label?: string; savedLabel?: string; 
 .save-button.small {
   gap: 4px;
   padding: 2px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 0.78em;
   box-shadow: none;
 }

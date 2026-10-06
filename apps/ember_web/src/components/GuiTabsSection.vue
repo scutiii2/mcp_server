@@ -81,14 +81,14 @@ function onKeydown(event: KeyboardEvent): void {
   padding: 4px;
   margin-bottom: 14px;
   overflow-x: auto;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .tab {
   flex: 1 0 auto;
   padding: 7px 14px;
   border: none;
-  border-radius: 9px;
+  border-radius: calc(var(--radius-lg) - 4px);
   cursor: pointer;
   font: inherit;
   white-space: nowrap;

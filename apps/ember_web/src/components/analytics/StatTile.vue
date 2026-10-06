@@ -44,7 +44,7 @@ const arrow = computed(() => ({ up: "▲", down: "▼", flat: "", new: "" })[pro
   flex-direction: column;
   gap: 2px;
   padding: 10px 14px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--code-bg);
 }
 .label {

@@ -133,7 +133,7 @@ function argumentsText(step: ToolStep): string {
   margin: 4px 0 8px 1.4em;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);
   overflow-wrap: anywhere;
@@ -146,7 +146,7 @@ function argumentsText(step: ToolStep): string {
   margin: 0 0 6px;
   padding: 8px;
   overflow: auto;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   white-space: pre-wrap;
   font-family: var(--mono);
   background: var(--code-bg);
@@ -155,7 +155,7 @@ function argumentsText(step: ToolStep): string {
   margin-left: 0.4rem;
   padding: 0 0.4rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--accent);
   font-size: 0.85em;
 }

@@ -39,7 +39,7 @@ function size(card: DownloadCard): string {
   display: inline-block;
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--code-bg);
   color: var(--text);
   font-size: 0.9em;

@@ -366,7 +366,7 @@ h3 {
 }
 .count {
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.7em;
   font-weight: 400;
   color: var(--muted);
@@ -377,7 +377,7 @@ h3 {
   min-width: 0;
   padding: 7px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--surface);
 }
 .search:focus {
@@ -428,7 +428,7 @@ h3 {
   margin-top: 16px;
   padding: 12px 14px;
   border: 1px solid var(--accent);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 .uri {
   display: flex;
@@ -446,7 +446,7 @@ h3 {
 .uri input {
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--bg);
   font-family: var(--mono);
@@ -454,7 +454,7 @@ h3 {
 .primary {
   padding: 6px 16px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-weight: 600;
   color: var(--accent-contrast);

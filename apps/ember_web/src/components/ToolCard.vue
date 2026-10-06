@@ -22,7 +22,7 @@ const emit = defineEmits<{ open: [] }>();
 <style scoped>
 .tool {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--bg);
 }
 .tool:hover,
@@ -37,7 +37,7 @@ const emit = defineEmits<{ open: [] }>();
   width: 100%;
   padding: 10px 14px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
   color: inherit;

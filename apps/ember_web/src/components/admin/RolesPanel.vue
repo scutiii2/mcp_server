@@ -186,7 +186,7 @@ onMounted(load);
   padding: 0;
   list-style: none;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .list li + li {
@@ -228,7 +228,7 @@ onMounted(load);
 .create input {
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--bg);
   font: inherit;

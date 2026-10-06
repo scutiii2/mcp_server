@@ -51,7 +51,7 @@ defineProps<{ small?: boolean; title?: string }>();
   flex: none;
   width: var(--w);
   height: var(--h);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--muted) 35%, var(--surface));
   transition: background 0.15s ease;
 }
@@ -61,7 +61,7 @@ defineProps<{ small?: boolean; title?: string }>();
   left: 3px;
   width: calc(var(--h) - 6px);
   height: calc(var(--h) - 6px);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   transition: transform 0.15s ease;

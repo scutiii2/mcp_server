@@ -57,7 +57,7 @@ async function copy(): Promise<void> {
 .result {
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--bg);
 }
 .result.failed {
@@ -84,7 +84,7 @@ async function copy(): Promise<void> {
 .copy {
   padding: 2px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.85em;
   background: transparent;

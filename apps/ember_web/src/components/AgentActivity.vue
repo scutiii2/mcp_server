@@ -37,7 +37,7 @@ const since = computed(() => {
 .dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--accent);
   animation: pulse 1.2s ease-in-out infinite;
 }

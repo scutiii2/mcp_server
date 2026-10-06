@@ -64,7 +64,7 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
 .card {
   margin-bottom: 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .card.off {
@@ -127,7 +127,7 @@ h3 {
 .badge {
   padding: 1px 8px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.75em;
   color: var(--muted);
 }

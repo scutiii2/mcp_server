@@ -39,6 +39,15 @@
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
+  /* Corner radius scale: radius follows element size. Nested corner = outer radius
+     minus the padding between (calc(var(--radius-lg) - 8px)); a ring = inner radius
+     plus its gap; an element flush to an edge is square on that side. */
+  --radius-sm: 4px; /* chip, badge, small tag */
+  --radius-md: 8px; /* button, input, row */
+  --radius-lg: 12px; /* card, panel */
+  --radius-xl: 16px; /* modal, sheet */
+  --radius-full: 9999px; /* single-line pill, avatar, toggle only */
+
   color-scheme: light dark;
   font: 15px/1.55 var(--sans);
   color: var(--text);

@@ -195,7 +195,7 @@ const shown = (value: number | null) => (value === null ? "–" : props.format(v
   position: absolute;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   transform: translate(-50%, 50%);
 }
 /* The point being read: larger, with a ring in the colour of what it sits on. */

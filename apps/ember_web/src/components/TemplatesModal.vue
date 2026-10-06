@@ -144,7 +144,7 @@ function onCancel(): void {
   padding: 18px 20px 20px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   color: var(--text);
   background: var(--surface);
 }
@@ -213,7 +213,7 @@ h3 {
 .form textarea {
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   outline: none;
   resize: vertical;
   color: var(--text);
@@ -242,7 +242,7 @@ h3 {
 .primary {
   padding: 5px 16px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
 }
 .ghost {
@@ -261,7 +261,7 @@ h3 {
 .link {
   padding: 2px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.85em;
   color: var(--muted);

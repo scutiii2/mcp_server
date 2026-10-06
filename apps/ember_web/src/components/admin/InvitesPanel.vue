@@ -150,7 +150,7 @@ onMounted(loadInvites);
   margin-top: 14px;
   padding: 12px 14px;
   border: 1px solid var(--accent);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .created p {
@@ -159,7 +159,7 @@ onMounted(loadInvites);
 .code {
   margin: 0 6px;
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 1.05em;
   background: var(--code-bg);

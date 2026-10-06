@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
   max-width: 260px;
   padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   color: var(--text);
   background: var(--surface);
   box-shadow: 0 6px 24px rgb(0 0 0 / 22%);
@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
   width: 100%;
   padding: 7px 10px;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
   font: inherit;
@@ -338,7 +338,7 @@ hr {
   padding: 4px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: 0 6px 24px rgb(0 0 0 / 22%);
 }

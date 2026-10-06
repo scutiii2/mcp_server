@@ -28,7 +28,7 @@ defineProps<{ title: string; subtitle?: string }>();
   max-width: 380px;
   padding: 28px 24px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: var(--surface);
 }
 h1 {
@@ -61,7 +61,7 @@ h1 {
 .card :deep(input) {
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-weight: normal;
   background: var(--bg);
 }
@@ -73,7 +73,7 @@ h1 {
   margin-top: 4px;
   padding: 9px 16px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-weight: 600;
   color: var(--accent-contrast);

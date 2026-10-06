@@ -195,7 +195,7 @@ onMounted(load);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .tile:hover,
@@ -209,7 +209,7 @@ onMounted(load);
   gap: 4px;
   padding: 14px 14px 10px;
   border: none;
-  border-radius: 12px 12px 0 0;
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
   cursor: pointer;
   text-align: left;
   color: inherit;
@@ -241,7 +241,7 @@ onMounted(load);
   width: 8px;
   height: 8px;
   margin-right: 4px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   vertical-align: middle;
 }
 .dot.ok {

@@ -128,7 +128,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   height: 28px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--muted);
   background: var(--bg);
@@ -151,7 +151,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   right: 4px;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--accent);
 }
 .panel {
@@ -166,7 +166,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   max-width: min(320px, calc(100vw - 32px));
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
@@ -174,7 +174,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   margin-left: 40px;
   padding: 1px 8px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.75em;
   color: var(--muted);

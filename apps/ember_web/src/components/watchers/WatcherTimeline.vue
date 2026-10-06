@@ -153,7 +153,7 @@ const bars = (list: WatcherInfo[]) => list.map(barOf).filter((b): b is Bar => b 
   flex: none;
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--status-failed);
 }
 .track {
@@ -172,7 +172,7 @@ const bars = (list: WatcherInfo[]) => list.map(barOf).filter((b): b is Bar => b 
   min-width: 6px;
   height: 14px;
   transform: translateY(-50%);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--c);
 }
 .row.child .bar {
@@ -188,7 +188,7 @@ const bars = (list: WatcherInfo[]) => list.map(barOf).filter((b): b is Bar => b 
   height: 8px;
   transform: translateY(-50%);
   border: 2px solid var(--surface);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--c);
   box-sizing: content-box;
 }

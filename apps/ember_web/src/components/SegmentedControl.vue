@@ -38,7 +38,7 @@ const index = () => props.options.findIndex((o) => o.value === model.value);
   grid-auto-columns: 1fr;
   max-width: 100%;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent);
 }
 .thumb {
@@ -47,7 +47,7 @@ const index = () => props.options.findIndex((o) => o.value === model.value);
   bottom: 3px;
   left: 3px;
   width: calc((100% - 6px) / var(--n));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transform: translateX(calc(var(--i) * 100%));
@@ -61,7 +61,7 @@ button {
   z-index: 1;
   padding: 4px 14px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.85em;
   font-weight: 600;

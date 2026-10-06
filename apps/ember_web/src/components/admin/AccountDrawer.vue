@@ -147,7 +147,7 @@ function onAddRole(event: Event): void {
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 header {
@@ -208,7 +208,7 @@ h4 {
     z-index: 5;
     max-height: 75vh;
     overflow-y: auto;
-    border-radius: 14px 14px 0 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   }
 }
 </style>

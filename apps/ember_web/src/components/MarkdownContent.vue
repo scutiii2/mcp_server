@@ -48,7 +48,7 @@ async function onClick(event: MouseEvent): Promise<void> {
   right: 6px;
   padding: 2px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.75em;
   color: var(--muted);
@@ -72,7 +72,7 @@ async function onClick(event: MouseEvent): Promise<void> {
   padding: 12px 14px;
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--code-bg);
 }
 .markdown :deep(code) {
@@ -81,7 +81,7 @@ async function onClick(event: MouseEvent): Promise<void> {
 }
 .markdown :deep(:not(pre) > code) {
   padding: 0.1em 0.35em;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--code-bg);
 }
 .markdown :deep(table) {

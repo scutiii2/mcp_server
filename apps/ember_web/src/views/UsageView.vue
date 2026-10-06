@@ -309,7 +309,7 @@ h3 {
 .ranges .export {
   padding: 4px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.85em;
   color: var(--muted);
@@ -327,7 +327,7 @@ h3 {
 .card {
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .limit-head {
@@ -340,14 +340,14 @@ h3 {
 }
 .bar {
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   overflow: hidden;
   background: var(--code-bg);
 }
 .bar span {
   display: block;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent);
 }
 .bar span.full {
@@ -368,7 +368,7 @@ h3 {
   flex-direction: column;
   padding: 10px 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 .stat strong {
   font-size: 1.3em;
@@ -399,7 +399,7 @@ h3 {
 }
 .day-bar {
   display: block;
-  border-radius: 3px 3px 0 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--accent);
 }
 .day-label {
@@ -439,7 +439,7 @@ th {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 .table-scroll {
   overflow-x: auto;

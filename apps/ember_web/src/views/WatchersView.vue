@@ -249,7 +249,7 @@ onUnmounted(stopTimers);
 .pulse {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--status-running);
 }
 .live.stale .pulse {
@@ -278,7 +278,7 @@ onUnmounted(stopTimers);
   flex-direction: column;
   gap: 2px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--code-bg);
 }
 .tile .label {

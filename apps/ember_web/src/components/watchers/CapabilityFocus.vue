@@ -95,7 +95,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onOutside));
   max-width: calc(100vw - 32px);
   padding: 8px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.14);
 }
@@ -117,7 +117,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onOutside));
   width: 100%;
   padding: 5px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--text);
   font: inherit;
@@ -136,7 +136,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onOutside));
   flex: none;
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
 }
 .name {
   flex: 1;

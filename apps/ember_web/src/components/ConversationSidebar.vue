@@ -488,7 +488,7 @@ watch(
   gap: 8px;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   background: var(--bg);
 }
@@ -511,7 +511,7 @@ watch(
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   outline: none;
   color: var(--text);
   background: var(--bg);
@@ -546,7 +546,7 @@ watch(
 }
 mark {
   padding: 0 1px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: inherit;
   background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
@@ -563,7 +563,7 @@ mark {
   align-items: center;
   gap: 4px;
   padding: 7px 8px 7px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--muted);
 }
@@ -605,7 +605,7 @@ mark {
 .select-bar button {
   padding: 6px 12px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 0.85em;
   color: var(--muted);

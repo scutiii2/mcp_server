@@ -128,7 +128,7 @@ async function check(): Promise<void> {
   margin-bottom: 12px;
   padding: 10px 14px;
   border: 1px solid var(--tone);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   color: var(--tone);
   background: color-mix(in srgb, var(--tone) 10%, var(--bg));
 }
@@ -182,7 +182,7 @@ async function check(): Promise<void> {
   flex-shrink: 0;
   min-width: 56px;
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.78em;
   text-align: center;
   color: var(--tone);
@@ -191,7 +191,7 @@ async function check(): Promise<void> {
 .key {
   flex-shrink: 0;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--code-bg);
 }
 .message {

@@ -85,14 +85,14 @@ watch(
 }
 .bar {
   height: 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   overflow: hidden;
   background: var(--code-bg);
 }
 .bar span {
   display: block;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent);
 }
 .bar span.full {

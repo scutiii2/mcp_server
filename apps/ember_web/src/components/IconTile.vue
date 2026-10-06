@@ -37,7 +37,7 @@ defineProps<{ label: string; icon: string[]; to?: string; subtitle?: string; des
   gap: 10px;
   padding: 18px 10px 16px;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   color: var(--text);
   background: var(--surface);

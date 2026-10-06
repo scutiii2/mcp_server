@@ -53,7 +53,7 @@ const peak = computed(() => Math.max(1, ...props.items.map((i) => i.count)));
   width: 100%;
   padding: 4px 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--text);
   font: inherit;
@@ -84,7 +84,7 @@ const peak = computed(() => Math.max(1, ...props.items.map((i) => i.count)));
   flex: none;
   width: max(2px, calc((100% - 3.4em) * var(--share)));
   height: 8px;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .value {
   color: var(--muted);

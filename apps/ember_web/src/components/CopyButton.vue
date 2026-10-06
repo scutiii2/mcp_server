@@ -43,7 +43,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 2px 6px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.75em;
   color: var(--muted);

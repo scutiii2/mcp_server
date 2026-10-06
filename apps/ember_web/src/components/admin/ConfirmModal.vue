@@ -38,7 +38,7 @@ const emit = defineEmits<{ confirm: []; close: [] }>();
 }
 button {
   padding: 6px 16px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font: inherit;
 }

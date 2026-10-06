@@ -423,7 +423,7 @@ onBeforeUnmount(() => {
   translate: -50% 0;
   padding: 6px 14px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font: inherit;
   font-size: 0.85em;
@@ -468,7 +468,7 @@ onBeforeUnmount(() => {
 .msg {
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 .msg.flash {
   animation: flash 1.6s ease-out;
@@ -521,7 +521,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 2px 6px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--muted);
   background: transparent;
@@ -565,7 +565,7 @@ onBeforeUnmount(() => {
   max-height: calc(1.55em * 10);
   padding: 10px 14px;
   border: 1px solid var(--accent);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   outline: none;
   resize: none;
   background: var(--surface);
@@ -582,7 +582,7 @@ onBeforeUnmount(() => {
 .primary {
   padding: 4px 14px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.85em;
 }
@@ -598,7 +598,7 @@ onBeforeUnmount(() => {
 .user-bubble {
   max-width: 80%;
   padding: 10px 14px;
-  border-radius: 18px 18px 4px 18px;
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl);
   background: var(--user-bubble);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -619,7 +619,7 @@ onBeforeUnmount(() => {
   margin: 6px 0 0;
   padding: 8px;
   overflow: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   white-space: pre-wrap;
   font-family: var(--mono);
   background: var(--bg);
@@ -634,13 +634,13 @@ onBeforeUnmount(() => {
 .command-result {
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .summary {
   padding: 10px 14px;
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 .summary h4 {
@@ -660,7 +660,7 @@ onBeforeUnmount(() => {
   margin: 8px 0 0;
   padding: 10px;
   overflow: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   white-space: pre-wrap;
   font-family: var(--mono);
   background: var(--code-bg);
@@ -669,7 +669,7 @@ onBeforeUnmount(() => {
   align-self: stretch;
   padding: 10px 12px;
   border: 1px solid var(--accent);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .approval header {
@@ -700,7 +700,7 @@ onBeforeUnmount(() => {
   margin: 6px 0 0;
   padding: 8px;
   overflow: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: var(--mono);
@@ -714,7 +714,7 @@ onBeforeUnmount(() => {
 .approval .buttons button {
   padding: 5px 14px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.85em;
   color: var(--text);
@@ -753,14 +753,14 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 3px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.85em;
   color: var(--muted);
 }
 .dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--accent);
   animation: pulse 1.2s ease-in-out infinite;
 }

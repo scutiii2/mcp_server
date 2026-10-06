@@ -174,7 +174,7 @@ function onDragEnd(): void {
   flex-shrink: 0;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--muted);
   background: transparent;
@@ -197,7 +197,7 @@ function onDragEnd(): void {
   width: 7px;
   height: 7px;
   flex-shrink: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--accent);
   animation: pulse 1.2s ease-in-out infinite;
 }
@@ -211,7 +211,7 @@ function onDragEnd(): void {
   min-width: 0;
   padding: 2px 6px;
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--bg);
   font: inherit;

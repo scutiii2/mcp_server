@@ -61,7 +61,7 @@ const pad = (hour: number) => String(hour).padStart(2, "0");
 .cell {
   aspect-ratio: 1;
   max-height: 22px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: var(--code-bg);
 }
 .cell.level-1 {

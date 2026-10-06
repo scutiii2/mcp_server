@@ -169,7 +169,7 @@ const hasLinks = computed(() => links.value.length > 0);
   padding: 18px 20px 20px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   color: var(--text);
   background: var(--surface);
 }
@@ -221,7 +221,7 @@ h4 {
 .create select {
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--bg);
   font: inherit;
@@ -229,7 +229,7 @@ h4 {
 .primary {
   padding: 6px 16px;
   border: 1px solid var(--accent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   color: var(--accent-contrast);
   background: var(--accent);
@@ -242,7 +242,7 @@ h4 {
   margin-top: 12px;
   padding: 10px 12px;
   border: 1px solid var(--accent);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 .fresh p {
   margin: 0 0 8px;
@@ -258,7 +258,7 @@ h4 {
   min-width: 0;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--bg);
   font-family: var(--mono);
@@ -297,7 +297,7 @@ h4 {
 .link {
   padding: 2px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.85em;
   color: var(--muted);

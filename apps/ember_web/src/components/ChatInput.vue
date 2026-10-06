@@ -487,7 +487,7 @@ function onKeydown(event: KeyboardEvent): void {
   overflow-y: auto;
   list-style: none;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
 }
@@ -496,7 +496,7 @@ function onKeydown(event: KeyboardEvent): void {
   flex-wrap: wrap;
   gap: 2px 10px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 0.9em;
 }
@@ -522,7 +522,7 @@ function onKeydown(event: KeyboardEvent): void {
   gap: 8px;
   padding: 8px 8px 8px 16px;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: var(--radius-xl);
   background: var(--surface);
 }
 .box:focus-within,
@@ -565,7 +565,7 @@ function onKeydown(event: KeyboardEvent): void {
   max-width: 100%;
   padding: 2px 4px 2px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.8em;
   background: var(--surface);
 }
@@ -608,7 +608,7 @@ textarea {
   height: 34px;
   flex-shrink: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   cursor: pointer;
   color: var(--accent-contrast);
   background: var(--accent);

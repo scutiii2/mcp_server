@@ -154,7 +154,7 @@ nav {
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-weight: 700;
   color: var(--bg);
   background: var(--accent);
@@ -174,7 +174,7 @@ nav a,
   height: 36px;
   padding: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--muted);
   background: transparent;
@@ -202,7 +202,7 @@ nav a,
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-full);
   font-size: 0.7rem;
   line-height: 16px;
   text-align: center;
@@ -245,7 +245,7 @@ svg {
   transform: translateY(-50%);
   padding: 4px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   white-space: nowrap;
   font-size: 0.85rem;
   font-weight: 400;

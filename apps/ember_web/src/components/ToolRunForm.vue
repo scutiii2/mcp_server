@@ -319,7 +319,7 @@ textarea {
   width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg);
 }
 input[type="range"] {
@@ -348,7 +348,7 @@ textarea:focus {
   gap: 6px;
   padding: 12px;
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 0.9em;
 }
 .drop.over {
@@ -380,7 +380,7 @@ textarea:focus {
   align-self: flex-start;
   padding: 7px 18px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-weight: 600;
   color: var(--accent-contrast);
@@ -420,7 +420,7 @@ textarea:focus {
   position: relative;
   padding: 5px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.9em;
 }

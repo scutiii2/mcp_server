@@ -101,17 +101,17 @@ const scalars = computed(() =>
 
 <style scoped>
 .gui-result { margin-top: 12px; }
-.secret-card { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.secret-card { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
 .secret-row { display: flex; gap: 8px; align-items: center; }
 .secret { flex: 1; min-width: 0; font-family: var(--mono); font-size: 1.25em; line-height: 1.5; word-break: break-all; }
 .digit { color: var(--accent); }
 .symbol { color: var(--success); }
-.icon, .copy { display: inline-flex; align-items: center; justify-content: center; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
+.icon, .copy { display: inline-flex; align-items: center; justify-content: center; height: 34px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); cursor: pointer; }
 .icon { width: 34px; padding: 0; }
 .icon:disabled { cursor: default; opacity: 0.5; }
 .copy { padding: 0 14px; font-weight: 600; }
-.bar { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; }
-.fill { height: 100%; border-radius: 3px; transition: width 0.25s, background-color 0.25s; }
+.bar { height: 6px; border-radius: var(--radius-full); background: var(--surface); overflow: hidden; }
+.fill { height: 100%; border-radius: var(--radius-full); transition: width 0.25s, background-color 0.25s; }
 .fill.weak { background: var(--danger); }
 .fill.fair { background: var(--warning); }
 .fill.strong, .fill.excellent { background: var(--success); }

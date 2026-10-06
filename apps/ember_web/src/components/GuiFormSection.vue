@@ -141,7 +141,7 @@ onActivated(() => {
   margin-bottom: 12px;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .card.embedded {

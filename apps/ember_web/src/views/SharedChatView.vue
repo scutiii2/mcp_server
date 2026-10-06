@@ -125,7 +125,7 @@ header h2 {
 .status button {
   padding: 5px 16px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
   color: var(--text);
   background: transparent;
@@ -134,7 +134,7 @@ header h2 {
   align-self: flex-end;
   max-width: 80%;
   padding: 10px 14px;
-  border-radius: 18px 18px 4px 18px;
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl);
   background: var(--user-bubble);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

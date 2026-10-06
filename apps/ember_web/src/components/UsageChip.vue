@@ -81,7 +81,7 @@ const rows = computed<Row[]>(() => {
 .chip {
   padding: 2px 6px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font: inherit;
   font-size: 0.75em;
@@ -101,7 +101,7 @@ const rows = computed<Row[]>(() => {
   margin: 2px 0 0;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 0.8em;
   background: var(--surface);
 }
