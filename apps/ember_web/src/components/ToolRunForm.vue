@@ -11,8 +11,9 @@ import { buildArgs, fieldsFromSchema, initialValues, type FieldValues, type Tool
  * field), options that fill in (`sets`) or show (`shows`) other values, and
  * file fields that upload the chosen file and hold its server-side path. */
 
-const props = withDefaults(defineProps<{ schema: JsonSchema; running: boolean; submitLabel?: string }>(), {
+const props = withDefaults(defineProps<{ schema: JsonSchema; running: boolean; submitLabel?: string; live?: boolean }>(), {
   submitLabel: "Run",
+  live: false,
 });
 const emit = defineEmits<{ run: [args: Record<string, unknown>] }>();
 
@@ -156,6 +157,16 @@ function submit(): void {
   emit("run", built.args);
 }
 
+/** Live mode: a committed change (the native `change` event: slider release,
+ * toggle, select, text on blur) runs the tool again. */
+function onFormChange(): void {
+  if (props.live) submit();
+}
+// Live mode also runs once as it opens, with the defaults.
+onMounted(() => {
+  if (props.live) submit();
+});
+
 function inputType(field: ToolField): string {
   switch (field.widget) {
     case "number":
@@ -170,7 +181,7 @@ function inputType(field: ToolField): string {
 </script>
 
 <template>
-  <form class="tool-form" @submit.prevent="submit">
+  <form :class="['tool-form', { live }]" @submit.prevent="submit" @change="onFormChange">
     <p v-if="fields.length === 0" class="muted">This tool takes no parameters.</p>
 
     <div v-for="f in fields" :key="f.name" :class="['field', { invalid: errors[f.name] }]">
@@ -231,6 +242,17 @@ function inputType(field: ToolField): string {
           :maxlength="f.maxLength"
           :placeholder="f.widget === 'json' ? 'JSON' : ''"
         />
+        <div v-else-if="f.widget === 'range'" class="range-row">
+          <input
+            :id="`field-${f.name}`"
+            v-model="values[f.name] as string"
+            type="range"
+            :step="f.step ?? 1"
+            :min="f.min"
+            :max="f.max"
+          />
+          <output v-if="live" class="readout" :for="`field-${f.name}`">{{ values[f.name] }}</output>
+        </div>
         <input
           v-else
           :id="`field-${f.name}`"
@@ -254,7 +276,7 @@ function inputType(field: ToolField): string {
       <small v-else-if="f.description" class="hint">{{ f.description }}</small>
     </div>
 
-    <button type="submit" class="run" :disabled="running || uploading">
+    <button v-if="!live" type="submit" class="run" :disabled="running || uploading">
       {{ running ? "Running ..." : uploading ? "Uploading ..." : submitLabel }}
     </button>
   </form>
@@ -367,5 +389,53 @@ textarea:focus {
 .run:disabled {
   cursor: default;
   opacity: 0.5;
+}
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.range-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.readout {
+  min-width: 2.5em;
+  text-align: right;
+  font-weight: 600;
+}
+/* Live forms: toggles are chips in a row, other controls take the full width. */
+.live {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.live .field {
+  flex: 1 1 100%;
+}
+.live .field:has(> .check) {
+  flex: 0 0 auto;
+}
+.live .check {
+  position: relative;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.live .check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.live .check:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.live .check:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 </style>
