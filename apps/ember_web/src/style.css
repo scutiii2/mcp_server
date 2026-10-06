@@ -12,6 +12,7 @@
   --user-bubble: light-dark(#f1efe9, #2a2a30);
   --code-bg: light-dark(#f3f3f4, #232328);
   --danger: light-dark(#d9480f, #ff8a4c);
+  --success: light-dark(#1baf7a, #199e70);
   /* Config issues: errors use --status-failed (red); warnings amber, apart from the orange accent. */
   --warning: light-dark(#a86a00, #f0b429);
   /* Analytics series, one per log kind: categorical slots 1-3 of the dataviz
