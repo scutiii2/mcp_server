@@ -1,6 +1,7 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatSearchHit } from "../api/ChatsClient";
+import type { ChatFolder } from "../api/FoldersClient";
 import type { Conversation } from "../api/types";
 import { usageClient } from "../api/UsageClient";
 import ConversationSidebar from "./ConversationSidebar.vue";
@@ -31,14 +32,37 @@ const hit = (id: string, extra: Partial<ChatSearchHit> = {}): ChatSearchHit => (
 
 type Props = InstanceType<typeof ConversationSidebar>["$props"];
 
+// Mounted on the body: the menu teleports there, and focus needs an attached tree.
+const mounted: { unmount(): void }[] = [];
+
 function mountSidebar(props: Partial<Props> = {}) {
-  return mount(ConversationSidebar, {
+  const wrapper = mount(ConversationSidebar, {
     props: { conversations: [chat("1"), chat("2")], activeId: null, locked: false, ...props },
+    attachTo: document.body,
   });
+  mounted.push(wrapper);
+  return wrapper;
 }
+
+afterEach(() => {
+  for (const wrapper of mounted.splice(0)) wrapper.unmount();
+  document.body.innerHTML = "";
+});
 
 const searching = (hits: ChatSearchHit[], extra: Partial<Props> = {}) =>
   mountSidebar({ query: "ab", searchActive: true, hits, ...extra });
+
+const folder = (id: number, name = `Folder ${id}`): ChatFolder => ({ id, name, position: id, chat_count: 0 });
+const inFolder = (id: string, folderId: number | null, extra: Partial<Conversation> = {}): Conversation => ({
+  ...chat(id),
+  folderId,
+  ...extra,
+});
+// A row's "..." button (folder headers have their own, found as "header button.more").
+const menuButton = (wrapper: ReturnType<typeof mountSidebar>, index = 0) => wrapper.findAll("li.row button.more")[index]!;
+const menuItem = (label: string) =>
+  [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((b) => b.textContent?.includes(label));
+const openMenu = () => document.body.querySelector('[role="menu"]');
 
 describe("the search box", () => {
   it("shows once there are chats, and reports what is typed", async () => {
@@ -344,7 +368,7 @@ describe("select mode", () => {
 
   it("a rename in progress ends when selecting starts", async () => {
     const wrapper = mountSidebar({ conversations: three });
-    await wrapper.find("button.icon").trigger("click"); // rename the first chat
+    await wrapper.find(".title").trigger("dblclick"); // rename the first chat
     expect(wrapper.find("input.rename").exists()).toBe(true);
 
     await wrapper.find("button.link").trigger("click");
@@ -363,7 +387,7 @@ describe("select mode", () => {
 
   it("a rename abandoned by selecting does not come back after Cancel", async () => {
     const wrapper = mountSidebar({ conversations: three });
-    await wrapper.find("button.icon").trigger("click");
+    await wrapper.find(".title").trigger("dblclick");
     await wrapper.find("button.link").trigger("click");
 
     await bar(wrapper).findAll("button").at(-1)!.trigger("click"); // Cancel
@@ -385,5 +409,278 @@ describe("select mode", () => {
     const wrapper = await selecting({ conversations: [{ ...chat("1"), running: true }, chat("2")] });
 
     expect(rows(wrapper)[0]!.find(".running").exists()).toBe(true);
+  });
+});
+
+describe("sections", () => {
+  it("shows a flat list with no headers when there are no pins or folders", () => {
+    const wrapper = mountSidebar();
+
+    expect(wrapper.find("header").exists()).toBe(false);
+    expect(wrapper.findAll("li.row")).toHaveLength(2);
+  });
+
+  it("groups chats under Pinned, each folder and Chats", () => {
+    const wrapper = mountSidebar({
+      conversations: [chat("p"), inFolder("a", 1), inFolder("b", null)].map((c) => (c.id === "p" ? { ...c, pinned: true } : c)),
+      folders: [folder(1, "Work"), folder(2, "Empty")],
+    });
+
+    const headers = wrapper.findAll("header").map((h) => h.find(".name").text());
+    expect(headers).toEqual(["Pinned", "Work", "Empty", "Chats"]);
+    expect(wrapper.findAll("header .count").map((c) => c.text())).toEqual(["1", "1", "0", "1"]);
+  });
+
+  it("hides the rows of a collapsed folder and asks to toggle one", async () => {
+    const wrapper = mountSidebar({
+      conversations: [inFolder("a", 1)],
+      folders: [folder(1, "Work")],
+      collapsedFolders: [1],
+    });
+
+    expect(wrapper.findAll("li.row")).toHaveLength(0);
+    await wrapper.find("button.toggle").trigger("click");
+    expect(wrapper.emitted("toggleFolder")).toEqual([[1]]);
+  });
+
+  it("shows folders even when there are no chats", () => {
+    const wrapper = mountSidebar({ conversations: [], folders: [folder(1, "Work")] });
+
+    expect(wrapper.find("header .name").text()).toBe("Work");
+    expect(wrapper.text()).not.toContain("No saved chats yet.");
+  });
+
+  it("search results stay flat even with folders", () => {
+    const wrapper = searching([hit("1")], { folders: [folder(1)] });
+
+    expect(wrapper.find("header").exists()).toBe(false);
+  });
+
+  it("select mode hides the ... buttons of rows and folder headers", async () => {
+    const wrapper = mountSidebar({ conversations: [inFolder("a", 1), chat("b")], folders: [folder(1, "Work")] });
+    expect(wrapper.findAll("button.more").length).toBeGreaterThan(0);
+
+    await wrapper.find("button.link").trigger("click"); // Select
+
+    expect(wrapper.find("button.more").exists()).toBe(false);
+  });
+});
+
+describe("the row menu", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("opens from the ... button with Pin, Move to..., Rename and Delete", async () => {
+    const wrapper = mountSidebar();
+
+    await menuButton(wrapper).trigger("click");
+
+    expect([...document.body.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent?.replace("›", "").trim())).toEqual([
+      "Pin",
+      "Move to...",
+      "Rename",
+      "Delete",
+    ]);
+  });
+
+  it("Pin and Unpin report the chat", async () => {
+    const wrapper = mountSidebar({ conversations: [chat("1"), { ...chat("2"), pinned: true }], folders: [] });
+
+    await menuButton(wrapper, 0).trigger("click"); // the pinned chat comes first
+    menuItem("Unpin")!.click();
+    await menuButton(wrapper, 1).trigger("click");
+    menuItem("Pin")!.click();
+
+    expect(wrapper.emitted("pin")).toEqual([["2", false], ["1", true]]);
+  });
+
+  it("Rename starts the inline rename of that row", async () => {
+    const wrapper = mountSidebar();
+
+    await menuButton(wrapper).trigger("click");
+    menuItem("Rename")!.click();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find("input.rename").exists()).toBe(true);
+  });
+
+  it("Delete asks first, then reports the chat", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const wrapper = mountSidebar();
+
+    await menuButton(wrapper).trigger("click");
+    menuItem("Delete")!.click();
+
+    expect(confirmSpy).toHaveBeenCalledWith('Delete "Chat 1"? This can\'t be undone.');
+    expect(wrapper.emitted("delete")).toEqual([["1"]]);
+  });
+
+  it("Delete does nothing when the confirmation is declined", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const wrapper = mountSidebar();
+
+    await menuButton(wrapper).trigger("click");
+    menuItem("Delete")!.click();
+
+    expect(wrapper.emitted("delete")).toBeUndefined();
+  });
+
+  it("Move to... reports the chosen folder, None, or a new folder", async () => {
+    const wrapper = mountSidebar({ folders: [folder(1, "Work")] });
+    const moveVia = async (label: string) => {
+      await menuButton(wrapper).trigger("click");
+      menuItem("Move to...")!.click();
+      await wrapper.vm.$nextTick();
+      menuItem(label)!.click();
+      await wrapper.vm.$nextTick();
+    };
+
+    await moveVia("Work");
+    await moveVia("No folder");
+    await moveVia("New folder...");
+
+    expect(wrapper.emitted("move")).toEqual([["1", 1], ["1", null]]);
+    expect(wrapper.emitted("moveNew")).toEqual([["1"]]);
+  });
+
+  it("the chat that is answering cannot be moved or deleted from its menu", async () => {
+    const wrapper = mountSidebar({ conversations: [chat("1")], activeId: "1", locked: true });
+
+    await menuButton(wrapper).trigger("click");
+
+    expect(menuItem("Move to...")!.hasAttribute("disabled")).toBe(true);
+    expect(menuItem("Delete")!.hasAttribute("disabled")).toBe(true);
+    expect(menuItem("Pin")!.hasAttribute("disabled")).toBe(false);
+    expect(menuItem("Rename")!.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("closes on Escape and gives focus back to its button", async () => {
+    const wrapper = mountSidebar();
+    const button = menuButton(wrapper);
+    await button.trigger("click");
+    await flushPromises(); // the menu focuses its first item once placed
+
+    document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flushPromises();
+
+    expect(openMenu()).toBeNull();
+    expect(document.activeElement).toBe(button.element);
+  });
+
+  it("does not give focus back to its button after a choice", async () => {
+    const wrapper = mountSidebar();
+    const button = menuButton(wrapper);
+    await button.trigger("click");
+    await flushPromises();
+
+    menuItem("Pin")!.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("pin")).toEqual([["1", true]]);
+    expect(openMenu()).toBeNull();
+    expect(document.activeElement).not.toBe(button.element);
+  });
+
+  it("the ... button of the open menu closes it instead of reopening it", async () => {
+    const wrapper = mountSidebar();
+    const button = menuButton(wrapper);
+    await button.trigger("click");
+    await flushPromises();
+    expect(openMenu()).not.toBeNull();
+
+    // A real press: pointerdown (which the button keeps from the menu), then click.
+    button.element.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(openMenu()).toBeNull();
+  });
+
+  it("another row's ... button replaces the open menu", async () => {
+    const wrapper = mountSidebar({ conversations: [chat("1"), { ...chat("2"), pinned: true }] });
+
+    await menuButton(wrapper, 0).trigger("click"); // chat 2, pinned
+    await menuButton(wrapper, 1).trigger("click"); // chat 1
+
+    expect(document.body.querySelectorAll('[role="menu"][aria-label="Chat actions"]')).toHaveLength(1);
+    expect(menuItem("Unpin")).toBeUndefined();
+    expect(menuItem("Pin")).toBeDefined();
+  });
+
+  it("closes when the sidebar scrolls, since it would drift away from its row", async () => {
+    const wrapper = mountSidebar();
+    await menuButton(wrapper).trigger("click");
+
+    await wrapper.find("aside").trigger("scroll");
+
+    expect(openMenu()).toBeNull();
+  });
+
+  it("closes when select mode starts", async () => {
+    const wrapper = mountSidebar();
+    await menuButton(wrapper).trigger("click");
+
+    await wrapper.find("button.link").trigger("click"); // Select
+
+    expect(openMenu()).toBeNull();
+  });
+
+  it("closes when a search starts", async () => {
+    const wrapper = mountSidebar();
+    await menuButton(wrapper).trigger("click");
+
+    await wrapper.setProps({ query: "ab", searchActive: true, hits: [hit("1")] });
+
+    expect(openMenu()).toBeNull();
+  });
+
+  it("a folder header has a menu with Rename and Delete that report the folder", async () => {
+    const wrapper = mountSidebar({ conversations: [], folders: [folder(1, "Work")] });
+
+    await wrapper.find("header button.more").trigger("click");
+    menuItem("Rename")!.click();
+    await wrapper.vm.$nextTick();
+    await wrapper.find("header button.more").trigger("click");
+    menuItem("Delete")!.click();
+
+    expect(wrapper.emitted("renameFolder")).toEqual([[folder(1, "Work")]]);
+    expect(wrapper.emitted("deleteFolder")).toEqual([[folder(1, "Work")]]);
+  });
+
+  it("a folder header's ... button closes its own open menu", async () => {
+    const wrapper = mountSidebar({ conversations: [], folders: [folder(1, "Work")] });
+    const button = wrapper.find("header button.more");
+    await button.trigger("click");
+    expect(openMenu()).not.toBeNull();
+
+    button.element.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    await button.trigger("click");
+
+    expect(openMenu()).toBeNull();
+  });
+});
+
+describe("the footer", () => {
+  it("has a New folder button that asks for a new folder", async () => {
+    const wrapper = mountSidebar();
+
+    await wrapper.find("button.new-folder").trigger("click");
+
+    expect(wrapper.emitted("newFolder")).toHaveLength(1);
+  });
+
+  it("shows New folder even with no chats, and disables it at the folder limit", () => {
+    const empty = mountSidebar({ conversations: [] });
+    expect(empty.find("button.new-folder").exists()).toBe(true);
+
+    const full = mountSidebar({ folders: Array.from({ length: 30 }, (_, i) => folder(i + 1)) });
+    expect(full.find("button.new-folder").attributes("disabled")).toBeDefined();
+  });
+
+  it("is hidden while searching or selecting", async () => {
+    expect(searching([hit("1")]).find("button.new-folder").exists()).toBe(false);
+
+    const wrapper = mountSidebar();
+    await wrapper.find("button.link").trigger("click"); // Select
+    expect(wrapper.find("button.new-folder").exists()).toBe(false);
   });
 });

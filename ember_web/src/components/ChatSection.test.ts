@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import ChatSection from "./ChatSection.vue";
 
 type Props = InstanceType<typeof ChatSection>["$props"];
@@ -51,6 +51,21 @@ describe("ChatSection", () => {
     const points = wrapper.emitted("openMenu")!.map((e) => e[0] as { x: number; y: number });
     expect(points).toHaveLength(2);
     expect(points[1]).toMatchObject({ x: 5, y: 9 });
+  });
+
+  it("a press on the ... button does not reach the document (an open menu would close on it)", () => {
+    const wrapper = mount(ChatSection, {
+      props: { title: "Work", count: 3, collapsible: true, collapsed: false, menu: true },
+      attachTo: document.body,
+    });
+    const seen = vi.fn();
+    document.addEventListener("pointerdown", seen);
+
+    wrapper.find("button.more").element.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+
+    document.removeEventListener("pointerdown", seen);
+    wrapper.unmount();
+    expect(seen).not.toHaveBeenCalled();
   });
 
   it("has no ... button when it has no menu", () => {

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 import type { Conversation } from "../api/types";
+import type { MenuPoint } from "./menuPoint";
 
 // One row of the chat list. The sidebar owns which row is being renamed and
 // which are ticked; this row owns only the text being typed.
 // locked: a turn is running somewhere (every row gets the `locked` class).
-// lockedHere: this chat is the one answering, so it can't be ticked or deleted.
+// lockedHere: this chat is the one answering, so it can't be ticked.
+// Its actions (pin, move, rename, delete) live in a menu the sidebar owns:
+// the "..." button and a right-click ask for it (`openMenu`).
 const props = defineProps<{
   chat: Conversation;
   active: boolean;
@@ -20,7 +23,7 @@ const emit = defineEmits<{
   toggle: [];
   startRename: [];
   finishRename: [save: boolean, title: string];
-  delete: [];
+  openMenu: [point: MenuPoint];
 }>();
 
 const draft = ref("");
@@ -50,6 +53,19 @@ function onClick(): void {
   if (props.selecting) emit("toggle");
   else if (!props.renaming) emit("select");
 }
+
+const moreButton = ref<HTMLButtonElement | null>(null);
+
+function openFromButton(): void {
+  const box = moreButton.value?.getBoundingClientRect();
+  emit("openMenu", { x: box?.left ?? 0, y: box?.bottom ?? 0, trigger: moreButton.value });
+}
+
+function openFromContext(event: MouseEvent): void {
+  if (props.selecting || props.renaming) return; // the browser's own menu, as before
+  event.preventDefault();
+  emit("openMenu", { x: event.clientX, y: event.clientY, trigger: moreButton.value });
+}
 </script>
 
 <template>
@@ -57,6 +73,7 @@ function onClick(): void {
     :class="['row', { active, locked, ticked: selecting && ticked }]"
     :title="chat.title"
     @click="onClick"
+    @contextmenu="openFromContext"
   >
     <template v-if="selecting">
       <input
@@ -85,26 +102,22 @@ function onClick(): void {
     <template v-else>
       <span v-if="chat.running" class="running" title="An answer is being written" />
       <span class="title" @dblclick.stop="emit('startRename')">{{ chat.title }}</span>
-      <button type="button" class="icon" title="Rename chat" @click.stop="emit('startRename')">
-        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-          <path
-            d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
+      <!-- pointerdown.stop: an open menu closes on any press outside it, so a
+           press on this button must not reach it; the sidebar toggles instead. -->
       <button
+        ref="moreButton"
         type="button"
-        class="icon delete"
-        title="Delete chat"
-        :disabled="lockedHere"
-        @click.stop="emit('delete')"
+        class="icon more"
+        title="Chat actions"
+        aria-label="Chat actions"
+        aria-haspopup="menu"
+        @pointerdown.stop
+        @click.stop="openFromButton"
       >
-        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-          <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.8" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+          <circle cx="19" cy="12" r="1.8" fill="currentColor" />
         </svg>
       </button>
     </template>
@@ -146,9 +159,6 @@ function onClick(): void {
 }
 .icon:hover:not(:disabled) {
   color: var(--text);
-}
-.delete:hover:not(:disabled) {
-  color: var(--danger);
 }
 .icon:disabled {
   cursor: default;

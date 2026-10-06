@@ -56,6 +56,7 @@ function openFromContext(event: MouseEvent): void {
         title="Folder actions"
         aria-label="Folder actions"
         aria-haspopup="menu"
+        @pointerdown.stop
         @click="openFromButton"
       >
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">

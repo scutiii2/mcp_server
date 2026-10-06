@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import type { ChatSearchHit, MatchSpan } from "../api/ChatsClient";
+import { MAX_FOLDERS, type ChatFolder } from "../api/FoldersClient";
 import type { Conversation } from "../api/types";
+import { chatMenuItems, folderMenuItems, parseChatChoice } from "../utils/chatMenu";
+import { buildLayout } from "../utils/chatSections";
 import ChatRow from "./ChatRow.vue";
+import ChatSection from "./ChatSection.vue";
+import PopupMenu from "./PopupMenu.vue";
+import type { MenuPoint } from "./menuPoint";
 import UsageGauges from "./UsageGauges.vue";
 
 // locked: a turn is running - switching or starting chats is blocked.
 // query / searchActive / hits: the search box and, once it holds enough
 // characters, the results that replace the chat list.
+// folders / collapsedFolders: the chat folders, and which of them are folded.
 const props = withDefaults(
   defineProps<{
     conversations: Conversation[];
@@ -22,8 +29,20 @@ const props = withDefaults(
     hits?: ChatSearchHit[];
     searching?: boolean;
     searchError?: string;
+    folders?: ChatFolder[];
+    /** Ids of the folders shown folded. */
+    collapsedFolders?: number[];
   }>(),
-  { busy: false, query: "", searchActive: false, hits: () => [], searching: false, searchError: "" },
+  {
+    busy: false,
+    query: "",
+    searchActive: false,
+    hits: () => [],
+    searching: false,
+    searchError: "",
+    folders: () => [],
+    collapsedFolders: () => [],
+  },
 );
 const emit = defineEmits<{
   new: [];
@@ -34,6 +53,15 @@ const emit = defineEmits<{
   deleteAll: [];
   deleteMany: [ids: string[]];
   search: [query: string];
+  pin: [id: string, pinned: boolean];
+  /** folderId null: out of its folder. */
+  move: [id: string, folderId: number | null];
+  /** "Move to > New folder...": the parent creates a folder, then moves the chat into it. */
+  moveNew: [id: string];
+  toggleFolder: [id: number];
+  newFolder: [];
+  renameFolder: [folder: ChatFolder];
+  deleteFolder: [folder: ChatFolder];
 }>();
 
 /** `text` split around the match, for a <mark>; no match: all one part. */
@@ -53,6 +81,83 @@ function finishRename(id: string, save: boolean, title: string): void {
   if (renamingId.value !== id) return;
   renamingId.value = null;
   if (save) emit("rename", id, title);
+}
+
+const layout = computed(() => buildLayout(props.conversations, props.folders));
+
+const SECTION_TITLES = { pinned: "Pinned", unfiled: "Chats" } as const;
+/** A section's header; null (no header) while the list is flat. */
+function titleOf(section: { kind: "pinned" | "folder" | "unfiled"; folder: ChatFolder | null }): string | null {
+  if (!layout.value.grouped) return null;
+  return section.kind === "folder" ? (section.folder?.name ?? "") : SECTION_TITLES[section.kind];
+}
+
+// The open popup menu: for a chat row or for a folder header, with where it
+// opened and the button that gets focus back after Esc.
+type OpenMenu =
+  | ({ kind: "chat"; chat: Conversation } & MenuPoint)
+  | ({ kind: "folder"; folder: ChatFolder } & MenuPoint);
+const menu = ref<OpenMenu | null>(null);
+
+const menuItems = computed(() => {
+  const m = menu.value;
+  if (!m) return [];
+  return m.kind === "chat" ? chatMenuItems(m.chat, props.folders, isLocked(m.chat)) : folderMenuItems();
+});
+
+// A press on the "..." button of the menu that is open closes it (the button
+// keeps its pointerdown from the menu, which would otherwise close it first and
+// let the click reopen it). Another row's button replaces the menu.
+function openChatMenu(chat: Conversation, point: MenuPoint): void {
+  if (menu.value?.kind === "chat" && menu.value.chat.id === chat.id) void dismissMenu();
+  else menu.value = { kind: "chat", chat, ...point };
+}
+
+function openFolderMenu(folder: ChatFolder, point: MenuPoint): void {
+  if (menu.value?.kind === "folder" && menu.value.folder.id === folder.id) void dismissMenu();
+  else menu.value = { kind: "folder", folder, ...point };
+}
+
+/** Esc, a press outside, Tab or a resize: focus goes back to the button. */
+async function dismissMenu(): Promise<void> {
+  const trigger = menu.value?.trigger ?? null;
+  menu.value = null;
+  await nextTick();
+  trigger?.focus();
+}
+
+function chooseFromMenu(id: string): void {
+  const open = menu.value;
+  menu.value = null; // a choice hands focus on (a rename box, a dialog), so it is not given back
+  if (!open) return;
+  if (open.kind === "folder") {
+    if (id === "rename") emit("renameFolder", open.folder);
+    else if (id === "delete") emit("deleteFolder", open.folder);
+    return;
+  }
+  const choice = parseChatChoice(id);
+  if (!choice) return;
+  const chat = open.chat;
+  switch (choice.action) {
+    case "pin":
+      emit("pin", chat.id, true);
+      break;
+    case "unpin":
+      emit("pin", chat.id, false);
+      break;
+    case "rename":
+      renamingId.value = chat.id;
+      break;
+    case "delete":
+      confirmDelete(chat);
+      break;
+    case "move":
+      emit("move", chat.id, choice.folderId);
+      break;
+    case "moveNew":
+      emit("moveNew", chat.id);
+      break;
+  }
 }
 
 function confirmDelete(c: Conversation): void {
@@ -79,6 +184,7 @@ const chosen = computed(() => selectable.value.filter((c) => ticked.value.has(c.
 const allChosen = computed(() => selectable.value.length > 0 && chosen.value.length === selectable.value.length);
 
 function startSelecting(): void {
+  menu.value = null;
   renamingId.value = null;
   ticked.value = new Set();
   selecting.value = true;
@@ -111,7 +217,9 @@ function confirmDeleteChosen(): void {
 watch(
   () => props.searchActive,
   (active) => {
-    if (active) stopSelecting();
+    if (!active) return;
+    stopSelecting();
+    menu.value = null;
   },
 );
 // Nothing left to select.
@@ -124,7 +232,9 @@ watch(
 </script>
 
 <template>
-  <aside class="sidebar">
+  <!-- The menu is fixed to the page, so it would drift from its row: a scroll
+       of the sidebar (the element that scrolls) closes it. -->
+  <aside class="sidebar" @scroll="menu = null">
     <button type="button" class="new-chat" :disabled="locked" @click="emit('new')">
       <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
         <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
@@ -167,25 +277,49 @@ watch(
         </li>
       </ul>
     </template>
-    <p v-else-if="conversations.length === 0" class="empty">{{ loading ? "Loading chats …" : "No saved chats yet." }}</p>
-    <ul v-else class="list">
-      <ChatRow
-        v-for="c in conversations"
-        :key="c.id"
-        :chat="c"
-        :active="c.id === activeId"
-        :locked="locked"
-        :locked-here="isLocked(c)"
-        :selecting="selecting"
-        :ticked="ticked.has(c.id)"
-        :renaming="renamingId === c.id"
-        @select="emit('select', c.id)"
-        @toggle="toggle(c)"
-        @start-rename="renamingId = c.id"
-        @finish-rename="(save, title) => finishRename(c.id, save, title)"
-        @delete="confirmDelete(c)"
-      />
-    </ul>
+    <p v-else-if="conversations.length === 0 && folders.length === 0" class="empty">
+      {{ loading ? "Loading chats …" : "No saved chats yet." }}
+    </p>
+    <div v-else class="sections">
+      <ChatSection
+        v-for="s in layout.sections"
+        :key="s.key"
+        :title="titleOf(s)"
+        :count="s.chats.length"
+        :collapsible="s.kind === 'folder'"
+        :collapsed="s.kind === 'folder' && s.folder !== null && collapsedFolders.includes(s.folder.id)"
+        :menu="s.kind === 'folder' && !selecting"
+        @toggle="s.folder && emit('toggleFolder', s.folder.id)"
+        @open-menu="(point) => s.folder && openFolderMenu(s.folder, point)"
+      >
+        <ChatRow
+          v-for="c in s.chats"
+          :key="c.id"
+          :chat="c"
+          :active="c.id === activeId"
+          :locked="locked"
+          :locked-here="isLocked(c)"
+          :selecting="selecting"
+          :ticked="ticked.has(c.id)"
+          :renaming="renamingId === c.id"
+          @select="emit('select', c.id)"
+          @toggle="toggle(c)"
+          @start-rename="renamingId = c.id"
+          @finish-rename="(save, title) => finishRename(c.id, save, title)"
+          @open-menu="(point) => openChatMenu(c, point)"
+        />
+      </ChatSection>
+    </div>
+
+    <PopupMenu
+      v-if="menu"
+      :items="menuItems"
+      :x="menu.x"
+      :y="menu.y"
+      :label="menu.kind === 'chat' ? 'Chat actions' : 'Folder actions'"
+      @select="chooseFromMenu"
+      @close="dismissMenu"
+    />
 
     <div v-if="selecting" class="select-bar">
       <label class="all">
@@ -198,10 +332,21 @@ watch(
       </button>
       <button type="button" @click="stopSelecting">Cancel</button>
     </div>
-    <div v-else-if="conversations.length > 0 && !searchActive" class="footer">
-      <button type="button" class="link" @click="startSelecting">Select</button>
-      <button v-if="conversations.length > 1" type="button" class="link delete-all" :disabled="locked" @click="confirmDeleteAll">
-        Delete all chats
+    <div v-else-if="!searchActive" class="footer">
+      <template v-if="conversations.length > 0">
+        <button type="button" class="link" @click="startSelecting">Select</button>
+        <button v-if="conversations.length > 1" type="button" class="link delete-all" :disabled="locked" @click="confirmDeleteAll">
+          Delete all chats
+        </button>
+      </template>
+      <button
+        type="button"
+        class="link new-folder"
+        :disabled="folders.length >= MAX_FOLDERS"
+        :title="folders.length >= MAX_FOLDERS ? `${MAX_FOLDERS} folders is the limit` : 'Create a folder'"
+        @click="emit('newFolder')"
+      >
+        New folder
       </button>
     </div>
     <UsageGauges :busy="busy" />
@@ -331,7 +476,13 @@ mark {
   margin-top: auto;
 }
 .footer {
+  flex-wrap: wrap;
   justify-content: space-between;
+}
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .link,
 .select-bar button {

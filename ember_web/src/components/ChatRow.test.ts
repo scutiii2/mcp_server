@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../api/types";
 import ChatRow from "./ChatRow.vue";
 
@@ -14,9 +14,10 @@ const chat = (extra: Partial<Conversation> = {}): Conversation => ({
 
 type Props = InstanceType<typeof ChatRow>["$props"];
 
-function mountRow(props: Partial<Props> = {}) {
+function mountRow(props: Partial<Props> = {}, attach = false) {
   return mount(ChatRow, {
     props: { chat: chat(), active: false, locked: false, lockedHere: false, selecting: false, ticked: false, renaming: false, ...props },
+    ...(attach ? { attachTo: document.body } : {}),
   });
 }
 
@@ -48,14 +49,56 @@ describe("ChatRow", () => {
     expect(wrapper.emitted("select")).toBeUndefined();
   });
 
-  it("starts a rename from the pencil and from a double click on the title", async () => {
+  it("starts a rename from a double click on the title", async () => {
     const wrapper = mountRow();
 
-    await wrapper.find('button[title="Rename chat"]').trigger("click");
     await wrapper.find(".title").trigger("dblclick");
 
-    expect(wrapper.emitted("startRename")).toHaveLength(2);
-    expect(wrapper.emitted("select")).toBeUndefined(); // the pencil does not also select
+    expect(wrapper.emitted("startRename")).toHaveLength(1);
+    expect(wrapper.emitted("select")).toBeUndefined();
+  });
+
+  it("has a ... button that opens the menu without selecting the row", async () => {
+    const wrapper = mountRow();
+
+    await wrapper.find("button.more").trigger("click");
+
+    expect(wrapper.emitted("openMenu")).toHaveLength(1);
+    expect(wrapper.emitted("select")).toBeUndefined();
+    expect(wrapper.find("button.more").attributes("aria-haspopup")).toBe("menu");
+  });
+
+  it("a press on the ... button does not reach the document (an open menu would close on it)", () => {
+    const wrapper = mountRow({}, true);
+    const seen = vi.fn();
+    document.addEventListener("pointerdown", seen);
+
+    wrapper.find("button.more").element.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+
+    document.removeEventListener("pointerdown", seen);
+    wrapper.unmount();
+    expect(seen).not.toHaveBeenCalled();
+  });
+
+  it("opens the menu on right-click at the pointer, but not while selecting or renaming", async () => {
+    const wrapper = mountRow();
+    await wrapper.find("li").trigger("contextmenu", { clientX: 12, clientY: 34 });
+    expect(wrapper.emitted("openMenu")![0]![0]).toMatchObject({ x: 12, y: 34 });
+
+    const selecting = mountRow({ selecting: true });
+    await selecting.find("li").trigger("contextmenu");
+    expect(selecting.emitted("openMenu")).toBeUndefined();
+
+    const renaming = mountRow({ renaming: true });
+    await renaming.find("li").trigger("contextmenu");
+    expect(renaming.emitted("openMenu")).toBeUndefined();
+  });
+
+  it("no longer has rename or delete buttons of its own", () => {
+    const wrapper = mountRow();
+
+    expect(wrapper.find('button[title="Rename chat"]').exists()).toBe(false);
+    expect(wrapper.find("button.delete").exists()).toBe(false);
   });
 
   it("edits the title: Enter saves, once, even if blur follows", async () => {
@@ -78,16 +121,6 @@ describe("ChatRow", () => {
     await input.trigger("keydown", { key: "Escape" });
 
     expect(wrapper.emitted("finishRename")).toEqual([[false, "Renamed"]]);
-  });
-
-  it("deleting emits delete; the answering chat cannot be deleted", async () => {
-    const free = mountRow();
-    await free.find("button.delete").trigger("click");
-    expect(free.emitted("delete")).toHaveLength(1);
-    expect(free.emitted("select")).toBeUndefined();
-
-    const answering = mountRow({ lockedHere: true });
-    expect(answering.find("button.delete").attributes("disabled")).toBeDefined();
   });
 
   it("shows the running dot and the tick box state while selecting; the answering chat's box is disabled", () => {
