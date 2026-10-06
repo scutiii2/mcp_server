@@ -48,6 +48,13 @@
         "preset_name": null
       },
       {
+        "template_key": "video_downloader",
+        "port": 8050,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
         "template_key": "mcp_server",
         "port": 8010,
         "extra_env": {},
@@ -68,6 +75,24 @@
       {
         "template_key": "pdf_merger_web",
         "port": 5174,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      }
+    ]
+  },
+  "Video Downloader": {
+    "members": [
+      {
+        "template_key": "video_downloader",
+        "port": 8050,
+        "extra_env": {},
+        "extra_args": "",
+        "preset_name": null
+      },
+      {
+        "template_key": "video_downloader_web",
+        "port": 5175,
         "extra_env": {},
         "extra_args": "",
         "preset_name": null
