@@ -964,13 +964,15 @@ describe("drag and drop", () => {
 
   it("dropping a pinned chat on a folder moves it, then unpins it", async () => {
     const wrapper = grouped();
+    const order: string[] = [];
+    await wrapper.setProps({ onMove: () => order.push("move"), onPin: () => order.push("pin") });
     await startDrag(wrapper, "Chat 3");
 
     fire(sectionOf(wrapper, "Work").element, "drop");
 
     expect(wrapper.emitted("move")).toEqual([["3", 1]]);
     expect(wrapper.emitted("pin")).toEqual([["3", false]]);
-    expect(Object.keys(wrapper.emitted()).filter((k) => k === "move" || k === "pin")).toEqual(["move", "pin"]); // move first
+    expect(order).toEqual(["move", "pin"]);
   });
 
   it("dropping on Pinned pins the chat", async () => {

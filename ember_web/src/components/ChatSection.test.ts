@@ -198,6 +198,26 @@ describe("as a drop zone", () => {
     expect(wrapper.find("section").classes()).not.toContain("over");
   });
 
+  it("treats the zone's own edge as inside, and a (0, 0) pointer outside the zone as leaving", async () => {
+    const wrapper = mountSection({ accepting: true });
+    const section = wrapper.find("section").element;
+    section.getBoundingClientRect = () => ({ left: 10, top: 10, right: 100, bottom: 100, width: 90, height: 90, x: 10, y: 10 }) as DOMRect;
+    section.dispatchEvent(dragEvent("dragover"));
+    await wrapper.vm.$nextTick();
+
+    const edge = dragEvent("dragleave");
+    Object.assign(edge, { clientX: 100, clientY: 100 });
+    section.dispatchEvent(edge);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("section").classes()).toContain("over");
+
+    const origin = dragEvent("dragleave");
+    Object.assign(origin, { clientX: 0, clientY: 0 });
+    section.dispatchEvent(origin);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("section").classes()).not.toContain("over");
+  });
+
   it("shows its hint while accepting and empty", () => {
     expect(mountEmpty({ accepting: true, hint: "Drop here to pin" }).text()).toContain("Drop here to pin");
   });

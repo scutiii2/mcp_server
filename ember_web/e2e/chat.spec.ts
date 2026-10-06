@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { ACCOUNT, ANSWER, installFakeApi, PASSWORD } from "./fakeApi.ts";
 
 const QUESTION = "What is the capital of France?";
@@ -161,7 +161,7 @@ test("drag chats onto a folder and onto Pinned", async ({ page }) => {
   // takes the drop, then go to it (read where it is only now) and let go. `dragTo` is not
   // enough: it reads the target's place before the drag starts, but the empty Pinned and
   // Chats zones appear once it starts and push the sections below them down.
-  async function dragByHand(title: string, zone: typeof workSection): Promise<void> {
+  async function dragByHand(title: string, zone: Locator): Promise<void> {
     await row(title).hover();
     const box = (await row(title).boundingBox())!;
     const x = box.x + box.width / 2;
