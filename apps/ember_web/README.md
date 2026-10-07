@@ -198,7 +198,9 @@ URL, token or key.
   secret files, as errors (broken) or warnings (risky or incomplete), grouped by
   file. Not a nav tab: a red (errors) or amber (warnings only) alert with a count
   shows in the rail, and the page opens, only while there are issues.
-- Account page (click your username): profile, change email (re-verify),
+- Account page (click your username): profile with email verification status,
+  separate security and roles/access panels, expandable permissions, and a
+  responsive remembered-device list. Change email (re-verify),
   change password (logs out other devices), and the devices you logged in
   from (forget one to have its next login noted as new). Reachable while
   unverified.
