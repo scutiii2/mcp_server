@@ -149,6 +149,15 @@ class McpServerInfo:
             raise McpServerUnavailable("mcp_server's upload answered without a path")
         return path
 
+    async def upload_table(self, account: Account, filename: str, content: bytes) -> dict[str, Any]:
+        """Hands a CSV/XLSX to mcp_server's /upload/table, which keeps it as an
+        in-memory table for the data tools; returns
+        {table_id, filename, rows, columns, sheet, notes}."""
+        body = await self._request("POST", "/upload/table", account, files={"file": (filename, content)})
+        if not isinstance(body, dict) or not isinstance(body.get("table_id"), str):
+            raise McpServerUnavailable("mcp_server's table upload answered without a table id")
+        return body
+
     async def download(self, account: Account, path: str) -> httpx.Response:
         """Opens mcp_server's /download for a file a tool offered (the
         `[[DOWNLOAD ...]]` marker's `path`). The body is not read: the caller
