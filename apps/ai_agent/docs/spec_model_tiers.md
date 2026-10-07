@@ -138,9 +138,8 @@ another process's gateway config.
 - `delegation.call(agent_id, question, depth, model_tier=None)` passes
   `model_tier` in the `ask` arguments. With `agent_id="auto"` the chosen
   specialist receives the tier as given.
-- `anthropic_provider._dispatch` and `openai_provider._dispatch` pass
-  `arguments.get("model_tier")` through. This is the only change in the
-  providers' dispatch.
+- `anthropic_provider._dispatch` and `openai_provider._dispatch` call a new shared
+  `delegation.dispatch(arguments, depth)`, which passes `model_tier` to `call()` only when set.
 - The `delegate_to_agent` result is prefixed with the resolution note when the
   specialist clamped the request, so the orchestrator learns the cap.
   `ask` returns it as a new `model_note` field next to `model`; `delegation.call`
@@ -157,6 +156,7 @@ another process's gateway config.
 - The sync OpenAI path gets the same `model` value.
 - `ChatResult.model` already carries the model that ran; `server.ask` also
   returns `model_tier` and `model_note`.
+  Both keys are present only when set, so existing result and row shapes are unchanged.
 - Context-window and token-limit checks keep using `PROVIDER_ID` and the
   resolved model through the existing `context_window_for`.
 
@@ -165,6 +165,7 @@ another process's gateway config.
 `own_row` records `model_tier` (nullable) beside `model`, so usage per tier is
 visible with no schema break (new key, old rows lack it). Readers that do not
 know the key ignore it.
+Both keys are present only when set, so existing result and row shapes are unchanged. The registry record likewise carries tiers only when non-empty.
 
 ### 8. Orchestrator guidance (`agents/ember.json`)
 
@@ -180,6 +181,8 @@ caps in the repo's agent files (starting point, adjustable):
 | reviewer, planner | `standard` | none |
 
 (`ember` itself and Laya triage get no caps.)
+
+**Note:** `agents/*.json` are gitignored; the caps are applied to each machine's local files by hand, and only `agents/agents.json.template` shows the keys. Applying the caps and the gateway `models` to the local files is done after this branch merges (adding `llm.max_tier`/`llm.min_tier` earlier would make an older `agent_spec` reject the unknown field).
 
 ## Data flow
 

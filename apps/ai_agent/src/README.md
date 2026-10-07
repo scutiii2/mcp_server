@@ -32,6 +32,7 @@ Entry points stay at the package root; everything else is grouped by concern.
   `register()`/`deregister()` also upsert/remove this instance's own
   `{id, label, url}` in `../data/agent_registry.json` (runtime state,
   gitignored) on startup/clean shutdown; ember_api reads it.
+- `llm/model_tiers.py` - which model strength tiers an agent offers and how a requested tier resolves (clamped to the agent's min_tier/max_tier).
 - `agent_routing.py` - per-turn roster of specialists for an orchestrator
   (optionally Laya-shortlisted) and the `agent_id="auto"` pick.
 - `agent_events.py` - the progress events a specialist emits and an
