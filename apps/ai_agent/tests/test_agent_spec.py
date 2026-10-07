@@ -238,3 +238,50 @@ def test_apply_to_environ_sets_provider_gateway_model_and_port(tmp_path, monkeyp
     assert os.environ["AI_AGENT_GATEWAY"] == "gpt"
     assert os.environ["AI_AGENT_MODEL"] == ""
     assert os.environ["AI_AGENT_PORT"] == "9103"
+
+
+def test_llm_min_and_max_tier_are_read(tmp_path):
+    spec = agent_spec.load_file(_write(tmp_path, "calc", {
+        "port": 9103, "llm": {"provider": "anthropic", "min_tier": "light", "max_tier": "standard"},
+    }))
+    assert (spec.llm.min_tier, spec.llm.max_tier) == ("light", "standard")
+
+
+def test_llm_tiers_default_to_unbounded(tmp_path):
+    spec = agent_spec.load_file(_write(tmp_path, "calc", {"port": 9103, "llm": {"provider": "anthropic"}}))
+    assert (spec.llm.min_tier, spec.llm.max_tier) == (None, None)
+
+
+@pytest.mark.parametrize("key", ["min_tier", "max_tier"])
+def test_unknown_tier_name_is_rejected(tmp_path, key):
+    path = _write(tmp_path, "calc", {"port": 9103, "llm": {"provider": "anthropic", key: "giant"}})
+    with pytest.raises(AgentSpecError, match=f"llm.{key} must be one of: light, standard, heavy"):
+        agent_spec.load_file(path)
+
+
+def test_min_tier_above_max_tier_is_rejected(tmp_path):
+    path = _write(tmp_path, "calc", {
+        "port": 9103, "llm": {"provider": "anthropic", "min_tier": "heavy", "max_tier": "light"},
+    })
+    with pytest.raises(AgentSpecError, match="llm.min_tier 'heavy' is stronger than llm.max_tier 'light'"):
+        agent_spec.load_file(path)
+
+
+@pytest.mark.parametrize("key", ["min_tier", "max_tier"])
+def test_laya_rejects_tier_bounds(tmp_path, key):
+    path = _write(tmp_path, "triage", {"port": 9110, "llm": {"provider": "laya", key: "light"}})
+    with pytest.raises(AgentSpecError, match="Laya triage does not accept"):
+        agent_spec.load_file(path)
+
+
+def test_default_gateway_per_provider():
+    assert agent_spec.default_gateway("anthropic") == "claude"
+    assert agent_spec.default_gateway("openai") == "gpt"
+    assert agent_spec.default_gateway("laya") == "local"
+    assert agent_spec.default_gateway("unknown") is None
+
+
+def test_roster_entry_tiers_default_to_empty():
+    assert agent_spec.RosterEntry("calc", "Calculator", "Math.").tiers == ()
+    tier = agent_spec.TierInfo("light", "haiku", "quick")
+    assert agent_spec.RosterEntry("calc", "Calculator", "Math.", (tier,)).tiers == (tier,)

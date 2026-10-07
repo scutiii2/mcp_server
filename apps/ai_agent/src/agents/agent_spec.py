@@ -39,9 +39,14 @@ _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _TOP_KEYS = {"label", "port", "enabled", "entry", "llm", "persona", "instructions", "focus", "tools", "orchestrator", "routing"}
-_LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds"}
+_LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "min_tier", "max_tier"}
 _TOOLS_KEYS = {"allow", "deny"}
 _ROUTING_KEYS = {"laya", "top_k", "allow_auto", "min_score"}
+
+
+def default_gateway(provider: str) -> str | None:
+    """The gateway a provider uses when an agent names none."""
+    return _DEFAULT_GATEWAY.get(provider)
 
 
 class AgentSpecError(Exception):
@@ -58,6 +63,8 @@ class LlmSpec:
     reasoning_effort: str = "off"
     max_tokens: int | None = None
     max_tool_rounds: int | None = None
+    min_tier: str | None = None
+    max_tier: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,12 +96,22 @@ class RoutingSpec:
 
 
 @dataclass(frozen=True)
+class TierInfo:
+    """One model strength an agent may run on, as the orchestrator sees it."""
+
+    tier: str
+    id: str
+    use_for: str
+
+
+@dataclass(frozen=True)
 class RosterEntry:
     """One specialist as the orchestrator sees it."""
 
     id: str
     label: str
     focus: str
+    tiers: tuple[TierInfo, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -181,6 +198,14 @@ class _Checker:
             raise self.fail(f"tools.{key}", "must be a list of non-empty strings")
         return tuple(value)
 
+    def tier(self, data: dict[str, Any], key: str, prefix: str = "") -> str | None:
+        value = data.get(key)
+        if value is None:
+            return None
+        if value not in TIERS:
+            raise self.fail(f"{prefix}{key}", f"must be one of: {', '.join(TIERS)}")
+        return value
+
 
 def load_file(path: Path) -> AgentSpec:
     """Read and validate one agent file. The id is the file name stem."""
@@ -211,6 +236,10 @@ def load_file(path: Path) -> AgentSpec:
     effort = llm_data.get("reasoning_effort", "off")
     if effort not in REASONING_EFFORTS:
         raise check.fail("llm.reasoning_effort", f"must be one of: {', '.join(REASONING_EFFORTS)}")
+    min_tier = check.tier(llm_data, "min_tier", "llm.")
+    max_tier = check.tier(llm_data, "max_tier", "llm.")
+    if min_tier and max_tier and TIERS.index(min_tier) > TIERS.index(max_tier):
+        raise check.fail("llm.min_tier", f"{min_tier!r} is stronger than llm.max_tier {max_tier!r}")
     llm = LlmSpec(
         provider=provider,
         gateway=check.text(llm_data, "gateway", None, "llm.") or None,
@@ -219,6 +248,8 @@ def load_file(path: Path) -> AgentSpec:
         reasoning_effort=effort,
         max_tokens=check.integer(llm_data, "max_tokens", None, 1, 1_000_000, "llm."),
         max_tool_rounds=check.integer(llm_data, "max_tool_rounds", None, 1, 100, "llm."),
+        min_tier=min_tier,
+        max_tier=max_tier,
     )
 
     tools_data = check.section(data, "tools")
@@ -233,7 +264,7 @@ def load_file(path: Path) -> AgentSpec:
             raise check.fail("llm.gateway", "Laya triage runs locally; cloud gateways are not supported")
         if llm.model not in (None, "convaiinnovations/laya"):
             raise check.fail("llm.model", "Laya triage only supports convaiinnovations/laya")
-        if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds")) or effort != "off":
+        if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds", "min_tier", "max_tier")) or effort != "off":
             raise check.fail("llm", "Laya triage does not accept generation or tool-loop settings")
     if "routing" in data and not orchestrator:
         raise check.fail("routing", "is only allowed when orchestrator is true")

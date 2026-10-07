@@ -10,7 +10,8 @@
     "temperature": 0.0,
     "reasoning_effort": "high",
     "max_tokens": 4096,
-    "max_tool_rounds": 6
+    "max_tool_rounds": 6,
+    "max_tier": "standard"
   },
   "persona": "You are a precise mathematician. Show every step and check results.",
   "instructions": "Use the calculator tools for every computation; never do arithmetic in your head.",
