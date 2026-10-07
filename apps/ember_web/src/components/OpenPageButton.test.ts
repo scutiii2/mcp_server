@@ -23,6 +23,12 @@ describe("OpenPageButton", () => {
     expect(w.attributes("target")).toBeUndefined();
   });
 
+  it("shows a custom label", () => {
+    const w = mount(OpenPageButton, { props: { to: "http://127.0.0.1:5174/", external: true, label: "Open app" } });
+
+    expect(w.text()).toBe("Open app");
+  });
+
   it("hides its arrow from screen readers", () => {
     const w = mount(OpenPageButton, { props: { to: "/x" }, global: { plugins: [router] } });
 

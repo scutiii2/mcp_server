@@ -8,6 +8,7 @@ import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import CapabilitySection from "../components/CapabilitySection.vue";
 import MarkdownContent from "../components/MarkdownContent.vue";
+import OpenPageButton from "../components/OpenPageButton.vue";
 import ToolCard from "../components/ToolCard.vue";
 import ToolRunModal from "../components/ToolRunModal.vue";
 import { useAuthStore } from "../stores/auth";
@@ -285,13 +286,13 @@ onMounted(load);
           <p v-else-if="g.tools.length === 0 && resourcesOfExtension(g.extension).length === 0" class="muted">
             Nothing registered.
           </p>
-          <a
+          <OpenPageButton
             v-if="safeWebUrl(g.extension.web_url)"
-            class="link"
-            :href="safeWebUrl(g.extension.web_url)!"
-            target="_blank"
-            rel="noopener noreferrer"
-          >Open app</a>
+            class="open-app"
+            :to="safeWebUrl(g.extension.web_url)!"
+            external
+            label="Open app"
+          />
           <ul v-if="g.tools.length" class="cards">
             <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
           </ul>
@@ -444,6 +445,9 @@ h3 {
   font-size: 0.8em;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+.open-app {
+  justify-self: start;
 }
 .link {
   padding: 0;

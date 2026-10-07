@@ -4,17 +4,18 @@ import { RouterLink } from "vue-router";
 /** The "Open page" button on an extension tile and a capability card: an
  * outlined link, not bare text. `external` opens the target in a new tab and
  * shows an up-right arrow; otherwise it is an in-app route with a right arrow.
- * Below 480px only the arrow stays; the label remains for screen readers. */
-defineProps<{ to: string; external?: boolean }>();
+ * `label` renames it (e.g. "Open app"). Below 480px only the arrow stays; the
+ * label remains for screen readers. */
+withDefaults(defineProps<{ to: string; external?: boolean; label?: string }>(), { label: "Open page" });
 </script>
 
 <template>
   <a v-if="external" class="open-page" :href="to" target="_blank" rel="noopener noreferrer">
-    <span class="label">Open page</span>
+    <span class="label">{{ label }}</span>
     <svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5" /></svg>
   </a>
   <RouterLink v-else class="open-page" :to="to" @click.stop>
-    <span class="label">Open page</span>
+    <span class="label">{{ label }}</span>
     <svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
   </RouterLink>
 </template>
