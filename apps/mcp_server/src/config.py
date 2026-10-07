@@ -74,6 +74,9 @@ class Settings:
     # that expects a real server-side path gets one.
     # Relative to CWD by default, same convention as every path above.
     uploads_dir: Path = Path(_env("MCP_UPLOADS_DIR", ".data/uploads"))
+    # Where user-defined watchers (capabilities/watchers) keep their state
+    # records and recipient lists. Relative to CWD, like uploads_dir.
+    watchers_dir: Path = Path(_env("MCP_WATCHERS_DIR", ".data/watchers"))
     # Tavily API key for the web_research capability. Blank until set in .env;
     # the tools then fail with a message naming the variable.
     tavily_api_key: str = _env("TAVILY_API_KEY", "")
