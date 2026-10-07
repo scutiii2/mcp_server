@@ -21,13 +21,15 @@ const emit = defineEmits<{ open: [] }>();
 
 <style scoped>
 .tool {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-top: 1px solid var(--border);
   background: var(--bg);
+}
+.tool:first-child {
+  border-top: none;
 }
 .tool:hover,
 .tool:focus-within {
-  border-color: var(--accent);
+  background: var(--surface);
 }
 .row {
   display: flex;
@@ -35,9 +37,8 @@ const emit = defineEmits<{ open: [] }>();
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 9px 12px;
   border: none;
-  border-radius: calc(var(--radius-lg) - 1px);
   cursor: pointer;
   text-align: left;
   color: inherit;
@@ -52,7 +53,7 @@ const emit = defineEmits<{ open: [] }>();
   min-width: 0;
 }
 .title {
-  font-weight: 600;
+  font-weight: 500;
 }
 .name {
   font-family: var(--mono);

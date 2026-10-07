@@ -22,8 +22,10 @@ withDefaults(
     open: boolean;
     /** The closed summary line: what it brings, or why it brings nothing. */
     summary: string;
-    /** The dot before the name; none for a group that is not a real item. */
+    /** The dot on the corner of the icon tile; none for a group that is not a real item. */
     status?: "ok" | "bad" | "off";
+    /** The tile's picture: a built-in capability, an extension, or the other tools. */
+    icon?: "builtin" | "extension" | "other";
     dimmed?: boolean;
     page?: SectionPage | null;
     /** A switch, a read-only On/Off badge, or neither. */
@@ -34,17 +36,30 @@ withDefaults(
     switchTitle?: string;
     switching?: boolean;
   }>(),
-  { status: undefined, page: null, control: "none", scope: "", switchTitle: "" },
+  { status: undefined, icon: undefined, page: null, control: "none", scope: "", switchTitle: "" },
 );
 const emit = defineEmits<{ toggle: []; switch: [] }>();
+
+// 16px grid, stroke only: a box, a plug, a wrench.
+const ICONS = {
+  builtin: "M8 1.5l5.5 3v7L8 14.5l-5.5-3v-7zM2.5 4.5L8 7.5l5.5-3M8 7.5v7",
+  extension: "M6 2v3M10 2v3M4.5 5h7v3a3.5 3.5 0 0 1-7 0zM8 11.5V14",
+  other: "M10.5 2.5a3 3 0 0 0-3.2 4L2.5 11.3 4.7 13.5 9.5 8.7a3 3 0 0 0 4-3.2l-1.8 1.8-1.7-.5-.5-1.7z",
+} as const;
 </script>
 
 <template>
   <article :class="['card', { off: dimmed, open }]">
     <header class="card-head">
       <button type="button" class="head-button" :aria-expanded="open" @click="emit('toggle')">
-        <span class="chevron" aria-hidden="true">{{ open ? "▾" : "▸" }}</span>
-        <span v-if="status" :class="['dot', status]" aria-hidden="true" />
+        <svg :class="['chevron', { turned: open }]" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+        <span v-if="icon" class="tile" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="18" height="18"><path :d="ICONS[icon]" /></svg>
+          <span v-if="status" :class="['dot', status]" />
+        </span>
+        <span v-else-if="status" :class="['dot', 'inline', status]" aria-hidden="true" />
         <span class="heading">
           <h3>{{ label }}</h3>
           <code class="name">{{ name }}</code>
@@ -52,7 +67,6 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
         <span :class="['summary', status === 'bad' ? 'bad' : 'muted']">{{ summary }}</span>
       </button>
       <template v-if="page">
-        <span class="divider" aria-hidden="true" />
         <OpenPageButton :to="page.to" :external="page.external" :label="page.label" />
       </template>
       <span v-if="control === 'switch'" class="control">
@@ -91,12 +105,6 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
   gap: 12px;
   padding-right: 14px;
 }
-.divider {
-  width: 1px;
-  height: 20px;
-  margin-left: 4px;
-  background: var(--border);
-}
 .head-button {
   display: flex;
   flex: 1;
@@ -110,7 +118,40 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
   background: transparent;
 }
 .chevron {
-  color: var(--muted);
+  flex: none;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s;
+}
+.chevron.turned {
+  transform: rotate(90deg);
+}
+.tile {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.tile svg {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tile .dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  border: 2px solid var(--surface);
+  box-sizing: content-box;
 }
 .dot {
   flex: none;
@@ -129,9 +170,7 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
 }
 .heading {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
+  flex-direction: column;
   min-width: 0;
 }
 h3 {
@@ -146,8 +185,11 @@ h3 {
 }
 .summary {
   margin-left: auto;
-  font-size: 0.85em;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.75em;
   white-space: nowrap;
+  background: var(--bg);
 }
 .muted {
   color: var(--muted);

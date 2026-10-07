@@ -86,6 +86,8 @@ const canTools = computed(() => auth.hasPermission("tools.use"));
 const switchedOn = computed(() => new Set(enabledExtensions.value));
 const showBuiltin = computed(() => canTools.value && kind.value !== "extensions");
 const showExtensions = computed(() => kind.value !== "builtin");
+// Headings tell the groups apart, and the two kinds of switch; only when both can show.
+const groupHeadings = computed(() => canTools.value && kind.value === "all");
 const grouped = computed(() => groupTools(capabilities.value, tools.value, query.value, extensions.value));
 const selectedTool = computed(() => tools.value.find((t) => t.name === openTool.value) ?? null);
 
@@ -302,26 +304,37 @@ onMounted(load);
           Capabilities <span v-if="tools.length" class="count">{{ tools.length }} tools</span>
         </h2>
         <div class="head-actions">
-          <input v-if="!loading && !loadError" v-model="query" type="search" class="search" placeholder="Filter tools" />
           <button v-if="isAdmin" type="button" class="primary" @click="addOpen = true">Add extension</button>
         </div>
       </div>
-      <p class="muted intro">
-        What mcp_server can do: its built-in capabilities and the extensions (other MCP servers) it passes on. Open one
-        to run its tools and read its resources. An extension's tools are only used in your chats while you switch it
-        on. You can also run tools with <code>/</code> commands in the chat.
-      </p>
-      <SegmentedControl
-        v-if="canTools && !loading && !loadError"
-        v-model="kind"
-        class="kinds"
-        aria-label="Show"
-        :options="[
-          { value: 'all', label: 'All' },
-          { value: 'builtin', label: 'Built-in' },
-          { value: 'extensions', label: 'Extensions' },
-        ]"
-      />
+      <p class="muted intro">What mcp_server can do: its built-in capabilities and the extensions it passes on. Open one to run its tools.</p>
+      <details class="how muted">
+        <summary>How switches work</summary>
+        <p>
+          A built-in capability's switch is for every mcp_server client (admins only, and it asks first). An extension
+          is another MCP server: its tools are only used in your chats while you switch it on. You can also run tools
+          with <code>/</code> commands in the chat.
+        </p>
+      </details>
+      <div v-if="!loading && !loadError" class="toolbar">
+        <label class="search-box">
+          <svg class="search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path d="M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M11 11l3.5 3.5" />
+          </svg>
+          <input v-model="query" type="search" class="search" placeholder="Filter tools" aria-label="Filter tools" />
+        </label>
+        <SegmentedControl
+          v-if="canTools"
+          v-model="kind"
+          class="kinds"
+          aria-label="Show"
+          :options="[
+            { value: 'all', label: 'All' },
+            { value: 'builtin', label: 'Built-in' },
+            { value: 'extensions', label: 'Extensions' },
+          ]"
+        />
+      </div>
 
       <p v-if="loading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
@@ -332,11 +345,15 @@ onMounted(load);
         <p v-else-if="nothingShown" class="muted">No capabilities, extensions or tools exposed.</p>
 
         <template v-if="showBuiltin">
+          <h4 v-if="groupHeadings && grouped.groups.length" class="group-title">
+            Built-in <span class="muted">· switches apply to every client</span>
+          </h4>
           <CapabilitySection
             v-for="g in grouped.groups"
             :key="g.capability.name"
             :label="g.capability.label ?? g.capability.name"
             :name="g.capability.name"
+            icon="builtin"
             :open="isOpen(g.capability.name)"
             :summary="capabilitySummary(g.capability, g.tools.length)"
             :status="g.capability.enabled ? 'ok' : 'off'"
@@ -356,8 +373,10 @@ onMounted(load);
               <ul v-if="g.tools.length" class="cards">
                 <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
               </ul>
+              <p v-if="resourcesOf(g.capability).length" class="res-label">Resources</p>
               <ul v-if="resourcesOf(g.capability).length" class="resources">
                 <li v-for="r in resourcesOf(g.capability)" :key="r.uri">
+                  <svg class="res-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2h5l3 3v9H4zM9 2v3h3" /></svg>
                   <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
                   <code class="name">{{ r.uri }}</code>
                   <span v-if="r.description" class="muted">{{ r.description }}</span>
@@ -368,11 +387,15 @@ onMounted(load);
         </template>
 
         <template v-if="showExtensions">
+          <h4 v-if="groupHeadings && grouped.extensionGroups.length" class="group-title">
+            Extensions <span v-if="canChat" class="muted">· switches apply to your chats</span>
+          </h4>
           <CapabilitySection
             v-for="g in grouped.extensionGroups"
             :key="g.extension.id"
             :label="g.extension.label"
             :name="g.extension.id"
+            icon="extension"
             :open="isOpen(extensionKey(g.extension.id))"
             :summary="extensionSummary(g)"
             :status="g.extension.status === 'connected' ? 'ok' : 'bad'"
@@ -398,8 +421,10 @@ onMounted(load);
             <ul v-if="canTools && g.tools.length" class="cards">
               <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
             </ul>
+            <p v-if="resourcesOfExtension(g.extension).length" class="res-label">Resources</p>
             <ul v-if="resourcesOfExtension(g.extension).length" class="resources">
               <li v-for="r in resourcesOfExtension(g.extension)" :key="r.uri">
+                <svg class="res-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2h5l3 3v9H4zM9 2v3h3" /></svg>
                 <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
                 <code class="name">{{ r.uri }}</code>
                 <span v-if="r.description" class="muted">{{ r.description }}</span>
@@ -411,10 +436,12 @@ onMounted(load);
           </CapabilitySection>
         </template>
 
+        <h4 v-if="groupHeadings && showBuiltin && showOther" class="group-title">Other</h4>
         <CapabilitySection
           v-if="showBuiltin && showOther"
           label="Other tools"
           name="extensions"
+          icon="other"
           :open="isOpen(OTHER)"
           :summary="countText(grouped.otherTools.length, filtering ? 0 : otherResources.length)"
           @toggle="toggleSection(OTHER)"
@@ -422,8 +449,10 @@ onMounted(load);
           <ul v-if="grouped.otherTools.length" class="cards">
             <ToolCard v-for="t in grouped.otherTools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
           </ul>
+          <p v-if="!filtering && otherResources.length" class="res-label">Resources</p>
           <ul v-if="!filtering && otherResources.length" class="resources">
             <li v-for="r in otherResources" :key="r.uri">
+              <svg class="res-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2h5l3 3v9H4zM9 2v3h3" /></svg>
               <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
               <code class="name">{{ r.uri }}</code>
             </li>
@@ -526,19 +555,73 @@ h3 {
   align-items: center;
   gap: 8px;
 }
-.kinds {
-  margin-bottom: 14px;
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+.search-box {
+  position: relative;
+  flex: 1 1 220px;
+}
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.how {
+  margin: 0 0 12px;
+  font-size: 0.85em;
+}
+.how summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--accent);
+}
+.how p {
+  margin: 6px 0 0;
+}
+.group-title {
+  margin: 16px 2px 8px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+.group-title .muted {
+  font-weight: 400;
+}
+.res-label {
+  margin: 4px 0 0;
+  font-size: 0.75em;
+  color: var(--muted);
+}
+.res-icon {
+  flex-shrink: 0;
+  align-self: center;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .card-foot {
   display: flex;
   justify-content: flex-end;
 }
 .search {
-  flex: 0 1 260px;
-  min-width: 0;
-  padding: 7px 12px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 12px 7px 32px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 .search:focus {
@@ -546,15 +629,17 @@ h3 {
   border-color: var(--accent);
 }
 .intro {
-  margin: 0 0 16px;
+  margin: 0 0 8px;
   font-size: 0.9em;
 }
+/* One bordered list of tool rows, not a box per tool. */
 .cards {
-  display: grid;
-  gap: 8px;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 .resources {
   display: grid;

@@ -469,3 +469,60 @@ describe("CapabilitiesView extension cards", () => {
     expect(admin.getComponent(ConfirmModal).props("message")).toContain('Remove "PDF2"');
   });
 });
+
+describe("the page layout", () => {
+  const ext = (id: string) => ({
+    id,
+    label: id.toUpperCase(),
+    description: "",
+    status: "connected",
+    error: null,
+    tools: [`${id}__run`],
+    web_url: null,
+  });
+  const WITH_CHAT = ["tools.use", "chat.use"];
+
+  it("keeps the long explanation behind a How switches work disclosure", async () => {
+    const w = await show();
+
+    expect(w.get("details.how summary").text()).toBe("How switches work");
+    expect(w.get(".intro").text()).not.toContain("slash");
+    expect(w.get("details.how p").text()).toContain("only used in your chats while you switch it on");
+  });
+
+  it("puts the filter and the kind toggle on one row", async () => {
+    const w = await show();
+
+    const row = w.get(".toolbar");
+    expect(row.find("input[type=search]").exists()).toBe(true);
+    expect(row.find(".kinds").exists()).toBe(true);
+  });
+
+  it("names the groups and what their switches mean, while All is shown", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2")]);
+    const w = await show({ permissions: WITH_CHAT });
+
+    const titles = w.findAll(".group-title").map((h) => h.text());
+    expect(titles).toEqual(["Built-in · switches apply to every client", "Extensions · switches apply to your chats", "Other"]);
+
+    await w.findAll(".kinds button").find((b) => b.text() === "Built-in")!.trigger("click");
+    expect(w.find(".group-title").exists()).toBe(false);
+  });
+
+  it("gives each card a tile picture by kind, with its status on the corner", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2")]);
+    const w = await show({ permissions: WITH_CHAT });
+
+    expect(sections(w).every((s) => s.find(".tile svg").exists())).toBe(true);
+    expect(sections(w)[0]!.find(".tile .dot").exists()).toBe(true);
+  });
+
+  it("lists a capability's tools in one bordered list and labels its resources", async () => {
+    const w = await show();
+    await head(w, "PDF files").trigger("click");
+
+    expect(w.findAll("ul.cards")).toHaveLength(1);
+    expect(w.get(".res-label").text()).toBe("Resources");
+    expect(w.find(".resources .res-icon").exists()).toBe(true);
+  });
+});
