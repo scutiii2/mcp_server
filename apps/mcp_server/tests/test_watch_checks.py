@@ -126,6 +126,11 @@ def test_check_tcp_sees_open_and_closed_ports():
     assert check_tcp("127.0.0.1", closed_port(), timeout=1.0).up is False
 
 
+def test_check_tcp_treats_an_unresolvable_host_as_down():
+    assert check_tcp("a" * 70 + ".com", 80, timeout=1.0).up is False
+    assert check_tcp("..", 80, timeout=1.0).up is False
+
+
 def fake_apps(*pairs):
     return lambda: SimpleNamespace(apps=[SimpleNamespace(name=name, status=status) for name, status in pairs])
 

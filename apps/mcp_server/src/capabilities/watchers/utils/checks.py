@@ -119,7 +119,7 @@ def check_tcp(host: str, port: int, *, timeout: float = TCP_TIMEOUT) -> CheckRes
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return CheckResult(True, {"open": True})
-    except OSError:
+    except (OSError, ValueError):  # ValueError covers UnicodeError for idna-invalid hosts
         return CheckResult(False, {"open": False})
 
 
