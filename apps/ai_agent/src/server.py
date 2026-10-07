@@ -5,7 +5,6 @@ that itself talks to mcp_server as an MCP client (mcp_upstream.py).
 Run with:
     python -m src.server
     python -m src.server --gateway openrouter
-    python -m src.server --role ops_specialist
     python -m src.server --mcp-url http://127.0.0.1:8010/mcp
 """
 
@@ -33,16 +32,6 @@ _parser.add_argument(
     ),
 )
 _parser.add_argument(
-    "--role",
-    help=(
-        "Override this run's persona role (configs/prompts.json), "
-        "e.g. ops_specialist. Takes precedence over AI_AGENT_ROLE. Set "
-        "before importing agent_config, since agent_roles resolves "
-        "SYSTEM_PROMPT from the role at import time, same as --gateway "
-        "above."
-    ),
-)
-_parser.add_argument(
     "--mcp-url",
     help=(
         "Override the mcp_server URL this agent connects to as an MCP "
@@ -55,8 +44,6 @@ _parser.add_argument(
 _args, _ = _parser.parse_known_args()
 if _args.gateway:
     os.environ["AI_AGENT_GATEWAY"] = _args.gateway
-if _args.role:
-    os.environ["AI_AGENT_ROLE"] = _args.role
 if _args.mcp_url:
     os.environ["MCP_SERVER_URL"] = _args.mcp_url
 

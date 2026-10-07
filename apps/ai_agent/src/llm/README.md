@@ -30,12 +30,9 @@ Originally adapted from the retired chat_app's LLM layer.
   per-gateway `base_url`/`model` presets; resolves `"{ENV_VAR_NAME}"`
   placeholders against the process environment, never a literal secret.
 - **`agent_roles.py`** - builds `SYSTEM_PROMPT` once, at import time,
-  for both providers: identity line, persona, then tool-use instructions
-  (the shared text in `../../configs/prompts.json`, or the agent file's
-  `instructions`). An orchestrator's prompt also gets the roster, rebuilt
-  each turn. The persona comes
-  from the agent file; without one, from the `AI_AGENT_ROLE` role in
-  `prompts.json` (an unknown role id fails loudly).
+  for both providers, from the agent file: identity line
+  (`Ember: <role>`), `persona`, then `instructions` (or the built-in
+  default). An orchestrator's prompt also gets the roster, rebuilt each turn.
 - **`cancellation.py`** - cooperative cancellation registry for
   in-flight chat turns, local to this process. A turn can't be aborted
   mid-network-call, so a process-wide flag is checked between

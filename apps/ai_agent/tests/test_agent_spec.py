@@ -192,7 +192,7 @@ def test_from_env_builds_a_legacy_orchestrator(monkeypatch):
     assert spec.id == "openai-agent"
     assert spec.port == 9102
     assert spec.label == ""
-    assert spec.persona is None
+    assert spec.persona == ""
     assert spec.orchestrator is True
     assert spec.llm.model == "gpt-x"
     assert spec.source is None

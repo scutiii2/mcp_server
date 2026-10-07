@@ -178,14 +178,6 @@ def test_cancel_delegates_to_agent_config():
     assert result == {"cancelled": True}
 
 
-def test_role_flag_sets_env_var(monkeypatch):
-    monkeypatch.delenv("AI_AGENT_ROLE", raising=False)
-
-    args, _ = server._parser.parse_known_args(["--role", "ops_specialist"])
-
-    assert args.role == "ops_specialist"
-
-
 def test_server_uses_the_env_spec_identity_without_an_agent_file():
     # conftest sets AI_AGENT_PROVIDER=anthropic and no AI_AGENT_FILE.
     assert server.SPEC.source is None
