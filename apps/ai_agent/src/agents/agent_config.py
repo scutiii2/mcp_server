@@ -18,7 +18,8 @@ from dotenv import dotenv_values
 from src.agents import agent_spec, delegation
 
 from src.core import approvals, tool_filter
-from src.llm import model_tiers
+from src.llm import llm_options, model_tiers
+from src.llm import reasoning_effort as effort_limits
 from src.core.seed import seed_from_example
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -96,8 +97,14 @@ async def run_chat(
     allowed_tools: list[str] | None = None,
     disabled_tools: list[str] | None = None,
     model_tier: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> ChatResult:
     """Run a chat completion request through the configured provider.
+
+    reasoning_effort: the effort ("off"/"low"/"medium"/"high") the caller asks
+    for (delegation.py). It is capped at this agent's llm.max_effort
+    (llm/reasoning_effort.py) and applies to this turn only; the result notes
+    a change. None keeps the agent's own reasoning_effort.
 
     model_tier: a strength tier ("light"/"standard"/"heavy") the caller asks
     for (delegation.py). It is resolved against this agent's own tiers and
@@ -126,10 +133,12 @@ async def run_chat(
         model_tiers.resolve(model_tier, model_tiers.own_tiers(), MODEL, agent_spec.current().id)
         if model_tier else model_tiers.Resolution(MODEL, None)
     )
+    effort = effort_limits.resolve(reasoning_effort, agent_spec.current().llm.max_effort, agent_spec.current().id)
     cancellation.register(request_id)
     delegated_usage, usage_token = delegation.bind_usage()
     approval_token = approvals.bind(policy)
     filter_token = tool_filter.bind(disabled_tools or ())
+    effort_token = llm_options.bind_effort(effort.effort)
     try:
         if cancellation.is_cancelled(request_id):
             raise ChatCancelled()
@@ -153,8 +162,11 @@ async def run_chat(
             )
         result.model_tier = resolution.tier
         result.model_note = resolution.note
+        result.reasoning_effort = effort.effort
+        result.effort_note = effort.note
         return result
     finally:
+        llm_options.reset_effort(effort_token)
         tool_filter.reset(filter_token)
         approvals.reset(approval_token)
         delegation.reset_usage(usage_token)

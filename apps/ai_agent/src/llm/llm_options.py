@@ -11,12 +11,26 @@ one warning - the turn then retries without it.
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar, Token
 from typing import Any
 
 from src.agents import agent_spec
 from src.agents.agent_spec import LlmSpec
 
 _log = logging.getLogger(__name__)
+
+# Reasoning effort a delegating orchestrator asked for, for the turn being run
+# (agent_config.run_chat binds it per turn, like approvals and tool_filter).
+# None = the agent's own llm.reasoning_effort.
+_effort_override: ContextVar[str | None] = ContextVar("llm_effort_override", default=None)
+
+
+def bind_effort(effort: str | None) -> Token:
+    return _effort_override.set(effort)
+
+
+def reset_effort(token: Token) -> None:
+    _effort_override.reset(token)
 
 # Words in a 400's message that point at each option we may send.
 _MARKERS = {
@@ -38,11 +52,14 @@ class LlmOptions:
     def max_tool_rounds(self, default: int) -> int:
         return self._llm.max_tool_rounds or default
 
+    def _effort(self) -> str:
+        return _effort_override.get() or self._llm.reasoning_effort
+
     def _sent(self, model: str) -> list[str]:
         sent = []
         if self._llm.temperature is not None and (model, "temperature") not in self._dropped:
             sent.append("temperature")
-        if self._llm.reasoning_effort != "off" and (model, "reasoning") not in self._dropped:
+        if self._effort() != "off" and (model, "reasoning") not in self._dropped:
             sent.append("reasoning")
         return sent
 
@@ -52,9 +69,9 @@ class LlmOptions:
             if option == "temperature":
                 kwargs["temperature"] = self._llm.temperature
             elif self._provider_id == "anthropic":
-                kwargs["output_config"] = {"effort": self._llm.reasoning_effort}
+                kwargs["output_config"] = {"effort": self._effort()}
             else:
-                kwargs["reasoning"] = {"effort": self._llm.reasoning_effort}
+                kwargs["reasoning"] = {"effort": self._effort()}
         return kwargs
 
     def drop_rejected(self, message: str, model: str) -> bool:

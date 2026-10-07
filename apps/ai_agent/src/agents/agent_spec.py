@@ -39,7 +39,7 @@ _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _TOP_KEYS = {"label", "port", "enabled", "entry", "llm", "persona", "instructions", "focus", "tools", "orchestrator", "routing"}
-_LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "min_tier", "max_tier"}
+_LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "min_tier", "max_tier", "max_effort"}
 _TOOLS_KEYS = {"allow", "deny"}
 _ROUTING_KEYS = {"laya", "top_k", "allow_auto", "min_score"}
 
@@ -65,6 +65,9 @@ class LlmSpec:
     max_tool_rounds: int | None = None
     min_tier: str | None = None
     max_tier: str | None = None
+    # Highest reasoning effort a delegating orchestrator may request of this
+    # agent; None = no cap. Its own reasoning_effort is never above it.
+    max_effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +115,8 @@ class RosterEntry:
     label: str
     focus: str
     tiers: tuple[TierInfo, ...] = ()
+    # Reasoning efforts it accepts from a delegator, weakest first.
+    efforts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -233,6 +238,11 @@ def load_file(path: Path) -> AgentSpec:
     effort = llm_data.get("reasoning_effort", "off")
     if effort not in REASONING_EFFORTS:
         raise check.fail("llm.reasoning_effort", f"must be one of: {', '.join(REASONING_EFFORTS)}")
+    max_effort = llm_data.get("max_effort")
+    if max_effort is not None and max_effort not in REASONING_EFFORTS:
+        raise check.fail("llm.max_effort", f"must be one of: {', '.join(REASONING_EFFORTS)}")
+    if max_effort is not None and REASONING_EFFORTS.index(effort) > REASONING_EFFORTS.index(max_effort):
+        raise check.fail("llm.reasoning_effort", f"{effort!r} is above llm.max_effort {max_effort!r}")
     min_tier = check.tier(llm_data, "min_tier", "llm.")
     max_tier = check.tier(llm_data, "max_tier", "llm.")
     if min_tier and max_tier and TIERS.index(min_tier) > TIERS.index(max_tier):
@@ -247,6 +257,7 @@ def load_file(path: Path) -> AgentSpec:
         max_tool_rounds=check.integer(llm_data, "max_tool_rounds", None, 1, 100, "llm."),
         min_tier=min_tier,
         max_tier=max_tier,
+        max_effort=max_effort,
     )
 
     tools_data = check.section(data, "tools")
@@ -261,7 +272,7 @@ def load_file(path: Path) -> AgentSpec:
             raise check.fail("llm.gateway", "Laya triage runs locally; cloud gateways are not supported")
         if llm.model not in (None, "convaiinnovations/laya"):
             raise check.fail("llm.model", "Laya triage only supports convaiinnovations/laya")
-        if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds", "min_tier", "max_tier")) or effort != "off":
+        if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds", "min_tier", "max_tier", "max_effort")) or effort != "off":
             raise check.fail("llm", "Laya triage does not accept generation or tool-loop settings")
     if "routing" in data and not orchestrator:
         raise check.fail("routing", "is only allowed when orchestrator is true")

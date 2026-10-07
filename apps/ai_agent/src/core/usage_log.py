@@ -41,6 +41,7 @@ def own_row(
     finished_at: str,
     delegated_by: str | None,
     model_tier: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """This agent's own agent_usage entry for one ask() (delegated agents
     add their own rows - see delegation.py)."""
@@ -59,6 +60,8 @@ def own_row(
     }
     if model_tier:
         row["model_tier"] = model_tier
+    if reasoning_effort:
+        row["reasoning_effort"] = reasoning_effort
     return row
 
 

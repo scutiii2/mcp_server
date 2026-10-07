@@ -75,10 +75,12 @@ try:
     from src.mcp_client import mcp_upstream
     from src.llm.base_provider import ChatCancelled
     from src.llm import model_tiers
+    from src.llm import reasoning_effort as effort_limits
     from src.llm.model_limits import context_window_for
 
     # Parsed here so a malformed `models` block is a clean one-line exit.
     _OWN_TIERS = model_tiers.as_records(model_tiers.own_tiers())
+    _OWN_EFFORTS = list(effort_limits.own_efforts())
 except Exception as _exc:
     if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
         raise
@@ -176,6 +178,7 @@ async def ask(
     delegated_by: str | None = None,
     disabled_tools: list[str] | None = None,
     model_tier: str | None = None,
+    reasoning_effort: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
@@ -198,6 +201,10 @@ async def ask(
     resolves it against its own gateway tiers and min_tier/max_tier, so a
     request outside the cap runs on the nearest allowed tier; the result
     then carries `model_tier` and, when changed, `model_note`.
+    reasoning_effort: how hard to reason this turn ("off", "low", "medium"
+    or "high"), set by a delegating orchestrator. It is capped at this
+    agent's llm.max_effort, so a request above the cap runs at the cap; the
+    result then carries `reasoning_effort` and, when changed, `effort_note`.
     ctx, if the MCP client requested it, is FastMCP's injected Context -
     used below only to relay run_chat's live step/token events as MCP
     progress notifications; chat_app's own tool call never needs to pass
@@ -219,6 +226,8 @@ async def ask(
     requester_token = internal_auth.bind_requester(internal_auth.Requester.from_headers(_request_headers(ctx)))
     try:
         tier_args = {"model_tier": model_tier} if model_tier else {}
+        if reasoning_effort:
+            tier_args["reasoning_effort"] = reasoning_effort
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
             on_event=on_event, caveman=caveman, approval_mode=approval_mode, allowed_tools=allowed_tools,
@@ -231,7 +240,7 @@ async def ask(
     own_usage = usage_log.own_row(
         result, agent_id=_AGENT_ID, agent_label=_AGENT_LABEL, gateway=SPEC.effective_gateway(),
         started_at=started_at, finished_at=agent_events.now_iso(), delegated_by=delegated_by,
-        model_tier=result.model_tier,
+        model_tier=result.model_tier, reasoning_effort=result.reasoning_effort,
     )
     await usage_log.append({**own_usage, "request_id": request_id, "depth": depth})
     reply = {
@@ -258,6 +267,10 @@ async def ask(
         reply["model_tier"] = result.model_tier
     if result.model_note:
         reply["model_note"] = result.model_note
+    if result.reasoning_effort:
+        reply["reasoning_effort"] = result.reasoning_effort
+    if result.effort_note:
+        reply["effort_note"] = result.effort_note
     return reply
 
 
@@ -327,7 +340,7 @@ def main() -> None:
     agent_registry.register(
         _AGENT_ID, _AGENT_LABEL, _AGENT_URL,
         entry=SPEC.entry, orchestrator=SPEC.orchestrator, focus=SPEC.focus,
-        tiers=_OWN_TIERS,
+        tiers=_OWN_TIERS, efforts=_OWN_EFFORTS,
     )
     try:
         # Same app, host, port and log level mcp.run(transport="streamable-http")

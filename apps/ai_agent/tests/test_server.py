@@ -191,6 +191,7 @@ def test_main_registers_with_the_spec_flags(monkeypatch):
     monkeypatch.setattr(server.mcp_upstream, "warn_unmatched_tool_globs", lambda: None)
     monkeypatch.setattr(server.mcp_upstream, "close", lambda: None)
     monkeypatch.setattr(server, "_OWN_TIERS", [{"tier": "light", "id": "haiku", "use_for": "quick"}])
+    monkeypatch.setattr(server, "_OWN_EFFORTS", ["off", "low"])
     monkeypatch.setattr(server.agent_registry, "register", lambda *a, **k: calls.setdefault("register", (a, k)))
     monkeypatch.setattr(server.agent_registry, "deregister", lambda agent_id: calls.setdefault("deregister", agent_id))
     monkeypatch.setattr(server.uvicorn, "run", lambda *a, **k: None)
@@ -202,6 +203,7 @@ def test_main_registers_with_the_spec_flags(monkeypatch):
     assert kwargs == {
         "entry": server.SPEC.entry, "orchestrator": server.SPEC.orchestrator, "focus": server.SPEC.focus,
         "tiers": [{"tier": "light", "id": "haiku", "use_for": "quick"}],
+        "efforts": ["off", "low"],
     }
     assert calls["deregister"] == server._AGENT_ID
 

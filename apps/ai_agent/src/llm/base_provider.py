@@ -149,6 +149,10 @@ class ChatResult:
     # note when the request was changed (see llm/model_tiers.py).
     model_tier: str | None = None
     model_note: str = ""
+    # The reasoning effort a caller asked for and this turn ran at, and a note
+    # when the request was capped (see llm/reasoning_effort.py).
+    reasoning_effort: str | None = None
+    effort_note: str = ""
 
 
 @catalog

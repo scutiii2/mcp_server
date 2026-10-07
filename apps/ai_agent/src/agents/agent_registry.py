@@ -152,7 +152,7 @@ def reload() -> None:
 
 def register(
     agent_id: str, label: str, url: str, *, entry: bool = False, orchestrator: bool = False, focus: str = "",
-    tiers: list[dict[str, str]] | None = None,
+    tiers: list[dict[str, str]] | None = None, efforts: list[str] | None = None,
 ) -> None:
     """Upserts this instance's own entry into the registry file, so no
     manual edit is needed to learn about a newly-started instance. Call once at startup, before
@@ -161,13 +161,16 @@ def register(
     entry/orchestrator/focus are optional for readers (a missing key reads
     as False/False/""): ember_api picks the entry agent, and an
     orchestrator builds its roster and Laya options from focus.
-    tiers is this agent's allowed model tiers (model_tiers.as_records); an orchestrator offers them when delegating. It is stored only when non-empty."""
+    tiers is this agent's allowed model tiers (model_tiers.as_records); an orchestrator offers them when delegating. It is stored only when non-empty.
+    efforts is the reasoning efforts it accepts from a delegator (reasoning_effort.own_efforts); likewise stored only when non-empty."""
     record: dict[str, Any] = {
         "id": agent_id, "label": label, "url": url,
         "entry": entry, "orchestrator": orchestrator, "focus": focus,
     }
     if tiers:
         record["tiers"] = tiers
+    if efforts:
+        record["efforts"] = list(efforts)
 
     def _upsert(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [a for a in agents if a["id"] != agent_id] + [record]

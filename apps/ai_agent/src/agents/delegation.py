@@ -33,7 +33,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from src.agents import agent_events, agent_registry, agent_routing, agent_spec
 
 from src.core import approvals, internal_auth, tool_filter
-from src.agents.agent_spec import TIERS, RosterEntry
+from src.agents.agent_spec import REASONING_EFFORTS, TIERS, RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
 AUTO_AGENT_ID = "auto"
@@ -63,6 +63,10 @@ def _offers_choice(roster: list[RosterEntry]) -> bool:
     return any(len(r.tiers) > 1 for r in roster)
 
 
+def _offers_effort(roster: list[RosterEntry]) -> bool:
+    return any(len(r.efforts) > 1 for r in roster)
+
+
 def tool_parameters(roster: list[RosterEntry], allow_auto: bool) -> dict[str, Any]:
     """The delegate tool's input schema: agent_id limited to this turn's
     roster (plus "auto" when Laya routing may choose), and model_tier when at
@@ -78,6 +82,15 @@ def tool_parameters(roster: list[RosterEntry], allow_auto: bool) -> dict[str, An
             "enum": list(TIERS),
             "description": "Strength of the model the specialist runs on. Omit for its default.",
         }
+    if _offers_effort(roster):
+        properties["reasoning_effort"] = {
+            "type": "string",
+            "enum": list(REASONING_EFFORTS),
+            "description": (
+                "How hard the specialist reasons: off = none, low = a quick check, medium = normal analysis, "
+                "high = hard multi-step problems. Omit for its default."
+            ),
+        }
     return {"type": "object", "properties": properties, "required": ["agent_id", "question"]}
 
 
@@ -85,6 +98,8 @@ def _roster_line(entry: RosterEntry) -> str:
     line = f"{entry.id} ({entry.label}): {entry.focus or 'no focus given'}"
     if len(entry.tiers) > 1:
         line += " [model_tier: " + ", ".join(f"{t.tier} = {t.use_for}" for t in entry.tiers) + "]"
+    if 1 < len(entry.efforts) < len(REASONING_EFFORTS):
+        line += f" [reasoning_effort: up to {entry.efforts[-1]}]"
     return line
 
 
@@ -95,8 +110,12 @@ def tool_description(roster: list[RosterEntry], allow_auto: bool) -> str:
         " Pick the lightest model_tier whose description fits the task; omit it when unsure."
         if _offers_choice(roster) else ""
     )
+    effort = (
+        " Pick the lowest reasoning_effort that fits the task; omit it when unsure."
+        if _offers_effort(roster) else ""
+    )
     return (
-        f"Hand a focused sub-question to a specialist agent and get its answer back. Specialists: {listing}.{auto}{choice} "
+        f"Hand a focused sub-question to a specialist agent and get its answer back. Specialists: {listing}.{auto}{choice}{effort} "
         "Sequential: each call adds latency, so delegate only what a specialist does better."
     )
 
@@ -144,7 +163,9 @@ def _progress_forwarder(sink: agent_events.Sink | None, step_id: str | None) -> 
     return on_progress
 
 
-def call(agent_id: str, question: str, depth: int, model_tier: str | None = None) -> str:
+def call(
+    agent_id: str, question: str, depth: int, model_tier: str | None = None, reasoning_effort: str | None = None,
+) -> str:
     """Blocking. Must run in a worker thread (the providers dispatch it via
     anyio.to_thread.run_sync): asyncio.run() below fails inside a running
     event loop, and delegating to this same instance needs its event loop
@@ -191,6 +212,8 @@ def call(agent_id: str, question: str, depth: int, model_tier: str | None = None
         }
         if model_tier:
             arguments["model_tier"] = model_tier
+        if reasoning_effort:
+            arguments["reasoning_effort"] = reasoning_effort
         result = asyncio.run(
             _call_tool(
                 agent["url"],
@@ -209,15 +232,17 @@ def call(agent_id: str, question: str, depth: int, model_tier: str | None = None
     if usage_sink is not None:
         # The delegate's own entries already include anything it delegated on.
         usage_sink.extend(result.get("agent_usage") or [])
-    note = result.get("model_note") or ""
-    note_prefix = f"[{note}]\n\n" if note else ""
+    notes = [n for n in (result.get("model_note"), result.get("effort_note")) if n]
+    note_prefix = f"[{'; '.join(notes)}]\n\n" if notes else ""
     return prefix + note_prefix + result.get("response", "")
 
 
 def dispatch(arguments: dict[str, Any], depth: int) -> str:
     """Run a delegate_to_agent tool call from its model-supplied arguments.
     Shared by both providers so neither re-reads the argument names."""
-    tier = arguments.get("model_tier")
-    if isinstance(tier, str) and tier:
-        return call(arguments["agent_id"], arguments["question"], depth, model_tier=tier)
-    return call(arguments["agent_id"], arguments["question"], depth)
+    extra = {
+        key: value
+        for key in ("model_tier", "reasoning_effort")
+        if isinstance(value := arguments.get(key), str) and value
+    }
+    return call(arguments["agent_id"], arguments["question"], depth, **extra)

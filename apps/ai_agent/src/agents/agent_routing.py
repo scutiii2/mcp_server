@@ -16,7 +16,7 @@ from typing import Any
 import anyio.to_thread
 
 from src.agents import agent_registry, agent_spec
-from src.llm import model_tiers
+from src.llm import model_tiers, reasoning_effort
 
 from src.mcp_client import tool_selection
 from src.agents.agent_spec import RosterEntry
@@ -30,7 +30,10 @@ def specialists() -> list[RosterEntry]:
     agent_registry.reload()
     me = agent_spec.current().id
     return [
-        RosterEntry(a["id"], a.get("label") or a["id"], a.get("focus") or "", model_tiers.from_records(a.get("tiers")))
+        RosterEntry(
+            a["id"], a.get("label") or a["id"], a.get("focus") or "",
+            model_tiers.from_records(a.get("tiers")), reasoning_effort.from_record(a.get("efforts")),
+        )
         for a in agent_registry.all_agents()
         if not a.get("orchestrator") and a["id"] != me
     ]
