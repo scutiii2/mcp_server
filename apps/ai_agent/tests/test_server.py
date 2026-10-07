@@ -198,6 +198,7 @@ def test_main_registers_with_the_spec_flags(monkeypatch):
     monkeypatch.setattr(server.mcp_upstream, "connect", lambda: None)
     monkeypatch.setattr(server.mcp_upstream, "warn_unmatched_tool_globs", lambda: None)
     monkeypatch.setattr(server.mcp_upstream, "close", lambda: None)
+    monkeypatch.setattr(server.model_tiers, "own_tiers", lambda: [server.model_tiers.TierInfo("light", "haiku", "quick")])
     monkeypatch.setattr(server.agent_registry, "register", lambda *a, **k: calls.setdefault("register", (a, k)))
     monkeypatch.setattr(server.agent_registry, "deregister", lambda agent_id: calls.setdefault("deregister", agent_id))
     monkeypatch.setattr(server.uvicorn, "run", lambda *a, **k: None)
@@ -206,7 +207,10 @@ def test_main_registers_with_the_spec_flags(monkeypatch):
 
     args, kwargs = calls["register"]
     assert args[0] == server._AGENT_ID
-    assert kwargs == {"entry": server.SPEC.entry, "orchestrator": server.SPEC.orchestrator, "focus": server.SPEC.focus}
+    assert kwargs == {
+        "entry": server.SPEC.entry, "orchestrator": server.SPEC.orchestrator, "focus": server.SPEC.focus,
+        "tiers": [{"tier": "light", "id": "haiku", "use_for": "quick"}],
+    }
     assert calls["deregister"] == server._AGENT_ID
 
 

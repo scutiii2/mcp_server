@@ -302,3 +302,15 @@ def test_definitions_are_empty_when_nothing_was_published_or_the_file_is_broken(
     agent_registry._CONFIG_PATH.parent.mkdir(parents=True)
     agent_registry._definitions_path().write_text("{not json", encoding="utf-8")
     assert agent_registry.read_definitions() == []
+
+
+def test_register_publishes_tiers_only_when_there_are_some(monkeypatch, tmp_path):
+    config_path = _configure(monkeypatch, tmp_path, [])
+    tiers = [{"tier": "light", "id": "haiku", "use_for": "quick"}]
+
+    agent_registry.register("calc", "Calc", "http://127.0.0.1:9103/mcp", tiers=tiers)
+    agent_registry.register("plain", "Plain", "http://127.0.0.1:9104/mcp", tiers=[])
+
+    records = {a["id"]: a for a in json.loads(config_path.read_text(encoding="utf-8"))["agents"]}
+    assert records["calc"]["tiers"] == tiers
+    assert "tiers" not in records["plain"]

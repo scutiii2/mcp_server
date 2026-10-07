@@ -111,3 +111,22 @@ def test_resolve_auto_reports_laya_failure(registry, monkeypatch):
     _use(monkeypatch, laya=True, allow_auto=True)
     with pytest.raises(ValueError, match="pick an agent_id explicitly"):
         agent_routing.resolve_auto("q", FakeRanker(error=RuntimeError("model load failed")))
+
+
+def test_specialists_carry_their_published_tiers(monkeypatch):
+    agents = [
+        {"id": "orchestrator", "label": "Ember", "url": "u", "orchestrator": True},
+        {"id": "calc", "label": "Calculator", "url": "u", "focus": "math", "tiers": [
+            {"tier": "light", "id": "haiku", "use_for": "quick"},
+            {"tier": "bogus", "id": "x", "use_for": "y"},
+        ]},
+        {"id": "poet", "label": "Poet", "url": "u", "focus": "poems"},
+    ]
+    monkeypatch.setattr(agent_registry, "reload", lambda: None)
+    monkeypatch.setattr(agent_registry, "_AGENTS", agents)
+    _use(monkeypatch)
+
+    calc, poet = agent_routing.specialists()
+
+    assert calc.tiers == (agent_spec.TierInfo("light", "haiku", "quick"),)
+    assert poet.tiers == ()
