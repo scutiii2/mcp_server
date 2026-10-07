@@ -17,6 +17,7 @@ from src.capabilities.usage_report import tool as usage_report_tool  # noqa: F40
 from src.capabilities.vault import tool as vault_tool  # noqa: F401
 from src.capabilities.repo_reader import tool as repo_reader_tool  # noqa: F401
 from src.capabilities.tables import tool as tables_tool  # noqa: F401
+from src.capabilities.watchers import tool as watchers_tool  # noqa: F401
 from src.server import mcp
 
 

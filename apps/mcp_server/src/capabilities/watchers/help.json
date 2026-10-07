@@ -1,0 +1,26 @@
+{
+  "summary": "Watch a web address, a managed app or a TCP port in the background and get one email when it is up (or down). Watches once, up to 24 hours.",
+  "tools": [
+    {"name": "tool_watch_create", "purpose": "Start a watcher.", "connection": "Background thread; email via SMTP", "commands": ["create"]},
+    {"name": "tool_watch_listWatchers", "purpose": "List your watchers.", "connection": "Local state folder", "commands": ["list"]},
+    {"name": "tool_watch_cancel", "purpose": "Cancel one of your watchers.", "connection": "Local state folder", "commands": ["cancel"]}
+  ],
+  "commands": [
+    {"name": "create", "tool": "tool_watch_create", "params": [
+      {"name": "kind", "required": true, "default": null, "description": "url, app or tcp."},
+      {"name": "target", "required": true, "default": null, "description": "The web address, the app name, or host:port."},
+      {"name": "expect", "required": false, "default": "up", "description": "up or down."},
+      {"name": "contains", "required": false, "default": "", "description": "Text the page must contain (kind url, expect up)."},
+      {"name": "label", "required": false, "default": "", "description": "A short name for the watcher."}
+    ]},
+    {"name": "list", "tool": "tool_watch_listWatchers", "params": []},
+    {"name": "cancel", "tool": "tool_watch_cancel", "params": [
+      {"name": "key", "required": true, "default": null, "description": "The watcher's id, such as w-1a2b3c4d."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_watch_create", "ai_only_step": false, "explanation": "Start a watcher for a URL, app or port."},
+    {"sequence": "2", "tool": "tool_watch_listWatchers", "ai_only_step": false, "explanation": "See its state and whether the email went out."},
+    {"sequence": "3", "tool": "tool_watch_cancel", "ai_only_step": false, "explanation": "Stop or remove a watcher."}
+  ]
+}
