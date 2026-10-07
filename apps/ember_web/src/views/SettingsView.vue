@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, useTemplateRef } from "vue";
+import { computed, onMounted, ref, useTemplateRef, watch } from "vue";
 import SettingRow from "../components/SettingRow.vue";
 import SettingsPanel from "../components/admin/SettingsPanel.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
@@ -19,11 +19,20 @@ interface SettingDef extends SearchableSetting {
   group: "chat" | "appearance" | "admin";
 }
 
+// Icon paths are on a 16px grid, stroke only. The scope chip says where a group's
+// settings live; Administration has none, its card carries its own scope chip.
+const SCOPE_NOTE = "Applies instantly. Saved on this device.";
 const GROUPS = [
-  { id: "chat", title: "Chat" },
-  { id: "appearance", title: "Appearance" },
-  { id: "admin", title: "Administration" },
+  { id: "chat", title: "Chat", icon: "M2 3h12v8H7l-3 3v-3H2z", scope: "This device" },
+  {
+    id: "appearance",
+    title: "Appearance",
+    icon: "M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M3 13l1.4-1.4M11.6 4.4L13 3",
+    scope: "This device",
+  },
+  { id: "admin", title: "Administration", icon: "M8 1.5l5 2v4c0 3-2 5.5-5 7-3-1.5-5-4-5-7v-4z", scope: "" },
 ] as const;
+const SEARCH_ICON = "M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M11 11l3.5 3.5";
 
 const DEFS: SettingDef[] = [
   {
@@ -75,10 +84,18 @@ const { theme, setTheme } = useTheme();
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 const query = ref("");
+const onlyModified = ref(false);
 const root = useTemplateRef<HTMLElement>("root");
 
 const available = computed(() => DEFS.filter((d) => d.group !== "admin" || isAdmin.value));
-const shown = computed(() => new Set(filterSettings(available.value, query.value).map((d) => d.id)));
+const shown = computed(
+  () =>
+    new Set(
+      filterSettings(available.value, query.value)
+        .filter((d) => !onlyModified.value || modified.value[d.id as keyof typeof modified.value])
+        .map((d) => d.id),
+    ),
+);
 const groups = computed(() =>
   GROUPS.map((g) => ({ ...g, defs: available.value.filter((d) => d.group === g.id && shown.value.has(d.id)) })).filter(
     (g) => g.defs.length > 0,
@@ -100,6 +117,11 @@ const modified = computed(() => ({
   "admin-tool-approval": isAdmin.value && toolApprovalModified.value,
 }));
 const modifiedCount = computed(() => Object.values(modified.value).filter(Boolean).length);
+
+// With nothing left to show, the filter would only hide the whole page.
+watch(modifiedCount, (count) => {
+  if (count === 0) onlyModified.value = false;
+});
 
 function checked(event: Event): boolean {
   return (event.target as HTMLInputElement).checked;
@@ -124,19 +146,33 @@ onMounted(() => {
     <div ref="root" class="column">
       <header class="head">
         <h2>Settings</h2>
-        <span v-if="modifiedCount > 0" class="badge" role="status">{{ modifiedCount }} modified</span>
       </header>
 
-      <input
-        v-model="query"
-        class="search"
-        type="search"
-        placeholder="Search settings"
-        aria-label="Search settings"
-        autocomplete="off"
-        @keydown.enter.prevent="jumpToFirst"
-        @keydown.esc="query = ''"
-      />
+      <div class="top">
+        <label class="search-box">
+          <svg class="search-icon" viewBox="0 0 16 16" aria-hidden="true"><path :d="SEARCH_ICON" /></svg>
+          <input
+            v-model="query"
+            class="search"
+            type="search"
+            placeholder="Search settings"
+            aria-label="Search settings"
+            autocomplete="off"
+            @keydown.enter.prevent="jumpToFirst"
+            @keydown.esc="query = ''"
+          />
+        </label>
+        <button
+          v-if="modifiedCount > 0"
+          type="button"
+          :class="['badge', { on: onlyModified }]"
+          :aria-pressed="onlyModified"
+          title="Show only the settings changed from their defaults"
+          @click="onlyModified = !onlyModified"
+        >
+          {{ modifiedCount }} modified
+        </button>
+      </div>
 
       <p v-if="noMatches" class="muted empty">
         No settings match "{{ query }}".
@@ -144,10 +180,15 @@ onMounted(() => {
       </p>
 
       <section v-for="g in groups" :key="g.id" class="group" :aria-label="g.title">
-        <h3>{{ g.title }}</h3>
+        <div class="group-head">
+          <span class="group-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16"><path :d="g.icon" /></svg>
+          </span>
+          <h3>{{ g.title }}</h3>
+          <span v-if="g.scope" class="scope" :title="SCOPE_NOTE">{{ g.scope }}</span>
+        </div>
 
         <div v-if="g.id === 'chat'" class="card">
-          <p class="note">Applies instantly. Saved on this device.</p>
           <SettingRow
             v-if="shown.has('chat-terse')"
             setting-id="chat-terse"
@@ -191,8 +232,8 @@ onMounted(() => {
         </div>
 
         <div v-else-if="g.id === 'appearance'" class="card">
-          <p class="note">Applies instantly. Saved on this device.</p>
           <SettingRow
+            v-if="shown.has('appearance-theme')"
             setting-id="appearance-theme"
             label="Theme"
             description="Light, dark, or follow your system."
@@ -232,15 +273,38 @@ h2 {
   margin: 0;
   font-size: 1.2em;
 }
-.badge {
-  padding: 1px 10px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-full);
-  font-size: 0.8em;
-  color: var(--accent);
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.search-box {
+  position: relative;
+  flex: 1 1 220px;
+}
+.search-icon,
+.group-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
 }
 .search {
-  padding: 8px 12px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 12px 8px 36px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text);
@@ -251,29 +315,63 @@ h2 {
   outline: none;
   border-color: var(--accent);
 }
-.group h3 {
+.badge {
+  padding: 5px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85em;
+  white-space: nowrap;
+  color: var(--accent);
+  background: transparent;
+}
+.badge.on {
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 8px;
-  font-size: 0.8em;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+}
+.group-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  background: var(--code-bg);
+}
+.group-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.group-head h3 {
+  margin: 0;
+  font-size: 1em;
+}
+.scope {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.75em;
   color: var(--muted);
+  background: var(--code-bg);
 }
 /* The tool approval card is not inside its group (it stays mounted while a
    search hides it, so an unsaved draft survives); close the gap to its heading. */
 .admin-card {
-  margin-top: -16px;
+  margin-top: -8px;
 }
 .card {
   padding: 4px 16px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
-}
-.note {
-  margin: 8px 0 0;
-  font-size: 0.8em;
-  color: var(--muted);
 }
 .muted {
   color: var(--muted);

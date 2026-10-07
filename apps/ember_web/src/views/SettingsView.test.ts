@@ -152,6 +152,46 @@ describe("SettingsView", () => {
   });
 });
 
+describe("group headers", () => {
+  it("name where the settings live, with the full note as a tooltip", async () => {
+    const w = await mountView();
+
+    const scopes = w.findAll(".scope");
+    expect(scopes.map((c) => c.text())).toEqual(["This device", "This device"]);
+    expect(scopes[0]!.attributes("title")).toBe("Applies instantly. Saved on this device.");
+    expect(w.text()).not.toContain("Applies instantly. Saved on this device.");
+  });
+});
+
+describe("modified filter", () => {
+  it("is a pill that shows only the changed settings, and toggles back", async () => {
+    chat.caveman = true;
+    const w = await mountView();
+    expect(rowIds(w)).toHaveLength(4);
+    expect(w.get(".badge").attributes("aria-pressed")).toBe("false");
+
+    await w.get(".badge").trigger("click");
+
+    expect(rowIds(w)).toEqual(["chat-terse"]);
+    expect(w.findAll("h3").map((h) => h.text())).toEqual(["Chat"]);
+    expect(w.get(".badge").attributes("aria-pressed")).toBe("true");
+
+    await w.get(".badge").trigger("click");
+    expect(rowIds(w)).toHaveLength(4);
+  });
+
+  it("drops the filter once nothing is modified any more", async () => {
+    chat.caveman = true;
+    const w = await mountView();
+    await w.get(".badge").trigger("click");
+
+    await row(w, "chat-terse").get("button.reset").trigger("click");
+
+    expect(w.find(".badge").exists()).toBe(false);
+    expect(rowIds(w)).toHaveLength(4);
+  });
+});
+
 describe("search", () => {
   it("filters the settings as you type, hiding a group with no match", async () => {
     const w = await mountView();
