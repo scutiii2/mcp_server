@@ -33,7 +33,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from src.agents import agent_events, agent_registry, agent_routing, agent_spec
 
 from src.core import approvals, internal_auth, tool_filter
-from src.agents.agent_spec import RosterEntry
+from src.agents.agent_spec import TIERS, RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
 AUTO_AGENT_ID = "auto"
@@ -59,25 +59,44 @@ def reset_usage(token: Token) -> None:
 # unbounded fan-out or a delegation cycle running forever.
 _MAX_DELEGATION_DEPTH = 2
 
+def _offers_choice(roster: list[RosterEntry]) -> bool:
+    return any(len(r.tiers) > 1 for r in roster)
+
+
 def tool_parameters(roster: list[RosterEntry], allow_auto: bool) -> dict[str, Any]:
     """The delegate tool's input schema: agent_id limited to this turn's
-    roster (plus "auto" when Laya routing may choose)."""
+    roster (plus "auto" when Laya routing may choose), and model_tier when at
+    least one specialist offers a choice of model strength."""
     ids = [r.id for r in roster] + ([AUTO_AGENT_ID] if allow_auto else [])
-    return {
-        "type": "object",
-        "properties": {
-            "agent_id": {"type": "string", "enum": ids, "description": "Which specialist to delegate to."},
-            "question": {"type": "string", "description": "The focused sub-question to ask it."},
-        },
-        "required": ["agent_id", "question"],
+    properties: dict[str, Any] = {
+        "agent_id": {"type": "string", "enum": ids, "description": "Which specialist to delegate to."},
+        "question": {"type": "string", "description": "The focused sub-question to ask it."},
     }
+    if _offers_choice(roster):
+        properties["model_tier"] = {
+            "type": "string",
+            "enum": list(TIERS),
+            "description": "Strength of the model the specialist runs on. Omit for its default.",
+        }
+    return {"type": "object", "properties": properties, "required": ["agent_id", "question"]}
+
+
+def _roster_line(entry: RosterEntry) -> str:
+    line = f"{entry.id} ({entry.label}): {entry.focus or 'no focus given'}"
+    if len(entry.tiers) > 1:
+        line += " [model_tier: " + ", ".join(f"{t.tier} = {t.use_for}" for t in entry.tiers) + "]"
+    return line
 
 
 def tool_description(roster: list[RosterEntry], allow_auto: bool) -> str:
-    listing = "; ".join(f"{r.id} ({r.label}): {r.focus or 'no focus given'}" for r in roster)
+    listing = "; ".join(_roster_line(r) for r in roster)
     auto = ' Use agent_id "auto" to let routing pick the best specialist for the question.' if allow_auto else ""
+    choice = (
+        " Pick the lightest model_tier whose description fits the task; omit it when unsure."
+        if _offers_choice(roster) else ""
+    )
     return (
-        f"Hand a focused sub-question to a specialist agent and get its answer back. Specialists: {listing}.{auto} "
+        f"Hand a focused sub-question to a specialist agent and get its answer back. Specialists: {listing}.{auto}{choice} "
         "Sequential: each call adds latency, so delegate only what a specialist does better."
     )
 
@@ -125,7 +144,7 @@ def _progress_forwarder(sink: agent_events.Sink | None, step_id: str | None) -> 
     return on_progress
 
 
-def call(agent_id: str, question: str, depth: int) -> str:
+def call(agent_id: str, question: str, depth: int, model_tier: str | None = None) -> str:
     """Blocking. Must run in a worker thread (the providers dispatch it via
     anyio.to_thread.run_sync): asyncio.run() below fails inside a running
     event loop, and delegating to this same instance needs its event loop
@@ -159,21 +178,24 @@ def call(agent_id: str, question: str, depth: int) -> str:
     })
     ok = False
     try:
+        arguments: dict[str, Any] = {
+            "question": question,
+            "history": [],
+            "enabled_extensions": [],
+            "request_id": None,
+            "depth": depth + 1,
+            "approval_mode": approval_mode,
+            "delegated_by": me,
+            # What the user switched off holds for the specialist too.
+            "disabled_tools": sorted(tool_filter.blocked()),
+        }
+        if model_tier:
+            arguments["model_tier"] = model_tier
         result = asyncio.run(
             _call_tool(
                 agent["url"],
                 "ask",
-                {
-                    "question": question,
-                    "history": [],
-                    "enabled_extensions": [],
-                    "request_id": None,
-                    "depth": depth + 1,
-                    "approval_mode": approval_mode,
-                    "delegated_by": me,
-                    # What the user switched off holds for the specialist too.
-                    "disabled_tools": sorted(tool_filter.blocked()),
-                },
+                arguments,
                 on_progress=_progress_forwarder(sink, step_id),
             )
         )
@@ -187,4 +209,15 @@ def call(agent_id: str, question: str, depth: int) -> str:
     if usage_sink is not None:
         # The delegate's own entries already include anything it delegated on.
         usage_sink.extend(result.get("agent_usage") or [])
-    return prefix + result.get("response", "")
+    note = result.get("model_note") or ""
+    note_prefix = f"[{note}]\n\n" if note else ""
+    return prefix + note_prefix + result.get("response", "")
+
+
+def dispatch(arguments: dict[str, Any], depth: int) -> str:
+    """Run a delegate_to_agent tool call from its model-supplied arguments.
+    Shared by both providers so neither re-reads the argument names."""
+    tier = arguments.get("model_tier")
+    if tier:
+        return call(arguments["agent_id"], arguments["question"], depth, model_tier=tier)
+    return call(arguments["agent_id"], arguments["question"], depth)

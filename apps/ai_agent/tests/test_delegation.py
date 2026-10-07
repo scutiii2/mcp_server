@@ -200,3 +200,69 @@ def test_call_emits_a_failed_end_when_the_specialist_errors(monkeypatch):
         agent_events.reset(token)
 
     assert emitted[-1]["type"] == "agent_end" and emitted[-1]["ok"] is False
+
+
+from src.agents.agent_spec import TierInfo
+
+TIERED = [
+    RosterEntry("calc", "Calculator", "Arithmetic.", (
+        TierInfo("light", "haiku", "quick sums"), TierInfo("heavy", "opus", "proofs"),
+    )),
+    RosterEntry("fixed", "Fixed", "One model.", (TierInfo("standard", "sonnet", "all"),)),
+]
+
+
+def test_tool_parameters_have_no_model_tier_when_nobody_offers_a_choice():
+    assert "model_tier" not in delegation.tool_parameters(ROSTER, allow_auto=False)["properties"]
+    assert "model_tier" not in delegation.tool_parameters(TIERED[1:], allow_auto=False)["properties"]
+
+
+def test_tool_parameters_offer_model_tier_when_a_specialist_has_a_choice():
+    prop = delegation.tool_parameters(TIERED, allow_auto=False)["properties"]["model_tier"]
+    assert prop["enum"] == ["light", "standard", "heavy"]
+
+
+def test_tool_description_lists_tiers_only_for_specialists_with_a_choice():
+    description = delegation.tool_description(TIERED, allow_auto=False)
+    assert "calc (Calculator): Arithmetic. [model_tier: light = quick sums, heavy = proofs]" in description
+    assert "fixed (Fixed): One model." in description
+    assert "fixed (Fixed): One model. [" not in description
+    assert "lightest model_tier" in description
+    assert "lightest model_tier" not in delegation.tool_description(ROSTER, allow_auto=False)
+
+
+def test_call_passes_model_tier_to_ask(monkeypatch):
+    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
+    captured = {}
+
+    async def _fake_call_tool(url, name, arguments, on_progress=None):
+        captured["arguments"] = arguments
+        return {"response": "4"}
+
+    with patch("src.agents.delegation._call_tool", side_effect=_fake_call_tool):
+        delegation.call("calc", "2+2?", depth=0, model_tier="light")
+
+    assert captured["arguments"]["model_tier"] == "light"
+
+
+def test_call_shows_the_orchestrator_why_a_tier_was_changed(monkeypatch):
+    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
+
+    async def _fake_call_tool(url, name, arguments, on_progress=None):
+        return {"response": "4", "model_note": "heavy is not available for calc; ran on standard"}
+
+    with patch("src.agents.delegation._call_tool", side_effect=_fake_call_tool):
+        result = delegation.call("calc", "2+2?", depth=0, model_tier="heavy")
+
+    assert result == "[heavy is not available for calc; ran on standard]\n\n4"
+
+
+def test_dispatch_reads_the_tool_arguments():
+    with patch("src.agents.delegation.call", return_value="answer") as fake_call:
+        assert delegation.dispatch({"agent_id": "calc", "question": "q"}, 1) == "answer"
+        delegation.dispatch({"agent_id": "calc", "question": "q", "model_tier": "heavy"}, 1)
+
+    assert fake_call.call_args_list[0].args == ("calc", "q", 1)
+    assert fake_call.call_args_list[0].kwargs == {}
+    assert fake_call.call_args_list[1].args == ("calc", "q", 1)
+    assert fake_call.call_args_list[1].kwargs == {"model_tier": "heavy"}

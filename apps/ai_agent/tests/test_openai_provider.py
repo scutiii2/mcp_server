@@ -147,6 +147,15 @@ def test_dispatch_routes_delegate_calls_to_delegation_and_others_to_call_tool():
     assert other_result == "tool result"
 
 
+def test_dispatch_forwards_model_tier_to_delegation():
+    with patch("src.llm.openai_provider.delegation.call", return_value="ok") as fake_delegate:
+        openai_provider._dispatch(
+            "delegate_to_agent", {"agent_id": "openai-agent", "question": "hi", "model_tier": "light"}, depth=1
+        )
+
+    fake_delegate.assert_called_once_with("openai-agent", "hi", 1, model_tier="light")
+
+
 def test_has_api_key_reflects_env_var(monkeypatch):
     monkeypatch.delenv("GPT_API_KEY", raising=False)
     assert openai_provider.has_api_key() is False

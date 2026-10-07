@@ -220,7 +220,7 @@ is_available = _Anthropic.is_available
 
 def _dispatch(name: str, arguments: dict[str, Any], depth: int) -> str:
     if name == delegation.TOOL_NAME:
-        return delegation.call(arguments["agent_id"], arguments["question"], depth)
+        return delegation.dispatch(arguments, depth)
     return call_tool(name, arguments)
 
 
