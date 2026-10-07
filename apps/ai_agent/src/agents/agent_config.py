@@ -15,9 +15,10 @@ from typing import Any
 import anyio
 from dotenv import dotenv_values
 
-from src.agents import delegation
+from src.agents import agent_spec, delegation
 
 from src.core import approvals, tool_filter
+from src.llm import model_tiers
 from src.core.seed import seed_from_example
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -101,8 +102,14 @@ async def run_chat(
     approval_mode: str = "off",
     allowed_tools: list[str] | None = None,
     disabled_tools: list[str] | None = None,
+    model_tier: str | None = None,
 ) -> ChatResult:
     """Run a chat completion request through the configured provider.
+
+    model_tier: a strength tier ("light"/"standard"/"heavy") the caller asks
+    for (delegation.py). It is resolved against this agent's own tiers and
+    cap (llm/model_tiers.py); a request outside the cap is clamped, with a
+    note on the result. None keeps the pinned model.
 
     disabled_tools: tools the asking user switched off for their own chats
     (see core/tool_filter.py); they are not offered and not run.
@@ -122,6 +129,10 @@ async def run_chat(
     """
     # Validated before anything is registered: a bad mode must not start a turn.
     policy = approvals.ApprovalPolicy(approval_mode, set(allowed_tools or ()))
+    resolution = (
+        model_tiers.resolve(model_tier, model_tiers.own_tiers(), MODEL, agent_spec.current().id)
+        if model_tier else model_tiers.Resolution(MODEL, None)
+    )
     cancellation.register(request_id)
     delegated_usage, usage_token = delegation.bind_usage()
     approval_token = approvals.bind(policy)
@@ -131,22 +142,25 @@ async def run_chat(
             raise ChatCancelled()
         if inspect.iscoroutinefunction(_PROVIDER_MODULE.run_chat):
             result = await _PROVIDER_MODULE.run_chat(
-                question, history, MODEL, enabled_extensions, request_id, depth,
+                question, history, resolution.model, enabled_extensions, request_id, depth,
                 on_event=on_event, caveman=caveman,
             )
             result.delegated_usage = delegated_usage
-            return result
-        # Phase 1: openai_provider is still sync - run it off the event
-        # loop thread so a slow completion doesn't block other requests
-        # this ai_agent process is serving. on_event is dropped here on
-        # purpose: a sync provider has nowhere to await it from (Phase 3
-        # converts openai_provider the same way Task 3 did anthropic_provider).
-        return await anyio.to_thread.run_sync(
-            lambda: _PROVIDER_MODULE.run_chat(
-                question, history, MODEL, enabled_extensions, request_id, depth,
-                caveman=caveman,
+        else:
+            # Phase 1: openai_provider is still sync - run it off the event
+            # loop thread so a slow completion doesn't block other requests
+            # this ai_agent process is serving. on_event is dropped here on
+            # purpose: a sync provider has nowhere to await it from (Phase 3
+            # converts openai_provider the same way Task 3 did anthropic_provider).
+            result = await anyio.to_thread.run_sync(
+                lambda: _PROVIDER_MODULE.run_chat(
+                    question, history, resolution.model, enabled_extensions, request_id, depth,
+                    caveman=caveman,
+                )
             )
-        )
+        result.model_tier = resolution.tier
+        result.model_note = resolution.note
+        return result
     finally:
         tool_filter.reset(filter_token)
         approvals.reset(approval_token)

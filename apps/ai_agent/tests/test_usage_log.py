@@ -48,3 +48,13 @@ def test_append_failure_only_warns(tmp_path, caplog):
 def test_usage_dir_honours_the_env(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_AGENT_USAGE_DIR", str(tmp_path))
     assert usage_log.usage_dir() == tmp_path
+
+
+def test_own_row_records_model_tier_only_when_given():
+    result = ChatResult(response="x", provider_id="anthropic", model="haiku")
+    common = dict(
+        agent_id="calc", agent_label="Calculator", gateway="claude",
+        started_at="2026-10-08T09:00:00.000Z", finished_at="2026-10-08T09:00:01.000Z", delegated_by=None,
+    )
+    assert usage_log.own_row(result, **common, model_tier="light")["model_tier"] == "light"
+    assert "model_tier" not in usage_log.own_row(result, **common)

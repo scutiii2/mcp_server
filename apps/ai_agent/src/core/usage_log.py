@@ -40,10 +40,11 @@ def own_row(
     started_at: str,
     finished_at: str,
     delegated_by: str | None,
+    model_tier: str | None = None,
 ) -> dict[str, Any]:
     """This agent's own agent_usage entry for one ask() (delegated agents
     add their own rows - see delegation.py)."""
-    return {
+    row = {
         "agent_id": agent_id,
         "agent_label": agent_label,
         "provider_id": result.provider_id,
@@ -56,6 +57,9 @@ def own_row(
         "finished_at": finished_at,
         "delegated_by": delegated_by,
     }
+    if model_tier:
+        row["model_tier"] = model_tier
+    return row
 
 
 def _write(row: dict[str, Any], directory: Path) -> None:

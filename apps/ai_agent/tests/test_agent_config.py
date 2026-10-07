@@ -358,3 +358,58 @@ def test_run_chat_still_clears_cancellation_when_async_provider_raises(monkeypat
             assert cleared == ["req-1"]
 
     asyncio.run(_run())
+
+
+def test_run_chat_passes_the_resolved_tier_model_to_the_provider(monkeypatch):
+    import asyncio
+
+    from src.agents.agent_spec import TierInfo
+
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
+    monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
+
+    from src.agents import agent_config
+
+    reloaded = importlib.reload(agent_config)
+    monkeypatch.setattr(reloaded.model_tiers, "own_tiers", lambda: [TierInfo("light", "haiku", "q"), TierInfo("heavy", "opus", "h")])
+    seen = {}
+
+    async def _fake_run_chat(question, history, model, enabled_extensions, request_id, depth, on_event=None, caveman=False):
+        seen["model"] = model
+        return ChatResult(response="x")
+
+    monkeypatch.setattr(reloaded._PROVIDER_MODULE, "run_chat", _fake_run_chat)
+
+    result = asyncio.run(reloaded.run_chat("hi", [], [], model_tier="heavy"))
+    assert seen["model"] == "opus"
+    assert (result.model_tier, result.model_note) == ("heavy", "")
+
+    result = asyncio.run(reloaded.run_chat("hi", [], [], model_tier="standard"))
+    assert seen["model"] == "haiku"
+    assert result.model_tier == "light"
+    assert "ran on light" in result.model_note
+
+
+def test_run_chat_without_a_tier_keeps_the_pinned_model(monkeypatch):
+    import asyncio
+
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
+    monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
+    monkeypatch.setenv("AI_AGENT_MODEL", "pinned-model")
+
+    from src.agents import agent_config
+
+    reloaded = importlib.reload(agent_config)
+    seen = {}
+
+    async def _fake_run_chat(question, history, model, enabled_extensions, request_id, depth, on_event=None, caveman=False):
+        seen["model"] = model
+        return ChatResult(response="x")
+
+    monkeypatch.setattr(reloaded._PROVIDER_MODULE, "run_chat", _fake_run_chat)
+
+    result = asyncio.run(reloaded.run_chat("hi", [], []))
+    assert seen["model"] == "pinned-model"
+    assert result.model_tier is None

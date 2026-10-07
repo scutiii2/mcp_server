@@ -183,6 +183,7 @@ async def ask(
     allowed_tools: list[str] | None = None,
     delegated_by: str | None = None,
     disabled_tools: list[str] | None = None,
+    model_tier: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
@@ -200,6 +201,11 @@ async def ask(
     this question (see delegation.py); recorded in usage rows.
     disabled_tools: mcp_server tool names the asking user switched off for
     their own chats; this turn neither offers nor runs them (core/tool_filter.py).
+    model_tier: the strength of model to run this turn on ("light",
+    "standard" or "heavy"), set by a delegating orchestrator. This agent
+    resolves it against its own gateway tiers and min_tier/max_tier, so a
+    request outside the cap runs on the nearest allowed tier; the result
+    then carries `model_tier` and, when changed, `model_note`.
     ctx, if the MCP client requested it, is FastMCP's injected Context -
     used below only to relay run_chat's live step/token events as MCP
     progress notifications; chat_app's own tool call never needs to pass
@@ -220,10 +226,11 @@ async def ask(
     started_at = agent_events.now_iso()
     requester_token = internal_auth.bind_requester(internal_auth.Requester.from_headers(_request_headers(ctx)))
     try:
+        tier_args = {"model_tier": model_tier} if model_tier else {}
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
             on_event=on_event, caveman=caveman, approval_mode=approval_mode, allowed_tools=allowed_tools,
-            disabled_tools=disabled_tools,
+            disabled_tools=disabled_tools, **tier_args,
         )
     except ChatCancelled:
         return _cancelled_result()
@@ -232,9 +239,10 @@ async def ask(
     own_usage = usage_log.own_row(
         result, agent_id=_AGENT_ID, agent_label=_AGENT_LABEL, gateway=SPEC.effective_gateway(),
         started_at=started_at, finished_at=agent_events.now_iso(), delegated_by=delegated_by,
+        model_tier=result.model_tier,
     )
     await usage_log.append({**own_usage, "request_id": request_id, "depth": depth})
-    return {
+    reply = {
         "response": result.response,
         "tools_used": result.tools_used,
         "tool_calls": [
@@ -252,6 +260,11 @@ async def ask(
         "model": result.model,
         "cancelled": False,
     }
+    if result.model_tier:
+        reply["model_tier"] = result.model_tier
+    if result.model_note:
+        reply["model_note"] = result.model_note
+    return reply
 
 
 @mcp.custom_route("/registry", methods=["GET"])

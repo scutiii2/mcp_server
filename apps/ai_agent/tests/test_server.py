@@ -280,3 +280,34 @@ def test_agent_url_rejects_an_advertise_value_that_is_not_an_origin():
             assert "AI_AGENT_ADVERTISE_URL" in str(error)
         else:
             raise AssertionError(f"{bad!r} was accepted")
+
+
+def test_ask_passes_model_tier_and_reports_the_resolution():
+    async def _run():
+        fake_result = ChatResult(
+            response="ok", provider_id="anthropic", model="haiku", model_tier="light",
+            model_note="heavy is not available for calc; ran on light",
+        )
+        with patch("src.server.agent_config.run_chat", new_callable=AsyncMock, return_value=fake_result) as fake_run_chat, \
+             patch("src.server.agent_config.status", return_value={"model": "m", "context_window": 1}):
+            result = await server.ask("q", model_tier="heavy")
+
+        assert fake_run_chat.call_args.kwargs["model_tier"] == "heavy"
+        assert result["model_tier"] == "light"
+        assert result["model_note"] == "heavy is not available for calc; ran on light"
+        assert result["agent_usage"][0]["model_tier"] == "light"
+
+    asyncio.run(_run())
+
+
+def test_ask_without_a_tier_adds_no_tier_keys():
+    async def _run():
+        with patch("src.server.agent_config.run_chat", new_callable=AsyncMock, return_value=ChatResult(response="hi")) as fake_run_chat, \
+             patch("src.server.agent_config.status", return_value={"model": "m", "context_window": 1}):
+            result = await server.ask("q")
+
+        assert "model_tier" not in fake_run_chat.call_args.kwargs
+        assert "model_tier" not in result and "model_note" not in result
+        assert "model_tier" not in result["agent_usage"][0]
+
+    asyncio.run(_run())

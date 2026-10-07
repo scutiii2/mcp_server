@@ -145,6 +145,10 @@ class ChatResult:
     output_tokens: int | None = None
     # Usage of every agent this turn delegated to; own usage is not repeated here.
     delegated_usage: list[dict[str, Any]] = field(default_factory=list)
+    # The strength tier this turn ran on when the caller asked for one, and a
+    # note when the request was changed (see llm/model_tiers.py).
+    model_tier: str | None = None
+    model_note: str = ""
 
 
 @catalog
