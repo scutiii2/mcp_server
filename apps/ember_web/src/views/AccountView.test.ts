@@ -53,13 +53,13 @@ const forgetButtons = (wrapper: Awaited<ReturnType<typeof mountView>>) => wrappe
 beforeEach(() => vi.clearAllMocks());
 
 describe("AccountView", () => {
-  it("groups the account into a profile card, Security and Devices", async () => {
+  it("shows the account identity, security, access and remembered devices", async () => {
     const wrapper = await mountView([]);
 
-    expect(wrapper.findAll("section.card").map((s) => s.get("h3").text())).toEqual(["Security", "Devices"]);
+    expect(wrapper.findAll("section.card").map((s) => s.get("h3").text())).toEqual(["Security", "Roles & access", "Remembered devices"]);
     expect(wrapper.get(".profile .name").text()).toBe("maria");
     expect(wrapper.get(".avatar").text()).toBe("M");
-    expect(wrapper.get(".profile .chip.ok").text()).toBe("verified");
+    expect(wrapper.get(".profile .chip.ok").text()).toBe("Email verified");
     expect(wrapper.get(".roles").text()).toBe("Member");
   });
 
@@ -74,6 +74,27 @@ describe("AccountView", () => {
     const wrapper = await mountView([]);
 
     expect(wrapper.find(".banner").exists()).toBe(false);
+  });
+
+  it("shows paused permissions and an unverified status when verification is required", async () => {
+    const wrapper = await mountView([]);
+    useAuthStore().account!.email_verified = false;
+    await flushPromises();
+
+    expect(wrapper.get(".profile-status").text()).toContain("Verification needed");
+    expect(wrapper.get(".banner").text()).toContain("Permissions are paused");
+    expect(wrapper.get(".permissions").text()).toContain("inactive until your email is verified");
+    expect(wrapper.find(".profile .chip.ok").exists()).toBe(false);
+  });
+
+  it("keeps optional verification distinct from paused access", async () => {
+    const wrapper = await mountView([]);
+    Object.assign(useAuthStore().account!, { email_verified: false, email_verification_required: false });
+    await flushPromises();
+
+    expect(wrapper.get(".profile-status").text()).toContain("Verification optional");
+    expect(wrapper.get(".banner").text()).toContain("Verifying it is optional");
+    expect(wrapper.get(".permissions").text()).not.toContain("inactive");
   });
 
   it("opens one security form at a time, and closes it again", async () => {
@@ -116,6 +137,7 @@ describe("AccountView", () => {
 
     expect(client.forgetDevice).toHaveBeenCalledExactlyOnceWith(2);
     expect(wrapper.findAll(".devices li")).toHaveLength(1);
+    expect(wrapper.get(".device-count").text()).toBe("1 device");
     expect(wrapper.findComponent(ConfirmModal).exists()).toBe(false);
   });
 });
