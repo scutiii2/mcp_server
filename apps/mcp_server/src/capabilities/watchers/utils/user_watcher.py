@@ -51,6 +51,10 @@ class UserWatcher(JobWatcher):
             self._save_record(new, detail)
 
     def _notify(self, event: str) -> str:
+        # `cancel` can land while a poll is in flight; the base loop still calls the hooks,
+        # so a deleted watcher must not email its owner.
+        if self._stop_event.is_set():
+            return "skipped: cancelled"
         try:
             return self.notifier(self.spec, self.key, event, self._checks)
         except Exception as error:  # noqa: BLE001 - the notifier should not raise, but a watcher must never die on mail

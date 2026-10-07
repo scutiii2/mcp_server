@@ -21,7 +21,7 @@ def spec(**changes) -> WatchSpec:
     return WatchSpec(**{**values, **changes})
 
 
-def scripted(results, outcome="sent", schedule=((0.3, 0.05),)):
+def scripted(results, outcome="sent", schedule=((3.0, 0.01),)):
     """A UserWatcher subclass whose checks follow `results` (then stay down) and whose notifications are recorded."""
     queue = list(results)
     sent: list[tuple] = []
@@ -76,7 +76,7 @@ def test_expect_down_completes_on_a_down_check(tmp_path):
 
 
 def test_an_unknown_result_never_matches_and_the_watcher_times_out_with_an_email(tmp_path):
-    cls, sent = scripted([UNKNOWN] * 100)
+    cls, sent = scripted([UNKNOWN] * 1000, schedule=((0.3, 0.02),))
 
     cls("w-k3", tmp_path, spec(kind="app", target="ghost")).run()
 
@@ -102,6 +102,20 @@ def test_a_notifier_that_raises_is_recorded_and_the_watcher_still_completes(tmp_
     saved = record(tmp_path, cls, "w-k5")
     assert saved.phase == WatcherPhase.COMPLETED
     assert saved.detail["email"].startswith("failed: RuntimeError") and "smtp down" in saved.detail["email"]
+
+
+def test_a_cancelled_watcher_never_sends_mail(tmp_path):
+    cls, sent = scripted([])
+    watcher = cls("w-c1", tmp_path, spec())
+    watcher._stop_event.set()
+    done: dict = {}
+    timed_out: dict = {}
+
+    watcher.on_completed(done)
+    watcher.on_state_change(WatcherPhase.RUNNING, WatcherPhase.TIMED_OUT, timed_out)
+
+    assert sent == []
+    assert done["email"] == "skipped: cancelled" and timed_out["email"] == "skipped: cancelled"
 
 
 def test_from_record_restores_the_spec_the_poll_count_and_start_time(tmp_path):
