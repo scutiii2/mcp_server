@@ -101,6 +101,7 @@ def test_call_returns_the_sub_agents_response_on_success(monkeypatch):
         "depth": 1,
         "approval_mode": "off",
         "delegated_by": delegation.agent_spec.current().id,
+        "disabled_tools": [],
     }
 
 

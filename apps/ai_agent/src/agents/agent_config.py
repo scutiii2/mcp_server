@@ -16,7 +16,7 @@ from dotenv import dotenv_values
 
 from src.agents import delegation
 
-from src.core import approvals
+from src.core import approvals, tool_filter
 from src.core.seed import seed_from_example
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -95,8 +95,12 @@ async def run_chat(
     caveman: bool = False,
     approval_mode: str = "off",
     allowed_tools: list[str] | None = None,
+    disabled_tools: list[str] | None = None,
 ) -> ChatResult:
     """Run a chat completion request through the configured provider.
+
+    disabled_tools: tools the asking user switched off for their own chats
+    (see core/tool_filter.py); they are not offered and not run.
 
     approval_mode / allowed_tools: see approvals.py - with "ask" a tool runs
     only after the user allows it (tools in allowed_tools were allowed
@@ -116,6 +120,7 @@ async def run_chat(
     cancellation.register(request_id)
     delegated_usage, usage_token = delegation.bind_usage()
     approval_token = approvals.bind(policy)
+    filter_token = tool_filter.bind(disabled_tools or ())
     try:
         if cancellation.is_cancelled(request_id):
             raise ChatCancelled()
@@ -138,6 +143,7 @@ async def run_chat(
             )
         )
     finally:
+        tool_filter.reset(filter_token)
         approvals.reset(approval_token)
         delegation.reset_usage(usage_token)
         cancellation.clear(request_id)

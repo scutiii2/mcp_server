@@ -32,7 +32,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 from src.agents import agent_events, agent_registry, agent_routing, agent_spec
 
-from src.core import approvals, internal_auth
+from src.core import approvals, internal_auth, tool_filter
 from src.agents.agent_spec import RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
@@ -171,6 +171,8 @@ def call(agent_id: str, question: str, depth: int) -> str:
                     "depth": depth + 1,
                     "approval_mode": approval_mode,
                     "delegated_by": me,
+                    # What the user switched off holds for the specialist too.
+                    "disabled_tools": sorted(tool_filter.blocked()),
                 },
                 on_progress=_progress_forwarder(sink, step_id),
             )

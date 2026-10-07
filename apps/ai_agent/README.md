@@ -213,6 +213,14 @@ Set `AI_AGENT_USAGE_DIR` to write somewhere else. A cancelled turn writes no
 line; only completed asks do. A write failure logs a warning and never fails
 the turn. `data/usage/` is gitignored.
 
+## Tools the user switched off
+
+`ask` also takes `disabled_tools`: mcp_server tool names the asking user switched
+off for their own chats (`src/core/tool_filter.py`). For that turn the agent does
+not offer them (`list_tools`) and refuses a call to one the model names anyway.
+A delegated agent is told the same list. `status()` reports `tool_filter: true`
+so ember_api can refuse an agent that would ignore the option.
+
 ## Asking before tools run
 
 `ask` takes `approval_mode` and `allowed_tools` (`src/core/approvals.py`):

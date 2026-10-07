@@ -17,7 +17,7 @@ from typing import Any
 
 from src.agents import agent_spec
 
-from src.core import internal_auth
+from src.core import internal_auth, tool_filter
 
 from src.mcp_client import tool_progress
 from src.core.config_files import SERVERS_PATH
@@ -81,7 +81,8 @@ def _tool_is_enabled(name: str, enabled: set[str]) -> bool:
 def list_tools(enabled_extensions: list[str] | None = None) -> list[Any]:
     """Live tool catalog from mcp_server, filtered the same way
     chat_app's mcp_client.list_tools() filters it today - an extension
-    tool is only kept when its extension id is in enabled_extensions."""
+    tool is only kept when its extension id is in enabled_extensions - and
+    without the tools this turn's user switched off (see core/tool_filter.py)."""
     tools = client.list_tools()
     enabled = set(enabled_extensions or [])
     scope = agent_spec.current().tools
@@ -94,6 +95,8 @@ def list_tools(enabled_extensions: list[str] | None = None) -> list[Any]:
             continue
         if not scope.allows(short):
             continue
+        if tool_filter.is_blocked(short):
+            continue
         result.append(tool)
     return result
 
@@ -102,6 +105,9 @@ def call_tool(name: str, arguments: dict[str, Any]) -> str:
     if name.startswith(_PREFIX) and not agent_spec.current().tools.allows(unprefixed(name)):
         # The model only sees in-scope tools, but may still name another one.
         raise PermissionError(f"tool {name!r} is not available to this agent")
+    if name.startswith(_PREFIX) and tool_filter.is_blocked(unprefixed(name)):
+        # Switched off by the user for their own chats; the model may still name it.
+        raise PermissionError(f"tool {name!r} is switched off for this user")
     on_progress = tool_progress.current()
     # The asking user rides in the call's _meta: the session is shared by
     # every user, so it can't go in a header (see internal_auth.py).

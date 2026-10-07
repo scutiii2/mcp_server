@@ -182,6 +182,7 @@ async def ask(
     approval_mode: str = "off",
     allowed_tools: list[str] | None = None,
     delegated_by: str | None = None,
+    disabled_tools: list[str] | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
@@ -197,6 +198,8 @@ async def ask(
     tools are refused; a delegating agent's sub-agent gets this).
     delegated_by: the orchestrator's agent id when another agent delegated
     this question (see delegation.py); recorded in usage rows.
+    disabled_tools: mcp_server tool names the asking user switched off for
+    their own chats; this turn neither offers nor runs them (core/tool_filter.py).
     ctx, if the MCP client requested it, is FastMCP's injected Context -
     used below only to relay run_chat's live step/token events as MCP
     progress notifications; chat_app's own tool call never needs to pass
@@ -220,6 +223,7 @@ async def ask(
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
             on_event=on_event, caveman=caveman, approval_mode=approval_mode, allowed_tools=allowed_tools,
+            disabled_tools=disabled_tools,
         )
     except ChatCancelled:
         return _cancelled_result()
@@ -282,8 +286,9 @@ def interpret(text: str) -> dict[str, Any]:
 def status() -> dict[str, Any]:
     """Live availability of this agent's pinned provider. `tool_approval`
     says ask() understands approval_mode, so a caller that needs tools asked
-    about can refuse an agent that would ignore it."""
-    return {**agent_config.status(), "tool_approval": True}
+    about can refuse an agent that would ignore it; `tool_filter` says the same
+    of disabled_tools."""
+    return {**agent_config.status(), "tool_approval": True, "tool_filter": True}
 
 
 @mcp.tool()
