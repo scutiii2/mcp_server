@@ -24,10 +24,19 @@ from __future__ import annotations
 import docker
 from docker.errors import DockerException, NotFound
 
-from src.capabilities.server_manager.contract import AppActionResult, AppInfo, AppListResult, AppLogsResult
+from src.capabilities.server_manager.contract import (
+    AppActionResult,
+    AppInfo,
+    AppListResult,
+    AppLogsResult,
+    AppLogTextResult,
+)
+from src.capabilities.server_manager.utils.redact import redact
 from src.services import downloads, identity_context
 
 MAX_LOG_LINES = 5000
+MAX_READ_LINES = 300
+MAX_READ_CHARS = 20_000
 
 
 def _client() -> docker.DockerClient:
@@ -122,6 +131,41 @@ def get_app_logs(name: str, lines: int = 500) -> AppLogsResult:
         lines=count,
         download_markers=[downloads.marker(offer, "LOGS")],
         message=f"The last {count} lines of {name}{note}. The download link works for 10 minutes.",
+    )
+
+
+def read_app_logs(name: str, lines: int = 200, contains: str | None = None) -> AppLogTextResult:
+    """The newest `lines` log lines of an app as text, secrets masked.
+    With `contains`, only lines holding it (case-insensitive) are kept; the
+    search looks through the newest MAX_LOG_LINES lines."""
+    if not 1 <= lines <= MAX_READ_LINES:
+        raise ValueError(f"lines must be between 1 and {MAX_READ_LINES}, not {lines}")
+    needle = (contains or "").strip().lower()
+    container = _get_container(_client(), name)
+    raw = container.logs(tail=MAX_LOG_LINES if needle else lines, timestamps=True)
+    kept = raw.decode("utf-8", errors="replace").splitlines()
+    if needle:
+        kept = [line for line in kept if needle in line.lower()]
+    kept = kept[-lines:]
+    if not kept:
+        what = f"matching {contains!r}" if needle else "output"
+        return AppLogTextResult(
+            name=name, lines=0, redactions=0, truncated=False, text="", message=f"{name} has no log {what}."
+        )
+    text, redactions = redact("\n".join(kept))
+    truncated = len(text) > MAX_READ_CHARS
+    if truncated:
+        text = text[-MAX_READ_CHARS:]
+        text = text[text.find("\n") + 1 :]
+    count = text.count("\n") + 1 if text else 0
+    note = " Older lines were cut to fit the size cap." if truncated else ""
+    return AppLogTextResult(
+        name=name,
+        lines=count,
+        redactions=redactions,
+        truncated=truncated,
+        text=text,
+        message=f"{count} log lines of {name}, {redactions} values masked.{note}",
     )
 
 

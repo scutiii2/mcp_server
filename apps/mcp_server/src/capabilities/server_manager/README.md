@@ -1,6 +1,6 @@
 # capabilities/server_manager/
 
-Start, stop, restart and list the Docker containers on this host, and download an app's recent log - five tools.
+Start, stop, restart and list the Docker containers on this host, and download an app's recent log - six tools.
 
 ## Tools
 
@@ -10,6 +10,7 @@ Start, stop, restart and list the Docker containers on this host, and download a
 | `tool_srv_stopApp` | Stop a running app. | Docker socket |
 | `tool_srv_restartApp` | Restart an app. | Docker socket |
 | `tool_srv_getAppLogs` | Download an app's newest log lines as a file. | Docker socket |
+| `tool_srv_readAppLogs` | Read an app's newest log lines as text with secrets masked. MCP-only, for the assistant. | Docker socket |
 | `tool_srv_listApps` | List every app with status and image. | Docker socket |
 
 ## Slash commands
@@ -45,5 +46,12 @@ never breaks startup. Actions are reversible and not approval-gated.
 10 minutes and only for the account that asked, and nothing names a file on disk. A caller with no identity
 gets no card. A log over 5 MB is cut to its newest part. Restarting this server drops every pending
 download. Container logs can contain secrets of the app; anyone who may run tools can fetch them.
+
+## Log text for the assistant
+
+`tool_srv_readAppLogs` returns up to 300 lines (and 20,000 characters) as text, optionally only lines holding
+`contains`. `utils/redact.py` masks URL passwords, `Authorization`/cookie headers, bearer tokens, JWTs, `sk-`
+style keys, AWS key ids, `password`/`secret`/`token`/`api_key` assignments and email addresses as `[REDACTED]`
+before anything is returned. Masking is pattern based, so a secret in an unusual shape can get through.
 
 Toggle: `"server"` in `configs/config_capabilities.json`.

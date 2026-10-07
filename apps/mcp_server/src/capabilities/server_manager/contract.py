@@ -27,6 +27,15 @@ class AppLogsResult(BaseModel):
     message: str = Field(description="Human-readable summary, safe to relay verbatim.")
 
 
+class AppLogTextResult(BaseModel):
+    name: str = Field(description="The container the log is from.")
+    lines: int = Field(description="How many log lines `text` holds.")
+    redactions: int = Field(description="How many secrets or addresses were masked in `text`.")
+    truncated: bool = Field(description="True when older lines were left out to fit the size cap.")
+    text: str = Field(description="The log lines, newest last, with secrets masked.")
+    message: str = Field(description="One-line summary of what `text` holds.")
+
+
 class AppActionResult(BaseModel):
     name: str = Field(description="The container that was acted on.")
     action: str = Field(description="Which action ran: start, stop, or restart.")

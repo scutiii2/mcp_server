@@ -4,6 +4,7 @@
     {"name": "tool_srv_startApp", "purpose": "Start a stopped app.", "connection": "Docker socket", "commands": ["start"]},
     {"name": "tool_srv_stopApp", "purpose": "Stop a running app.", "connection": "Docker socket", "commands": ["stop"]},
     {"name": "tool_srv_restartApp", "purpose": "Restart an app.", "connection": "Docker socket", "commands": ["restart"]},
+    {"name": "tool_srv_readAppLogs", "purpose": "Read an app's newest log lines as text with secrets masked (MCP-only, for the assistant).", "connection": "Docker socket", "commands": []},
     {"name": "tool_srv_getAppLogs", "purpose": "Download an app's newest log lines as a file.", "connection": "Docker socket", "commands": ["logs"]},
     {"name": "tool_srv_listApps", "purpose": "List every app with status and image.", "connection": "Docker socket", "commands": ["list"]}
   ],

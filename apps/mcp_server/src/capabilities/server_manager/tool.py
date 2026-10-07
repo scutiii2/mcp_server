@@ -8,7 +8,7 @@ from typing import Annotated
 from pydantic import Field
 
 from src.capabilities.server_manager import domain
-from src.capabilities.server_manager.contract import AppActionResult, AppListResult, AppLogsResult
+from src.capabilities.server_manager.contract import AppActionResult, AppListResult, AppLogsResult, AppLogTextResult
 from src.commands import command
 from src.offload import offload
 from src.server import mcp
@@ -62,6 +62,29 @@ def tool_srv_getAppLogs(
     not shown here - say the file is ready. `tool_srv_listApps` shows the
     exact `name`."""
     return domain.get_app_logs(name, lines)
+
+
+# MCP-only (no @command): the log text is meant for the assistant to analyse.
+# People download a log with `/server logs`.
+@mcp.tool(meta={"keywords": ["server", "app", "container", "docker", "logs", "log", "read", "errors", "why", "down"], "display_label": "Reading app log"})
+@offload
+def tool_srv_readAppLogs(
+    name: AppName,
+    lines: Annotated[
+        int, Field(description="How many of the newest matching log lines to return.", ge=1, le=300)
+    ] = 200,
+    contains: Annotated[
+        str | None,
+        Field(description="Keep only lines holding this text, case-insensitive, e.g. 'error' or 'traceback'."),
+    ] = None,
+) -> AppLogTextResult:
+    """Read the newest log lines of a Docker app on this box as text, so you
+    can find why it failed. Secrets, tokens, passwords and email addresses are
+    masked as [REDACTED]; never ask for the original values. With `contains`
+    only matching lines come back (searched in the newest 5000 lines). Read-only.
+    `tool_srv_listApps` shows the exact `name`. To give the person a file
+    instead, use `tool_srv_getAppLogs`."""
+    return domain.read_app_logs(name, lines, contains)
 
 
 @command(name="list", description="List apps")
