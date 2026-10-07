@@ -57,6 +57,15 @@ export interface StoredAccount {
   roles: { id: number; name: string }[];
 }
 
+export interface StoredCapability {
+  name: string;
+  enabled: boolean;
+  label: string | null;
+  /** The tools it offers while it is on; mcp_server lists no tool of a capability that is off. */
+  tools: string[];
+  resources: string[];
+}
+
 export interface StoredRole {
   id: number;
   name: string;
@@ -84,6 +93,8 @@ export interface StoredShare {
 }
 
 export interface FakeApi {
+  /** The capabilities the Capabilities page lists and an administrator can switch (an administrator login only). */
+  capabilities: Map<string, StoredCapability>;
   /** The roles the Admin page lists (an administrator login only). */
   roles: Map<number, StoredRole>;
   /** The member's saved prompts. */
@@ -131,6 +142,10 @@ const ADMIN_ROLES = [
   { id: 2, name: "Member", description: "Default role", is_protected: false, permissions: ["chat.use"], account_count: 1 },
   { id: 3, name: "Ops", description: null, is_protected: false, permissions: [], account_count: 0 },
 ];
+const ADMIN_CAPABILITIES: StoredCapability[] = [
+  { name: "pdf", enabled: true, label: "PDF files", tools: ["pdf_merge"], resources: [] },
+  { name: "legacy", enabled: true, label: "Legacy", tools: ["legacy_tool"], resources: [] },
+];
 const ADMIN_PERMISSIONS = [
   { name: "chat.use", description: "Chat with the agent" },
   { name: "tools.use", description: "Run mcp_server tools" },
@@ -163,6 +178,7 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
   const api: FakeApi = {
     settings: { forceToolApproval: false },
     accounts: new Map(),
+    capabilities: new Map(),
     roles: new Map(),
     templates: new Map(),
     shares: new Map(),
@@ -175,6 +191,7 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
   if (options.admin) {
     for (const a of ADMIN_ACCOUNTS) api.accounts.set(a.id, { ...a });
     for (const r of ADMIN_ROLES) api.roles.set(r.id, { ...r });
+    for (const c of ADMIN_CAPABILITIES) api.capabilities.set(c.name, { ...c });
   }
   let loggedIn = false;
 
@@ -242,6 +259,19 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
       api.chats.clear();
       return route.fulfill({ status: 204, body: "" });
     }
+
+    // The Capabilities page: the list, the on/off switch, and (through MCP below) the tools each one offers.
+    if (method === "GET" && path === "/api/capabilities") return json(route, [...api.capabilities.values()]);
+    const capabilityPath = /^\/api\/capabilities\/([a-z_]+)$/.exec(path);
+    if (method === "PATCH" && capabilityPath) {
+      const found = api.capabilities.get(capabilityPath[1]!);
+      if (!found) return json(route, { detail: "Capability not found" }, 404);
+      found.enabled = (request.postDataJSON() as { enabled: boolean }).enabled;
+      return json(route, found);
+    }
+    if (method === "GET" && path === "/api/extensions") return json(route, []);
+    if (method === "POST" && path === "/api/mcp/server") return mcpServer(route, api);
+    if (method === "GET" && path === "/api/mcp/server") return route.fulfill({ status: 405, body: "" });
 
     // An account with tools.use also asks for the slash commands; none are offered here.
     if (method === "GET" && path === "/api/commands") return json(route, []);
@@ -409,6 +439,30 @@ async function streamTurn(route: Route, api: FakeApi, id: string) {
   chat.messages = [...chat.messages, answer];
   chat.running = false;
   return sse(body);
+}
+
+/** Just enough of MCP over HTTP for the Capabilities page's session with mcp_server: it lists the
+ * tools of the capabilities that are on, so switching one changes what the page shows. */
+async function mcpServer(route: Route, api: FakeApi) {
+  const message = route.request().postDataJSON() as { id?: number; method: string };
+  if (message.id === undefined) return route.fulfill({ status: 202, body: "" });
+  const tools = [...api.capabilities.values()].filter((c) => c.enabled).flatMap((c) => c.tools);
+  let result: unknown = {};
+  if (message.method === "initialize") {
+    result = { protocolVersion: "2025-06-18", capabilities: { tools: {}, resources: {} }, serverInfo: { name: "fake-server", version: "1" } };
+  } else if (message.method === "tools/list") {
+    result = { tools: tools.map((name) => ({ name, description: `The ${name} tool.`, inputSchema: { type: "object", properties: {} } })) };
+  } else if (message.method === "resources/list") {
+    result = { resources: [] };
+  } else if (message.method === "resources/templates/list") {
+    result = { resourceTemplates: [] };
+  }
+  return route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "Mcp-Session-Id": "fake-server-session" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: message.id, result }),
+  });
 }
 
 /** Just enough of MCP over HTTP for the page's session with the agent. */

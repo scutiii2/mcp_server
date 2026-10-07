@@ -193,3 +193,46 @@ test("deleting a role: one that accounts hold needs its name typed, an unused on
 
   expect(api.unexpected).toEqual([]);
 });
+
+test("switching a capability asks first: off is a danger confirm, on a plain one", async ({ page }) => {
+  const api = await installFakeApi(page, { admin: true });
+  await logIn(page);
+  await page.getByRole("link", { name: "Capabilities", exact: true }).click();
+  await expect(page).toHaveURL(/\/capabilities$/);
+
+  const card = (label: string) => page.locator("article.card").filter({ has: page.getByRole("heading", { name: label }) });
+  await expect(card("PDF files")).toContainText("1 tool");
+  await expect(card("Legacy")).toContainText("1 tool");
+
+  // Turn PDF files off: it asks, and Cancel changes nothing.
+  await card("PDF files").getByTitle("Turn off").click();
+  const dialog = page.getByRole("dialog", { name: "Turn off capability" });
+  await expect(dialog).toContainText('Turn off "PDF files" for every mcp_server client (chat_app, agents, ember)?');
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(api.capabilities.get("pdf")?.enabled).toBe(true);
+  await expect(card("PDF files")).toContainText("1 tool");
+
+  // Confirm: turning off is the risky way round, so the button has the danger style. It is then off
+  // here and on the server, and the tools mcp_server lists no longer include its tool.
+  await card("PDF files").getByTitle("Turn off").click();
+  const turnOff = dialog.getByRole("button", { name: "Turn off" });
+  await expect(turnOff).toHaveClass(/danger/);
+  await turnOff.click();
+  await expect.poll(() => api.capabilities.get("pdf")?.enabled).toBe(false);
+  await expect(card("PDF files")).toContainText("off");
+  await expect(card("Legacy")).toContainText("1 tool");
+
+  // Turn it back on: a plain confirm, no danger style.
+  await card("PDF files").getByTitle("Turn on").click();
+  const onDialog = page.getByRole("dialog", { name: "Turn on capability" });
+  await expect(onDialog).toContainText('Turn on "PDF files" for every mcp_server client');
+  const turnOn = onDialog.getByRole("button", { name: "Turn on" });
+  await expect(turnOn).not.toHaveClass(/danger/);
+  await turnOn.click();
+  await expect.poll(() => api.capabilities.get("pdf")?.enabled).toBe(true);
+  await expect(card("PDF files")).toContainText("1 tool");
+
+  // The fake knew every request the page made.
+  expect(api.unexpected).toEqual([]);
+});
