@@ -57,6 +57,7 @@ class AgentGateway(Protocol):
         on_event: EventHandler,
         approval_mode: str = "off",
         allowed_tools: list[str] | None = None,
+        disabled_tools: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     async def interpret(self, url: str, caller: Caller, text: str) -> dict[str, Any]: ...
@@ -123,6 +124,7 @@ class McpAgentGateway:
         on_event,
         approval_mode="off",
         allowed_tools=None,
+        disabled_tools=None,
     ):
         arguments = {
             "question": question,
@@ -144,6 +146,16 @@ class McpAgentGateway:
                 )
             arguments["approval_mode"] = approval_mode
             arguments["allowed_tools"] = allowed_tools or []
+        if disabled_tools:
+            # Fail closed, like approvals: an ai_agent that predates this option
+            # would offer every tool, including the ones the user switched off.
+            status = await self._call(url, caller, "status", {})
+            if not status.get("tool_filter"):
+                raise AgentCallError(
+                    "This agent cannot leave out the tools you switched off (it needs updating and restarting). "
+                    "Switch those capabilities back on or restart the agent."
+                )
+            arguments["disabled_tools"] = disabled_tools
         return await self._call(url, caller, "ask", arguments, on_event)
 
     async def interpret(self, url, caller, text):

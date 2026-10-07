@@ -81,6 +81,8 @@ class TurnOptions:
     # allowed for this chat.
     ask_before_tools: bool = False
     allowed_tools: tuple[str, ...] = ()
+    # Tools the account switched off for its own chats; the agent neither offers nor runs them.
+    disabled_tools: tuple[str, ...] = ()
 
 
 def _iso(value: Any) -> str | None:
@@ -449,6 +451,7 @@ class TurnRegistry:
                 on_event=on_event,
                 approval_mode="ask" if turn.options.ask_before_tools else "off",
                 allowed_tools=list(turn.options.allowed_tools),
+                disabled_tools=list(turn.options.disabled_tools),
             )
         except AgentCallError as error:
             await self._logs.error(turn.account_id, "chat.answer", f"{turn.agent.id}: {error}")

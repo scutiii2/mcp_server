@@ -124,6 +124,7 @@ class FakeAgent:
         on_event,
         approval_mode="off",
         allowed_tools=None,
+        disabled_tools=None,
     ):
         self.asks.append(
             {
@@ -136,6 +137,7 @@ class FakeAgent:
                 "enabled_extensions": enabled_extensions,
                 "approval_mode": approval_mode,
                 "allowed_tools": allowed_tools,
+                "disabled_tools": disabled_tools,
             }
         )
         for event in self.events:

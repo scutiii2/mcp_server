@@ -43,6 +43,7 @@ def _build_agent(approvals: bool = True) -> FastMCP:
         enabled_extensions: list[str] | None = None,
         approval_mode: str = "off",
         allowed_tools: list[str] | None = None,
+        disabled_tools: list[str] | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         headers = ctx.request_context.request.headers
@@ -57,11 +58,12 @@ def _build_agent(approvals: bool = True) -> FastMCP:
             "total_tokens": 42,
             "seen": dict(seen),
             "approval": {"mode": approval_mode, "allowed": allowed_tools},
+            "disabled": disabled_tools,
         }
 
     @mcp.tool()
     def status() -> dict[str, Any]:
-        return {"available": True, **({"tool_approval": True} if approvals else {})}
+        return {"available": True, **({"tool_approval": True, "tool_filter": True} if approvals else {})}
 
     @mcp.tool()
     def decide(request_id: str, step_id: str, decision: str) -> dict[str, Any]:
@@ -212,3 +214,24 @@ def test_decide_reports_whether_anything_was_waiting(agent_url: str) -> None:
     assert asyncio.run(gateway.decide(agent_url, CALLER, "r1", "s1", "allow")) is True
     assert asyncio.run(gateway.decide(agent_url, CALLER, "r1", "s2", "allow")) is False
     assert asyncio.run(gateway.decide(agent_url, CALLER, "other", "s1", "deny")) is False
+
+
+def test_ask_sends_the_switched_off_tools(agent_url: str) -> None:
+    result = _ask(McpAgentGateway(None), agent_url, disabled_tools=["tool_pdf_merge", "tool_pdf_split"])
+
+    assert result["disabled"] == ["tool_pdf_merge", "tool_pdf_split"]
+
+
+def test_ask_leaves_the_option_out_when_nothing_is_switched_off(agent_url: str) -> None:
+    assert _ask(McpAgentGateway(None), agent_url)["disabled"] is None
+    assert _ask(McpAgentGateway(None), agent_url, disabled_tools=[])["disabled"] is None
+
+
+def test_switched_off_tools_refuse_an_agent_that_would_offer_them_anyway(old_agent_url: str) -> None:
+    gateway = McpAgentGateway(None)
+    before = _asks_made(gateway, old_agent_url)
+
+    with pytest.raises(AgentCallError, match="cannot leave out the tools"):
+        _ask(gateway, old_agent_url, disabled_tools=["tool_pdf_merge"])
+
+    assert _asks_made(gateway, old_agent_url) == before  # ask() never ran

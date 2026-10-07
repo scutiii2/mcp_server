@@ -69,6 +69,7 @@ _CHAT_ID_PATTERN = r"^[A-Za-z0-9-]{8,64}$"
 # extension's `<id>__<tool>`, `delegate_to_agent`).
 _TOOL_NAME = re.compile(r"[A-Za-z0-9_.\-]{1,120}")
 MAX_ALLOWED_TOOLS = 200
+MAX_DISABLED_TOOLS = 500
 # Browser-made UUIDs; anything else is refused before touching the database.
 ChatId = Path(pattern=_CHAT_ID_PATTERN)
 # Room for a question plus a few attached files' text (20k characters each).
@@ -223,8 +224,11 @@ class TurnRequest(BaseModel):
     # allowed for this chat, which run without asking.
     ask_before_tools: bool = False
     allowed_tools: list[str] = Field(default_factory=list, max_length=MAX_ALLOWED_TOOLS)
+    # mcp_server tool names the account switched off for its own chats (the
+    # tools of the built-in capabilities it turned off on the Capabilities page).
+    disabled_tools: list[str] = Field(default_factory=list, max_length=MAX_DISABLED_TOOLS)
 
-    @field_validator("allowed_tools")
+    @field_validator("allowed_tools", "disabled_tools")
     @classmethod
     def tool_names(cls, names: list[str]) -> list[str]:
         bad = [n for n in names if not _TOOL_NAME.fullmatch(n)]
@@ -624,6 +628,7 @@ async def start_turn(
             enabled_extensions=tuple(dict.fromkeys(body.enabled_extensions)),
             ask_before_tools=body.ask_before_tools or forced,
             allowed_tools=() if forced else tuple(dict.fromkeys(body.allowed_tools)),
+            disabled_tools=tuple(dict.fromkeys(body.disabled_tools)),
         )
         turn = turns.start(account.id, chat_id, agent, _caller(account), options)
     except TurnConflict as error:
