@@ -7,7 +7,7 @@ Deferred items — not scheduled, revisit when the trigger condition below is me
 **Context**: Secrets are done: every project (ai_agent, mcp_server, ember_api) now has one `.env` plus `.env.example`. What is left is the legacy cleanup and merging the small config files. Catalog item descriptions (older item) were already built and were removed from this file on 2026-10-07.
 
 **Secrets (done, checked 2026-10-07)**
-- **mcp_server**: `.secrets/secret_*.env` merged into `apps/mcp_server/.env`; `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). **Left**: `apps/mcp_server/.secrets/` still holds 4 legacy files (`secret_app.env`, `secret_internal_api.env`, `secret_smtp.env`, `secret_ssh.env`; gitignored). Delete them once `.env` is confirmed.
+- **mcp_server**: `.secrets/secret_*.env` merged into `apps/mcp_server/.env`; `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). The 4 legacy `.secrets/secret_*.env` files were deleted 2026-10-07; the empty `.secrets/` folder is left.
 - **ember_api**: merged into `apps/ember_api/.env` with a `.env.example`; the legacy `secrets/` folder is gone. Nothing left.
 - **ai_agent**: stale comments in `.env.example` are fixed.
 - `INTERNAL_API_TOKEN` stays in each project's own `.env` and must match across ember_api, ai_agent and mcp_server. Do not share one file across projects (each project stays self-contained).
@@ -26,7 +26,7 @@ Deferred items — not scheduled, revisit when the trigger condition below is me
 
 **Why not built now**: small gain; not approved.
 
-**Revisit when**: user wants this built. Only the ai_agent config merge and the `.secrets/` cleanup are left.
+**Revisit when**: user wants this built. Only the ai_agent config merge is left.
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 
