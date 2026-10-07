@@ -346,3 +346,42 @@ class PresetChip(_HoverCanvas):
             self.on_remove()
         else:
             self.on_apply()
+
+
+class ScrollableFrame(tk.Frame):
+    """Vertically scrolling container. Put children in `.body`; the scrollbar
+    shows only while the content is taller than the viewport, and the mouse
+    wheel scrolls while the pointer is over the container."""
+
+    def __init__(self, parent, *, bg: str) -> None:
+        super().__init__(parent, bg=bg)
+        self._canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0)
+        self._scrollbar = tk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._scrollbar.set)
+        self._canvas.pack(side="left", fill="both", expand=True)
+        self.body = tk.Frame(self._canvas, bg=bg)
+        self._window = self._canvas.create_window(0, 0, window=self.body, anchor="nw")
+        self.body.bind("<Configure>", self._sync_scrollregion)
+        self._canvas.bind("<Configure>", self._sync_width)
+        self.bind("<Enter>", lambda _e: self.bind_all("<MouseWheel>", self._on_wheel))
+        self.bind("<Leave>", lambda _e: self.unbind_all("<MouseWheel>"))
+
+    def _content_overflows(self) -> bool:
+        return self.body.winfo_reqheight() > self._canvas.winfo_height()
+
+    def _sync_scrollregion(self, _event=None) -> None:
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+        if self._content_overflows():
+            if not self._scrollbar.winfo_ismapped():
+                self._scrollbar.pack(side="right", fill="y", before=self._canvas)
+        else:
+            self._scrollbar.pack_forget()
+            self._canvas.yview_moveto(0)
+
+    def _sync_width(self, event) -> None:
+        self._canvas.itemconfigure(self._window, width=event.width)
+        self._sync_scrollregion()
+
+    def _on_wheel(self, event) -> None:
+        if self._content_overflows():
+            self._canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")

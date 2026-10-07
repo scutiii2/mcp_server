@@ -268,7 +268,7 @@ class GroupTabTests(unittest.TestCase):
         for attribute in (
             "servers_tab_btn", "instances_tab_btn", "groups_tab_btn", "_instance_actions",
             "_instance_actions_row", "_kill_instances_button", "_refresh_button",
-            "_clear_closed_button", "_restart_all_button", "_create_group_button", "sidebar_list",
+            "_clear_closed_button", "_restart_all_button", "_create_group_button", "sidebar_list", "_sidebar_scroll",
             "_render_sidebar", "_render_server_detail", "_render_instance_detail",
             "_render_group_detail",
         ):
@@ -283,7 +283,7 @@ class GroupTabTests(unittest.TestCase):
                 launcher._instance_actions.pack_forget.assert_called_once()
             else:
                 self.assertIs(
-                    launcher._instance_actions.pack.call_args.kwargs["before"], launcher.sidebar_list,
+                    launcher._instance_actions.pack.call_args.kwargs["before"], launcher._sidebar_scroll,
                 )
                 launcher._instance_actions.pack_forget.assert_not_called()
             if tab == "servers":

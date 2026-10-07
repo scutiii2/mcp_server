@@ -21,7 +21,7 @@ from .theme import (
     _BG, _BORDER, _DIM_FG, _ERROR_FG, _FG, _FIELD_BG, _GREEN, _RED, _ROW_BG, _ROW_SELECTED, _SEPARATOR, _SIDEBAR_BG,
     _SIDEBAR_WIDTH, _STATUS_FILLS,
 )
-from .widgets import PresetChip, RoundedButton, RoundedCard
+from .widgets import PresetChip, RoundedButton, RoundedCard, ScrollableFrame
 
 
 class LauncherWindow:
@@ -125,8 +125,9 @@ class LauncherWindow:
             bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
         )
 
-        self.sidebar_list = tk.Frame(sidebar, bg=_SIDEBAR_BG)
-        self.sidebar_list.pack(fill="both", expand=True, padx=8)
+        self._sidebar_scroll = ScrollableFrame(sidebar, bg=_SIDEBAR_BG)
+        self._sidebar_scroll.pack(fill="both", expand=True, padx=8)
+        self.sidebar_list = self._sidebar_scroll.body
 
         self.main = tk.Frame(root, bg=_BG)
         self.main.grid(row=1, column=2, sticky="nsew")
@@ -147,7 +148,7 @@ class LauncherWindow:
         self.instances_tab_btn.set_selected(tab == "instances", _ROW_SELECTED if tab == "instances" else _ROW_BG)
         self.groups_tab_btn.set_selected(tab == "groups", _ROW_SELECTED if tab == "groups" else _ROW_BG)
         if tab == "instances":
-            self._instance_actions.pack(side="bottom", fill="x", padx=10, pady=10, before=self.sidebar_list)
+            self._instance_actions.pack(side="bottom", fill="x", padx=10, pady=10, before=self._sidebar_scroll)
             self._kill_instances_button.pack(side="left", expand=True, fill="x", padx=(0, 4))
             self._refresh_button.pack(side="left")
             self._clear_closed_button.pack(
@@ -164,7 +165,7 @@ class LauncherWindow:
             self._restart_all_button.pack_forget()
             self._clear_closed_button.pack_forget()
             if tab == "servers":
-                self._instance_actions.pack(side="bottom", fill="x", padx=10, pady=10, before=self.sidebar_list)
+                self._instance_actions.pack(side="bottom", fill="x", padx=10, pady=10, before=self._sidebar_scroll)
                 self._kill_instances_button.pack_forget()
                 self._refresh_button.pack(side="left")
             else:
@@ -442,9 +443,11 @@ class LauncherWindow:
             bg=_BG, fill=_RED, outline=_RED, fg=_FG,
         ).pack(side="right", padx=(0, 6))
 
+        members_scroll = ScrollableFrame(self.main, bg=_BG)
+        members_scroll.pack(fill="both", expand=True)
         templates = {template.key: template for template in self.templates}
         for member in group.members:
-            card = tk.Frame(self.main, bg=_ROW_BG, highlightthickness=1, highlightbackground=_BORDER)
+            card = tk.Frame(members_scroll.body, bg=_ROW_BG, highlightthickness=1, highlightbackground=_BORDER)
             card.pack(fill="x", padx=16, pady=(0, 8))
             template = templates.get(member.template_key)
             template_label = member.template_key
