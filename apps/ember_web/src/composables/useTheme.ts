@@ -43,13 +43,24 @@ export function initTheme(): void {
   apply(theme.value);
 }
 
-/** The current theme and a way to step to the next (system, light, dark). */
-export function useTheme(): { theme: typeof theme; next: () => Theme; cycle: () => void } {
+/** The theme every new visitor gets: follow the system. */
+export const DEFAULT_THEME: Theme = "system";
+
+/** The current theme, a way to step to the next (system, light, dark) and one to pick it. */
+export function useTheme(): {
+  theme: typeof theme;
+  next: () => Theme;
+  cycle: () => void;
+  setTheme: (value: Theme) => void;
+} {
   const next = (): Theme => CYCLE[(CYCLE.indexOf(theme.value) + 1) % CYCLE.length]!;
-  function cycle(): void {
-    theme.value = next();
-    apply(theme.value);
-    writeStored(theme.value);
+  function setTheme(value: Theme): void {
+    theme.value = value;
+    apply(value);
+    writeStored(value);
   }
-  return { theme, next, cycle };
+  function cycle(): void {
+    setTheme(next());
+  }
+  return { theme, next, cycle, setTheme };
 }

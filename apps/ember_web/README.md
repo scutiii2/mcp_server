@@ -121,6 +121,13 @@ URL, token or key.
   allowed and resets them). Slash commands you type yourself never ask.
 - "Terse replies" toggle in the chat header (ai_agent's `caveman`
   option), remembered per account.
+- Settings page (`/settings`, `chat.use`): your preferences in one place, grouped by task: Chat (terse
+  replies, ask before tools, chime), Appearance (theme) and, for admins, Administration (tool approval).
+  A search box filters them as you type (label, description and extra keywords; Enter focuses the first
+  match, Esc clears it). A setting that differs from its default shows an accent dot and a reset
+  button ("Back to default"), and the header counts how many are changed. Chat and theme apply instantly and
+  are saved in this browser; tool approval applies to every account, so a flip (or its reset) waits for
+  Save in an unsaved bar. The chat gear menu keeps its quick switches and links here.
 - Usage page: your 6-hour and weekly token limits, totals, tokens per day and
   per agent; admins also see every account. A "By" selector regroups the
   totals by agent, provider, gateway or model, and a "Recent calls" table lists
@@ -298,10 +305,10 @@ src/
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Capabilities, Extensions, Watchers, Usage, Analytics, ConfigIssues,
+  views/        pages: Overview, Chat, Capabilities, Extensions, Watchers, Usage, Settings, Analytics, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, AuthCard
+                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, SettingRow, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
     analytics/  the Analytics Overview and Traffic tabs: ActivityChart (stacked columns), LineChart, StatTile / KindStatTile, Sparkline, BarList, HourHeatmap, TrafficPanel
                 (hand-drawn SVG/CSS; shared hover/keyboard state in useBucketCursor, shared frame in chart.css; series colours `--kind-*`, `--http-*`, `--latency-*`)

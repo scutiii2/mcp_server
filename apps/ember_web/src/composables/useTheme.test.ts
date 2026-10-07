@@ -57,6 +57,21 @@ describe("useTheme", () => {
     expect(seen).toEqual(["light:light:light", "dark:dark:dark", "system:light dark:system", "light:light:light"]);
   });
 
+  it("sets a chosen theme directly, saving it, and DEFAULT_THEME is the system", async () => {
+    const { initTheme, useTheme, DEFAULT_THEME } = await load();
+    initTheme();
+    const { theme, setTheme } = useTheme();
+
+    setTheme("dark");
+
+    expect(theme.value).toBe("dark");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+    expect(localStorage.getItem(KEY)).toBe("dark");
+    setTheme(DEFAULT_THEME);
+    expect(theme.value).toBe("system");
+    expect(document.documentElement.style.colorScheme).toBe("light dark");
+  });
+
   it("still works when storage is blocked", async () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("blocked");

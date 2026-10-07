@@ -47,6 +47,14 @@ describe("ChatSettingsMenu", () => {
     expect(panel(w).get(".note").text()).toBe("Applies instantly. Saved on this device.");
   });
 
+  it("links to the full Settings page", async () => {
+    const w = open();
+
+    await gear(w).trigger("click");
+
+    expect(panel(w).get("a.all-settings").attributes("href")).toBe("/settings");
+  });
+
   it("opens and closes from the gear", async () => {
     const w = open();
 

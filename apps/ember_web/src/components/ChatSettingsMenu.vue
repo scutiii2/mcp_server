@@ -109,6 +109,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
       >
         Chime when done
       </ToggleSwitch>
+      <RouterLink to="/settings" class="all-settings">All settings</RouterLink>
       <RouterLink to="/extensions" class="extensions" title="Which extensions' tools the agent may use in your chats">
         Extensions: {{ enabledExtensions.length ? enabledExtensions.join(", ") : "off" }}
       </RouterLink>
@@ -190,12 +191,14 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   color: var(--text);
   border-color: var(--accent);
 }
-.extensions {
+.extensions,
+.all-settings {
   font-size: 0.85em;
   color: var(--muted);
   text-decoration: none;
 }
-.extensions:hover {
+.extensions:hover,
+.all-settings:hover {
   color: var(--text);
 }
 </style>

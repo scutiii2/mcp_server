@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { settingsClient, type AppSettings } from "../../api/SettingsClient";
 import { errorMessage } from "../../utils/errors";
 import LockSwitch from "../LockSwitch.vue";
 import "./admin.css";
+
+/** Whether the stored value differs from the default (off), for a page that counts changed settings. */
+const emit = defineEmits<{ modified: [value: boolean] }>();
 
 const settings = ref<AppSettings | null>(null);
 const loadError = ref("");
@@ -28,6 +31,17 @@ async function load(): Promise<void> {
 
 function setDraft(box: HTMLInputElement): void {
   draft.value = box.checked;
+  saved.value = false;
+  saveError.value = "";
+}
+
+// The stored value is what counts as changed; a draft only becomes one once saved.
+const storedOn = computed(() => settings.value?.force_tool_approval === true);
+watch(storedOn, (on) => emit("modified", on), { immediate: true });
+
+/** Puts the switch back to the default (off). Like any flip it is a draft until Save. */
+function resetToDefault(): void {
+  draft.value = false;
   saved.value = false;
   saveError.value = "";
 }
@@ -61,7 +75,9 @@ onMounted(load);
     <p v-if="loadError" class="error">error: {{ loadError }}</p>
     <section class="card">
       <div class="head">
+        <span v-if="storedOn" class="dot" title="Changed from the default" aria-hidden="true" />
         <h3>Tool approval</h3>
+        <button v-if="draft" type="button" class="small" :disabled="saving" @click="resetToDefault">Back to default</button>
         <span v-if="saved && !dirty" class="chip saved">Saved</span>
         <span class="chip scope">Applies to all accounts</span>
       </div>
