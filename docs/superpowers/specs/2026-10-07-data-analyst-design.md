@@ -35,7 +35,7 @@ Folder `apps/mcp_server/src/capabilities/tables/` with the repo's `contract.py` 
 - Entry: `id` (`secrets.token_urlsafe(16)`), `owner`, `filename` (sanitised with `downloads.safe_filename`), `columns: list[str]`, column-major `data`, `expires_at`.
 - Owner = `identity_context.current_username()`. The HTTP upload path reads it from the headers, the ai_agent path from `_meta.requester`; both resolve through the same getter. An empty owner is refused.
 - `get(id, owner)` returns `None` for an unknown id, another account's id and an expired id alike, so ids cannot be probed (same rule as downloads).
-- Limits: TTL 30 minutes, at most 10 tables per owner and 20 total, 15 MB per file, 200,000 data rows, 200 columns, 100 MB total of stored data. Oldest entries are evicted first. Over a limit is a clear refusal message.
+- Limits: TTL 30 minutes, at most 10 tables per owner and 20 total, 15 MB per file, 200,000 data rows, 200 columns, 100 MB of estimated memory (each table is charged the larger of its file size and rows x columns x 40 bytes). Oldest entries are evicted first. Over a limit is a clear refusal message.
 - Thread-safe (a lock around every change), because tools run in `@offload` worker threads and the route on the event loop.
 - Loading an `.xlsx` or a large CSV is blocking work. The upload route runs it off the event loop (`asyncio.to_thread`); parsing streams rows and stops at the row cap.
 
