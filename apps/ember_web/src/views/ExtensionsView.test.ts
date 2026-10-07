@@ -123,3 +123,42 @@ describe("ExtensionsView Open page", () => {
     expect(w.find("dialog[open]").exists()).toBe(false);
   });
 });
+
+describe("ExtensionsView details", () => {
+  const open = async (w: Wrapper) => {
+    await w.find(".tile-main").trigger("click");
+    return w.find("dialog[open]");
+  };
+
+  it("lists each tool on its own row under a count", async () => {
+    const info = { ...ext("pdf"), description: "Merge PDFs.", tools: ["pdf__merge", "pdf__split"] };
+    const dialog = await open(await show([info], WITH_TOOLS));
+
+    expect(dialog.text()).toContain("Connected");
+    expect(dialog.text()).toContain("Merge PDFs.");
+    expect(dialog.findAll(".tools li").map((li) => li.text())).toEqual(["merge", "split"]);
+    expect(dialog.find(".tools-head").text()).toContain("2");
+  });
+
+  it("shows the error and no tool list when it is not connected", async () => {
+    const dialog = await open(await show([{ ...ext("pdf", null, "error"), tools: [] }], WITH_TOOLS));
+
+    expect(dialog.text()).toContain("Not connected");
+    expect(dialog.find(".error").text()).toBe("down");
+    expect(dialog.find(".tools").exists()).toBe(false);
+  });
+
+  it("says so when a connected extension has no tools", async () => {
+    const dialog = await open(await show([{ ...ext("pdf"), tools: [] }], WITH_TOOLS));
+
+    expect(dialog.text()).toContain("No tools.");
+  });
+
+  it("offers Open page in the details, and not without a page to open", async () => {
+    const withPage = await open(await show([ext("pdf", "http://127.0.0.1:5174")], WITH_TOOLS));
+    expect(withPage.find(".detail-actions a").attributes("href")).toBe("http://127.0.0.1:5174/");
+
+    const without = await open(await show([ext("pdf")]));
+    expect(without.find(".detail-actions").exists()).toBe(false);
+  });
+});

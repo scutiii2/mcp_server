@@ -147,15 +147,25 @@ onMounted(load);
 
     <BaseModal :open="selected !== null" :title="selected?.label ?? ''" @close="selectedId = null">
       <template v-if="selected">
-        <code class="name">{{ selected.id }}</code>
-        <p v-if="selected.description" class="muted">{{ selected.description }}</p>
-        <p v-if="selected.status !== 'connected'" class="error">
-          Not connected{{ selected.error ? `: ${selected.error}` : "" }}
-        </p>
-        <ul v-if="selected.tools.length" class="tools">
-          <li v-for="t in selected.tools" :key="t"><code>{{ toolName(t) }}</code></li>
-        </ul>
+        <div class="detail-id">
+          <code class="name">{{ selected.id }}</code>
+          <span :class="['status', selected.status === 'connected' ? 'ok' : 'bad']">
+            <span class="status-dot" aria-hidden="true" />
+            {{ selected.status === "connected" ? "Connected" : "Not connected" }}
+          </span>
+        </div>
+        <p v-if="selected.description" class="muted description">{{ selected.description }}</p>
+        <p v-if="selected.status !== 'connected' && selected.error" class="error">{{ selected.error }}</p>
+        <template v-if="selected.tools.length">
+          <div class="tools-head"><span>Tools</span><span>{{ selected.tools.length }}</span></div>
+          <ul class="tools">
+            <li v-for="t in selected.tools" :key="t"><code>{{ toolName(t) }}</code></li>
+          </ul>
+        </template>
         <p v-else-if="selected.status === 'connected'" class="muted">No tools.</p>
+        <div v-if="pageLink(selected)" class="detail-actions">
+          <OpenPageButton :to="pageLink(selected)!.href" :external="pageLink(selected)!.external" />
+        </div>
       </template>
     </BaseModal>
 
@@ -250,13 +260,69 @@ onMounted(load);
 .dot.bad {
   background: var(--danger);
 }
-.tools {
+.detail-id {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  margin: 8px 0 0;
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75em;
+}
+.status.ok {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+.status.bad {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentcolor;
+}
+.description {
+  margin: 12px 0 0;
+  line-height: 1.5;
+}
+.tools-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 16px 0 6px;
+  font-size: 0.75em;
+  color: var(--muted);
+}
+.tools {
+  max-height: 40vh;
+  margin: 0;
   padding: 0;
+  overflow-y: auto;
   list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.tools li {
+  padding: 8px 12px;
+  background: var(--bg);
+}
+.tools li + li {
+  border-top: 1px solid var(--border);
+}
+.tools code {
+  font-family: var(--mono);
   font-size: 0.85em;
+  font-weight: 400;
+}
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>
