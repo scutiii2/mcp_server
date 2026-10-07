@@ -103,10 +103,22 @@ h2 { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; }
 .primary svg { width: 16px; height: 16px; }
 .hero-art { position: relative; width: 210px; flex-shrink: 0; display: grid; place-items: center; color: var(--accent); margin-right: 14px; }
 .orbit { position: absolute; width: 168px; height: 168px; border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent); border-radius: var(--radius-full); }
-.orbit.inner { width: 128px; height: 128px; background: color-mix(in srgb, var(--accent) 4%, transparent); }
-.flame { width: 63px; height: 63px; stroke-width: 1.1; fill: color-mix(in srgb, var(--accent) 9%, transparent); z-index: 1; }
-.spark { position: absolute; width: 8px; height: 8px; background: var(--accent); border-radius: var(--radius-full); top: 27px; right: 45px; }
-.spark.small { width: 5px; height: 5px; top: auto; bottom: 25px; left: 40px; opacity: 0.45; }
+.orbit.inner { width: 128px; height: 128px; background: color-mix(in srgb, var(--accent) 4%, transparent); animation: ember-breathe 4s ease-in-out infinite; }
+.flame { width: 63px; height: 63px; stroke-width: 1.1; fill: color-mix(in srgb, var(--accent) 9%, transparent); z-index: 1; transform-origin: 50% 90%; animation: ember-flicker 2.6s ease-in-out infinite; }
+.spark { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px; background: var(--accent); border-radius: var(--radius-full); animation: ember-orbit 9s linear infinite; }
+.spark.small { width: 5px; height: 5px; margin: -2.5px; opacity: 0.45; animation: ember-orbit 14s linear infinite reverse; animation-delay: -5s; }
+@keyframes ember-orbit { from { transform: rotate(0) translateX(84px) rotate(0); } to { transform: rotate(360deg) translateX(84px) rotate(-360deg); } }
+@keyframes ember-flicker {
+  0%, 100% { transform: scale(1) skewX(0); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)); }
+  30% { transform: scale(1.04, 1.07) skewX(-2deg); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 55%, transparent)); }
+  60% { transform: scale(0.98, 1.02) skewX(1.5deg); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 35%, transparent)); }
+}
+@keyframes ember-breathe { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.04); } }
+@media (prefers-reduced-motion: reduce) {
+  .orbit.inner, .flame, .spark { animation: none; }
+  .spark { transform: rotate(-40deg) translateX(84px); }
+  .spark.small { transform: rotate(140deg) translateX(84px); }
+}
 .section-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 11px; }
 h3 { font-size: 1em; font-weight: 600; margin: 0; }
 .section-head span { color: var(--muted); font-size: 0.8em; }
