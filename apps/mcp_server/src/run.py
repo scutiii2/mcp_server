@@ -67,6 +67,11 @@ from src.capabilities import web_research  # noqa: E402
 with capability_registry.capturing(mcp, web_research.META.id, label=web_research.META.label):
     from src.capabilities.web_research import tool as web_research_tool  # noqa: E402,F401
 
+from src.capabilities import firecrawl  # noqa: E402
+
+with capability_registry.capturing(mcp, firecrawl.META.id, label=firecrawl.META.label):
+    from src.capabilities.firecrawl import tool as firecrawl_tool  # noqa: E402,F401
+
 from src.capabilities import usage_report  # noqa: E402
 
 with capability_registry.capturing(mcp, usage_report.META.id, label=usage_report.META.label):

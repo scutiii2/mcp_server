@@ -77,6 +77,10 @@ class Settings:
     # Tavily API key for the web_research capability. Blank until set in .env;
     # the tools then fail with a message naming the variable.
     tavily_api_key: str = _env("TAVILY_API_KEY", "")
+    # Firecrawl key and optional self-hosted address for the firecrawl capability.
+    # Blank key: the tools fail naming the variable (a self-hosted URL may run keyless).
+    firecrawl_api_key: str = _env("FIRECRAWL_API_KEY", "")
+    firecrawl_api_url: str = _env("FIRECRAWL_API_URL", "")
 
     # Folders the read-only capabilities look at, relative to apps/mcp_server/.
     # usage_report: ai_agent's usage log. vault: the Obsidian vault.

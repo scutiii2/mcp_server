@@ -1,0 +1,26 @@
+{
+  "summary": "Scrape a web page, list a site's pages and crawl a site through Firecrawl. Needs FIRECRAWL_API_KEY in .env (or FIRECRAWL_API_URL for a self-hosted instance).",
+  "tools": [
+    {"name": "tool_scrape_page", "purpose": "Scrape one web page as markdown.", "connection": "Firecrawl API", "commands": ["page"]},
+    {"name": "tool_scrape_map", "purpose": "List the pages found on a site.", "connection": "Firecrawl API", "commands": ["map"]},
+    {"name": "tool_scrape_crawl", "purpose": "Crawl a site and return the text of its pages.", "connection": "Firecrawl API", "commands": ["crawl"]}
+  ],
+  "commands": [
+    {"name": "page", "tool": "tool_scrape_page", "params": [
+      {"name": "url", "required": true, "default": null, "description": "The full http:// or https:// address of the page."}
+    ]},
+    {"name": "map", "tool": "tool_scrape_map", "params": [
+      {"name": "url", "required": true, "default": null, "description": "The full http:// or https:// address of the site or section."},
+      {"name": "limit", "required": false, "default": "100", "description": "How many pages to list at most (1 to 500)."}
+    ]},
+    {"name": "crawl", "tool": "tool_scrape_crawl", "params": [
+      {"name": "url", "required": true, "default": null, "description": "The full http:// or https:// address where the crawl starts."},
+      {"name": "limit", "required": false, "default": "10", "description": "How many pages to read at most (1 to 25)."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_scrape_map", "ai_only_step": false, "explanation": "List a site's pages and pick the ones to read."},
+    {"sequence": "2", "tool": "tool_scrape_page", "ai_only_step": false, "explanation": "Read each chosen page."},
+    {"sequence": "3", "tool": "tool_scrape_crawl", "ai_only_step": false, "explanation": "Or crawl from a starting address when you need many pages."}
+  ]
+}

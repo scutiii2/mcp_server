@@ -93,6 +93,35 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 **Revisit when**: user wants it built.
 
+## Firecrawl web scraping (added 2026-10-07)
+
+**Status**: built 2026-10-07 as the `firecrawl` capability in mcp_server (id `scrape`, label "Web Scraping"; `apps/mcp_server/src/capabilities/firecrawl/`). Untested against the real Firecrawl API: unit tests mock the HTTP calls.
+
+**Decided**: a capability that calls the Firecrawl REST API (`/v2/scrape`, `/v2/map`, `/v2/crawl`), the same endpoints https://github.com/firecrawl/firecrawl-mcp-server wraps; not an extension, so it does not depend on the extensions-proxy item above. Three tools: `/scrape page`, `/scrape map`, `/scrape crawl` (limit 25 pages, waits up to 60 s). Kept beside `web_research` (Tavily): Tavily for search and quick reads, Firecrawl for JavaScript-heavy pages and whole sites. Config: `FIRECRAWL_API_KEY` and optional `FIRECRAWL_API_URL` (self-hosted) in `apps/mcp_server/.env`.
+
+**Left out on purpose**: Firecrawl's search (`web_research` does it) and its LLM-based extract.
+
+**Still to do**: add `FIRECRAWL_API_KEY` to the real `.env`, then try `/scrape page` on a real URL. Check the v2 response shapes (map links, crawl `data`) against the live API.
+
+## Run apps in Docker to test the server_manager tools (added 2026-10-07)
+
+**Context**: The `server_manager` tools (`apps/mcp_server/src/capabilities/server_manager/`) talk to the Docker socket via `docker.from_env()` and act on containers by name. Checked 2026-10-07: their 23 unit tests pass, but they cannot work on the dev PC. There is no Docker (no CLI, no Docker Desktop, no engine pipe), and the apps run as plain Windows processes through `server_launcher`, so `list` would show no app containers. On ZimaOS, `apps/mcp_server/zima_host.yaml` runs `mcp_server` as a container but does not mount `/var/run/docker.sock`, so the tools fail there too.
+
+**Plan**:
+- **Dockerfiles**: one per app; none exist. Python apps (`mcp_server`, `ai_agent`, `ember_api`, `pdf_merger`, `video_downloader`, `catalog_service`) on `python:3.13-slim` plus `pip install .`. Web apps (`ember_web`, `pdf_merger_web`, `video_downloader_web`) need a Node build stage, then nginx or the Vite dev server.
+- **Compose file**: one `docker-compose.yml` with a fixed `container_name` per app (these are the names `/server start <name>` uses).
+- **Networking**: configs hard-code `127.0.0.1` (`ai_agent/configs/config_servers.json`, `ember_api/configs/config_app.json` `mcp_server_url`, `mcp_server/configs/config_extensions.json`). In containers these become service names such as `http://mcp_server:8010/mcp`, and each service must bind `0.0.0.0`. Use env overrides or a docker config variant.
+- **Docker socket**: mount `/var/run/docker.sock` into the `mcp_server` container. This gives it root-equivalent control of the host. Dev PC needs Docker Desktop with WSL2.
+- **Data**: volumes for `ember_api/data` and `ai_agent/data`.
+- **Self-stop**: `/server stop mcp-server` kills the server running the tool; expected, but it cannot be restarted from the same chat.
+- `server_launcher` stays as the local-process manager; containers are a second way to run the apps.
+
+**Smallest first step**: compose with `mcp_server` plus one app (for example `pdf_merger`), enough to test `list`, `restart` and `logs`.
+
+**Side issue**: `apps/mcp_server/zima_host.yaml` has an SMTP password in plain text, checked into the repo. Move it to a gitignored env file and rotate the password.
+
+**Revisit when**: user wants it built (Docker Desktop installed first).
+
 ## More ai_agent agents: Email, Data Analyst, Scheduler (added 2026-10-07)
 
 **Context**: Planner, Log Analyst, Researcher, Usage Analyst, Vault Librarian and Repo Helper are built (agent files in `apps/ai_agent/agents/`, tools in `apps/mcp_server/src/capabilities/`). Three agents from the same list were left out because each needs a decision or a missing piece first. Add an agent file with the `aiagent-scaffold` skill and a tool with `mcp-capability-scaffold`.

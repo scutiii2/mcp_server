@@ -8,6 +8,9 @@
   "web": {
     "enabled": true
   },
+  "scrape": {
+    "enabled": true
+  },
   "usage": {
     "enabled": true
   },
