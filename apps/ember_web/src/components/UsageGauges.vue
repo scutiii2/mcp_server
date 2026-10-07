@@ -73,8 +73,10 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 8px 0;
-  border-top: 1px solid var(--border);
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
 }
 .head {
   display: flex;

@@ -17,7 +17,9 @@ const props = withDefaults(defineProps<{
   accepting?: boolean;
   /** Shown in place of the rows while there are none and a drop is accepted. */
   hint?: string | null;
-}>(), { expanded: false, accepting: false, hint: null });
+  /** The Pinned section: its heading gets a pin mark. */
+  pinned?: boolean;
+}>(), { expanded: false, accepting: false, hint: null, pinned: false });
 const emit = defineEmits<{ toggle: []; openMenu: [point: MenuPoint]; drop: [] }>();
 
 // The whole section is the zone, so a folded folder still takes a drop.
@@ -90,10 +92,14 @@ function openFromContext(event: MouseEvent): void {
         <svg :class="['chevron', { turned: collapsed }]" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
           <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
         </svg>
+        <svg class="kind" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 4h4l1.5 1.5H14V12H2z" /></svg>
         <span class="name">{{ title }}</span>
         <span class="count">{{ count }}</span>
       </button>
       <h4 v-else class="plain">
+        <svg v-if="pinned" class="kind" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="M6 2h4l-.5 4 2 2.5H4.5L6.5 6zM8 8.5V14" />
+        </svg>
         <span class="name">{{ title }}</span>
         <span class="count">{{ count }}</span>
       </h4>
@@ -164,10 +170,8 @@ header {
   color: var(--muted);
   background: transparent;
   font: inherit;
-  font-size: 0.78em;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.8em;
+  font-weight: 500;
   text-align: left;
 }
 .toggle {
@@ -184,8 +188,21 @@ header {
   text-overflow: ellipsis;
 }
 .count {
+  padding: 0 7px;
+  border-radius: var(--radius-full);
   font-weight: 400;
-  opacity: 0.8;
+  background: var(--bg);
+}
+.kind {
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.plain .kind {
+  stroke: var(--accent);
 }
 .chevron {
   flex-shrink: 0;

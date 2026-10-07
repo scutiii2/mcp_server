@@ -20,6 +20,16 @@ describe("ChatSection", () => {
     expect(wrapper.find(".row-stub").exists()).toBe(true);
   });
 
+  it("marks the Pinned heading with a pin, and a folder with a folder mark", () => {
+    const pinned = mountSection({ collapsible: false, title: "Pinned", pinned: true });
+    expect(pinned.find("h4 svg.kind").exists()).toBe(true);
+
+    const plain = mountSection({ collapsible: false, title: "Chats" });
+    expect(plain.find("h4 svg.kind").exists()).toBe(false);
+
+    expect(mountSection().find("button.toggle svg.kind").exists()).toBe(true);
+  });
+
   it("hides the rows while collapsed, and says so to assistive tech", () => {
     const wrapper = mountSection({ collapsed: true });
 

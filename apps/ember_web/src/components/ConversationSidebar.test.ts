@@ -839,7 +839,24 @@ describe("the row menu", () => {
   });
 });
 
-describe("the footer", () => {
+describe("the New folder button", () => {
+  it("is an icon button next to New chat, named for screen readers", () => {
+    const wrapper = mountSidebar();
+
+    const top = wrapper.get(".top");
+    expect(top.find("button.new-chat").exists()).toBe(true);
+    expect(top.get("button.new-folder").attributes("aria-label")).toBe("New folder");
+    expect(top.get("button.new-folder").text()).toBe("");
+  });
+
+  it("leaves the footer to Select and Delete all chats, and drops it without chats", () => {
+    const wrapper = mountSidebar();
+    expect(wrapper.get(".footer").findAll("button").map((b) => b.text())).not.toContain("New folder");
+    expect(wrapper.find(".footer button.new-folder").exists()).toBe(false);
+
+    expect(mountSidebar({ conversations: [] }).find(".footer").exists()).toBe(false);
+  });
+
   it("has a New folder button that asks for a new folder", async () => {
     const wrapper = mountSidebar();
 

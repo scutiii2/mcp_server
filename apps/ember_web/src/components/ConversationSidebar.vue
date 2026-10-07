@@ -374,14 +374,32 @@ watch(
   <!-- The menu is fixed to the page, so it would drift from its row: a scroll
        of the sidebar (the element that scrolls) closes it. -->
   <aside class="sidebar" @scroll="menu = null">
-    <button type="button" class="new-chat" :disabled="locked" @click="emit('new')">
-      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-        <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
-      </svg>
-      New chat
-    </button>
+    <div class="top">
+      <button type="button" class="new-chat" :disabled="locked" @click="emit('new')">
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+        </svg>
+        New chat
+      </button>
+      <button
+        v-if="!searchActive && !selecting"
+        type="button"
+        class="new-folder"
+        aria-label="New folder"
+        :disabled="folders.length >= MAX_FOLDERS"
+        :title="folders.length >= MAX_FOLDERS ? `${MAX_FOLDERS} folders is the limit` : 'New folder'"
+        @click="emit('newFolder')"
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path d="M2 4h4l1.5 1.5H14V12H2zM8 7.5v3M6.5 9h3" />
+        </svg>
+      </button>
+    </div>
 
     <div v-if="conversations.length > 0 || query" class="search">
+      <svg class="search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <path d="M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M11 11l3.5 3.5" />
+      </svg>
       <input
         type="search"
         :value="query"
@@ -426,6 +444,7 @@ watch(
         :title="titleOf(s)"
         :count="s.chats.length"
         :collapsible="s.kind === 'folder'"
+        :pinned="s.kind === 'pinned'"
         :collapsed="s.kind === 'folder' && s.folder !== null && collapsedFolders.includes(s.folder.id)"
         :menu="s.kind === 'folder' && !selecting"
         :expanded="s.kind === 'folder' && menu?.kind === 'folder' && menu.id === s.folder?.id"
@@ -484,21 +503,10 @@ watch(
       </button>
       <button type="button" @click="stopSelecting">Cancel</button>
     </div>
-    <div v-else-if="!searchActive" class="footer">
-      <template v-if="conversations.length > 0">
-        <button type="button" class="link" @click="startSelecting">Select</button>
-        <button v-if="conversations.length > 1" type="button" class="link delete-all" :disabled="locked" @click="confirmDeleteAll">
-          Delete all chats
-        </button>
-      </template>
-      <button
-        type="button"
-        class="link new-folder"
-        :disabled="folders.length >= MAX_FOLDERS"
-        :title="folders.length >= MAX_FOLDERS ? `${MAX_FOLDERS} folders is the limit` : 'Create a folder'"
-        @click="emit('newFolder')"
-      >
-        New folder
+    <div v-else-if="!searchActive && conversations.length > 0" class="footer">
+      <button type="button" class="link" @click="startSelecting">Select</button>
+      <button v-if="conversations.length > 1" type="button" class="link delete-all" :disabled="locked" @click="confirmDeleteAll">
+        Delete all chats
       </button>
     </div>
     <UsageGauges :busy="busy" />
@@ -528,20 +536,46 @@ watch(
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
-.new-chat {
+.top {
+  display: flex;
+  gap: 6px;
+}
+.new-chat,
+.new-folder {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
+  color: var(--text);
   background: var(--bg);
 }
-.new-chat:hover:not(:disabled) {
+.new-chat {
+  flex: 1;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.new-chat svg,
+.new-folder svg {
+  stroke: var(--accent);
+}
+.new-folder {
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+}
+.new-folder svg {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.new-chat:hover:not(:disabled),
+.new-folder:hover:not(:disabled) {
   border-color: var(--accent);
 }
-.new-chat:disabled {
+.new-chat:disabled,
+.new-folder:disabled {
   cursor: default;
   opacity: 0.5;
 }
@@ -553,9 +587,25 @@ watch(
 .empty.error {
   color: var(--danger);
 }
+.search {
+  position: relative;
+}
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
 .search input {
+  box-sizing: border-box;
   width: 100%;
-  padding: 6px 10px;
+  padding: 6px 10px 6px 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   outline: none;
@@ -619,7 +669,7 @@ mark {
 }
 .row.active {
   color: var(--text);
-  background: var(--bg);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 .row.locked:not(.active) {
