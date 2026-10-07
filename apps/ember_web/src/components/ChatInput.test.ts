@@ -7,9 +7,10 @@ import ChatInput from "./ChatInput.vue";
 import inputSource from "./ChatInput.vue?raw";
 import menuSource from "./ChatSettingsMenu.vue?raw";
 
-vi.mock("../api/AttachmentsClient", () => ({ attachmentsClient: { text: vi.fn() } }));
+vi.mock("../api/AttachmentsClient", () => ({ attachmentsClient: { text: vi.fn(), table: vi.fn() } }));
 
 const text = vi.mocked(attachmentsClient.text);
+const table = vi.mocked(attachmentsClient.table);
 
 function mountInput(props: Record<string, unknown> = {}) {
   return mount(ChatInput, { props: { busy: false, ...props }, attachTo: document.body });
@@ -25,6 +26,7 @@ const drag = (types: string[], files: File[] = []) => ({ types, files });
 
 beforeEach(() => {
   text.mockResolvedValue({ text: "extracted", char_count: 9, truncated: false } as never);
+  table.mockResolvedValue({ table_id: "tbl-1", filename: "sales.csv", rows: 1200, columns: ["region", "units"], sheet: null, notes: [] });
 });
 
 afterEach(() => {
@@ -122,6 +124,47 @@ describe("pasting files", () => {
     const chip = wrapper.find(".attachments li");
     expect(chip.classes()).toContain("error");
     expect(chip.text()).toContain("Unsupported file type");
+  });
+});
+
+describe("attaching a table", () => {
+  it("uploads a .csv beside reading its text and puts the table id in the sent question", async () => {
+    const wrapper = mountInput();
+    const sheet = file("sales.csv");
+
+    await wrapper.find("form").trigger("drop", { dataTransfer: drag(["Files"], [sheet]) });
+    await flushPromises();
+
+    expect(text).toHaveBeenCalledExactlyOnceWith(sheet);
+    expect(table).toHaveBeenCalledExactlyOnceWith(sheet);
+    expect(wrapper.find(".attachments li").text()).toContain("1,200 rows, 2 columns");
+    await wrapper.find("textarea").setValue("total units per region?");
+    await wrapper.find("form").trigger("submit");
+    const sent = wrapper.emitted("send")![0]![0] as string;
+    expect(sent).toContain("table_id: tbl-1");
+    expect(sent).toContain("extracted");
+  });
+
+  it("does not upload other files as tables", async () => {
+    const wrapper = mountInput();
+
+    await wrapper.find("form").trigger("drop", { dataTransfer: drag(["Files"], [file("notes.txt")]) });
+    await flushPromises();
+
+    expect(table).not.toHaveBeenCalled();
+  });
+
+  it("still attaches the preview, and says so, when the table upload fails", async () => {
+    table.mockRejectedValue(new Error("mcp_server is unreachable"));
+    const wrapper = mountInput();
+
+    await wrapper.find("form").trigger("drop", { dataTransfer: drag(["Files"], [file("sales.xlsx")]) });
+    await flushPromises();
+
+    expect(wrapper.find(".attachments li").classes()).not.toContain("error");
+    await wrapper.find("textarea").setValue("summarise");
+    await wrapper.find("form").trigger("submit");
+    expect(wrapper.emitted("send")![0]![0] as string).toContain("could not be loaded");
   });
 });
 

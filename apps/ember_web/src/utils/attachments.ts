@@ -3,6 +3,7 @@
  * agent sees the same thing and saved chats render the same in both apps.
  * The chat view pulls the blocks back out to show them collapsed. */
 
+import type { AttachmentTable } from "../api/AttachmentsClient";
 import type { ChatMessage } from "../api/types";
 
 export interface AttachmentBlock {
@@ -21,6 +22,22 @@ export function attachmentBlock(a: AttachmentBlock): string {
 
 /** What stands in for the typed text when a question is only attached files. */
 export const FILE_ONLY_QUESTION = "Please review the attached file(s).";
+
+/** Files whose whole content the agent's data tools can read. */
+export const TABLE_FILE = /\.(csv|xlsx)$/i;
+
+const MAX_LISTED_COLUMNS = 30;
+
+/** The line that opens an attachment's text for a table: the id the data tools
+ * need, the size, the columns, and a warning that the text below is only a
+ * preview. Column names are flattened to one line so one can never close the
+ * attachment block. `null` means the upload failed: only the preview exists. */
+export function tableHeader(table: AttachmentTable | null): string {
+  if (!table) return "[The whole file could not be loaded for analysis, so only the preview below is available.]\n";
+  const names = table.columns.slice(0, MAX_LISTED_COLUMNS).map((name) => name.replace(/\s+/g, " "));
+  const more = table.columns.length > MAX_LISTED_COLUMNS ? ", ..." : "";
+  return `[table_id: ${table.table_id} | ${table.rows} rows | columns: ${names.join(", ")}${more} | the text below is only a preview of the start of the file; use the data tools with this table_id for the whole file]\n`;
+}
 
 /** The question as sent: the typed text, then every attachment. */
 export function withAttachments(question: string, attachments: AttachmentBlock[]): string {

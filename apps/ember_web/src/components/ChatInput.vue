@@ -5,7 +5,7 @@ import type { CommandInfo } from "../api/CommandsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
 import type { JsonSchema } from "../api/types";
 import { BUILTIN_COMMANDS } from "../utils/builtinCommands";
-import { splitAttachments, withAttachments } from "../utils/attachments";
+import { splitAttachments, TABLE_FILE, tableHeader, withAttachments } from "../utils/attachments";
 import { paramSuggestions } from "../utils/commandParams";
 import { errorMessage } from "../utils/errors";
 import { appendToDraft, filterTemplates, preview, templateQuery } from "../utils/templates";
@@ -62,6 +62,9 @@ interface PendingAttachment {
   text: string;
   chars: number;
   truncated: boolean;
+  /** Rows and columns of the table mcp_server kept (0 for any other file). */
+  rows: number;
+  columns: number;
   error: string;
 }
 
@@ -83,15 +86,27 @@ async function addFiles(files: FileList | File[] | null | undefined): Promise<vo
       text: "",
       chars: 0,
       truncated: false,
+      rows: 0,
+      columns: 0,
       error: "",
     };
     attachments.value.push(entry);
     const live = attachments.value[attachments.value.length - 1]!; // the reactive copy
+    // A .csv / .xlsx is also uploaded whole, so the data tools can read every
+    // row; the text preview stays as the fallback if that upload fails.
+    const wantsTable = TABLE_FILE.test(file.name);
+    const tableUpload = wantsTable ? attachmentsClient.table(file).catch(() => null) : Promise.resolve(null);
     // Each file on its own: one slow or broken file doesn't hold up the rest.
-    void attachmentsClient
-      .text(file)
-      .then((result) => {
-        Object.assign(live, { state: "ready", text: result.text, chars: result.char_count, truncated: result.truncated });
+    void Promise.all([attachmentsClient.text(file), tableUpload])
+      .then(([result, uploaded]) => {
+        Object.assign(live, {
+          state: "ready",
+          text: (wantsTable ? tableHeader(uploaded) : "") + result.text,
+          chars: result.char_count,
+          truncated: result.truncated,
+          rows: uploaded?.rows ?? 0,
+          columns: uploaded?.columns.length ?? 0,
+        });
       })
       .catch((err: unknown) => {
         Object.assign(live, { state: "error", error: errorMessage(err) });
@@ -276,7 +291,7 @@ function restore(question: string): void {
   if (draft.value.trim() !== "" || attachments.value.length > 0) return;
   const { text, attachments: files } = splitAttachments(question);
   for (const file of files) {
-    attachments.value.push({ id: nextAttachmentId++, filename: file.filename, state: "ready", text: file.text, chars: file.chars, truncated: file.truncated, error: "" });
+    attachments.value.push({ id: nextAttachmentId++, filename: file.filename, state: "ready", text: file.text, chars: file.chars, truncated: file.truncated, rows: 0, columns: 0, error: "" });
   }
   setDraft(text);
 }
@@ -400,6 +415,7 @@ function onKeydown(event: KeyboardEvent): void {
         <span class="name">
           {{ a.state === "reading" ? `Reading ${a.filename} …` : a.state === "error" ? `${a.filename}: ${a.error}` : a.filename }}
           <small v-if="a.state === 'ready' && a.truncated">(cut to {{ a.chars.toLocaleString() }} characters)</small>
+          <small v-if="a.state === 'ready' && a.rows">({{ a.rows.toLocaleString() }} rows, {{ a.columns }} columns)</small>
         </span>
         <button type="button" :aria-label="`Remove ${a.filename}`" @click="removeAttachment(a.id)">×</button>
       </li>
