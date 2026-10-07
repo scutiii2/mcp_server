@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
           <MarkdownContent :text="m.content" />
         </section>
         <div v-else-if="m.kind === 'command' && m.role === 'user'" class="user-bubble command">{{ m.content }}</div>
-        <div v-else-if="m.kind === 'command'" class="assistant">
+        <div v-else-if="m.kind === 'command'" class="assistant command-reply">
           <MarkdownContent class="command-result" :text="parseDownloads(m.content).text" />
           <DownloadCards :downloads="parseDownloads(m.content).downloads" />
           <div class="actions">
@@ -632,6 +632,30 @@ onBeforeUnmount(() => {
 .assistant {
   overflow-wrap: anywhere;
 }
+/* An answer sits beside a small round mark; everything in it goes in the second
+   column. A command's result (a tool's output, not the agent's words) has none. */
+.assistant:not(.command-reply) {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+}
+.assistant:not(.command-reply)::before {
+  content: "✦";
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  font-size: 0.8em;
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.assistant:not(.command-reply) > * {
+  grid-column: 2;
+}
 .attachment {
   margin-top: 6px;
   white-space: normal;
@@ -692,11 +716,10 @@ onBeforeUnmount(() => {
   background: var(--code-bg);
 }
 .approval {
-  align-self: stretch;
   padding: 10px 12px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 .approval header {
   display: flex;
@@ -768,10 +791,12 @@ onBeforeUnmount(() => {
   color: var(--muted);
 }
 .live {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  row-gap: 8px;
+}
+/* The status pills and the clock keep their own width. */
+.live > .activity,
+.live > .elapsed {
+  justify-self: start;
 }
 .activity {
   display: inline-flex;

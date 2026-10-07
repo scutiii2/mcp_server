@@ -111,7 +111,26 @@ function argumentsText(step: ToolStep): string {
   color: var(--muted);
 }
 .steps > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
   cursor: pointer;
+  list-style: none;
+  background: var(--surface);
+}
+.steps > summary::-webkit-details-marker {
+  display: none;
+}
+.steps > summary::before {
+  content: "›";
+  transition: transform 0.15s;
+}
+.steps[open] > summary::before {
+  transform: rotate(90deg);
 }
 .step {
   margin: 4px 0 0 14px;
@@ -123,8 +142,11 @@ function argumentsText(step: ToolStep): string {
   display: inline-block;
   width: 1.4em;
 }
+.step:not(.failed) .icon {
+  color: var(--success);
+}
 .failed .icon {
-  color: #d4513b;
+  color: var(--danger);
 }
 .title {
   color: var(--text);

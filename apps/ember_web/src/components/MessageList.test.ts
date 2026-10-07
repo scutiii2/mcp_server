@@ -630,3 +630,16 @@ describe("who is working", () => {
     expect(mountWith(false).find(".agent-activity").exists()).toBe(false);
   });
 });
+
+describe("the mark beside an answer", () => {
+  it("is on an agent's answer and on the live one, but not on a command's result", () => {
+    const answers = mountList({ messages: [user("q"), assistant("a"), assistant("result", { kind: "command" })] });
+
+    const blocks = answers.findAll(".assistant");
+    expect(blocks[0]!.classes()).not.toContain("command-reply");
+    expect(blocks[1]!.classes()).toContain("command-reply");
+
+    const live = mountList({ busy: true, streaming: "partial" });
+    expect(live.get(".assistant.live").classes()).not.toContain("command-reply");
+  });
+});
