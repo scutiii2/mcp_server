@@ -5,11 +5,15 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import { authClient } from "../api/AuthClient";
 import { configIssuesClient } from "../api/ConfigIssuesClient";
+import { navPreferencesClient, type NavPrefs } from "../api/NavPreferencesClient";
 import { NAV_PAGES } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 import NavRail from "./NavRail.vue";
 
 vi.mock("../api/AuthClient", () => ({ authClient: { logout: vi.fn(() => Promise.resolve()) } }));
+vi.mock("../api/NavPreferencesClient", () => ({
+  navPreferencesClient: { get: vi.fn(() => Promise.resolve({ order: [], pinned: [], hidden: [] })) },
+}));
 vi.mock("../api/ConfigIssuesClient", () => ({ configIssuesClient: { list: vi.fn(() => Promise.resolve([])) } }));
 
 const ACCOUNT: Account = {
@@ -21,7 +25,7 @@ const ACCOUNT: Account = {
   permissions: ["chat.use", "tools.use"],
 };
 
-function setup(account: Account | null) {
+async function setup(account: Account | null) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore();
@@ -38,18 +42,19 @@ function setup(account: Account | null) {
     ],
   });
   const wrapper = mount(NavRail, { global: { plugins: [pinia, router] } });
+  await flushPromises(); // the arrangement loads first
   return { wrapper, router, auth };
 }
 
-const pageLinks = (wrapper: ReturnType<typeof setup>["wrapper"]) => wrapper.findAll("nav a");
+const pageLinks = (wrapper: Awaited<ReturnType<typeof setup>>["wrapper"]) => wrapper.findAll("nav a");
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe("NavRail", () => {
-  it("shows one icon-only link per page the account may open", () => {
-    const { wrapper } = setup(ACCOUNT);
+  it("shows one icon-only link per page the account may open", async () => {
+    const { wrapper } = await setup(ACCOUNT);
 
     const links = pageLinks(wrapper);
 
@@ -61,8 +66,8 @@ describe("NavRail", () => {
     }
   });
 
-  it("names each page for the hover tooltip", () => {
-    const { wrapper } = setup(ACCOUNT);
+  it("names each page for the hover tooltip", async () => {
+    const { wrapper } = await setup(ACCOUNT);
 
     const [chat] = pageLinks(wrapper);
 
@@ -71,7 +76,7 @@ describe("NavRail", () => {
   });
 
   it("marks the page being viewed", async () => {
-    const { wrapper, router } = setup(ACCOUNT);
+    const { wrapper, router } = await setup(ACCOUNT);
     await router.push("/capabilities");
     await flushPromises();
 
@@ -81,7 +86,7 @@ describe("NavRail", () => {
   });
 
   it("keeps Capabilities marked while one of its pages is open", async () => {
-    const { wrapper, router } = setup(ACCOUNT);
+    const { wrapper, router } = await setup(ACCOUNT);
     await router.push("/capabilities/pdf");
     await flushPromises();
 
@@ -90,15 +95,15 @@ describe("NavRail", () => {
     expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Capabilities"]);
   });
 
-  it("shows no pages while the email still has to be verified", () => {
-    const { wrapper } = setup({ ...ACCOUNT, email_verified: false });
+  it("shows no pages while the email still has to be verified", async () => {
+    const { wrapper } = await setup({ ...ACCOUNT, email_verified: false });
 
     expect(pageLinks(wrapper)).toHaveLength(0);
     expect(wrapper.find(".account").exists()).toBe(true);
   });
 
-  it("shows no pages and no account controls to a visitor", () => {
-    const { wrapper } = setup(null);
+  it("shows no pages and no account controls to a visitor", async () => {
+    const { wrapper } = await setup(null);
 
     expect(pageLinks(wrapper)).toHaveLength(0);
     expect(wrapper.find(".account").exists()).toBe(false);
@@ -111,7 +116,7 @@ describe("NavRail", () => {
     const issue = (severity: "error" | "warning") => ({ file: "f", key: "k", message: "m", severity });
 
     it("is hidden while there are no issues", async () => {
-      const { wrapper } = setup(VIEWER);
+      const { wrapper } = await setup(VIEWER);
       await flushPromises();
 
       expect(wrapper.find("a.alert").exists()).toBe(false);
@@ -119,7 +124,7 @@ describe("NavRail", () => {
 
     it("is red and counts every issue when an error exists", async () => {
       vi.mocked(configIssuesClient.list).mockResolvedValueOnce([issue("error"), issue("warning"), issue("warning")]);
-      const { wrapper } = setup(VIEWER);
+      const { wrapper } = await setup(VIEWER);
       await flushPromises();
 
       const alert = wrapper.find("a.alert");
@@ -131,14 +136,14 @@ describe("NavRail", () => {
 
     it("is amber when only warnings exist", async () => {
       vi.mocked(configIssuesClient.list).mockResolvedValueOnce([issue("warning")]);
-      const { wrapper } = setup(VIEWER);
+      const { wrapper } = await setup(VIEWER);
       await flushPromises();
 
       expect(wrapper.find("a.alert").classes()).toContain("has-warnings");
     });
 
     it("is never asked for by an account without the permission", async () => {
-      const { wrapper } = setup(ACCOUNT);
+      const { wrapper } = await setup(ACCOUNT);
       await flushPromises();
 
       expect(configIssuesClient.list).not.toHaveBeenCalled();
@@ -146,8 +151,42 @@ describe("NavRail", () => {
     });
   });
 
+  describe("the account's arrangement", () => {
+    const arrangement = (prefs: NavPrefs) => vi.mocked(navPreferencesClient.get).mockResolvedValueOnce(prefs);
+    const labels = (wrapper: Awaited<ReturnType<typeof setup>>["wrapper"]) => pageLinks(wrapper).map((l) => l.attributes("aria-label"));
+
+    it("puts pinned pages first, then a divider, then the rest", async () => {
+      arrangement({ order: ["/usage", "/agents"], pinned: ["/usage"], hidden: [] });
+      const { wrapper } = await setup(ACCOUNT);
+
+      expect(labels(wrapper)).toEqual(["Usage", "Agents", "Chat", "Capabilities", "Settings"]);
+      expect(wrapper.findAll("nav .divider")).toHaveLength(1);
+      expect(wrapper.find("nav").element.children[1]!.classList.contains("divider")).toBe(true);
+    });
+
+    it("leaves hidden pages out", async () => {
+      arrangement({ order: [], pinned: [], hidden: ["/agents", "/usage"] });
+      const { wrapper } = await setup(ACCOUNT);
+
+      expect(labels(wrapper)).toEqual(["Chat", "Capabilities", "Settings"]);
+      expect(wrapper.find("nav .divider").exists()).toBe(false);
+    });
+
+    it("draws no pages until the arrangement has loaded", async () => {
+      let release: (prefs: NavPrefs) => void = () => {};
+      vi.mocked(navPreferencesClient.get).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+      const { wrapper } = await setup(ACCOUNT);
+      expect(pageLinks(wrapper)).toHaveLength(0);
+
+      release({ order: [], pinned: [], hidden: [] });
+      await flushPromises();
+
+      expect(pageLinks(wrapper)).toHaveLength(5);
+    });
+  });
+
   it("links the account page by username and logs out to the login page", async () => {
-    const { wrapper, router, auth } = setup(ACCOUNT);
+    const { wrapper, router, auth } = await setup(ACCOUNT);
 
     const account = wrapper.find(".account");
     expect(account.attributes("href")).toBe("/account");
