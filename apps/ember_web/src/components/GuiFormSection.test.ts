@@ -5,6 +5,9 @@ import type { GuiFormSectionSpec } from "../api/CapabilityPagesClient";
 import type { ToolInfo, ToolRunResult } from "../api/types";
 import GuiFormSection from "./GuiFormSection.vue";
 
+/** The component's `runTool` prop; a bare `vi.fn()` mock needs a cast to it. */
+type RunTool = InstanceType<typeof GuiFormSection>["$props"]["runTool"];
+
 vi.mock("../api/CommandsClient", () => ({ commandsClient: { options: vi.fn(), upload: vi.fn() } }));
 
 const TOOL: ToolInfo = {
@@ -218,7 +221,7 @@ describe("GuiFormSection inside KeepAlive", () => {
       defineComponent({
         props: { on: { type: Boolean, default: true } },
         setup: (props) => () =>
-          h(KeepAlive, null, { default: () => (props.on ? h(GuiFormSection, { section: REFRESHING, tool: TOOL, runTool }) : null) }),
+          h(KeepAlive, null, { default: () => (props.on ? h(GuiFormSection, { section: REFRESHING, tool: TOOL, runTool: runTool as RunTool }) : null) }),
       }),
     );
   }
@@ -254,7 +257,7 @@ describe("GuiFormSection lifecycle", () => {
       defineComponent({
         props: { on: { type: Boolean, default: true } },
         setup: (props) => () =>
-          h(KeepAlive, null, { default: () => (props.on ? h(GuiFormSection, { section, tool, runTool }) : null) }),
+          h(KeepAlive, null, { default: () => (props.on ? h(GuiFormSection, { section, tool, runTool: runTool as RunTool }) : null) }),
       }),
     );
   }
