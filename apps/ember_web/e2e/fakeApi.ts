@@ -253,6 +253,9 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
     if (method === "GET" && path === "/api/admin/permissions") return json(route, ADMIN_PERMISSIONS);
     if (method === "GET" && path === "/api/admin/invites") return json(route, []);
     if (method === "GET" && path === "/api/agent") return json(route, ENTRY_AGENT);
+    if (method === "GET" && path === "/api/agents") {
+      return json(route, [{ ...ENTRY_AGENT, entry: true, orchestrator: true, focus: "General questions.", status: "running" }]);
+    }
     if (method === "GET" && path === "/api/chats") return json(route, [...api.chats.values()].map(summary));
     // Deleting every chat, or one.
     if (method === "DELETE" && path === "/api/chats") {

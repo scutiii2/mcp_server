@@ -37,6 +37,13 @@ export const NAV_PAGES: NavPage[] = [
     description: "Other MCP servers behind mcp_server; pick the ones your chats may use.",
     permission: "chat.use",
   },
+  {
+    to: "/agents",
+    label: "Agents",
+    icon: ["M12 8V4H8", "M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z", "M2 14h2", "M20 14h2", "M15 13v2", "M9 13v2"],
+    description: "The AI agents behind ember: which are running, which is the entry agent, and what each is for.",
+    permission: "chat.use",
+  },
   { to: "/watchers", label: "Watchers", icon: ["M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0z", "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"], description: "Background watchers of every capability.", permission: "watchers.view" },
   { to: "/usage", label: "Usage", icon: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"], description: "Your token usage and limits.", permission: "chat.use" },
   {

@@ -54,8 +54,8 @@ describe("NavRail", () => {
 
     const links = pageLinks(wrapper);
 
-    // chat.use -> Chat, Extensions, Usage, Settings; tools.use -> Capabilities
-    expect(links.map((l) => l.attributes("aria-label"))).toEqual(["Chat", "Capabilities", "Extensions", "Usage", "Settings"]);
+    // chat.use -> Chat, Extensions, Agents, Usage, Settings; tools.use -> Capabilities
+    expect(links.map((l) => l.attributes("aria-label"))).toEqual(["Chat", "Capabilities", "Extensions", "Agents", "Usage", "Settings"]);
     for (const link of links) {
       expect(link.text()).toBe("");
       expect(link.find("svg").exists()).toBe(true);

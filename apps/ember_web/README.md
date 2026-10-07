@@ -166,6 +166,10 @@ URL, token or key.
   extension shows its error and no tools). On the Capabilities page the tools
   an extension brings sit in a card of their own per extension (no on/off
   switch); tools that no capability or extension lists go under "Other tools".
+- Agents page (`chat.use`): a card per agent from `GET /api/agents` - name, id,
+  Entry / Orchestrator badges, what it is for, and a status (running, offline,
+  disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
+  always go to the entry agent, there is no per-agent chat.
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with
   the oldest age, succeeded, failed), a timeline with one lane per capability
@@ -347,7 +351,7 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 ```
 src/
   api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
-                ExtensionsClient / WatchersClient / LogsClient / TrafficClient / AttachmentsClient /
+                ExtensionsClient / AgentsClient / WatchersClient / LogsClient / TrafficClient / AttachmentsClient /
                 ConfigIssuesClient / TemplatesClient / SharesClient / SettingsClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
@@ -356,7 +360,7 @@ src/
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Capabilities, Extensions, Watchers, Usage, Settings, Analytics, ConfigIssues,
+  views/        pages: Overview, Chat, Capabilities, Extensions, Agents, Watchers, Usage, Settings, Analytics, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, SettingRow, AuthCard
