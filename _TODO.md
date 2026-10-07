@@ -119,13 +119,12 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 ## More ai_agent agents: Email, Data Analyst, Scheduler (added 2026-10-07)
 
-**Context**: Planner, Log Analyst, Researcher, Usage Analyst, Vault Librarian, Repo Helper and Email Assistant are built (agent files in `apps/ai_agent/agents/`, tools in `apps/mcp_server/src/capabilities/`). Two agents from the same list were left out because each needs a decision or a missing piece first. Add an agent file with the `aiagent-scaffold` skill and a tool with `mcp-capability-scaffold`.
+**Context**: Planner, Log Analyst, Researcher, Usage Analyst, Vault Librarian, Repo Helper, Email Assistant and Data Analyst are built (agent files in `apps/ai_agent/agents/`, tools in `apps/mcp_server/src/capabilities/`). One agent from the same list was left out (Scheduler / Watcher) because it needs a decision and a missing piece first. Add an agent file with the `aiagent-scaffold` skill and a tool with `mcp-capability-scaffold`.
 
 - **Email Assistant** (built 2026-10-07 as `agents/email-assistant.json`, port 9112): pasted-text only, no tools, no mailbox, no send. Untested: paste an email and check summary, triage and draft. Ember and planner instructions mention it.
   - **Later, if wanted**: a mailbox capability (IMAP read-only, then save drafts). `services/email.py` is send-only SMTP used by watchers, so IMAP would be new code; `Settings.email_config_path` still has no caller in `src/`. Decide credentials in `.env`, and treat mail content as untrusted (prompt injection).
-- **Data Analyst**: CSV/XLSX in, summary out, mirroring the PDF assistant's upload flow.
-  - Decide how it computes. Running arbitrary code on an upload needs a sandbox. Smaller option: fixed tools only (describe, filter, group by, top N) with no code execution.
-  - Needs an upload path for tabular files (reuse `POST /upload` and `services/downloads.py`) and output as a table or a download.
+- **Data Analyst** (built 2026-10-07 as `agents/data-analyst.json`, port 9113, plus the `tables` capability in mcp_server, `POST /api/attachments/table` in ember_api and the table upload in `ChatInput`): fixed read-only tools over the whole attached CSV/XLSX, no code execution. Spec and plan in `docs/superpowers/`. Untested by hand: attach a CSV, ask for a total and a top 5.
+  - **Later, if wanted**: a sandboxed run-code tool for what the fixed tools cannot express; `.xls` files; charts or a downloadable result file.
 - **Scheduler / Watcher agent**: create and explain watchers in plain language.
   - Blocked: there is no generic watcher-creation tool. Watchers exist only inside a capability (`JobWatcher` in `services/watcher.py`), so an agent has nothing to call.
   - Needs a design for user-defined watchers first (what to poll, how often, who gets the email), then a tool, then the agent.
