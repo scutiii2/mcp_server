@@ -39,9 +39,22 @@ Sidebar tabs:
   second supervisor never fights the first for the agents' ports. Edit
   `agents/<id>.json` to change agents; the launcher never writes them.
 - **Instances**: everything started (or adopted) by this tool; live log tail,
-  Stop/Restart, Kill/Restart All, Clear Closed, Create Group.
+  Stop/Restart, Kill/Restart all, Clear closed, Create group.
 - **Groups**: saved sets of instance recipes (template, port, env, args,
-  preset); Start All.
+  preset), shown as one card per member; Start all.
+
+The sidebar list and the group member list scroll when they overflow; the
+scrollbar appears only then.
+
+## Look
+
+Dark only, in ember_web's dark tokens (`apps/ember_web/src/style.css`): the
+colors and the 4/8/12 px radius scale live in `src/theme.py`. Ember orange
+marks the active tab, the selected row and the one primary button per view
+(Start, Start all); danger actions (Stop, Kill, Delete group) are outlined in
+the danger color; status badges are tinted chips with a text label. Tk has no
+border-radius, so `src/widgets.py` draws rounded shapes on canvases. Change a
+color or radius in `theme.py`, not at the call site.
 
 Limitation, by design: a server started outside this tool has no `Popen`
 handle, so it only appears under Instances if adopted (found on a template's
@@ -59,7 +72,7 @@ default port, or a port kept via "keep running in background" on close).
 | `src/agent_files.py` | Read-only agent files of a supervisor project; entry port, start refusal |
 | `src/storage.py` | Load/save groups, presets, kept-running handoff |
 | `src/models.py` | `ServerTemplate`, `AgentInfo`, `Preset`, `GroupMember`, `ServerGroup` |
-| `src/widgets.py`, `src/theme.py` | Rounded hover widgets, colors |
+| `src/widgets.py`, `src/theme.py` | Rounded hover widgets, member card, panel, scroll frame, dark scrollbar; ember colors and radius scale |
 | `src/config.py` | Paths, run.bat regexes, timing constants |
 | `src/assets/` | Empty-state image |
 | `data/` | `groups.json` (tracked); `presets.json`, `kept_running.json` (gitignored, per-machine) |
