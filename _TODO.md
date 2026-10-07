@@ -119,12 +119,10 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 ## More ai_agent agents: Email, Data Analyst, Scheduler (added 2026-10-07)
 
-**Context**: Planner, Log Analyst, Researcher, Usage Analyst, Vault Librarian and Repo Helper are built (agent files in `apps/ai_agent/agents/`, tools in `apps/mcp_server/src/capabilities/`). Three agents from the same list were left out because each needs a decision or a missing piece first. Add an agent file with the `aiagent-scaffold` skill and a tool with `mcp-capability-scaffold`.
+**Context**: Planner, Log Analyst, Researcher, Usage Analyst, Vault Librarian, Repo Helper and Email Assistant are built (agent files in `apps/ai_agent/agents/`, tools in `apps/mcp_server/src/capabilities/`). Two agents from the same list were left out because each needs a decision or a missing piece first. Add an agent file with the `aiagent-scaffold` skill and a tool with `mcp-capability-scaffold`.
 
-- **Email Assistant**: draft, summarize and triage mail.
-  - Needs a new mcp_server capability; `config_email.json.example` exists, but the item above says it looks dead (`email_config_path` has no caller in `src/`), so check `services/email.py` first.
-  - It acts outward, so decide: mailbox and credentials (`.env`); read access or draft only; whether it may send, and who approves each send (the ember tool approval card, or a separate step).
-  - Safest start: draft only, no send tool.
+- **Email Assistant** (built 2026-10-07 as `agents/email-assistant.json`, port 9112): pasted-text only, no tools, no mailbox, no send. Untested: paste an email and check summary, triage and draft. Ember and planner instructions mention it.
+  - **Later, if wanted**: a mailbox capability (IMAP read-only, then save drafts). `services/email.py` is send-only SMTP used by watchers, so IMAP would be new code; `Settings.email_config_path` still has no caller in `src/`. Decide credentials in `.env`, and treat mail content as untrusted (prompt injection).
 - **Data Analyst**: CSV/XLSX in, summary out, mirroring the PDF assistant's upload flow.
   - Decide how it computes. Running arbitrary code on an upload needs a sandbox. Smaller option: fixed tools only (describe, filter, group by, top N) with no code execution.
   - Needs an upload path for tabular files (reuse `POST /upload` and `services/downloads.py`) and output as a table or a download.
@@ -132,7 +130,7 @@ Ideas from the "what more can we add" discussion; none designed yet.
   - Blocked: there is no generic watcher-creation tool. Watchers exist only inside a capability (`JobWatcher` in `services/watcher.py`), so an agent has nothing to call.
   - Needs a design for user-defined watchers first (what to poll, how often, who gets the email), then a tool, then the agent.
 
-**Also to check once the new agents run**: with 10 agents Ember may route badly. If so, set `"routing": {"laya": true}` in `agents/ember.json`.
+**Also to check once the new agents run**: with 11 agents Ember may route badly. `"routing": {"laya": true}` is already set in `agents/ember.json` (2026-10-07).
 
 **Revisit when**: user picks one; start with its open decisions.
 
