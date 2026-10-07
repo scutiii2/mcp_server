@@ -69,3 +69,20 @@ def test_an_unreachable_mcp_server_is_a_502(client: TestClient, upstream: FakeUp
 
 def test_it_needs_a_login(client: TestClient) -> None:
     assert post(client, "sales.csv").status_code == 401
+
+
+def test_a_token_mismatch_at_mcp_server_is_a_502_not_a_400(client: TestClient, upstream: FakeUpstream) -> None:
+    upstream.handler = lambda request: httpx.Response(401, json={"error": "bad internal token"})
+    as_admin(client)
+
+    response = post(client, "sales.csv")
+
+    assert response.status_code == 502 and response.json()["detail"] == "mcp_server is unreachable"
+
+
+def test_the_table_upload_waits_longer_than_the_default(client: TestClient, upstream: FakeUpstream) -> None:
+    upstream.handler = mcp_server
+    as_admin(client)
+
+    assert post(client, "sales.csv").status_code == 200
+    assert upstream.requests[-1].extensions["timeout"]["read"] == 120.0

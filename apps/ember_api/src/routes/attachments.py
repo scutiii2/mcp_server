@@ -98,6 +98,9 @@ async def attachment_table(
     except McpServerUnavailable as error:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "mcp_server is unreachable") from error
     except McpServerRefused as error:
+        if error.status in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+            # Our own token was refused: a setup fault, not something the user did.
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "mcp_server is unreachable") from error
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
     await logs.action(account, "attachments.table", f"Attached '{filename}' ({len(content):,} bytes) as a table")
     return AttachmentTableOut(
