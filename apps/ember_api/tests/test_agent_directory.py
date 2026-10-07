@@ -180,3 +180,73 @@ def test_the_url_source_keeps_the_last_good_list_when_the_agent_stops_answering(
     assert [a.id for a in first] == ["main"]
     assert [a.id for a in stale] == ["main"]
     assert expired == []
+
+
+# --- listing: running, offline and disabled agents ----------------------------------
+
+
+def with_definitions(tmp_path: Path, agents: list[dict], defined: list[dict]) -> AgentDirectory:
+    (tmp_path / "agent_definitions.json").write_text(json.dumps({"defined": defined}), encoding="utf-8")
+    return directory(tmp_path, agents)
+
+
+def defn(agent_id: str, **extra) -> dict:
+    return {"id": agent_id, "label": agent_id.title(), **extra}
+
+
+def test_listing_marks_defined_agents_that_are_not_running(tmp_path: Path) -> None:
+    d = with_definitions(
+        tmp_path,
+        [agent("main", entry=True)],
+        [defn("main", entry=True), defn("down"), defn("off", enabled=False)],
+    )
+
+    rows = asyncio.run(d.listing())
+
+    assert [(r.id, r.status) for r in rows] == [("main", "running"), ("down", "offline"), ("off", "disabled")]
+
+
+def test_listing_puts_the_entry_agent_first_in_its_group_and_never_exposes_a_url(tmp_path: Path) -> None:
+    d = with_definitions(
+        tmp_path, [agent("helper"), agent("main", entry=True)], [defn("main", entry=True), defn("helper")]
+    )
+
+    rows = asyncio.run(d.listing())
+
+    assert [r.id for r in rows] == ["main", "helper"]
+    assert rows[0].entry and not rows[1].entry
+    assert not hasattr(rows[0], "url")
+
+
+def test_listing_without_definitions_is_just_the_running_agents(tmp_path: Path) -> None:
+    rows = asyncio.run(directory(tmp_path, [agent("main")]).listing())
+
+    assert [(r.id, r.status) for r in rows] == [("main", "running")]
+
+
+def test_listing_skips_incomplete_or_broken_definitions(tmp_path: Path) -> None:
+    d = with_definitions(tmp_path, [], [{"id": "no-label"}, "junk", defn("ok", focus=5)])
+
+    rows = asyncio.run(d.listing())
+
+    assert [(r.id, r.focus) for r in rows] == [("ok", "")]
+
+
+def test_the_url_source_lists_defined_agents_from_the_same_fetch() -> None:
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url)
+        return httpx.Response(200, json={"agents": [agent("main")], "defined": [defn("main"), defn("down")]})
+
+    async def run():
+        d, client = http_directory(handler)
+        try:
+            return await d.listing()
+        finally:
+            await client.aclose()
+
+    rows = asyncio.run(run())
+
+    assert [(r.id, r.status) for r in rows] == [("main", "running"), ("down", "offline")]
+    assert len(calls) == 1

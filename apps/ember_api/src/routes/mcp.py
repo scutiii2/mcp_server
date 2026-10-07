@@ -4,7 +4,7 @@ MCP proxy (Streamable HTTP: POST messages, GET event stream, DELETE session)."""
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
@@ -52,6 +52,29 @@ async def entry_agent(
     if agent is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, NO_AGENT_RUNNING)
     return AgentOut(id=agent.id, label=agent.label)
+
+
+class AgentListItem(AgentOut):
+    entry: bool
+    orchestrator: bool
+    focus: str
+    status: Literal["running", "offline", "disabled"]
+
+
+@router.get("/agents")
+async def list_agents(
+    _account: Account = Depends(require_chat),
+    directory: AgentDirectory = Depends(get_agent_directory),
+) -> list[AgentListItem]:
+    """Every agent for the Agents page, running or not (see
+    AgentDirectory.listing). The entry agent is flagged; an empty list means
+    no agent is running and none is defined."""
+    return [
+        AgentListItem(
+            id=a.id, label=a.label, entry=a.entry, orchestrator=a.orchestrator, focus=a.focus, status=a.status
+        )
+        for a in await directory.listing()
+    ]
 
 
 async def _checked_body(request: Request, policy: McpPolicy) -> bytes | Response | None:

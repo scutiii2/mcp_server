@@ -30,6 +30,7 @@ NO_AGENT_RUNNING = "No agent is running"
 # An ai_agent registry written before agent files existed marks no entry
 # agent; the one instance every older setup had was this id.
 LEGACY_ENTRY_ID = "claude-agent"
+DEFINITIONS_FILE = "agent_definitions.json"
 
 # A registry fetch must fail fast: every chat request waits on it.
 _FETCH_TIMEOUT = httpx.Timeout(3.0)
@@ -49,6 +50,50 @@ class AgentEntry:
     entry: bool = False
     orchestrator: bool = False
     focus: str = ""
+
+
+@dataclass(frozen=True)
+class AgentDefinition:
+    """An agent ai_agent's supervisor knows from agents/<id>.json, running or
+    not (the registry lists only the running ones)."""
+
+    id: str
+    label: str
+    entry: bool = False
+    orchestrator: bool = False
+    focus: str = ""
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
+class AgentListing:
+    """One row of the Agents page. No URL: that stays server-side."""
+
+    id: str
+    label: str
+    entry: bool
+    orchestrator: bool
+    focus: str
+    status: str  # "running" | "offline" (defined, not running) | "disabled"
+
+
+def parse_definitions(raw: Any) -> list[AgentDefinition]:
+    """The agents a document's `defined` list names; incomplete entries are left out."""
+    found = []
+    for item in raw.get("defined", []) if isinstance(raw, dict) else []:
+        if isinstance(item, dict) and all(isinstance(item.get(k), str) for k in ("id", "label")):
+            focus = item.get("focus")
+            found.append(
+                AgentDefinition(
+                    id=item["id"],
+                    label=item["label"],
+                    entry=item.get("entry") is True,
+                    orchestrator=item.get("orchestrator") is True,
+                    focus=focus if isinstance(focus, str) else "",
+                    enabled=item.get("enabled") is not False,
+                )
+            )
+    return found
 
 
 def parse_registry(raw: Any) -> list[AgentEntry]:
@@ -73,6 +118,8 @@ def parse_registry(raw: Any) -> list[AgentEntry]:
 class RegistrySource(Protocol):
     async def read(self) -> list[AgentEntry]: ...
 
+    async def definitions(self) -> list[AgentDefinition]: ...
+
 
 class FileRegistrySource:
     """ai_agent's registry file, re-read per call (agents come and go); a
@@ -80,19 +127,24 @@ class FileRegistrySource:
 
     def __init__(self, path: Path) -> None:
         self._path = path
+        # ai_agent's supervisor writes this next to the registry.
+        self._definitions_path = path.with_name(DEFINITIONS_FILE)
 
     async def read(self) -> list[AgentEntry]:
-        return await asyncio.to_thread(self._read)
+        return parse_registry(await asyncio.to_thread(self._load, self._path))
 
-    def _read(self) -> list[AgentEntry]:
+    async def definitions(self) -> list[AgentDefinition]:
+        return parse_definitions(await asyncio.to_thread(self._load, self._definitions_path))
+
+    @staticmethod
+    def _load(path: Path) -> Any:
         try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
+            return json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return []
+            return {}
         except (OSError, ValueError) as error:
-            logger.warning("could not read agent registry %s: %s", self._path, error)
-            return []
-        return parse_registry(raw)
+            logger.warning("could not read %s: %s", path, error)
+            return {}
 
 
 class HttpRegistrySource:
@@ -104,27 +156,36 @@ class HttpRegistrySource:
         self._client = client
         self._headers = {"X-Internal-Token": internal_token} if internal_token else {}
         self._agents: list[AgentEntry] = []
+        self._defined: list[AgentDefinition] = []
         self._fetched_at = 0.0  # last attempt, ok or not
         self._good_at = 0.0  # last success
         self._lock = asyncio.Lock()
 
     async def read(self) -> list[AgentEntry]:
+        return await self._refreshed(lambda: self._agents)
+
+    async def definitions(self) -> list[AgentDefinition]:
+        return await self._refreshed(lambda: self._defined)
+
+    async def _refreshed(self, pick):
         async with self._lock:
             now = time.monotonic()
             if self._fetched_at and now - self._fetched_at < _CACHE_SECONDS:
-                return self._current(now)
+                return self._current(now, pick)
             self._fetched_at = now
             try:
                 response = await self._client.get(self._url, headers=self._headers, timeout=_FETCH_TIMEOUT)
                 response.raise_for_status()
-                self._agents = parse_registry(response.json())
+                body = response.json()
+                self._agents = parse_registry(body)
+                self._defined = parse_definitions(body)
                 self._good_at = now
             except (httpx.HTTPError, ValueError) as error:
                 logger.warning("could not fetch agent registry %s: %s", self._url, error)
-            return self._current(now)
+            return self._current(now, pick)
 
-    def _current(self, now: float) -> list[AgentEntry]:
-        return self._agents if self._good_at and now - self._good_at < _STALE_SECONDS else []
+    def _current(self, now: float, pick):
+        return pick() if self._good_at and now - self._good_at < _STALE_SECONDS else []
 
 
 class AgentDirectory:
@@ -146,3 +207,23 @@ class AgentDirectory:
             or next((a for a in agents if a.orchestrator), None)
             or next((a for a in agents if a.id == LEGACY_ENTRY_ID), None)
         )
+
+    async def listing(self) -> list[AgentListing]:
+        """Every agent for the Agents page: the running ones, plus those
+        defined but stopped ("offline") or switched off ("disabled"). Running
+        first, then offline, then disabled; the entry agent leads its group.
+        Without definitions (ai_agent started without its supervisor) only
+        the running agents are listed."""
+        running = await self.all()
+        entry = await self.entry()
+        defined = await self._source.definitions()
+        rows = {
+            a.id: AgentListing(a.id, a.label, entry is not None and a.id == entry.id, a.orchestrator, a.focus, "running")
+            for a in running
+        }
+        for d in defined:
+            if d.id not in rows:
+                status = "offline" if d.enabled else "disabled"
+                rows[d.id] = AgentListing(d.id, d.label, d.entry, d.orchestrator, d.focus, status)
+        order = {"running": 0, "offline": 1, "disabled": 2}
+        return sorted(rows.values(), key=lambda r: (order[r.status], not r.entry))
