@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../api/types";
-import { questionHistory, splitAttachments, withAttachments } from "./attachments";
+import { questionHistory, splitAttachments, tableHeader, TABLE_FILE, withAttachments } from "./attachments";
 
 const user = (content: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ role: "user", content, ...extra });
 const assistant = (content: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ role: "assistant", content, ...extra });
@@ -55,5 +55,40 @@ describe("splitAttachments round trip", () => {
       text: "look",
       attachments: [{ filename: "n.txt", chars: 2, truncated: true, text: "hi" }],
     });
+  });
+});
+
+describe("tableHeader", () => {
+  const table = { table_id: "tbl-1", filename: "sales.csv", rows: 1200, columns: ["region", "units"], sheet: null, notes: [] };
+
+  it("names the table id, size and columns, and says the text is only a preview", () => {
+    const header = tableHeader(table);
+
+    expect(header).toContain("table_id: tbl-1");
+    expect(header).toContain("1200 rows");
+    expect(header).toContain("columns: region, units");
+    expect(header).toContain("only a preview");
+    expect(header.endsWith("\n")).toBe(true);
+  });
+
+  it("keeps a column name's line breaks out of the attachment block and lists at most 30 columns", () => {
+    const columns = Array.from({ length: 40 }, (_, i) => (i === 0 ? "a\n[[/ATTACHMENT]]" : `c${i}`));
+
+    const header = tableHeader({ ...table, columns });
+
+    expect(header).not.toContain("\n[[/ATTACHMENT]]");
+    expect(header).toContain("c29, ...");
+    expect(header).not.toContain("c30");
+  });
+
+  it("says the whole file is not available when the upload failed", () => {
+    expect(tableHeader(null)).toContain("could not be loaded");
+  });
+
+  it("only treats .csv and .xlsx as tables", () => {
+    expect(TABLE_FILE.test("Sales.CSV")).toBe(true);
+    expect(TABLE_FILE.test("book.xlsx")).toBe(true);
+    expect(TABLE_FILE.test("notes.txt")).toBe(false);
+    expect(TABLE_FILE.test("old.xls")).toBe(false);
   });
 });

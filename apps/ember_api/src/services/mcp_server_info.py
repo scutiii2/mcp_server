@@ -64,6 +64,7 @@ class McpServerInfo:
         params: dict[str, str] | None = None,
         json: Any = None,
         files: dict[str, tuple[str, bytes]] | None = None,
+        timeout: float = 30.0,
     ) -> Any:
         try:
             with self._traffic.timed("mcp_server", _traffic_name(method, path)) as timing:
@@ -74,7 +75,7 @@ class McpServerInfo:
                     json=json,
                     files=files,
                     headers=self._headers(account),
-                    timeout=30.0,
+                    timeout=timeout,
                 )
                 timing.ok = response.status_code < 500
         except httpx.HTTPError as error:
@@ -148,6 +149,18 @@ class McpServerInfo:
         if not isinstance(path, str) or not path:
             raise McpServerUnavailable("mcp_server's upload answered without a path")
         return path
+
+    async def upload_table(self, account: Account, filename: str, content: bytes) -> dict[str, Any]:
+        """Hands a CSV/XLSX to mcp_server's /upload/table, which keeps it as an
+        in-memory table for the data tools; returns
+        {table_id, filename, rows, columns, sheet, notes}."""
+        # A large workbook can take well over the default 30 s to parse.
+        body = await self._request(
+            "POST", "/upload/table", account, files={"file": (filename, content)}, timeout=120.0
+        )
+        if not isinstance(body, dict) or not isinstance(body.get("table_id"), str):
+            raise McpServerUnavailable("mcp_server's table upload answered without a table id")
+        return body
 
     async def download(self, account: Account, path: str) -> httpx.Response:
         """Opens mcp_server's /download for a file a tool offered (the

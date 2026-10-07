@@ -20,6 +20,8 @@ dependencies = [
     "python-multipart==0.0.32",
     # server_manager talks to the host Docker daemon.
     "docker>=7.0",
+    # table_loader.py reads uploaded .xlsx files for the data tools.
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]

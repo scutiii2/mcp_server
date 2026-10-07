@@ -87,6 +87,11 @@ from src.capabilities import repo_reader  # noqa: E402
 with capability_registry.capturing(mcp, repo_reader.META.id, label=repo_reader.META.label):
     from src.capabilities.repo_reader import tool as repo_reader_tool  # noqa: E402,F401
 
+from src.capabilities import tables  # noqa: E402
+
+with capability_registry.capturing(mcp, tables.META.id, label=tables.META.label):
+    from src.capabilities.tables import tool as tables_tool  # noqa: E402,F401
+
 for _name in capability_registry.names():
     if not capability_enabled(_capabilities_config, _name):
         capability_registry.set_enabled(mcp, _name, False)
