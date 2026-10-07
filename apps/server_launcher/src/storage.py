@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from .config import _GROUPS_PATH, _KEPT_RUNNING_PATH, _PRESETS_PATH
-from .models import GroupMember, Preset, ServerGroup
+from .config import _GROUPS_PATH, _KEPT_RUNNING_PATH, _PRESETS_PATH, _SERVERS_PATH
+from .models import GroupMember, Preset, ServerGroup, ServerRegistry
 
 
 def _load_groups() -> dict[str, ServerGroup]:
@@ -92,6 +93,23 @@ def _save_presets(presets: dict[str, list[Preset]]) -> None:
         for template_key, entries in presets.items()
     }
     _PRESETS_PATH.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
+
+def _load_servers() -> ServerRegistry:
+    """Added project folders and hidden keys; a missing or malformed file is an empty registry."""
+    try:
+        raw = json.loads(_SERVERS_PATH.read_text(encoding="utf-8"))
+        projects = [Path(p) for p in raw.get("projects", []) if isinstance(p, str)]
+        hidden = {k for k in raw.get("hidden", []) if isinstance(k, str)}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
+        return ServerRegistry()
+    return ServerRegistry(projects, hidden)
+
+
+def _save_servers(registry: ServerRegistry) -> None:
+    _SERVERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    raw = {"projects": [str(p) for p in registry.projects], "hidden": sorted(registry.hidden)}
+    _SERVERS_PATH.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 
 def _load_and_clear_kept_running() -> list[tuple[str, int]]:

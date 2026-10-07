@@ -6,17 +6,19 @@ import queue
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox, simpledialog
+from pathlib import Path
+from tkinter import filedialog, messagebox, simpledialog
 
 from .agent_files import launch_port, start_refusal
-from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ASSETS_DIR
+from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ASSETS_DIR, REPO_ROOT
 from .discovery import discover_templates
 from .group_editor import GroupEditor
 from .instance import Instance
 from .models import GroupMember, Preset, ServerGroup, ServerTemplate
 from .processes import _find_free_port, _find_pid_on_port, _kill_pid_tree, _port_in_use, _spawn_detached
 from .storage import (
-    _load_and_clear_kept_running, _load_groups, _load_presets, _save_groups, _save_kept_running, _save_presets,
+    _load_and_clear_kept_running, _load_groups, _load_presets, _load_servers, _save_groups, _save_kept_running,
+    _save_presets, _save_servers,
 )
 from .theme import (
     _ACCENT, _ACCENT_CONTRAST, _BG, _BORDER, _DANGER, _DANGER_BORDER, _DIM_FG, _ERROR_FG, _FG, _FIELD_BG, _RADIUS_SM, _ROW_BG,
@@ -41,7 +43,8 @@ class LauncherWindow:
         # root.after loop, ever reads it or touches a widget.
         self._status_queue: queue.Queue[tuple[str, str]] = queue.Queue()
 
-        self.templates = discover_templates()
+        self.registry = _load_servers()
+        self.templates = self._discover()
         self.instances: dict[str, Instance] = {}
         self._adopt_running_instances()
         self.presets: dict[str, list[Preset]] = _load_presets()
@@ -108,6 +111,14 @@ class LauncherWindow:
             bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG, padx=10,
         )
         self._refresh_button.pack(side="left")
+        self._add_server_button = RoundedButton(
+            bottom_row, "Add", command=self._add_server,
+            bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
+        )
+        self._remove_server_button = RoundedButton(
+            bottom_row, "Remove", command=self._remove_server,
+            bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_DANGER_BORDER, fg=_DANGER,
+        )
         self._clear_closed_button = RoundedButton(
             bottom_actions, "Clear closed", command=self._clear_closed_instances,
             bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
@@ -153,8 +164,7 @@ class LauncherWindow:
         self.groups_tab_btn.set_selected(tab == "groups", _BG if tab == "groups" else _TABBAR_BG)
         if tab == "instances":
             self._instance_actions.pack(side="bottom", fill="x", padx=10, pady=10, before=self._sidebar_scroll)
-            self._kill_instances_button.pack(side="left", expand=True, fill="x", padx=(0, 4))
-            self._refresh_button.pack(side="left")
+            self._pack_action_row(self._kill_instances_button, self._refresh_button)
             self._clear_closed_button.pack(
                 fill="x", pady=(0, 6), before=self._instance_actions_row,
             )
@@ -170,8 +180,7 @@ class LauncherWindow:
             self._clear_closed_button.pack_forget()
             if tab == "servers":
                 self._instance_actions.pack(side="bottom", fill="x", padx=10, pady=10, before=self._sidebar_scroll)
-                self._kill_instances_button.pack_forget()
-                self._refresh_button.pack(side="left")
+                self._pack_action_row(self._add_server_button, self._remove_server_button, self._refresh_button)
             else:
                 self._instance_actions.pack_forget()
         self._render_sidebar()
@@ -181,6 +190,17 @@ class LauncherWindow:
             self._render_instance_detail(self.selected_instance_id)
         else:
             self._render_group_detail(self.selected_group_name)
+
+    def _pack_action_row(self, *buttons: RoundedButton) -> None:
+        """Show exactly these buttons in the sidebar's bottom row, in order: the
+        last stays its natural width, the others share the rest."""
+        for button in (
+            self._kill_instances_button, self._add_server_button, self._remove_server_button, self._refresh_button,
+        ):
+            button.pack_forget()
+        for button in buttons[:-1]:
+            button.pack(side="left", expand=True, fill="x", padx=(0, 4))
+        buttons[-1].pack(side="left")
 
     def _render_sidebar(self) -> None:
         for child in self.sidebar_list.winfo_children():
@@ -229,6 +249,70 @@ class LauncherWindow:
                 card.pack(fill="x", pady=3)
 
     # ---- servers tab -----------------------------------------------------
+
+    def _discover(self) -> list[ServerTemplate]:
+        return discover_templates(projects=self.registry.projects, hidden=self.registry.hidden)
+
+    def _add_server(self) -> None:
+        """Add button: pick a project folder holding a run.bat and list it. A
+        detected server hidden earlier comes back instead of being added twice."""
+        chosen = filedialog.askdirectory(
+            parent=self.root, title="Choose a project folder with a run.bat", initialdir=REPO_ROOT.parent,
+        )
+        if not chosen:
+            return
+        folder = Path(chosen).resolve()
+        found = discover_templates(roots=[], projects=[folder])
+        if not found:
+            messagebox.showerror(
+                "Add server", f"{folder.name} has no launchable run.bat (it must start a python module or an npm script).",
+                parent=self.root,
+            )
+            return
+        key = found[0].key
+        if key in self.registry.hidden:
+            self.registry.hidden.discard(key)
+        elif any(t.key == key for t in self.templates):
+            messagebox.showinfo("Add server", f"{found[0].display_name} is already in the list.", parent=self.root)
+            return
+        else:
+            self.registry.projects.append(folder)
+        self._apply_registry(found[0].display_name, "Added")
+        self.selected_template = next((t for t in self.templates if t.key == key), None)
+        self._render_sidebar()
+        self._render_server_detail(self.selected_template)
+
+    def _remove_server(self) -> None:
+        """Remove button: drop the selected server from the list. A folder added
+        by hand is forgotten; a detected one is hidden (Add its folder to restore
+        it). The project's files are never touched."""
+        template = self.selected_template
+        if template is None:
+            self.status.config(text="Select a server to remove.")
+            return
+        added = template.working_dir in {p.resolve() for p in self.registry.projects}
+        verb = "Remove" if added else "Hide"
+        hint = "" if added else " Use Add and pick its folder to bring it back."
+        if not messagebox.askyesno(
+            f"{verb} server",
+            f"{verb} {template.display_name} from the launcher?\nThe project's files are not touched.{hint}",
+            parent=self.root,
+        ):
+            return
+        if added:
+            self.registry.projects = [p for p in self.registry.projects if p.resolve() != template.working_dir]
+        else:
+            self.registry.hidden.add(template.key)
+        self._apply_registry(template.display_name, "Removed")
+        self.selected_template = None
+        self._render_sidebar()
+        self._render_server_detail(None)
+
+    def _apply_registry(self, name: str, verb: str) -> None:
+        """Save the registry and rebuild the template list after an Add or Remove."""
+        _save_servers(self.registry)
+        self.templates = self._discover()
+        self.status.config(text=f"{verb} {name}.")
 
     def _select_template(self, template: ServerTemplate) -> None:
         self.selected_template = template
@@ -839,7 +923,7 @@ class LauncherWindow:
         one started just after this app launched."""
         if self.active_tab == "servers":
             selected_key = self.selected_template.key if self.selected_template else None
-            self.templates = discover_templates()
+            self.templates = self._discover()
             self.selected_template = next(
                 (t for t in self.templates if t.key == selected_key), None
             )

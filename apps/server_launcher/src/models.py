@@ -7,6 +7,15 @@ from pathlib import Path
 
 
 @dataclass
+class ServerRegistry:
+    """The user's edits to the detected server list: project folders added by
+    hand (each holds a run.bat) and keys of detected servers to leave out."""
+
+    projects: list[Path] = field(default_factory=list)
+    hidden: set[str] = field(default_factory=set)
+
+
+@dataclass
 class AgentInfo:
     """One ai_agent agent file (`agents/<id>.json`), as the launcher shows it.
     Read-only: the launcher never writes these files. `error` is set, and the

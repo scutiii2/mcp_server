@@ -31,6 +31,11 @@ Sidebar tabs:
 - **Servers**: every detected template; flags (port, `set NAME=value` env
   lines, Extra args when the bat forwards `%*`), saved Presets, Start. A taken
   port auto-bumps to the next free one.
+  **Add** picks a project folder with a launchable `run.bat` and lists it;
+  **Remove** drops the selected server from the list (a folder added by hand
+  is forgotten, a detected one is hidden; Add its folder to bring it back).
+  Project files are never touched. Both are saved in `data/servers.json`
+  (gitignored, per machine).
 - **Agent projects** (a bat that runs `src.supervisor` next to an `agents/`
   folder, i.e. ai_agent): the Servers page shows the agent files read-only
   (id, port, provider and model, entry agent, disabled ones dimmed) instead of
@@ -76,12 +81,12 @@ default port, or a port kept via "keep running in background" on close).
 | `src/discovery.py` | `discover_templates()` from run.bat files |
 | `src/agent_files.py` | Read-only agent files of a supervisor project; entry port, start refusal |
 | `src/group_editor.py` | `GroupEditor`: inline edit/add/remove of a group's members |
-| `src/storage.py` | Load/save groups, presets, kept-running handoff |
+| `src/storage.py` | Load/save groups, presets, added/hidden servers, kept-running handoff |
 | `src/models.py` | `ServerTemplate`, `AgentInfo`, `Preset`, `GroupMember`, `ServerGroup` |
 | `src/widgets.py`, `src/theme.py` | Rounded hover widgets, member card, panel, scroll frame, dark scrollbar; ember colors and radius scale |
 | `src/config.py` | Paths, run.bat regexes, timing constants |
 | `src/assets/` | Empty-state image |
-| `data/` | `groups.json` (tracked); `presets.json`, `kept_running.json` (gitignored, per-machine) |
+| `data/` | `groups.json` (tracked); `presets.json`, `servers.json`, `kept_running.json` (gitignored, per-machine) |
 | `tests/` | pytest suite |
 
 No `configs/` or `secrets/`: the launcher has neither.

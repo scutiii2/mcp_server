@@ -11,6 +11,8 @@ __pycache__/
 
 # server_launcher's saved presets - personal, per-machine, not source.
 /apps/server_launcher/data/presets.json
+# server_launcher's added/hidden servers (absolute paths) - per-machine.
+/apps/server_launcher/data/servers.json
 # server_launcher's one-shot "keep running in background" state, written
 # on close and consumed (deleted) on the next launch - not source, and
 # stale if committed (whatever was running at commit time, not now).

@@ -16,6 +16,10 @@ _GROUPS_PATH = DATA_DIR / "groups.json"
 # launchable too - for projects that live in their own repo next to this
 # one, e.g. "../PDFMerger". A JSON list of strings; tracked, not personal.
 _EXTRA_ROOTS_PATH = DATA_DIR / "extra_roots.json"
+# What the Servers tab's Add / Remove buttons change: project folders added by
+# hand and the keys of detected servers hidden from the list. Per machine
+# (absolute paths), so gitignored.
+_SERVERS_PATH = DATA_DIR / "servers.json"
 # Written on close only when the user chooses to leave running instances in
 # the background instead of stopping them - the (template, port) pairs to
 # re-adopt on the next launch. Consumed (deleted) as soon as it's read, so

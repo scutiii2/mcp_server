@@ -32,12 +32,16 @@ def project_roots(base: Path = REPO_ROOT, extra_roots_path: Path = _EXTRA_ROOTS_
     return roots
 
 
-def discover_templates(roots: list[Path] | None = None) -> list[ServerTemplate]:
-    """One template per */run.bat in each root. Template keys are folder
-    names, so the first root to have a folder name wins."""
+def discover_templates(
+    roots: list[Path] | None = None, projects: list[Path] | None = None, hidden: set[str] | None = None,
+) -> list[ServerTemplate]:
+    """One template per */run.bat in each root, then one per folder in
+    ``projects`` (project folders added by hand). Template keys are folder
+    names, so the first to have a folder name wins; keys in ``hidden`` are left out."""
     templates: list[ServerTemplate] = []
-    seen: set[str] = set()
-    bat_paths = [bat for root in (roots or project_roots()) for bat in sorted(root.glob("*/run.bat"))]
+    seen: set[str] = set(hidden or ())
+    bat_paths = [bat for root in (roots if roots is not None else project_roots()) for bat in sorted(root.glob("*/run.bat"))]
+    bat_paths += [project / "run.bat" for project in projects or () if (project / "run.bat").is_file()]
     for bat_path in bat_paths:
         if bat_path.parent.name == SELF_DIR_NAME:
             continue  # this launcher's own run.bat is not a server to launch

@@ -69,6 +69,34 @@ class ExtraProjectRootTests(unittest.TestCase):
             self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
 
 
+    def test_added_project_folders_are_discovered_and_hidden_keys_left_out(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            main, elsewhere = Path(directory) / "main", Path(directory) / "elsewhere"
+            self._make_project(main, "mcp_server", "MCP Server", 8010)
+            self._make_project(elsewhere, "tool", "Tool", 9000)
+
+            templates = discovery.discover_templates(roots=[main], projects=[elsewhere / "tool"])
+            hidden = discovery.discover_templates(roots=[main], projects=[elsewhere / "tool"], hidden={"mcp_server"})
+            only_project = discovery.discover_templates(roots=[], projects=[elsewhere / "tool", elsewhere / "nope"])
+
+        self.assertEqual([t.key for t in templates], ["mcp_server", "tool"])
+        self.assertEqual([t.key for t in hidden], ["tool"])
+        self.assertEqual([t.key for t in only_project], ["tool"])
+
+    def test_server_registry_round_trips_and_a_bad_file_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "servers.json"
+            with patch.object(storage, "_SERVERS_PATH", path):
+                storage._save_servers(models.ServerRegistry([Path(directory) / "tool"], {"b", "a"}))
+                loaded = storage._load_servers()
+                path.write_text("{not json", encoding="utf-8")
+                broken = storage._load_servers()
+
+        self.assertEqual(loaded.projects, [Path(directory) / "tool"])
+        self.assertEqual(loaded.hidden, {"a", "b"})
+        self.assertEqual((broken.projects, broken.hidden), ([], set()))
+
+
 _SUPERVISOR_RUN_BAT = "\n".join([
     "@echo off",
     "REM LABEL: AI Agent",
@@ -268,7 +296,7 @@ class GroupTabTests(unittest.TestCase):
         for attribute in (
             "servers_tab_btn", "instances_tab_btn", "groups_tab_btn", "_instance_actions",
             "_instance_actions_row", "_kill_instances_button", "_refresh_button",
-            "_clear_closed_button", "_restart_all_button", "_create_group_button", "sidebar_list", "_sidebar_scroll",
+            "_add_server_button", "_remove_server_button", "_clear_closed_button", "_restart_all_button", "_create_group_button", "sidebar_list", "_sidebar_scroll",
             "_render_sidebar", "_render_server_detail", "_render_instance_detail",
             "_render_group_detail",
         ):
@@ -278,6 +306,9 @@ class GroupTabTests(unittest.TestCase):
         for tab in ("groups", "instances", "servers", "instances"):
             launcher._instance_actions.reset_mock()
             launcher._kill_instances_button.reset_mock()
+            launcher._add_server_button.reset_mock()
+            launcher._remove_server_button.reset_mock()
+            launcher._refresh_button.reset_mock()
             launcher._set_tab(tab)
             if tab == "groups":
                 launcher._instance_actions.pack_forget.assert_called_once()
@@ -288,9 +319,51 @@ class GroupTabTests(unittest.TestCase):
                 launcher._instance_actions.pack_forget.assert_not_called()
             if tab == "servers":
                 launcher._kill_instances_button.pack_forget.assert_called_once()
+                launcher._kill_instances_button.pack.assert_not_called()
+                launcher._add_server_button.pack.assert_called_once()
+                launcher._remove_server_button.pack.assert_called_once()
             elif tab == "instances":
                 launcher._kill_instances_button.pack.assert_called_once()
-        launcher._refresh_button.pack_forget.assert_not_called()
+                launcher._add_server_button.pack.assert_not_called()
+                launcher._remove_server_button.pack.assert_not_called()
+            if tab in ("servers", "instances"):
+                launcher._refresh_button.pack.assert_called_once()  # refresh stays visible on both tabs
+
+    def _server_launcher(self, templates, registry) -> "window.LauncherWindow":
+        launcher = object.__new__(window.LauncherWindow)
+        launcher.registry, launcher.templates, launcher.status = registry, templates, Mock()
+        launcher.root = launcher._render_sidebar = launcher._render_server_detail = Mock()
+        launcher._discover = lambda: [t for t in templates if t.key not in registry.hidden]
+        return launcher
+
+    def test_remove_hides_a_detected_server_and_forgets_an_added_one(self) -> None:
+        detected = SimpleNamespace(key="mcp_server", display_name="MCP", working_dir=Path("/repo/mcp_server").resolve())
+        added = SimpleNamespace(key="tool", display_name="Tool", working_dir=Path("/elsewhere/tool").resolve())
+        registry = models.ServerRegistry([Path("/elsewhere/tool")])
+        launcher = self._server_launcher([detected, added], registry)
+        with patch.object(window, "_save_servers") as save, patch.object(window.messagebox, "askyesno", return_value=True):
+            launcher.selected_template = detected
+            launcher._remove_server()
+            launcher.selected_template = added
+            launcher._remove_server()
+
+        self.assertEqual(registry.hidden, {"mcp_server"})
+        self.assertEqual(registry.projects, [])
+        self.assertEqual(save.call_count, 2)
+        self.assertIsNone(launcher.selected_template)
+
+    def test_remove_does_nothing_when_declined_or_nothing_is_selected(self) -> None:
+        detected = SimpleNamespace(key="mcp_server", display_name="MCP", working_dir=Path("/repo/mcp_server").resolve())
+        registry = models.ServerRegistry()
+        launcher = self._server_launcher([detected], registry)
+        with patch.object(window, "_save_servers") as save, patch.object(window.messagebox, "askyesno", return_value=False):
+            launcher.selected_template = None
+            launcher._remove_server()
+            launcher.selected_template = detected
+            launcher._remove_server()
+
+        self.assertEqual(registry.hidden, set())
+        save.assert_not_called()
 
     def test_select_group_sets_selection_and_renders_detail(self) -> None:
         """Catches a group click that leaves detail state out of sync."""
