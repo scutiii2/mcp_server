@@ -11,6 +11,7 @@ from tkinter import messagebox, simpledialog
 from .agent_files import launch_port, start_refusal
 from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ASSETS_DIR
 from .discovery import discover_templates
+from .group_editor import GroupEditor
 from .instance import Instance
 from .models import GroupMember, Preset, ServerGroup, ServerTemplate
 from .processes import _find_free_port, _find_pid_on_port, _kill_pid_tree, _port_in_use, _spawn_detached
@@ -51,6 +52,7 @@ class LauncherWindow:
         self.selected_template: ServerTemplate | None = None
         self.selected_instance_id: str | None = None
         self.selected_group_name: str | None = None
+        self._editing_group = False
         self.instance_dots: dict[str, RoundedCard] = {}
 
         self._last_log_len = -1
@@ -145,6 +147,7 @@ class LauncherWindow:
 
     def _set_tab(self, tab: str) -> None:
         self.active_tab = tab
+        self._editing_group = False
         self.servers_tab_btn.set_selected(tab == "servers", _BG if tab == "servers" else _TABBAR_BG)
         self.instances_tab_btn.set_selected(tab == "instances", _BG if tab == "instances" else _TABBAR_BG)
         self.groups_tab_btn.set_selected(tab == "groups", _BG if tab == "groups" else _TABBAR_BG)
@@ -234,6 +237,7 @@ class LauncherWindow:
 
     def _select_group(self, group_name: str) -> None:
         self.selected_group_name = group_name
+        self._editing_group = False
         self._render_sidebar()
         self._render_group_detail(group_name)
 
@@ -342,6 +346,21 @@ class LauncherWindow:
         if self.active_tab == "groups":
             self._render_group_detail(self.selected_group_name)
 
+    def _start_group_edit(self) -> None:
+        self._editing_group = True
+        self._render_group_detail(self.selected_group_name)
+
+    def _cancel_group_edit(self) -> None:
+        self._editing_group = False
+        self._render_group_detail(self.selected_group_name)
+
+    def _save_group_edit(self, group_name: str, members: list[GroupMember]) -> None:
+        self.groups[group_name] = ServerGroup(group_name, members)
+        _save_groups(self.groups)
+        self._editing_group = False
+        self.status.config(text=f"Saved group {group_name!r} ({len(members)} servers).")
+        self._render_group_detail(group_name)
+
     def _group_start_issues(self, group: ServerGroup) -> list[str]:
         templates = {template.key: template for template in self.templates}
         issues = []
@@ -432,6 +451,14 @@ class LauncherWindow:
             self._render_empty_state("Groups", "Select a group.")
             return
 
+        if self._editing_group:
+            GroupEditor(
+                self.main, group=group, templates=self.templates, presets=self.presets,
+                on_save=lambda members: self._save_group_edit(group.name, members),
+                on_cancel=self._cancel_group_edit,
+            ).pack(fill="both", expand=True)
+            return
+
         header = tk.Frame(self.main, bg=_BG)
         header.pack(fill="x", padx=16, pady=(16, 8))
         tk.Label(header, text=group.name, bg=_BG, fg=_FG, font=("Segoe UI", 14, "bold")).pack(side="left")
@@ -442,6 +469,10 @@ class LauncherWindow:
         RoundedButton(
             header, "Delete group", command=lambda: self._delete_group(group.name),
             bg=_BG, fill=_BG, outline=_DANGER_BORDER, fg=_DANGER,
+        ).pack(side="right", padx=(0, 6))
+        RoundedButton(
+            header, "Edit", command=self._start_group_edit,
+            bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
         ).pack(side="right", padx=(0, 6))
 
         members_scroll = ScrollableFrame(self.main, bg=_BG)

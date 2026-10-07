@@ -42,6 +42,11 @@ Sidebar tabs:
   Stop/Restart, Kill/Restart all, Clear closed, Create group.
 - **Groups**: saved sets of instance recipes (template, port, env, args,
   preset), shown as one card per member; Start all.
+  Edit opens an inline editor: change each member's port, env vars, extra
+  args or preset, remove members, or add a server from the template list.
+  Save is refused for a bad port, a port used twice, or an empty group; Cancel
+  discards the changes. Agent projects keep their entry-agent port, and a
+  member whose template is no longer detected can only be removed.
 
 The sidebar list and the group member list scroll when they overflow; the
 scrollbar appears only then.
@@ -70,6 +75,7 @@ default port, or a port kept via "keep running in background" on close).
 | `src/processes.py` | Port/PID helpers, venv bootstrap, spawn |
 | `src/discovery.py` | `discover_templates()` from run.bat files |
 | `src/agent_files.py` | Read-only agent files of a supervisor project; entry port, start refusal |
+| `src/group_editor.py` | `GroupEditor`: inline edit/add/remove of a group's members |
 | `src/storage.py` | Load/save groups, presets, kept-running handoff |
 | `src/models.py` | `ServerTemplate`, `AgentInfo`, `Preset`, `GroupMember`, `ServerGroup` |
 | `src/widgets.py`, `src/theme.py` | Rounded hover widgets, member card, panel, scroll frame, dark scrollbar; ember colors and radius scale |
