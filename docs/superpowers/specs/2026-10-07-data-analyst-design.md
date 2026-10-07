@@ -79,7 +79,7 @@ Only list, describe, head and counts are slash commands; filter, aggregate and t
 
 - `api/AttachmentsClient.ts`: `table(file)` returns `{table_id, filename, rows, columns}`.
 - `ChatInput.vue`: for `.csv` / `.xlsx`, run the text preview and the table upload together; the chip shows the row and column count. If the table upload fails, the text preview still works and the chip says the full file is not available.
-- `utils/attachments.ts` (`withAttachments` / `splitAttachments`): add the `[table: ...]` line to the question and parse it back when a stored question is reloaded, as with other attachment text.
+- `utils/attachments.ts` (`withAttachments` / `splitAttachments`): `TABLE_FILE` and `tableHeader`; the header line goes inside the attachment block's text, the `[[ATTACHMENT ...]]` marker is unchanged, and reloading a stored question parses it as before.
 - Chip and storage follow the existing UI conventions (radius tokens, `--rail-height`).
 
 ## ai_agent
