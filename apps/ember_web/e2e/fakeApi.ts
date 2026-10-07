@@ -57,7 +57,39 @@ export interface StoredAccount {
   roles: { id: number; name: string }[];
 }
 
+export interface StoredRole {
+  id: number;
+  name: string;
+  description: string | null;
+  is_protected: boolean;
+  permissions: string[];
+  account_count: number;
+}
+
+export interface StoredTemplate {
+  id: number;
+  name: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoredShare {
+  id: number;
+  chat_id: string;
+  title: string;
+  message_count: number;
+  created_at: string;
+  expires_at: string | null;
+}
+
 export interface FakeApi {
+  /** The roles the Admin page lists (an administrator login only). */
+  roles: Map<number, StoredRole>;
+  /** The member's saved prompts. */
+  templates: Map<number, StoredTemplate>;
+  /** The read-only links of the member's chats. */
+  shares: Map<number, StoredShare>;
   /** What the Settings tab saves: the administrator's "require approval for every tool". */
   settings: { forceToolApproval: boolean };
   /** The accounts the Admin page lists (an administrator login only). */
@@ -97,6 +129,7 @@ const ADMIN_ACCOUNTS: StoredAccount[] = [
 const ADMIN_ROLES = [
   { id: 1, name: "Administrator", description: "Everything", is_protected: true, permissions: ["chat.use", "tools.use", "admin.manage"], account_count: 1 },
   { id: 2, name: "Member", description: "Default role", is_protected: false, permissions: ["chat.use"], account_count: 1 },
+  { id: 3, name: "Ops", description: null, is_protected: false, permissions: [], account_count: 0 },
 ];
 const ADMIN_PERMISSIONS = [
   { name: "chat.use", description: "Chat with the agent" },
@@ -130,6 +163,9 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
   const api: FakeApi = {
     settings: { forceToolApproval: false },
     accounts: new Map(),
+    roles: new Map(),
+    templates: new Map(),
+    shares: new Map(),
     unexpected: [],
     turns: [],
     chats: new Map(),
@@ -138,6 +174,7 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
   const account = options.admin ? ADMIN_ACCOUNT : ACCOUNT;
   if (options.admin) {
     for (const a of ADMIN_ACCOUNTS) api.accounts.set(a.id, { ...a });
+    for (const r of ADMIN_ROLES) api.roles.set(r.id, { ...r });
   }
   let loggedIn = false;
 
@@ -175,7 +212,7 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
         unverified: all.filter((a) => !a.email_verified).length,
         disabled: all.filter((a) => !a.is_active).length,
         open_invites: 0,
-        roles: ADMIN_ROLES.length,
+        roles: api.roles.size,
       });
     }
     if (method === "GET" && path === "/api/admin/accounts") {
@@ -190,7 +227,12 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
       api.accounts.delete(id);
       return route.fulfill({ status: 204, body: "" });
     }
-    if (method === "GET" && path === "/api/admin/roles") return json(route, ADMIN_ROLES);
+    if (method === "GET" && path === "/api/admin/roles") return json(route, [...api.roles.values()]);
+    const rolePath = /^\/api\/admin\/roles\/(\d+)$/.exec(path);
+    if (method === "DELETE" && rolePath) {
+      if (!api.roles.delete(Number(rolePath[1]))) return json(route, { detail: "Role not found" }, 404);
+      return route.fulfill({ status: 204, body: "" });
+    }
     if (method === "GET" && path === "/api/admin/permissions") return json(route, ADMIN_PERMISSIONS);
     if (method === "GET" && path === "/api/admin/invites") return json(route, []);
     if (method === "GET" && path === "/api/agent") return json(route, ENTRY_AGENT);
@@ -204,8 +246,24 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
     // An account with tools.use also asks for the slash commands; none are offered here.
     if (method === "GET" && path === "/api/commands") return json(route, []);
 
-    // No saved prompts: the template picker in the chat input stays empty.
-    if (method === "GET" && path === "/api/templates") return json(route, []);
+    // The member's saved prompts: none unless a test adds them.
+    if (method === "GET" && path === "/api/templates") return json(route, [...api.templates.values()]);
+    const templatePath = /^\/api\/templates\/(\d+)$/.exec(path);
+    if (method === "DELETE" && templatePath) {
+      if (!api.templates.delete(Number(templatePath[1]))) return json(route, { detail: "Prompt not found" }, 404);
+      return route.fulfill({ status: 204, body: "" });
+    }
+
+    // Read-only chat links: listing them for one chat, and turning one off.
+    if (method === "GET" && path === "/api/shares") {
+      const chatId = url.searchParams.get("chat_id");
+      return json(route, [...api.shares.values()].filter((s) => !chatId || s.chat_id === chatId));
+    }
+    const sharePath = /^\/api\/shares\/(\d+)$/.exec(path);
+    if (method === "DELETE" && sharePath) {
+      if (!api.shares.delete(Number(sharePath[1]))) return json(route, { detail: "Link not found" }, 404);
+      return route.fulfill({ status: 204, body: "" });
+    }
 
     // No limits are set, so the sidebar shows no usage gauge.
     if (method === "GET" && path === "/api/usage") return json(route, NO_USAGE);
@@ -284,13 +342,15 @@ function chatsIn(api: FakeApi, folderId: number): number {
 }
 
 function startTurn(route: Route, api: FakeApi, id: string) {
-  const body = route.request().postDataJSON() as { question: string; title?: string };
+  const body = route.request().postDataJSON() as { question: string; title?: string; truncate_to?: number };
   api.turns.push(body);
+  // An edited question cuts the chat back to before it (`truncate_to`), as ember_api does.
+  const kept = body.truncate_to === undefined ? [] : (api.chats.get(id)?.messages.slice(0, body.truncate_to) ?? []);
   api.chats.set(id, {
     id,
-    title: body.title ?? body.question,
+    title: body.title ?? api.chats.get(id)?.title ?? body.question,
     agent_id: ENTRY_AGENT.id, // what ember_api reports: the browser sends no agent
-    messages: [{ role: "user", content: body.question }],
+    messages: [...kept, { role: "user", content: body.question }],
     running: true,
   });
   return json(route, { chat: summary(api.chats.get(id)!), sequence: 0 }, 202);
