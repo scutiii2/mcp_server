@@ -148,13 +148,14 @@ gap: 14px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 4px 2px 10px;
+  padding: 2px 10px;
   border-radius: var(--radius-full);
   font-size: 0.85em;
   background: var(--code-bg);
 }
-.admin-panel .chip.fixed {
-  padding-right: 10px;
+/* Only removable chips need less padding beside their close button. */
+.admin-panel .chip:where(:has(> .chip-x)) {
+  padding-right: 4px;
 }
 .admin-panel .chip-x {
   width: 20px;

@@ -91,7 +91,7 @@ defineProps<{ title?: string }>();
 }
 .input:checked + .track .knob {
   background: var(--accent);
-  transform: translateX(calc(var(--w) - var(--h) + 2px));
+  transform: translateX(calc(var(--w) - var(--h)));
 }
 .input:checked + .track .icon {
   right: auto;
