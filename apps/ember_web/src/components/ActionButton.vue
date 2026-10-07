@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /** An outlined action button with an icon, shared by the chat toolbar and the
  * Usage page. The icon takes the accent colour; `quiet` mutes it for the
- * secondary maintenance actions. Below 480px only the icon stays; the label
- * remains for screen readers. */
-export type ActionIcon = "export" | "share" | "summarize" | "clear" | "mail" | "lock" | "close" | "verify";
+ * secondary maintenance actions. Below 480px, or always with `iconOnly`, only
+ * the icon stays; the label remains for screen readers. */
+export type ActionIcon = "export" | "share" | "summarize" | "clear" | "mail" | "lock" | "close" | "verify" | "more";
 
 // 16px viewBox, stroke only, drawn like the arrows in OpenPageButton.
 const PATHS: Record<ActionIcon, string> = {
@@ -15,13 +15,14 @@ const PATHS: Record<ActionIcon, string> = {
   lock: "M4 7V5a4 4 0 0 1 8 0v2M3 7h10v6H3z",
   close: "M4 4l8 8M12 4l-8 8",
   verify: "M3 8.5l3.5 3.5L13 5",
+  more: "M2.5 8h1M7.5 8h1M12.5 8h1",
 };
 
-defineProps<{ icon: ActionIcon; quiet?: boolean }>();
+defineProps<{ icon: ActionIcon; quiet?: boolean; iconOnly?: boolean }>();
 </script>
 
 <template>
-  <button type="button" :class="['action', { quiet }]">
+  <button type="button" :class="['action', { quiet, 'icon-only': iconOnly }]">
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path :d="PATHS[icon]" /></svg>
     <span class="label"><slot /></span>
   </button>
@@ -67,6 +68,16 @@ defineProps<{ icon: ActionIcon; quiet?: boolean }>();
 }
 .quiet .icon {
   stroke: currentColor;
+}
+.icon-only .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.icon-only {
+  padding: 6px;
 }
 @media (max-width: 480px) {
   .label {

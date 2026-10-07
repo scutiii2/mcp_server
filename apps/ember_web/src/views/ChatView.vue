@@ -2,7 +2,7 @@
 import { storeToRefs } from "pinia";
 import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
-import EntryAgentTag from "../components/EntryAgentTag.vue";
+import ChatHeader from "../components/ChatHeader.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ChatSettingsMenu from "../components/ChatSettingsMenu.vue";
 import CommandFormModal from "../components/CommandFormModal.vue";
@@ -10,7 +10,6 @@ import ElapsedTime from "../components/ElapsedTime.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import FolderDialogs from "../components/FolderDialogs.vue";
 import MessageList from "../components/MessageList.vue";
-import ActionButton from "../components/ActionButton.vue";
 import ShareDialog from "../components/ShareDialog.vue";
 import TemplatesModal from "../components/TemplatesModal.vue";
 import { useEntryAgentStore } from "../stores/entryAgent";
@@ -144,8 +143,8 @@ async function onSend(question: string): Promise<void> {
   if (!(await chat.send(question))) input.value?.restore(question);
 }
 
-/** /clear, /compact, /export and /share: the same as the buttons above the
- * composer, with the same confirms and the same rules. False when refused (an
+/** /clear, /compact, /export and /share: the same as the buttons in the chat
+ * header, with the same confirms and the same rules. False when refused (an
  * error says why), so the typed text is given back. */
 function runBuiltin(command: BuiltinCommand): boolean {
   if (!active.value || messages.value.length === 0) {
@@ -334,6 +333,16 @@ useChatShortcuts({
           <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
       </button>
+      <ChatHeader
+        :title="active?.title ?? 'New chat'"
+        :has-messages="!!active && messages.length > 0"
+        :context-percent="contextPercent"
+        :locked="busy || !!working"
+        @export="exportActive"
+        @share="shareOpen = true"
+        @summarize="summarizeActive"
+        @clear="clearActive"
+      />
       <div v-if="saveError || loadError" class="banner" role="alert">
         <template v-if="saveError">
           Couldn't save your chats: {{ saveError }}
@@ -380,7 +389,6 @@ useChatShortcuts({
       />
       <div class="composer-area">
         <div class="toolbar">
-          <EntryAgentTag />
           <ChatSettingsMenu
             :caveman="caveman"
             :ask-before-tools="askBeforeTools"
@@ -394,39 +402,9 @@ useChatShortcuts({
             @update:chime="chat.setChime"
             @clear-allowed="chat.clearAllowedTools()"
           />
-          <span
-            v-if="contextPercent !== null"
-            :class="['context', { high: contextPercent >= 50 }]"
-            title="How full the agent's memory of this chat is. At 60% the chat is summarized automatically."
-          >
-            Context {{ contextPercent }}%
-          </span>
           <span v-if="working" class="working">
             {{ working }}<template v-if="clockStart"> · <ElapsedTime :since="clockStart" /></template>
           </span>
-          <div v-if="active && messages.length" class="chat-actions">
-            <ActionButton icon="export" title="Download this chat as Markdown" @click="exportActive">Export</ActionButton>
-            <ActionButton icon="share" title="Make a read-only link to this chat" @click="shareOpen = true">Share</ActionButton>
-            <span class="divider" aria-hidden="true" />
-            <ActionButton
-              icon="summarize"
-              quiet
-              title="Condense the earlier messages into a summary the agent keeps"
-              :disabled="busy || !!working"
-              @click="summarizeActive"
-            >
-              Summarize
-            </ActionButton>
-            <ActionButton
-              icon="clear"
-              quiet
-              title="Start afresh; earlier messages stay as a log"
-              :disabled="busy || !!working"
-              @click="clearActive"
-            >
-              Clear
-            </ActionButton>
-          </div>
         </div>
         <ChatInput
           ref="input"
@@ -523,23 +501,9 @@ useChatShortcuts({
 .toolbar > .settings-menu {
   margin-right: auto;
 }
-.context,
 .working {
   font-size: 0.8em;
   color: var(--muted);
-}
-.context.high {
-  color: var(--danger);
-}
-.chat-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.chat-actions .divider {
-  width: 1px;
-  height: 18px;
-  background: var(--border);
 }
 .menu {
   display: none;
@@ -623,10 +587,6 @@ useChatShortcuts({
     inset: 0;
     z-index: 10;
     background: rgba(0, 0, 0, 0.35);
-  }
-  /* Room for the floating menu button above the first message. */
-  .messages :deep(.column) {
-    padding-top: 52px;
   }
   .menu {
     display: grid;
