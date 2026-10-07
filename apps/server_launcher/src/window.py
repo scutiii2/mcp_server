@@ -21,7 +21,7 @@ from .theme import (
     _ACCENT, _ACCENT_CONTRAST, _BG, _BORDER, _DANGER, _DANGER_BORDER, _DIM_FG, _ERROR_FG, _FG, _FIELD_BG, _RADIUS_SM, _ROW_BG,
     _ROW_SELECTED, _SEPARATOR, _SIDEBAR_BG, _SIDEBAR_WIDTH, _STATUS_FGS, _STATUS_FILLS, _TABBAR_BG,
 )
-from .widgets import MemberCard, PresetChip, RoundedButton, RoundedCard, ScrollableFrame, make_scrollbar
+from .widgets import MemberCard, PresetChip, RoundedButton, RoundedCard, RoundedPanel, ScrollableFrame, make_scrollbar
 
 
 class LauncherWindow:
@@ -471,7 +471,7 @@ class LauncherWindow:
 
         if template.description:
             tk.Label(self.main, text=template.description, bg=_BG, fg=_DIM_FG, wraplength=560, justify="left").pack(
-                anchor="w", padx=16, pady=(0, 8)
+                anchor="w", padx=16, pady=(0, 12)
             )
 
         field_vars: dict[str, tk.StringVar] = {}
@@ -529,8 +529,9 @@ class LauncherWindow:
                 header, "Add as preset", command=add_preset, bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
             ).pack(side="right", padx=(0, 6))
 
-        body = tk.Frame(self.main, bg=_BG)
-        body.pack(fill="x", padx=16)
+        panel = RoundedPanel(self.main, bg=_BG, fill=_ROW_BG, outline=_BORDER)
+        panel.pack(fill="x", padx=16)
+        body = panel.body
 
         if template.agents:
             self._build_agent_rows(body, template)
@@ -545,7 +546,7 @@ class LauncherWindow:
             hint = _EXTRA_ARGS_HINTS.get(template.key)
             if hint:
                 tk.Label(
-                    body, text=hint, bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8), justify="left", anchor="w",
+                    body, text=hint, bg=_ROW_BG, fg=_DIM_FG, font=("Segoe UI", 9), justify="left", anchor="w",
                 ).pack(fill="x", padx=(18, 0), pady=(2, 0))
 
         def apply_preset(preset: Preset) -> None:
@@ -568,34 +569,36 @@ class LauncherWindow:
         # An agent project's presets (from before agent files) set nothing it uses.
         presets = [] if template.agents else self.presets.get(template.key, [])
         if presets:
-            tk.Label(body, text="Presets", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
+            tk.Label(body, text="Presets", bg=_ROW_BG, fg=_DIM_FG, font=("Segoe UI", 9)).pack(
                 anchor="w", pady=(16, 4)
             )
-            preset_row = tk.Frame(body, bg=_BG)
+            preset_row = tk.Frame(body, bg=_ROW_BG)
             preset_row.pack(fill="x")
             for preset in presets:
                 PresetChip(
                     preset_row, preset.name,
                     on_apply=lambda p=preset: apply_preset(p), on_remove=lambda p=preset: remove_preset(p),
-                    bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
+                    bg=_ROW_BG, fill=_BG, outline=_BORDER, fg=_FG,
                 ).pack(side="left", padx=(0, 8), pady=(6, 2))
 
+        command_panel = RoundedPanel(self.main, bg=_BG, fill=_FIELD_BG, outline=_BORDER, pad=12)
+        command_panel.pack(fill="x", padx=16, pady=(12, 0))
         tk.Label(
-            body, text=f"{template.command_summary}   (cwd: {template.working_dir})",
-            bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8), wraplength=560, justify="left",
-        ).pack(anchor="w", pady=(16, 0))
+            command_panel.body, text=f"{template.command_summary}\ncwd: {template.working_dir}",
+            bg=_FIELD_BG, fg=_DIM_FG, font=("Consolas", 9), wraplength=500, justify="left", anchor="w",
+        ).pack(fill="x")
 
     def _build_agent_rows(self, parent: tk.Frame, template: ServerTemplate) -> None:
         """Read-only: the entry port and one line per agent file. The launcher
         never edits agent files; the supervisor starts every enabled one."""
         entry = next((a for a in template.agents if a.enabled and a.entry), None)
         port_text = f"{template.default_port} (entry agent: {entry.id})" if entry else str(template.default_port)
-        row = tk.Frame(parent, bg=_BG)
+        row = tk.Frame(parent, bg=_ROW_BG)
         row.pack(fill="x", pady=4)
-        tk.Label(row, text="Port", bg=_BG, fg=_DIM_FG, width=18, anchor="w").pack(side="left")
-        tk.Label(row, text=port_text, bg=_BG, fg=_FG, anchor="w").pack(side="left")
+        tk.Label(row, text="Port", bg=_ROW_BG, fg=_DIM_FG, width=14, anchor="w").pack(side="left")
+        tk.Label(row, text=port_text, bg=_ROW_BG, fg=_FG, anchor="w").pack(side="left")
 
-        tk.Label(parent, text="Agents", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
+        tk.Label(parent, text="Agents", bg=_ROW_BG, fg=_DIM_FG, font=("Segoe UI", 9)).pack(
             anchor="w", pady=(16, 4)
         )
         for agent in template.agents:
@@ -607,22 +610,22 @@ class LauncherWindow:
                 off = "  (disabled)" if not agent.enabled else ""
                 text = f"{agent.id}   port {agent.port if agent.port is not None else '?'}   {model}{star}{off}"
                 color = _FG if agent.enabled else _DIM_FG
-            tk.Label(parent, text=text, bg=_BG, fg=color, anchor="w", font=("Consolas", 9)).pack(fill="x")
+            tk.Label(parent, text=text, bg=_ROW_BG, fg=color, anchor="w", font=("Consolas", 9)).pack(fill="x")
         tk.Label(
             parent,
             text=f"To change agents, edit {template.working_dir.name}/agents/<id>.json. "
                  "The supervisor starts every enabled file.",
-            bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8), wraplength=560, justify="left", anchor="w",
+            bg=_ROW_BG, fg=_DIM_FG, font=("Segoe UI", 9), wraplength=560, justify="left", anchor="w",
         ).pack(fill="x", pady=(6, 0))
 
     def _build_field_row(self, parent: tk.Frame, label: str, var: tk.StringVar) -> None:
-        row = tk.Frame(parent, bg=_BG)
+        row = tk.Frame(parent, bg=_ROW_BG)
         row.pack(fill="x", pady=4)
-        tk.Label(row, text=label, bg=_BG, fg=_DIM_FG, width=18, anchor="w").pack(side="left")
+        tk.Label(row, text=label, bg=_ROW_BG, fg=_DIM_FG, width=14, anchor="w").pack(side="left")
         tk.Entry(
             row, textvariable=var, bg=_FIELD_BG, fg=_FG, insertbackground=_FG, relief="flat",
-            highlightthickness=1, highlightbackground=_BORDER, highlightcolor=_BORDER,
-        ).pack(side="left", fill="x", expand=True, ipady=3)
+            highlightthickness=1, highlightbackground=_BORDER, highlightcolor=_ACCENT,
+        ).pack(side="left", fill="x", expand=True, ipady=4)
 
     # ---- instances tab -----------------------------------------------------
 

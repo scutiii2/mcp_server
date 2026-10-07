@@ -481,3 +481,34 @@ class MemberCard(tk.Canvas):
         self.create_text(text_x, h / 2 - 9, text=self.title, fill=self.fg, font=("Segoe UI", 10, "bold"), anchor="w")
         self.create_text(text_x, h / 2 + 10, text=self.detail, fill=self.fg_dim, font=("Segoe UI", 9), anchor="w")
 
+
+
+class RoundedPanel(tk.Canvas):
+    """Card-radius container: put children in `.body`. The canvas draws the
+    rounded surface and sizes itself to the body's requested height, so it
+    packs like a Frame."""
+
+    def __init__(self, parent, *, bg: str, fill: str, outline: str, pad: int = 14) -> None:
+        super().__init__(parent, bg=bg, highlightthickness=0, bd=0, height=2 * pad)
+        self.fill, self.outline, self.pad = fill, outline, pad
+        self.body = tk.Frame(self, bg=fill)
+        self._window = self.create_window(pad, pad, window=self.body, anchor="nw")
+        self.bind("<Configure>", self._on_configure)
+        self.body.bind("<Configure>", self._on_body_configure)
+
+    def _on_body_configure(self, _event=None) -> None:
+        height = self.body.winfo_reqheight() + 2 * self.pad
+        if int(float(self.cget("height"))) != height:
+            self.config(height=height)
+
+    def _on_configure(self, event) -> None:
+        self.itemconfigure(self._window, width=max(1, event.width - 2 * self.pad))
+        self._redraw(event.width, event.height)
+
+    def _redraw(self, w: int, h: int) -> None:
+        self.delete("surface")
+        self.create_polygon(
+            _rounded_rect_points(1, 1, w - 1, h - 1, _RADIUS_LG),
+            smooth=True, fill=self.fill, outline=self.outline, width=1, tags="surface",
+        )
+        self.tag_lower("surface")
