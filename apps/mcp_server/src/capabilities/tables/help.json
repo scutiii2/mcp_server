@@ -6,7 +6,7 @@
     {"name": "tool_tables_head", "purpose": "Show the first rows.", "connection": "In-memory upload", "commands": ["head"]},
     {"name": "tool_tables_filter", "purpose": "Rows that satisfy conditions.", "connection": "In-memory upload", "commands": []},
     {"name": "tool_tables_aggregate", "purpose": "Sum, mean, count, min or max per group.", "connection": "In-memory upload", "commands": []},
-    {"name": "tool_tables_topN", "purpose": "Highest or lowest rows by a column.", "connection": "In-memory upload", "commands": []},
+    {"name": "tool_tables_topN", "purpose": "Highest or lowest rows by a column.", "connection": "In-memory upload", "commands": ["top"]},
     {"name": "tool_tables_valueCounts", "purpose": "How often each value appears.", "connection": "In-memory upload", "commands": ["counts"]}
   ],
   "commands": [
@@ -17,6 +17,12 @@
     {"name": "head", "tool": "tool_tables_head", "params": [
       {"name": "table_id", "required": true, "default": null, "description": "The table's id."},
       {"name": "limit", "required": false, "default": "10", "description": "How many rows (1 to 50)."}
+    ]},
+    {"name": "top", "tool": "tool_tables_topN", "params": [
+      {"name": "table_id", "required": true, "default": null, "description": "The table's id."},
+      {"name": "column", "required": true, "default": null, "description": "A number or date column to rank by."},
+      {"name": "n", "required": false, "default": "10", "description": "How many rows (1 to 50)."},
+      {"name": "largest", "required": false, "default": "true", "description": "true for the highest values, false for the lowest."}
     ]},
     {"name": "counts", "tool": "tool_tables_valueCounts", "params": [
       {"name": "table_id", "required": true, "default": null, "description": "The table's id."},

@@ -25,8 +25,9 @@ A restart, or 30 minutes, drops the table: attach the file again.
 ## Slash commands
 
 `/data list`, `/data describe table_id=...`, `/data head table_id=... limit=10`,
-`/data counts table_id=... column=... limit=20`. The filter, aggregate and top tools take structured arguments, so
-they are for the agent only.
+`/data top table_id=... column=... n=10 largest=true`, `/data counts table_id=... column=... limit=20`. The filter and
+aggregate tools take structured arguments, so they are for the agent only. `/data top` has no `conditions`; the agent
+can still pass them.
 
 ## Limits
 

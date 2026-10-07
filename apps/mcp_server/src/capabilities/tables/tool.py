@@ -97,6 +97,7 @@ def tool_tables_aggregate(
     return domain.aggregate(*_caller(), table_id, measures, group_by, conditions, sort_by, descending, limit)
 
 
+@command(name="top", description="Highest or lowest rows of a column")
 @mcp.tool(meta={"keywords": ["table", "csv", "excel", "xlsx", "spreadsheet", "top", "bottom", "highest", "lowest", "largest", "smallest", "rank", "data"], "display_label": "Ranking table rows"})
 @offload
 def tool_tables_topN(
