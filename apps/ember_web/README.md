@@ -323,6 +323,10 @@ switching a capability, and editing a question that has later messages. ember_ap
 and the test fails if the page asks for anything the fake does not know, so the fake cannot drift
 from the app unnoticed. If the app starts calling a new route on these pages, add it there.
 
+Both suites use a fake `/api`. `SMOKE_TEST.md` is a checklist for trying the
+same screens by hand against the real ember_api (throwaway accounts, real saves
+and deletes).
+
 Other scripts: `npm run build` (type-check + production build into `dist/`),
 `npm run preview` (serves `dist/`, with the same `/api` forwarding).
 
