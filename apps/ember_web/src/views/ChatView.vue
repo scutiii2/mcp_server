@@ -10,6 +10,7 @@ import ElapsedTime from "../components/ElapsedTime.vue";
 import ConversationSidebar from "../components/ConversationSidebar.vue";
 import FolderDialogs from "../components/FolderDialogs.vue";
 import MessageList from "../components/MessageList.vue";
+import ActionButton from "../components/ActionButton.vue";
 import ShareDialog from "../components/ShareDialog.vue";
 import TemplatesModal from "../components/TemplatesModal.vue";
 import { useEntryAgentStore } from "../stores/entryAgent";
@@ -404,19 +405,27 @@ useChatShortcuts({
             {{ working }}<template v-if="clockStart"> · <ElapsedTime :since="clockStart" /></template>
           </span>
           <div v-if="active && messages.length" class="chat-actions">
-            <button type="button" title="Download this chat as Markdown" @click="exportActive">Export</button>
-            <button type="button" title="Make a read-only link to this chat" @click="shareOpen = true">Share</button>
-            <button
-              type="button"
+            <ActionButton icon="export" title="Download this chat as Markdown" @click="exportActive">Export</ActionButton>
+            <ActionButton icon="share" title="Make a read-only link to this chat" @click="shareOpen = true">Share</ActionButton>
+            <span class="divider" aria-hidden="true" />
+            <ActionButton
+              icon="summarize"
+              quiet
               title="Condense the earlier messages into a summary the agent keeps"
               :disabled="busy || !!working"
               @click="summarizeActive"
             >
               Summarize
-            </button>
-            <button type="button" title="Start afresh; earlier messages stay as a log" :disabled="busy || !!working" @click="clearActive">
+            </ActionButton>
+            <ActionButton
+              icon="clear"
+              quiet
+              title="Start afresh; earlier messages stay as a log"
+              :disabled="busy || !!working"
+              @click="clearActive"
+            >
               Clear
-            </button>
+            </ActionButton>
           </div>
         </div>
         <ChatInput
@@ -524,24 +533,13 @@ useChatShortcuts({
 }
 .chat-actions {
   display: flex;
+  align-items: center;
   gap: 6px;
 }
-.chat-actions button {
-  padding: 2px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  font-size: 0.8em;
-  color: var(--muted);
-  background: transparent;
-}
-.chat-actions button:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.chat-actions button:disabled {
-  cursor: default;
-  opacity: 0.5;
+.chat-actions .divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
 }
 .menu {
   display: none;

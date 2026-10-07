@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { usageClient, type AccountUsage, type MyUsage, type UsageGroupBy, type UsageRecordRow } from "../api/UsageClient";
+import ActionButton from "../components/ActionButton.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
 import UsageHeatmap from "../components/UsageHeatmap.vue";
 import { useAuthStore } from "../stores/auth";
@@ -141,9 +142,9 @@ onMounted(() => {
         <h2>Usage</h2>
         <div class="ranges" role="group" aria-label="Period">
           <SegmentedControl v-model="range" :options="RANGE_OPTIONS" />
-          <button type="button" class="export" :disabled="!usage" title="Download this period as a Markdown file" @click="exportReport">
+          <ActionButton icon="export" class="export" :disabled="!usage" title="Download this period as a Markdown file" @click="exportReport">
             Export .md
-          </button>
+          </ActionButton>
         </div>
       </div>
 
@@ -308,19 +309,6 @@ h4 {
   align-items: center;
   gap: 8px;
 }
-.ranges .export {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  font-size: 0.85em;
-  color: var(--muted);
-  background: transparent;
-}
-.ranges .export:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
 .panel {
   margin-top: 12px;
   padding: 14px 16px;
@@ -422,7 +410,7 @@ h4 {
 }
 .day-bar {
   display: block;
-  border-radius: 2px 2px 0 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--accent);
 }
 .day-label {
