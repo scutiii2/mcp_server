@@ -33,6 +33,10 @@ URL, token or key.
 - An empty chat shows a greeting (one of seven, picked once), a tip and, with
   `tools.use`, what you can run ("I can help you with: Files (/files), ...").
 - Copy button on every answer, on your messages and on each code block.
+- Every message shows its time in your own time zone (hover for the full date),
+  and a divider ("Today", "Yesterday" or the date) appears where the day
+  changes. Messages saved before times existed show none. When you have
+  scrolled up and more arrives, a "↓ New messages" pill brings you back down.
 - A usage chip under each answer (`Claude Agent · model · 12.4k tokens · 4.2 s · 3 tools`):
   the first part is the agent that wrote the answer, by its name (answers saved
   before ember_api kept it show the model only). Click it for input/output
@@ -70,6 +74,13 @@ URL, token or key.
   marker, the marker becomes a download card ("⬇ Download name (size)") that opens
   ember_api's `/api/server/download`. A card whose URL is not that route shows as
   unavailable, with no link. The agent's provider and model come from ai_agent, so there are no pickers for them.
+- The input grows with what you type, up to 5 lines, then scrolls. A small
+  paper plane flies off the send button on each send (hidden when the system
+  asks for reduced motion). Four built-in commands run in the browser with no
+  tool and no AI, as the keyboard form of the buttons above the input:
+  `/clear`, `/compact` (Summarize), `/export` and `/share`. Only the bare
+  command counts ("/clear now" is sent as a normal message), the chat needs
+  messages, and `/clear` and `/compact` wait for the current answer to finish.
 - Attach files to a question (paperclip, paste, or drag and drop anywhere on
   the input area): text and code files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
   characters each), which goes into the question; the chat shows each file
@@ -143,15 +154,18 @@ URL, token or key.
   The page also reads each capability's resources and lets admins switch capabilities on/off.
 - Extensions page: mcp_server's extensions (other MCP servers) with their
   status and tools; switch on the ones the agent may use in your chats
-  (remembered per account, shown in the chat header). Admins add and
-  remove extensions. Each tile has one "Open page" button. For an
+  (remembered per account, shown in the chat header). Admins add
+  extensions and remove them (a dialog asks first; its confirm button drops
+  its label into a bin while the request runs). Each tile has one "Open page" button. For an
   extension whose config entry names a `web_url` (for example `pdf_merger`
   and its web app) it opens that web UI in a new tab; only http(s)
   addresses count, and it works without `tools.use` and when the extension
   is not connected. Any other extension (with `tools.use`) opens
   `/extensions/<id>`: its label, description, web app link and its tools
   as rows that open the same run form as the Capabilities page (a failed
-  extension shows its error and no tools).
+  extension shows its error and no tools). On the Capabilities page the tools
+  an extension brings sit in a card of their own per extension (no on/off
+  switch); tools that no capability or extension lists go under "Other tools".
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with
   the oldest age, succeeded, failed), a timeline with one lane per capability
@@ -207,16 +221,28 @@ URL, token or key.
 - Capability pages (`/capabilities/<name>`, needs `tools.use`): a capability
   that ships a `gui/page.json` gets its own page, and its card on the
   Capabilities page shows an "Open page" link while the capability is on.
-  `CapabilityPageView` draws it with a fixed set of widgets (a form per tool
-  built from the tool's own input schema, plain text notes, and the result
-  kinds secret, message, table and fields); nothing in the file runs as code.
+  `CapabilityPageView` draws it with a fixed set of widgets; nothing in the
+  file runs as code, and the browser checks the layout again before drawing it.
+  Sections are text notes, forms and tabs. A form is built from its tool's own
+  input schema, with fields reordered, relabelled or hidden by the page. A tabs
+  section holds 2 to 8 forms shown one at a time (arrows, Home and End move
+  between the tabs; a tab you opened stays alive and keeps its controls and
+  result) and drops each form's card and title. A `live` form has no submit
+  button: it runs when it opens and again 300 ms after a control changes
+  (toggles are chips in a row, a field whose schema asks for `input: "range"` is
+  a slider), and its result offers "Generate again". A result is a secret,
+  message, table or fields list. A secret can be hidden and copied, shown in
+  groups of 2 to 8 characters, and, when it has letters, its digits and symbols
+  are coloured. A `strength` field (bits of entropy) draws a bar labelled Weak
+  (under 45 bits), Fair (under 70), Strong (under 100) or Excellent, full at
+  128 bits.
   The layout comes from mcp_server via ember_api
   (`GET /api/capabilities/{name}/gui`); buttons call the capability's own tools
   through the `/api/mcp/server` proxy. A capability with no page, or one that is
   off, shows "This capability has no page". Results and typed secrets stay in
   component memory only: never in `localStorage`, the URL or ember_api. A result
-  with `refresh_after` shows a countdown and re-runs the tool at zero; it stops
-  when you leave the page and while the tab is hidden.
+  with `refresh_after` shows a countdown ring ("New code in N s") and re-runs
+  the tool at zero; it stops when you leave the page and while the tab is hidden.
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
   `admin.manage`, `watchers.view`, `logs.*`, `traffic.view`, `config.issues.view`);
   ember_api enforces the same rules on every call.
@@ -270,7 +296,11 @@ command replies, agent tag, download cards), usage chip (agent breakdown), usage
 chat input (paste, drop, Up and Down recall, `#` prompts), prompt picker and
 dialog, sidebar search and select mode, the shortcut, theme and chat-address
 composables, clipboard, markdown code blocks, usage (stats, heatmap, export), welcome and attachment helpers and
-the prompt helpers.
+the prompt helpers. Also covered: the Settings page and its search, the
+confirmation dialog (including the typed phrase), the capability page widgets,
+and `src/radiusScale.test.ts`, which fails when a `.vue` or `.css` file sets a
+border radius with a literal length or percentage instead of a `--radius-*`
+token (five 2 px chart marks are allow-listed).
 
 `turnStream` (the event stream: pieces of events, ping, reconnect with backoff, resume, give up, abort) is covered too.
 
@@ -281,9 +311,15 @@ npm run test:e2e
 ```
 
 Playwright runs the built app in the Chrome installed on this machine (no browser download) on port
-5199 (`EMBER_E2E_PORT`). One test logs in (a wrong password first), checks the header says "Talking to Test Agent" and
+5199 (`EMBER_E2E_PORT`). Fourteen tests in four files (`chat`, `settings`, `delete`, `confirm`).
+The first logs in (a wrong password first), checks the header says "Talking to Test Agent" and
 there is no agent picker, asks a question, sees the live "Test Agent → Calculator" line while a
-delegated agent works, reads the streamed answer, then reloads. ember_api is not needed: `e2e/fakeApi.ts` answers every `/api` call,
+delegated agent works, reads the streamed answer, then reloads. Two more cover chat folders and
+dragging chats. The rest cover the Settings page (search, the modified badge and reset, tool
+approval through the unsaved bar) and every confirmation: deleting a chat, all chats (by typing
+`delete all`), an account and a role (by typing the name), a saved prompt, turning a share link off,
+switching a capability, and editing a question that has later messages. ember_api is not needed:
+`e2e/fakeApi.ts` answers every `/api` call,
 and the test fails if the page asks for anything the fake does not know, so the fake cannot drift
 from the app unnoticed. If the app starts calling a new route on these pages, add it there.
 
