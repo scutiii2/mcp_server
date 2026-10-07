@@ -259,6 +259,11 @@ h2 {
   letter-spacing: 0.04em;
   color: var(--muted);
 }
+/* The tool approval card is not inside its group (it stays mounted while a
+   search hides it, so an unsaved draft survives); close the gap to its heading. */
+.admin-card {
+  margin-top: -16px;
+}
 .card {
   padding: 4px 16px 6px;
   border: 1px solid var(--border);
