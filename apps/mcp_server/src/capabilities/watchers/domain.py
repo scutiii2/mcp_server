@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import re
 import secrets
+import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -27,6 +29,8 @@ MAX_FINISHED = 20
 MAX_APPS_LISTED = 20
 
 _KEY = re.compile(r"w-[0-9a-f]{8}")
+# Held across count, prune, key choice, first record and start, so concurrent creates cannot slip past the limits.
+_CREATE_LOCK = threading.Lock()
 
 
 def create_watcher(
@@ -46,18 +50,30 @@ def create_watcher(
     spec = build_spec(kind, target, expect, contains, label, owner, email.strip())
     if spec.kind == "app":
         _require_known_app(spec, list_apps)
-    records = _records(state_dir, factory)
-    running = [r for r in records if r.phase == WatcherPhase.RUNNING]
-    if sum(1 for r in running if r.detail.get("owner") == owner) >= MAX_PER_OWNER:
-        raise ValueError(f"You already have {MAX_PER_OWNER} running watchers. Cancel one first, or wait for one to finish.")
-    if len(running) >= MAX_TOTAL:
-        raise ValueError("The watcher service is busy. Try again later.")
-    _prune_finished(state_dir, owner, records, factory)
+    with _CREATE_LOCK:
+        records = _records(state_dir, factory)
+        running = [r for r in records if r.phase == WatcherPhase.RUNNING]
+        if sum(1 for r in running if r.detail.get("owner") == owner) >= MAX_PER_OWNER:
+            raise ValueError(f"You already have {MAX_PER_OWNER} running watchers. Cancel one first, or wait for one to finish.")
+        if len(running) >= MAX_TOTAL:
+            raise ValueError("The watcher service is busy. Try again later.")
+        _prune_finished(state_dir, owner, records, factory)
 
-    key = f"w-{secrets.token_hex(4)}"
-    if spec.email:
-        watcher_recipients.set_recipients(state_dir, factory.__name__, key, [spec.email])
-    factory(key=key, state_dir=state_dir, spec=spec).start()
+        taken = {r.key for r in records}
+        key = f"w-{secrets.token_hex(4)}"
+        while key in taken:
+            key = f"w-{secrets.token_hex(4)}"
+        if spec.email:
+            watcher_recipients.set_recipients(state_dir, factory.__name__, key, [spec.email])
+        try:
+            watcher = factory(key=key, state_dir=state_dir, spec=spec)
+            # The thread writes its first record only once it runs; write it now so the limits and the list see this watcher at once.
+            watcher._save_record(WatcherPhase.RUNNING, {})
+            watcher.start()
+        except Exception:
+            factory.cancel(state_dir, key)
+            watcher_recipients.set_recipients(state_dir, factory.__name__, key, [])
+            raise
     return CreateResult(key=key, message=_summary(spec, key))
 
 
@@ -110,11 +126,21 @@ def _records(state_dir: Path, factory: type[UserWatcher]) -> list[WatcherRecord]
         return []
     records: list[WatcherRecord] = []
     for path in sorted(folder.glob("*.json")):
-        try:
-            records.append(WatcherRecord.model_validate_json(path.read_text(encoding="utf-8")))
-        except Exception:  # noqa: BLE001 - one corrupt record must not break the others
-            continue
+        record = _read_record(path)
+        if record is None:
+            # The base class writes records in place, so a read can land mid-write: look once more before skipping.
+            time.sleep(0.02)
+            record = _read_record(path)
+        if record is not None:
+            records.append(record)
     return records
+
+
+def _read_record(path: Path) -> WatcherRecord | None:
+    try:
+        return WatcherRecord.model_validate_json(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - one corrupt record must not break the others
+        return None
 
 
 def _prune_finished(state_dir: Path, owner: str, records: list[WatcherRecord], factory: type[UserWatcher]) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -146,3 +147,67 @@ def test_cancel_of_a_foreign_unknown_or_malformed_key_gives_the_same_answer(tmp_
     assert [row.key for row in domain.list_watchers(tmp_path, "alice", factory=NoStart).watchers] == [key]
     with pytest.raises(ValueError, match="not identified"):
         domain.cancel_watcher(tmp_path, "", key, factory=NoStart)
+
+
+class Silent(UserWatcher):
+    """Like the real start: no record is written and no thread runs."""
+
+    def start(self) -> None:
+        pass
+
+
+class Exploding(UserWatcher):
+    def start(self) -> None:
+        raise RuntimeError("cannot start")
+
+
+def create_with(factory, tmp_path, owner="alice"):
+    return domain.create_watcher(tmp_path, owner, f"{owner}@x.io", "url", "https://example.com/", factory=factory)
+
+
+def test_the_first_record_exists_as_soon_as_create_returns_so_limits_hold(tmp_path):
+    key = create_with(Silent, tmp_path).key
+
+    assert [row.key for row in domain.list_watchers(tmp_path, "alice", factory=Silent).watchers] == [key]
+    for _ in range(domain.MAX_PER_OWNER - 1):
+        create_with(Silent, tmp_path)
+    with pytest.raises(ValueError, match="5 running watchers"):
+        create_with(Silent, tmp_path)
+
+
+def test_concurrent_creates_cannot_exceed_the_per_owner_limit(tmp_path):
+    outcomes = []
+
+    def worker():
+        try:
+            create_with(Silent, tmp_path)
+            outcomes.append("ok")
+        except ValueError as error:
+            outcomes.append(str(error))
+
+    threads = [threading.Thread(target=worker) for _ in range(12)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert outcomes.count("ok") == domain.MAX_PER_OWNER
+    assert all("5 running watchers" in o for o in outcomes if o != "ok")
+
+
+def test_a_failed_start_leaves_no_record_or_recipients(tmp_path):
+    with pytest.raises(RuntimeError, match="cannot start"):
+        create_with(Exploding, tmp_path)
+
+    assert domain.list_watchers(tmp_path, "alice", factory=Exploding).watchers == []
+    folder = tmp_path / "Exploding"
+    assert not list(folder.rglob("*.json")) or all(
+        watcher_recipients.get_recipients(tmp_path, "Exploding", p.stem) == [] for p in folder.rglob("w-*.json")
+    )
+
+
+def test_a_permanently_corrupt_record_is_skipped(tmp_path):
+    finished(tmp_path, "w-00000001", "alice", "2026-01-01T00:00:00+00:00")
+    (tmp_path / "NoStart" / "instances" / "w-00000002.json").write_text("{not json", encoding="utf-8")
+
+    assert [row.key for row in domain.list_watchers(tmp_path, "alice", factory=NoStart).watchers] == ["w-00000001"]
