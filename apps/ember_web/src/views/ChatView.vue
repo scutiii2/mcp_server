@@ -388,24 +388,6 @@ useChatShortcuts({
         @edit="chat.editAndResend"
       />
       <div class="composer-area">
-        <div class="toolbar">
-          <ChatSettingsMenu
-            :caveman="caveman"
-            :ask-before-tools="askBeforeTools"
-            :force-tool-approval="forceToolApproval"
-            :chime="chime"
-            :allowed-count="allowedCount"
-            :enabled-extensions="enabledExtensions"
-            :attention="pendingApprovals.length > 0"
-            @update:caveman="chat.setCaveman"
-            @update:ask-before-tools="chat.setAskBeforeTools"
-            @update:chime="chat.setChime"
-            @clear-allowed="chat.clearAllowedTools()"
-          />
-          <span v-if="working" class="working">
-            {{ working }}<template v-if="clockStart"> · <ElapsedTime :since="clockStart" /></template>
-          </span>
-        </div>
         <ChatInput
           ref="input"
           :busy="busy"
@@ -420,7 +402,29 @@ useChatShortcuts({
           @send="onSend"
           @stop="chat.stop"
           @form="openCommandForm"
-        />
+        >
+          <template #tools>
+            <ChatSettingsMenu
+              :caveman="caveman"
+              :ask-before-tools="askBeforeTools"
+              :force-tool-approval="forceToolApproval"
+              :chime="chime"
+              :allowed-count="allowedCount"
+              :enabled-extensions="enabledExtensions"
+              :attention="pendingApprovals.length > 0"
+              @update:caveman="chat.setCaveman"
+              @update:ask-before-tools="chat.setAskBeforeTools"
+              @update:chime="chat.setChime"
+              @clear-allowed="chat.clearAllowedTools()"
+            />
+            <span v-if="askBeforeTools || forceToolApproval" class="status-chip" title="The agent asks before each tool it runs">
+              Ask before tools: on
+            </span>
+            <span v-if="working" class="working">
+              {{ working }}<template v-if="clockStart"> · <ElapsedTime :since="clockStart" /></template>
+            </span>
+          </template>
+        </ChatInput>
         <CommandFormModal :command="formCommand" :schema="formSchema" @submit="runCommandForm" @close="closeCommandForm" />
         <TemplatesModal :open="templatesOpen" :draft="templatesDraft" @close="templatesOpen = false" />
         <ShareDialog :open="shareOpen" :chat-id="activeId" @close="shareOpen = false" />
@@ -486,20 +490,12 @@ useChatShortcuts({
 .composer-area {
   flex-shrink: 0;
 }
-/* Lines up with ChatInput's centered 820px column. */
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-/* The settings gear sits right of the agent tag; status and chat actions are pushed to the far right. */
-.toolbar > .settings-menu {
-  margin-right: auto;
+.status-chip {
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.75em;
+  color: var(--muted);
+  background: var(--code-bg);
 }
 .working {
   font-size: 0.8em;

@@ -652,3 +652,27 @@ describe("saved prompts", () => {
     expect(valueOf(wrapper)).toBe("first\nsecond");
   });
 });
+
+describe("the tools row", () => {
+  it("holds attach, saved prompts, the page's own controls and Send under the text box", () => {
+    const wrapper = mount(ChatInput, {
+      props: { busy: false },
+      slots: { tools: '<span class="page-control">Settings</span>' },
+      attachTo: document.body,
+    });
+
+    const row = wrapper.get(".box .tools");
+    expect(row.element.previousElementSibling).toBe(wrapper.get("textarea").element);
+    expect(row.find(".attach").exists()).toBe(true);
+    expect(row.find(".picker").exists()).toBe(true);
+    expect(row.find(".page-control").text()).toBe("Settings");
+    expect(row.find("button.send").exists()).toBe(true);
+  });
+
+  it("swaps Send for Stop in the same row while an answer is being written", () => {
+    const wrapper = mountInput({ busy: true });
+
+    expect(wrapper.find(".tools button.stop").exists()).toBe(true);
+    expect(wrapper.find("button.send").exists()).toBe(false);
+  });
+});
