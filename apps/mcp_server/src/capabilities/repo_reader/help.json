@@ -1,0 +1,37 @@
+{
+  "summary": "Read git history, diffs and code of the workspace projects. Read-only; secret files are never shown.",
+  "tools": [
+    {"name": "tool_repo_listRepos", "purpose": "List the git repos in the workspace.", "connection": "Local git", "commands": ["list"]},
+    {"name": "tool_repo_log", "purpose": "Newest commits with changed files.", "connection": "Local git", "commands": ["log"]},
+    {"name": "tool_repo_diff", "purpose": "Changes between two points or the working tree.", "connection": "Local git", "commands": ["diff"]},
+    {"name": "tool_repo_grep", "purpose": "Find plain text in tracked files.", "connection": "Local git", "commands": ["grep"]}
+  ],
+  "commands": [
+    {"name": "list", "tool": "tool_repo_listRepos", "params": []},
+    {"name": "log", "tool": "tool_repo_log", "params": [
+      {"name": "repo", "required": true, "default": null, "description": "Repo path relative to the workspace."},
+      {"name": "max_count", "required": false, "default": "20", "description": "How many commits (1 to 50)."},
+      {"name": "path", "required": false, "default": "", "description": "Limit to a file or folder."},
+      {"name": "author", "required": false, "default": "", "description": "Only commits whose author contains this text."},
+      {"name": "since", "required": false, "default": "", "description": "Only commits after this date or age."}
+    ]},
+    {"name": "diff", "tool": "tool_repo_diff", "params": [
+      {"name": "repo", "required": true, "default": null, "description": "Repo path relative to the workspace."},
+      {"name": "base", "required": false, "default": "HEAD", "description": "Branch, tag or commit to compare from."},
+      {"name": "target", "required": false, "default": "", "description": "Branch, tag or commit to compare to; empty is the working tree."},
+      {"name": "path", "required": false, "default": "", "description": "Limit to a file or folder."},
+      {"name": "stat_only", "required": false, "default": "true", "description": "True lists changed files; false shows the full diff."}
+    ]},
+    {"name": "grep", "tool": "tool_repo_grep", "params": [
+      {"name": "repo", "required": true, "default": null, "description": "Repo path relative to the workspace."},
+      {"name": "pattern", "required": true, "default": null, "description": "Plain text to find, case-insensitive."},
+      {"name": "path", "required": false, "default": "", "description": "Limit to a file or folder."},
+      {"name": "max_matches", "required": false, "default": "50", "description": "Most matches per file (1 to 100)."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_repo_listRepos", "ai_only_step": false, "explanation": "Find the exact repo path."},
+    {"sequence": "2", "tool": "tool_repo_log", "ai_only_step": false, "explanation": "See what changed recently, or search with grep."},
+    {"sequence": "3", "tool": "tool_repo_diff", "ai_only_step": false, "explanation": "Look at one change in detail."}
+  ]
+}

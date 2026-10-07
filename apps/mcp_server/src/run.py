@@ -62,6 +62,26 @@ from src.capabilities import generator  # noqa: E402
 with capability_registry.capturing(mcp, generator.META.id, label=generator.META.label):
     from src.capabilities.generator import tool as generator_tool  # noqa: E402,F401
 
+from src.capabilities import web_research  # noqa: E402
+
+with capability_registry.capturing(mcp, web_research.META.id, label=web_research.META.label):
+    from src.capabilities.web_research import tool as web_research_tool  # noqa: E402,F401
+
+from src.capabilities import usage_report  # noqa: E402
+
+with capability_registry.capturing(mcp, usage_report.META.id, label=usage_report.META.label):
+    from src.capabilities.usage_report import tool as usage_report_tool  # noqa: E402,F401
+
+from src.capabilities import vault  # noqa: E402
+
+with capability_registry.capturing(mcp, vault.META.id, label=vault.META.label):
+    from src.capabilities.vault import tool as vault_tool  # noqa: E402,F401
+
+from src.capabilities import repo_reader  # noqa: E402
+
+with capability_registry.capturing(mcp, repo_reader.META.id, label=repo_reader.META.label):
+    from src.capabilities.repo_reader import tool as repo_reader_tool  # noqa: E402,F401
+
 for _name in capability_registry.names():
     if not capability_enabled(_capabilities_config, _name):
         capability_registry.set_enabled(mcp, _name, False)

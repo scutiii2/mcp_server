@@ -1,0 +1,15 @@
+{
+  "summary": "Add up token usage per agent, model or day from ai_agent's usage log.",
+  "tools": [
+    {"name": "tool_usage_summary", "purpose": "Token usage per agent, model or day.", "connection": "Local usage log", "commands": ["summary"]}
+  ],
+  "commands": [
+    {"name": "summary", "tool": "tool_usage_summary", "params": [
+      {"name": "days", "required": false, "default": "7", "description": "How many days back, today included (1 to 90)."},
+      {"name": "group_by", "required": false, "default": "agent", "description": "agent, model or day."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_usage_summary", "ai_only_step": false, "explanation": "Pick the period and what to group by."}
+  ]
+}

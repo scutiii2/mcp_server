@@ -74,6 +74,17 @@ class Settings:
     # that expects a real server-side path gets one.
     # Relative to CWD by default, same convention as every path above.
     uploads_dir: Path = Path(_env("MCP_UPLOADS_DIR", ".data/uploads"))
+    # Tavily API key for the web_research capability. Blank until set in .env;
+    # the tools then fail with a message naming the variable.
+    tavily_api_key: str = _env("TAVILY_API_KEY", "")
+
+    # Folders the read-only capabilities look at, relative to apps/mcp_server/.
+    # usage_report: ai_agent's usage log. vault: the Obsidian vault.
+    # repo_reader: the folder that holds the project repos.
+    usage_dir: Path = Path(_env("MCP_USAGE_DIR", "../ai_agent/data/usage"))
+    vault_dir: Path = Path(_env("MCP_VAULT_DIR", "../../../../Brain"))
+    workspace_dir: Path = Path(_env("MCP_WORKSPACE_DIR", "../../../.."))
+
     @property
     def email_config_path(self) -> Path:
         return self.configs_dir / "config_email.json"

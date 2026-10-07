@@ -1,0 +1,21 @@
+{
+  "summary": "Search the web and read a page's text through Tavily. Needs TAVILY_API_KEY in .env.",
+  "tools": [
+    {"name": "tool_web_search", "purpose": "Search the web; returns titles, addresses and snippets.", "connection": "Tavily API", "commands": ["search"]},
+    {"name": "tool_web_readPage", "purpose": "Read the text of one web page.", "connection": "Tavily API", "commands": ["read"]}
+  ],
+  "commands": [
+    {"name": "search", "tool": "tool_web_search", "params": [
+      {"name": "query", "required": true, "default": null, "description": "What to search for, as a plain search query."},
+      {"name": "max_results", "required": false, "default": "5", "description": "How many results to return (1 to 10)."},
+      {"name": "topic", "required": false, "default": "general", "description": "news for recent events, else general."}
+    ]},
+    {"name": "read", "tool": "tool_web_readPage", "params": [
+      {"name": "url", "required": true, "default": null, "description": "The full http:// or https:// address."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_web_search", "ai_only_step": false, "explanation": "Find candidate pages."},
+    {"sequence": "2", "tool": "tool_web_readPage", "ai_only_step": false, "explanation": "Read the best one or two pages."}
+  ]
+}

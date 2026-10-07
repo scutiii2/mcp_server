@@ -1,4 +1,20 @@
 {
-  "server": { "enabled": true },
-  "gen": { "enabled": true }
+  "server": {
+    "enabled": true
+  },
+  "gen": {
+    "enabled": true
+  },
+  "web": {
+    "enabled": true
+  },
+  "usage": {
+    "enabled": true
+  },
+  "vault": {
+    "enabled": true
+  },
+  "repo": {
+    "enabled": true
+  }
 }

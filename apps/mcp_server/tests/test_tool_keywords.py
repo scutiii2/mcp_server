@@ -12,6 +12,10 @@ import pytest
 
 from src.capabilities.server_manager import tool as server_manager_tool  # noqa: F401
 from src.capabilities.generator import tool as generator_tool  # noqa: F401
+from src.capabilities.web_research import tool as web_research_tool  # noqa: F401
+from src.capabilities.usage_report import tool as usage_report_tool  # noqa: F401
+from src.capabilities.vault import tool as vault_tool  # noqa: F401
+from src.capabilities.repo_reader import tool as repo_reader_tool  # noqa: F401
 from src.server import mcp
 
 

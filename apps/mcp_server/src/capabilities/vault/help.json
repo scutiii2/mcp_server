@@ -1,0 +1,25 @@
+{
+  "summary": "Search, list and read notes in the Obsidian vault. Read-only.",
+  "tools": [
+    {"name": "tool_vault_search", "purpose": "Search note titles and text.", "connection": "Local vault folder", "commands": ["search"]},
+    {"name": "tool_vault_listNotes", "purpose": "List the notes in a folder.", "connection": "Local vault folder", "commands": ["list"]},
+    {"name": "tool_vault_readNote", "purpose": "Read one note.", "connection": "Local vault folder", "commands": ["read"]}
+  ],
+  "commands": [
+    {"name": "search", "tool": "tool_vault_search", "params": [
+      {"name": "query", "required": true, "default": null, "description": "Text to look for, case-insensitive."},
+      {"name": "folder", "required": false, "default": "", "description": "A vault folder; empty means the whole vault."},
+      {"name": "max_results", "required": false, "default": "15", "description": "How many matches to return (1 to 50)."}
+    ]},
+    {"name": "list", "tool": "tool_vault_listNotes", "params": [
+      {"name": "folder", "required": false, "default": "", "description": "A vault folder; empty means the whole vault."}
+    ]},
+    {"name": "read", "tool": "tool_vault_readNote", "params": [
+      {"name": "path", "required": true, "default": null, "description": "The note's path inside the vault."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_vault_search", "ai_only_step": false, "explanation": "Find notes by text, or list a folder."},
+    {"sequence": "2", "tool": "tool_vault_readNote", "ai_only_step": false, "explanation": "Read the notes that matter."}
+  ]
+}
