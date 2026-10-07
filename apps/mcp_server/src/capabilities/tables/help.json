@@ -1,0 +1,32 @@
+{
+  "summary": "Read-only questions about a CSV or Excel file attached in chat: describe, filter, group, rank. Nothing is stored beyond 30 minutes.",
+  "tools": [
+    {"name": "tool_tables_listTables", "purpose": "List your attached tables.", "connection": "In-memory upload", "commands": ["list"]},
+    {"name": "tool_tables_describe", "purpose": "Describe a table's columns.", "connection": "In-memory upload", "commands": ["describe"]},
+    {"name": "tool_tables_head", "purpose": "Show the first rows.", "connection": "In-memory upload", "commands": ["head"]},
+    {"name": "tool_tables_filter", "purpose": "Rows that satisfy conditions.", "connection": "In-memory upload", "commands": []},
+    {"name": "tool_tables_aggregate", "purpose": "Sum, mean, count, min or max per group.", "connection": "In-memory upload", "commands": []},
+    {"name": "tool_tables_topN", "purpose": "Highest or lowest rows by a column.", "connection": "In-memory upload", "commands": []},
+    {"name": "tool_tables_valueCounts", "purpose": "How often each value appears.", "connection": "In-memory upload", "commands": ["counts"]}
+  ],
+  "commands": [
+    {"name": "list", "tool": "tool_tables_listTables", "params": []},
+    {"name": "describe", "tool": "tool_tables_describe", "params": [
+      {"name": "table_id", "required": true, "default": null, "description": "The table's id, from /data list."}
+    ]},
+    {"name": "head", "tool": "tool_tables_head", "params": [
+      {"name": "table_id", "required": true, "default": null, "description": "The table's id."},
+      {"name": "limit", "required": false, "default": "10", "description": "How many rows (1 to 50)."}
+    ]},
+    {"name": "counts", "tool": "tool_tables_valueCounts", "params": [
+      {"name": "table_id", "required": true, "default": null, "description": "The table's id."},
+      {"name": "column", "required": true, "default": null, "description": "The column to count."},
+      {"name": "limit", "required": false, "default": "20", "description": "How many values (1 to 100)."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_tables_listTables", "ai_only_step": false, "explanation": "Find the attached table's id."},
+    {"sequence": "2", "tool": "tool_tables_describe", "ai_only_step": false, "explanation": "Learn the exact column names and types."},
+    {"sequence": "3", "tool": "tool_tables_aggregate", "ai_only_step": true, "explanation": "Ask the real question: totals, averages, top N."}
+  ]
+}

@@ -19,5 +19,8 @@
   },
   "repo": {
     "enabled": true
+  },
+  "data": {
+    "enabled": true
   }
 }
