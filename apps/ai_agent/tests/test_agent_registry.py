@@ -274,15 +274,24 @@ def test_roster_and_specialists_survive_a_corrupt_registry_file(monkeypatch, tmp
 
 def test_definitions_round_trip_and_include_disabled_agents():
     specs = [
-        AgentSpec(id="ember", label="Ember", port=9100, llm=LlmSpec(provider="anthropic"), entry=True, orchestrator=True, focus="General."),
+        AgentSpec(
+            id="ember", label="Ember", port=9100, entry=True, orchestrator=True, focus="General.",
+            llm=LlmSpec(provider="anthropic", gateway="openrouter", model="claude-sonnet-5-5"),
+        ),
         AgentSpec(id="off", label="Off", port=9101, llm=LlmSpec(provider="anthropic"), enabled=False),
     ]
 
     agent_registry.write_definitions(specs)
 
     assert agent_registry.read_definitions() == [
-        {"id": "ember", "label": "Ember", "focus": "General.", "entry": True, "orchestrator": True, "enabled": True},
-        {"id": "off", "label": "Off", "focus": "", "entry": False, "orchestrator": False, "enabled": False},
+        {
+            "id": "ember", "label": "Ember", "focus": "General.", "entry": True, "orchestrator": True, "enabled": True,
+            "llm": {"provider": "anthropic", "gateway": "openrouter", "model": "claude-sonnet-5-5"},
+        },
+        {
+            "id": "off", "label": "Off", "focus": "", "entry": False, "orchestrator": False, "enabled": False,
+            "llm": {"provider": "anthropic", "gateway": None, "model": None},
+        },
     ]
     # The registry itself is untouched: definitions live in their own file.
     assert agent_registry.all_agents() == []

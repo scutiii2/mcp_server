@@ -167,8 +167,9 @@ URL, token or key.
   extension shows its error and no tools). `/extensions` and `/extensions/<id>` redirect to this page. Without `tools.use` only the extensions are listed. Tools that
   no capability or extension lists go under "Other tools".
 - Agents page (`chat.use`): a card per agent from `GET /api/agents` - name, id,
-  Entry / Orchestrator badges, what it is for, and a status (running, offline,
-  disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
+  Entry / Orchestrator badges, what it is for, its provider / gateway / model
+  (a value the agent file does not set is left out), and a status (running,
+  offline, disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
   always go to the entry agent, there is no per-agent chat.
 - Watchers page (`watchers.view`): every capability's background watchers,
   refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with

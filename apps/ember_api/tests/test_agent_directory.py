@@ -224,6 +224,21 @@ def test_listing_without_definitions_is_just_the_running_agents(tmp_path: Path) 
     assert [(r.id, r.status) for r in rows] == [("main", "running")]
 
 
+def test_listing_carries_provider_gateway_and_model_for_running_and_stopped_agents(tmp_path: Path) -> None:
+    llm = {"provider": "anthropic", "gateway": "openrouter", "model": "claude-sonnet-5-5"}
+    d = with_definitions(
+        tmp_path,
+        [agent("main"), agent("bare")],
+        [defn("main", llm=llm), defn("bare"), defn("down", llm={"provider": "openai", "gateway": None, "model": ""})],
+    )
+
+    rows = {r.id: r for r in asyncio.run(d.listing())}
+
+    assert (rows["main"].provider, rows["main"].gateway, rows["main"].model) == ("anthropic", "openrouter", "claude-sonnet-5-5")
+    assert (rows["down"].provider, rows["down"].gateway, rows["down"].model) == ("openai", None, None)
+    assert (rows["bare"].provider, rows["bare"].gateway, rows["bare"].model) == (None, None, None)
+
+
 def test_listing_skips_incomplete_or_broken_definitions(tmp_path: Path) -> None:
     d = with_definitions(tmp_path, [], [{"id": "no-label"}, "junk", defn("ok", focus=5)])
 

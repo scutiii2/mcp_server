@@ -14,11 +14,14 @@ const agent = (id: string, extra: Partial<AgentListing> = {}): AgentListing => (
   orchestrator: false,
   focus: `${id} does things.`,
   status: "running",
+  provider: null,
+  gateway: null,
+  model: null,
   ...extra,
 });
 
 const AGENTS = [
-  agent("ember", { entry: true, orchestrator: true }),
+  agent("ember", { entry: true, orchestrator: true, provider: "anthropic", gateway: "openrouter", model: "claude-sonnet-5-5" }),
   agent("reviewer"),
   agent("pdf", { status: "offline" }),
   agent("old", { status: "disabled", focus: "" }),
@@ -74,6 +77,27 @@ describe("AgentsView", () => {
     const wrapper = await mountView();
 
     expect(cards(wrapper)[3].find(".focus").text()).toBe("No description.");
+  });
+
+  it("shows provider, gateway and model, and hides the ones an agent does not set", async () => {
+    list.mockResolvedValue([
+      AGENTS[0],
+      agent("partial", { provider: "openai" }),
+      agent("bare"),
+    ]);
+    const wrapper = await mountView();
+
+    const found = cards(wrapper);
+    expect(found[0].findAll("dt").map((t) => t.text())).toEqual(["Provider", "Gateway", "Model"]);
+    expect(found[0].findAll("dd").map((t) => t.text())).toEqual(["anthropic", "openrouter", "claude-sonnet-5-5"]);
+    expect(found[1].findAll("dt").map((t) => t.text())).toEqual(["Provider"]);
+    expect(found[2].find(".llm").exists()).toBe(false);
+  });
+
+  it("shows the same rows in the map's details panel", async () => {
+    const wrapper = await mountView(false);
+
+    expect(wrapper.find(".details .llm").text()).toContain("claude-sonnet-5-5");
   });
 
   it("summarises the statuses and leaves out the empty ones", async () => {

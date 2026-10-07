@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { AgentListing, AgentStatus } from "../api/AgentsClient";
+import AgentLlm from "./AgentLlm.vue";
 
-/** One agent on the Agents page: name, id, role badges, what it is for, and
- * whether it is running. The status is an icon and a word, never colour alone. */
+/** One agent on the Agents page: name, id, role badges, what it is for, its
+ * provider / gateway / model, and whether it is running. The status is an icon and a word, never colour alone. */
 defineProps<{ agent: AgentListing }>();
 
 const STATUS_TEXT: Record<AgentStatus, string> = { running: "Running", offline: "Offline", disabled: "Disabled" };
@@ -21,6 +22,7 @@ const STATUS_ICON: Record<AgentStatus, string> = { running: "●", offline: "○
       <span v-if="agent.orchestrator" class="tag">Orchestrator</span>
     </div>
     <p class="focus">{{ agent.focus || "No description." }}</p>
+    <AgentLlm :agent="agent" />
   </article>
 </template>
 

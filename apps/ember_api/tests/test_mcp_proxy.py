@@ -58,7 +58,10 @@ def test_agent_list_has_no_urls_and_flags_the_entry_agent(client: TestClient) ->
     agents = client.get("/api/agents").json()
 
     assert [a["id"] for a in agents] == [a["id"] for a in AGENTS]
-    assert all(set(a) == {"id", "label", "entry", "orchestrator", "focus", "status"} for a in agents)
+    assert all(
+        set(a) == {"id", "label", "entry", "orchestrator", "focus", "status", "provider", "gateway", "model"}
+        for a in agents
+    )
     assert {a["status"] for a in agents} == {"running"}
     assert [a["id"] for a in agents if a["entry"]] == [AGENTS[0]["id"]]
 

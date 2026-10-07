@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { AgentListing, AgentStatus } from "../api/AgentsClient";
+import AgentLlm from "./AgentLlm.vue";
 
 /** Agents as a left-to-right node map. Edges are inferred from the
  * entry / orchestrator flags, not real delegation data: entry agents feed the
@@ -134,6 +135,7 @@ const touches = (e: { from: string; to: string }) => e.from === selected.value?.
       <span v-if="selected.orchestrator" class="tag">Orchestrator</span>
     </div>
     <p class="d-focus">{{ selected.focus || "No description." }}</p>
+    <AgentLlm :agent="selected" />
     <dl class="d-links">
       <div>
         <dt>Receives work from</dt>

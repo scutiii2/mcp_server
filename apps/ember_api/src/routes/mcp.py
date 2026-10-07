@@ -59,6 +59,9 @@ class AgentListItem(AgentOut):
     orchestrator: bool
     focus: str
     status: Literal["running", "offline", "disabled"]
+    provider: str | None
+    gateway: str | None
+    model: str | None
 
 
 @router.get("/agents")
@@ -71,7 +74,8 @@ async def list_agents(
     no agent is running and none is defined."""
     return [
         AgentListItem(
-            id=a.id, label=a.label, entry=a.entry, orchestrator=a.orchestrator, focus=a.focus, status=a.status
+            id=a.id, label=a.label, entry=a.entry, orchestrator=a.orchestrator, focus=a.focus, status=a.status,
+            provider=a.provider, gateway=a.gateway, model=a.model,
         )
         for a in await directory.listing()
     ]

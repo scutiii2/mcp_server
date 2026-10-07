@@ -216,11 +216,13 @@ def write_definitions(specs: Iterable[Any]) -> None:
     running, so this is how readers (ember_api's Agents page) tell an agent
     that is stopped or switched off from one that does not exist. Written
     once at supervisor start - an agent's file is read only then. Silently
-    gives up on any OSError, like register()."""
+    gives up on any OSError, like register(). `llm` (provider, gateway,
+    model; the last two may be null) is what the Agents page shows."""
     records = [
         {
             "id": spec.id, "label": spec.label, "focus": spec.focus,
             "entry": spec.entry, "orchestrator": spec.orchestrator, "enabled": spec.enabled,
+            "llm": {"provider": spec.llm.provider, "gateway": spec.llm.gateway, "model": spec.llm.model},
         }
         for spec in specs
     ]

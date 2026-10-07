@@ -63,6 +63,11 @@ class AgentDefinition:
     orchestrator: bool = False
     focus: str = ""
     enabled: bool = True
+    # What the agent's LLM is, from its agent file; None when not set or an
+    # older ai_agent did not publish it.
+    provider: str | None = None
+    gateway: str | None = None
+    model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,13 @@ class AgentListing:
     orchestrator: bool
     focus: str
     status: str  # "running" | "offline" (defined, not running) | "disabled"
+    provider: str | None = None
+    gateway: str | None = None
+    model: str | None = None
+
+
+def _text_or_none(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def parse_definitions(raw: Any) -> list[AgentDefinition]:
@@ -83,6 +95,7 @@ def parse_definitions(raw: Any) -> list[AgentDefinition]:
     for item in raw.get("defined", []) if isinstance(raw, dict) else []:
         if isinstance(item, dict) and all(isinstance(item.get(k), str) for k in ("id", "label")):
             focus = item.get("focus")
+            llm = item.get("llm") if isinstance(item.get("llm"), dict) else {}
             found.append(
                 AgentDefinition(
                     id=item["id"],
@@ -91,6 +104,9 @@ def parse_definitions(raw: Any) -> list[AgentDefinition]:
                     orchestrator=item.get("orchestrator") is True,
                     focus=focus if isinstance(focus, str) else "",
                     enabled=item.get("enabled") is not False,
+                    provider=_text_or_none(llm.get("provider")),
+                    gateway=_text_or_none(llm.get("gateway")),
+                    model=_text_or_none(llm.get("model")),
                 )
             )
     return found
@@ -217,13 +233,19 @@ class AgentDirectory:
         running = await self.all()
         entry = await self.entry()
         defined = await self._source.definitions()
-        rows = {
-            a.id: AgentListing(a.id, a.label, entry is not None and a.id == entry.id, a.orchestrator, a.focus, "running")
-            for a in running
-        }
+        llm_of = {d.id: d for d in defined}  # provider/gateway/model live in the definitions only
+        rows = {}
+        for a in running:
+            d = llm_of.get(a.id)
+            rows[a.id] = AgentListing(
+                a.id, a.label, entry is not None and a.id == entry.id, a.orchestrator, a.focus, "running",
+                d.provider if d else None, d.gateway if d else None, d.model if d else None,
+            )
         for d in defined:
             if d.id not in rows:
                 status = "offline" if d.enabled else "disabled"
-                rows[d.id] = AgentListing(d.id, d.label, d.entry, d.orchestrator, d.focus, status)
+                rows[d.id] = AgentListing(
+                    d.id, d.label, d.entry, d.orchestrator, d.focus, status, d.provider, d.gateway, d.model
+                )
         order = {"running": 0, "offline": 1, "disabled": 2}
         return sorted(rows.values(), key=lambda r: (order[r.status], not r.entry))

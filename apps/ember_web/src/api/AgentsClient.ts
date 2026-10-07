@@ -13,6 +13,10 @@ export interface AgentListing {
   orchestrator: boolean;
   focus: string;
   status: AgentStatus;
+  /** From the agent's `llm` block; null when the agent file does not set it. */
+  provider: string | null;
+  gateway: string | null;
+  model: string | null;
 }
 
 export const agentsClient = {
