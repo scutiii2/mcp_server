@@ -5,6 +5,7 @@ import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { extensionsClient, EXTENSION_SEPARATOR, type ExtensionInfo } from "../api/ExtensionsClient";
 import AddExtensionModal from "../components/AddExtensionModal.vue";
 import BaseModal from "../components/BaseModal.vue";
+import OpenPageButton from "../components/OpenPageButton.vue";
 import "../components/infoPage.css";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useAuthStore } from "../stores/auth";
@@ -130,8 +131,7 @@ onMounted(load);
           </button>
           <footer v-if="pageLink(e) || canChat || isAdmin">
             <span class="links">
-              <a v-if="pageLink(e)?.external" :href="pageLink(e)!.href" target="_blank" rel="noopener noreferrer">Open page</a>
-              <RouterLink v-else-if="pageLink(e)" :to="pageLink(e)!.href">Open page</RouterLink>
+              <OpenPageButton v-if="pageLink(e)" :to="pageLink(e)!.href" :external="pageLink(e)!.external" />
             </span>
             <ToggleSwitch
               v-if="canChat"
