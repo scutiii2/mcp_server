@@ -12,6 +12,7 @@ from __future__ import annotations
 from src.core.catalog import catalog
 
 CONTEXT_WINDOWS: dict[str, int] = {
+    "convaiinnovations/laya": 512,
     "claude": 200_000,
     "gpt-5": 400_000,
     "gpt-4.1": 1_000_000,

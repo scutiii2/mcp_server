@@ -78,7 +78,7 @@ watch(
 
 <template>
   <div v-if="kinds.length" class="head">
-    <SegmentedControl v-model="tabChoice" :options="tabOptions" aria-label="Log" />
+    <SegmentedControl v-model="tabChoice" :options="tabOptions" label="Log" aria-label="Log" />
     <label v-if="tab" class="actor">
       Entries for
       <select v-model="actors[tab]">
@@ -109,9 +109,9 @@ watch(
 
 <style scoped>
 .head {
+  align-items: last baseline;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 10px 16px;
   margin: 12px 0 14px;
 }

@@ -66,7 +66,7 @@ const ACCOUNT: Account = {
   permissions: ["tools.use"],
 };
 
-async function show(options: { admin?: boolean; query?: string; permissions?: string[] } = {}) {
+async function show(options: { admin?: boolean; query?: string; permissions?: string[]; attach?: boolean } = {}) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().account = {
@@ -81,7 +81,10 @@ async function show(options: { admin?: boolean; query?: string; permissions?: st
     ],
   });
   await router.push(options.query ? `/capabilities?q=${options.query}` : "/capabilities");
-  const wrapper = mount(CapabilitiesView, { global: { plugins: [pinia, router] } });
+  const wrapper = mount(CapabilitiesView, {
+    attachTo: options.attach ? document.body : undefined,
+    global: { plugins: [pinia, router] },
+  });
   await flushPromises();
   return wrapper;
 }
@@ -421,17 +424,25 @@ describe("CapabilitiesView extension cards", () => {
 
   it("gives each extension a switch for your chats that applies at once", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
-    const w = await show({ permissions: WITH_CHAT });
+    const w = await show({ permissions: WITH_CHAT, attach: true });
     const chat = useChatStore();
     const box = () => w.findAll("input[type=checkbox]").at(-1)!.element as HTMLInputElement;
 
     expect(box().checked).toBe(false);
-    await w.findAll("input[type=checkbox]").at(-1)!.trigger("click");
+    box().click();
+    await flushPromises();
 
     expect(chat.enabledExtensions).toEqual(["pdf2"]);
     expect(box().checked).toBe(true);
     expect(w.findComponent(ConfirmModal).exists()).toBe(false);
     expect(w.findAll(".scope").map((s) => s.text())).toContain("You");
+
+    box().click();
+    await flushPromises();
+
+    expect(chat.enabledExtensions).toEqual([]);
+    expect(box().checked).toBe(false);
+    w.unmount();
   });
 
   it("does not give an extension a switch without chat.use", async () => {
@@ -550,10 +561,12 @@ describe("built-in switches for your own chats", () => {
   });
 
   it("switches one off for you at once, without asking, and says so", async () => {
-    const w = await show({ permissions: WITH_CHAT });
+    const w = await show({ permissions: WITH_CHAT, attach: true });
     const chat = useChatStore();
 
-    await boxes(w)[0]!.trigger("click");
+    // Native activation includes checkbox changes and canceled-click rollback.
+    (boxes(w)[0]!.element as HTMLInputElement).click();
+    await flushPromises();
 
     expect(chat.disabledCapabilities).toEqual(["pdf"]);
     expect(mocks.setCapability).not.toHaveBeenCalled();
@@ -564,9 +577,12 @@ describe("built-in switches for your own chats", () => {
     await head(w, "PDF files").trigger("click");
     expect(w.text()).toContain("Switched off in your chats");
 
-    await boxes(w)[0]!.trigger("click");
+    (boxes(w)[0]!.element as HTMLInputElement).click();
+    await flushPromises();
     expect(chat.disabledCapabilities).toEqual([]);
     expect(head(w, "PDF files").text()).toContain("2 tools");
+    expect((boxes(w)[0]!.element as HTMLInputElement).checked).toBe(true);
+    w.unmount();
   });
 
   it("keeps the switch of a capability that is off for everyone off, and locked", async () => {

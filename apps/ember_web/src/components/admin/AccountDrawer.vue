@@ -75,12 +75,17 @@ function onAddRole(event: Event): void {
         <span class="avatar" aria-hidden="true">{{ account.username.slice(0, 2).toUpperCase() }}</span>
         <div class="who">
           <b class="name">{{ account.username }}</b>
-          <span class="muted small-text">{{ account.email }}</span>
+          <span v-if="isSelf" class="self-label">Your account</span>
         </div>
       </div>
-      <button type="button" class="x" aria-label="Close" @click="emit('close')">×</button>
+      <button type="button" class="x" aria-label="Close" @click="emit('close')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
     </header>
-    <p class="muted small-text">Joined {{ formatUtc(account.created_at) }}</p>
+    <div class="profile-meta">
+      <p class="account-email">{{ account.email }}</p>
+      <p class="joined"><span>Joined</span><time>{{ formatUtc(account.created_at) }}</time></p>
+    </div>
 
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="notice" class="notice">{{ notice }}</p>
@@ -96,7 +101,7 @@ function onAddRole(event: Event): void {
       </div>
     </form>
 
-    <section>
+    <section class="roles-section">
       <h4>Roles</h4>
       <div class="chips">
         <span v-for="r in account.roles" :key="r.id" class="chip" :class="{ fixed: locked }">
@@ -113,11 +118,11 @@ function onAddRole(event: Event): void {
           </button>
         </span>
         <span v-if="account.roles.length === 0" class="muted">No roles</span>
-        <select v-if="!locked && missingRoles.length" aria-label="Role to add" :disabled="busy" @change="onAddRole">
-          <option value="">+ Add role</option>
-          <option v-for="r in missingRoles" :key="r.id" :value="r.id">{{ r.name }}</option>
-        </select>
       </div>
+      <select v-if="!locked && missingRoles.length" class="add-role" aria-label="Role to add" :disabled="busy" @change="onAddRole">
+        <option value="">+ Add role</option>
+        <option v-for="r in missingRoles" :key="r.id" :value="r.id">{{ r.name }}</option>
+      </select>
     </section>
 
     <section v-if="canDisable">
@@ -132,7 +137,10 @@ function onAddRole(event: Event): void {
     </section>
 
     <div v-if="!locked" class="buttons">
-      <button v-if="!editing" type="button" class="small" :disabled="busy" @click="startEdit">Edit details</button>
+      <button v-if="!editing" type="button" class="small" :disabled="busy" @click="startEdit">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16 3a2.1 2.1 0 0 1 3 3L7 18l-4 1 1-4z" /></svg>
+        Edit details
+      </button>
       <button v-if="!account.email_verified" type="button" class="small" :disabled="busy" @click="emit('sendVerification')">
         Send verification
       </button>
@@ -150,8 +158,8 @@ function onAddRole(event: Event): void {
 .drawer {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px;
+  gap: 0;
+  padding: 20px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -159,12 +167,12 @@ function onAddRole(event: Event): void {
 .identity {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 .avatar {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
@@ -175,7 +183,8 @@ function onAddRole(event: Event): void {
   font-weight: 600;
 }
 .drawer > section:not(.danger-zone) {
-  padding-top: 16px;
+  padding-top: 18px;
+  margin-top: 18px;
   border-top: 1px solid var(--border);
 }
 header {
@@ -189,6 +198,37 @@ header {
   flex-direction: column;
   min-width: 0;
 }
+.name {
+  font-size: 1.05em;
+  font-weight: 600;
+}
+.self-label {
+  color: var(--muted);
+  font-size: 0.75em;
+  margin-top: 2px;
+}
+.profile-meta {
+  margin-top: 14px;
+}
+.account-email {
+  margin: 0;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+.joined {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.75em;
+}
+.joined > span {
+  font-size: 0.9em;
+}
+.drawer > .error, .drawer > .notice, .drawer > .small-text {
+  margin: 14px 0 0;
+}
 .name,
 .who span {
   overflow-wrap: anywhere;
@@ -198,23 +238,30 @@ header {
   font-size: 0.85em;
 }
 h4 {
-  margin: 0 0 6px;
-  font-size: 0.8em;
-  font-weight: 500;
-  color: var(--muted);
+  margin: 0 0 12px;
+  font-size: 0.85em;
+  font-weight: 600;
 }
 .x {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
   border: none;
+  border-radius: var(--radius-md);
   background: none;
   cursor: pointer;
-  font-size: 1.4em;
-  line-height: 1;
   color: var(--muted);
 }
+.x svg { width: 16px; height: 16px; }
+.x:hover { color: var(--text); background: var(--bg); }
 .edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 18px;
 }
 .row {
   display: flex;
@@ -224,9 +271,42 @@ h4 {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: 20px;
 }
-.chips {
+.drawer .buttons > button.small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.buttons svg { width: 15px; height: 15px; }
+.drawer .chips {
   margin-top: 0;
+  gap: 8px;
+}
+.drawer .chip {
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.drawer .chip.fixed { padding-right: 10px; }
+.drawer select.add-role {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 8px 10px;
+  font-size: 0.85em;
+  cursor: pointer;
 }
 @media (max-width: 767px) {
   .drawer {

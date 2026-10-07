@@ -16,6 +16,10 @@ Originally adapted from the retired chat_app's LLM layer.
   `AI_AGENT_PROVIDER` for an instance started without one).
 - **`openai_provider.py`** - OpenAI Responses API provider, pinned when
   the provider is `openai`.
+- **`laya_provider.py`** - local Triage Assistant with fixed category, severity
+  and investigation decisions. No tools, text generation, cloud fallback or
+  API key. Inference runs in a worker thread; weights load before registration.
+  Imports only when `laya` is the selected provider.
 - **`llm_options.py`** - one agent's `llm` settings (temperature,
   reasoning effort, max tokens, tool rounds) as request kwargs; a
   parameter the API rejects with a 400 is dropped for the rest of the

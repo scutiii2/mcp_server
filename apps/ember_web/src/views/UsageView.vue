@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { usageClient, type AccountUsage, type MyUsage, type UsageGroupBy, type UsageRecordRow } from "../api/UsageClient";
 import ActionButton from "../components/ActionButton.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
+import LineChart from "../components/analytics/LineChart.vue";
 import UsageHeatmap from "../components/UsageHeatmap.vue";
 import { useAuthStore } from "../stores/auth";
 import { downloadText, exportFileName } from "../utils/chatExport";
@@ -99,11 +100,21 @@ function tokens(n: number): string {
 // Each group's share of the grouped total, for its bar.
 const groupTotal = computed(() => Math.max(1, usage.value?.report.groups.reduce((sum, g) => sum + g.tokens, 0) ?? 0));
 
-const maxDaily = computed(() => Math.max(1, ...(usage.value?.report.daily.map((d) => d.tokens) ?? [])));
-
-function dayLabel(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-}
+// Include inactive UTC days so gaps in daily usage read as zero, not adjacent dates.
+const activitySeries = computed(() => {
+  const report = usage.value?.report;
+  if (!report || report.daily.length === 0) return [];
+  const daily = new Map(report.daily.map((day) => [day.date, day.tokens]));
+  const first = new Date(`${report.since.slice(0, 10)}T00:00:00Z`).getTime();
+  const last = new Date(`${today}T00:00:00Z`).getTime();
+  const series: { bucket: string; values: { tokens: number } }[] = [];
+  for (let day = first; day <= last; day += 86_400_000) {
+    const date = new Date(day).toISOString().slice(0, 10);
+    series.push({ bucket: `${date}T00:00:00`, values: { tokens: daily.get(date) ?? 0 } });
+  }
+  return series;
+});
+const ACTIVITY_LINES = [{ id: "tokens", label: "Tokens", color: "var(--accent)" }];
 
 async function loadYear(): Promise<void> {
   try {
@@ -141,7 +152,7 @@ onMounted(() => {
       <div class="head">
         <h2>Usage</h2>
         <div class="ranges" role="group" aria-label="Period">
-          <SegmentedControl v-model="range" :options="RANGE_OPTIONS" />
+          <SegmentedControl v-model="range" :options="RANGE_OPTIONS" label="Period" aria-label="Period" />
           <ActionButton icon="export" class="export" :disabled="!usage" title="Download this period as a Markdown file" @click="exportReport">
             Export .md
           </ActionButton>
@@ -182,12 +193,7 @@ onMounted(() => {
         <div class="panel activity">
           <div class="panel-head"><h3>Activity</h3><span class="muted small">Per day, UTC</span></div>
           <p v-if="usage.report.daily.length === 0" class="muted">No usage in this period.</p>
-          <div v-else class="daily">
-            <div v-for="d in usage.report.daily" :key="d.date" class="day" :title="`${dayLabel(d.date)}: ${tokens(d.tokens)} tokens`">
-              <span class="day-bar" :style="{ height: `${Math.max(4, (d.tokens / maxDaily) * 100)}%` }" />
-              <span class="day-label">{{ dayLabel(d.date) }}</span>
-            </div>
-          </div>
+          <LineChart v-else :series="activitySeries" :lines="ACTIVITY_LINES" bucket="day" label="Token usage" fill :loading="loading" />
 
           <template v-if="year">
             <h4>Last 12 months</h4>
@@ -206,7 +212,7 @@ onMounted(() => {
         <div class="panel breakdown">
           <div class="panel-head">
             <h3>Breakdown</h3>
-            <SegmentedControl v-model="groupBy" :options="GROUP_OPTIONS" aria-label="Group usage by" />
+            <SegmentedControl v-model="groupBy" :options="GROUP_OPTIONS" label="Group by" aria-label="Group usage by" />
           </div>
           <p v-if="usage.report.groups.length === 0" class="muted">None.</p>
           <table v-else class="groups">
@@ -282,9 +288,9 @@ onMounted(() => {
   padding: 24px 16px;
 }
 .head {
+  align-items: last baseline;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
@@ -304,10 +310,21 @@ h4 {
   color: var(--muted);
 }
 .ranges {
+  align-items: last baseline;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  gap: 12px;
+}
+.ranges > .segmented-control {
+  flex: 1 1 auto;
+}
+.ranges > .export {
+  flex: 0 0 auto;
+}
+@media (max-width: 767px) {
+  .ranges { width: 100%; flex-wrap: nowrap; }
 }
 .panel {
   margin-top: 12px;
@@ -317,15 +334,28 @@ h4 {
   background: var(--surface);
 }
 .panel-head {
+  align-items: last baseline;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
   margin-bottom: 12px;
 }
 .panel-head .small {
   margin: 0;
+}
+.activity :deep(.chart button.chip) {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.8em;
+}
+.activity :deep(.chart button.chip:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .limit-grid {
   display: grid;
@@ -391,39 +421,6 @@ h4 {
 .insight strong {
   font-weight: 600;
   color: var(--text);
-}
-.daily {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 110px;
-  padding-bottom: 20px;
-  overflow-x: auto;
-}
-.day {
-  position: relative;
-  display: flex;
-  flex: 1 0 14px;
-  flex-direction: column;
-  justify-content: flex-end;
-  height: 100%;
-}
-.day-bar {
-  display: block;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  background: var(--accent);
-}
-.day-label {
-  position: absolute;
-  bottom: -18px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.65em;
-  white-space: nowrap;
-  color: var(--muted);
-}
-.day:not(:first-child):not(:last-child) .day-label {
-  display: none;
 }
 table {
   width: 100%;

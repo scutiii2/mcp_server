@@ -11,6 +11,8 @@ import asyncio
 import json
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
+import pytest
+
 from src import server
 from src.llm.base_provider import ChatCancelled, ChatResult, ToolCallRecord
 
@@ -206,6 +208,41 @@ def test_main_registers_with_the_spec_flags(monkeypatch):
     assert args[0] == server._AGENT_ID
     assert kwargs == {"entry": server.SPEC.entry, "orchestrator": server.SPEC.orchestrator, "focus": server.SPEC.focus}
     assert calls["deregister"] == server._AGENT_ID
+
+
+def test_laya_main_warms_before_registration_without_an_upstream_connection(monkeypatch):
+    from src.llm import laya_provider
+
+    calls = []
+    monkeypatch.setattr(server.agent_config, "PROVIDER_ID", "laya")
+    monkeypatch.setattr(laya_provider, "prepare", lambda: calls.append("warm"))
+
+    def forbidden():
+        raise AssertionError("Laya must not connect to tools")
+
+    monkeypatch.setattr(server.mcp_upstream, "connect", forbidden)
+    monkeypatch.setattr(server.mcp_upstream, "warn_unmatched_tool_globs", forbidden)
+    monkeypatch.setattr(server.mcp_upstream, "close", forbidden)
+    monkeypatch.setattr(server.agent_registry, "register", lambda *a, **k: calls.append("register"))
+    monkeypatch.setattr(server.agent_registry, "deregister", lambda *a: calls.append("deregister"))
+    monkeypatch.setattr(server.uvicorn, "run", lambda *a, **k: calls.append("serve"))
+    server.main()
+    assert calls == ["warm", "register", "serve", "deregister"]
+
+
+def test_laya_load_failure_does_not_register_an_unavailable_agent(monkeypatch):
+    from src.llm import laya_provider
+
+    monkeypatch.setattr(server.agent_config, "PROVIDER_ID", "laya")
+
+    def fail():
+        raise RuntimeError("weights could not load")
+
+    monkeypatch.setattr(laya_provider, "prepare", fail)
+    with patch.object(server.agent_registry, "register") as register:
+        with pytest.raises(RuntimeError, match="weights could not load"):
+            server.main()
+        register.assert_not_called()
 
 
 def test_registry_route_serves_the_registry_as_json():

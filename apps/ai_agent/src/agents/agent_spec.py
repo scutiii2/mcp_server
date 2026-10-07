@@ -25,11 +25,11 @@ from typing import Any, Iterable
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 AGENTS_DIR = PROJECT_ROOT / "agents"
 
-PROVIDERS = ("anthropic", "openai")
+PROVIDERS = ("anthropic", "openai", "laya")
 REASONING_EFFORTS = ("off", "low", "medium", "high")
 # The gateway each provider uses when a file names none - pinned in the env
 # so .env's AI_AGENT_GATEWAY cannot silently re-point the agent.
-_DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt"}
+_DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt", "laya": "local"}
 # Same mapping as agent_registry.agent_id_for (kept here so this module
 # stays import-free): the legacy ids predate the "claude" -> "anthropic" rename.
 _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
@@ -223,6 +223,15 @@ def load_file(path: Path) -> AgentSpec:
     tools = ToolScope(allow=check.globs(tools_data, "allow"), deny=check.globs(tools_data, "deny"))
 
     orchestrator = check.boolean(data, "orchestrator", False)
+    if provider == "laya":
+        if orchestrator or check.boolean(data, "entry", False):
+            raise check.fail("llm.provider", "Laya triage must be a specialist, not an entry agent or orchestrator")
+        if llm.gateway not in (None, "local"):
+            raise check.fail("llm.gateway", "Laya triage runs locally; cloud gateways are not supported")
+        if llm.model not in (None, "convaiinnovations/laya"):
+            raise check.fail("llm.model", "Laya triage only supports convaiinnovations/laya")
+        if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds")) or effort != "off":
+            raise check.fail("llm", "Laya triage does not accept generation or tool-loop settings")
     if "routing" in data and not orchestrator:
         raise check.fail("routing", "is only allowed when orchestrator is true")
     routing_data = check.section(data, "routing")

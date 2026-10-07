@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { agentsClient, type AgentListing } from "../api/AgentsClient";
 import AgentCard from "../components/AgentCard.vue";
-import AgentMap from "../components/AgentMap.vue";
 import "../components/infoPage.css";
 import { errorMessage } from "../utils/errors";
 
@@ -16,7 +15,6 @@ const agents = ref<AgentListing[]>([]);
 const loading = ref(true);
 const refreshing = ref(false);
 const error = ref("");
-const showMap = ref(true); // map (default) or the card grid
 
 const summary = computed(() => {
   const count = (status: AgentListing["status"]) => agents.value.filter((a) => a.status === status).length;
@@ -58,7 +56,6 @@ onUnmounted(() => {
           <p class="muted intro">The AI agents behind ember. New chats go to the entry agent, which hands work to the others.</p>
         </div>
         <div class="actions">
-          <button type="button" class="chip" @click="showMap = !showMap">{{ showMap ? "Cards" : "Map" }}</button>
           <button type="button" class="chip" :disabled="refreshing" @click="refresh">Refresh</button>
         </div>
       </div>
@@ -68,8 +65,7 @@ onUnmounted(() => {
       <p v-else-if="agents.length === 0 && !error" class="muted">No agents are running or defined.</p>
       <template v-else-if="agents.length">
         <p class="muted summary">{{ summary }}</p>
-        <AgentMap v-if="showMap" :agents="agents" />
-        <div v-else class="grid">
+        <div class="grid">
           <AgentCard v-for="agent in agents" :key="agent.id" :agent="agent" />
         </div>
       </template>

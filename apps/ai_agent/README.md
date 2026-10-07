@@ -65,7 +65,7 @@ typos are caught at startup.
 | `port` | yes | none | Port the child listens on. Unique across enabled files. |
 | `enabled` | no | `true` | `false`: not spawned, not registered. |
 | `entry` | no | `false` | The agent ember sends new turns to (Phase 2). Exactly one enabled file must set it. |
-| `llm.provider` | yes | none | `anthropic` or `openai` (keys of `_PROVIDERS` in `agent_config.py`). |
+| `llm.provider` | yes | none | `anthropic`, `openai`, or `laya` (local triage only). |
 | `llm.gateway` | no | provider default | A gateway key from `configs/config_gateways.json` under that provider. |
 | `llm.model` | no | gateway's `model` | Model id. |
 | `llm.temperature` | no | unset (provider default) | Float 0-2. |
@@ -156,6 +156,43 @@ page can show an agent that is stopped or disabled. On the ai_agent machine:
 
 Then set `agents_registry_url` in `apps/ember_api/configs/config_app.json` (see
 `apps/ember_api/configs/README.md`).
+
+## Laya-only Triage Assistant
+
+`agents/triage-assistant.json.template` defines a local specialist that uses
+only Laya's typed decisions. Copy it to `agents/triage-assistant.json`, choose
+an unused port (the template uses 9110), and install the existing optional
+dependency with `pip install -e ".[laya]"`. Restart the supervisor to include
+it. It appears in Ember's Agents cards and the orchestrator's specialist
+roster, with provider `laya`, gateway `local`, and model
+`convaiinnovations/laya`. No cloud model or API key is used for its inference.
+
+Ember can pass a short issue description or log excerpt to it. It returns
+fixed text containing category (database, network, authentication,
+configuration, unknown), severity (informational, warning, critical), whether
+investigation is needed, model confidence, and an uncertainty flag. It never
+fetches logs, calls tools, delegates, executes actions, or generates prose.
+History is deliberately excluded: the caller must supply the issue's evidence
+in the current question. `interpret`/summarization is unsupported.
+
+The English checkpoint has a 512-token limit including question heads. Inputs
+over 4,000 characters are rejected before inference; any input Laya reports as
+truncated is rejected instead of returning a classification from partial
+evidence. The model loads before the agent registers as running; the first
+load may download weights. Loading/inference errors propagate without an LLM
+fallback. Cancellation is checked before and after the local inference call.
+
+The initial confidence threshold is 0.70 (`MIN_CONFIDENCE` in
+`src/llm/laya_provider.py`). A category of unknown or any decision below this
+threshold is marked uncertain. This is an experimental review gate, **not a
+calibrated accuracy claim**; classifications are advisory even above it.
+Run `python -m scripts.check_laya_triage` for ten real-model smoke examples,
+then evaluate representative local inputs before relying on the decisions.
+
+Usage reports the model's actual input-token work and zero generated output
+tokens. The fixed response text is formatted by Python. Laya is restricted to
+a specialist with the pinned checkpoint and local gateway; generation
+settings, an entry role, or an orchestrator role are rejected at startup.
 
 ## Orchestrator and routing
 

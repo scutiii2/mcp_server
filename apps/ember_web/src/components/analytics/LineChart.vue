@@ -20,6 +20,8 @@ const props = withDefaults(
     emptyText?: string;
     /** Refetching: keep the last render, dimmed. */
     loading?: boolean;
+    /** Add a faint area under each line without changing its values. */
+    fill?: boolean;
   }>(),
   { format: formatCount, emptyText: "Nothing in this range." },
 );
@@ -60,6 +62,7 @@ const drawn = computed(() =>
       line,
       // The SVG is a 0-100 square stretched over the plot; y is flipped (0 is the top).
       paths: runs.filter((r) => r.length > 1).map((r) => r.map((p) => `${p.x.toFixed(2)},${(100 - yShare(p.value)).toFixed(2)}`).join(" ")),
+      areas: runs.filter((r) => r.length > 1).map((r) => `${r[0]!.x.toFixed(2)},100 ${r.map((p) => `${p.x.toFixed(2)},${(100 - yShare(p.value)).toFixed(2)}`).join(" ")} ${r[r.length - 1]!.x.toFixed(2)},100`),
       dots: runs.filter((r) => r.length === 1).map((r) => r[0]!),
     };
   }),
@@ -109,6 +112,7 @@ const shown = (value: number | null) => (value === null ? "–" : props.format(v
           <span v-if="active !== null" class="hover" :style="{ left: `${(active / series.length) * 100}%`, width: `${100 / series.length}%` }" />
           <svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             <template v-for="item in drawn" :key="item.line.id">
+              <polygon v-for="(points, p) in fill ? item.areas : []" :key="`area-${p}`" :points="points" :fill="item.line.color" fill-opacity="0.06" stroke="none" />
               <polyline
                 v-for="(points, p) in item.paths"
                 :key="p"

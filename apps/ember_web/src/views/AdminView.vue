@@ -65,7 +65,7 @@ function select(id: TabId): void {
         <StatTile label="Open invites" :value="summary?.open_invites ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L9 15M22 2l-7 20-6-7-7-6z" /></svg></StatTile>
       </div>
       <p v-if="summaryError" class="error">Couldn't load the overview: {{ summaryError }}</p>
-      <SegmentedControl class="tabs" :model-value="tab" :options="TAB_OPTIONS" aria-label="Admin section" @update:model-value="select" />
+      <SegmentedControl class="tabs" :model-value="tab" :options="TAB_OPTIONS" label="Section" aria-label="Admin section" @update:model-value="select" />
 
       <!-- v-if, not v-show: each panel reloads its data when opened, so a
            role created on one tab shows up in the Accounts dropdown. -->
@@ -158,29 +158,9 @@ h2 {
 .tabs {
   display: flex;
   width: 100%;
-  gap: 4px;
-  padding: 0 0 10px;
+  padding-bottom: 10px;
   margin-bottom: 22px;
   border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-}
-.tabs :deep(.thumb) {
-  display: none;
-}
-.tabs :deep(button) {
-  padding: 7px 16px;
-  color: var(--muted);
-  font-weight: 400;
-}
-.tabs :deep(button.active) {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-  font-weight: 600;
-}
-.tabs :deep(button:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 @media (max-width: 767px) {
   .column {
@@ -197,13 +177,6 @@ h2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     margin-bottom: 18px;
-  }
-  .tabs {
-    justify-content: space-between;
-    gap: 0;
-  }
-  .tabs :deep(button) {
-    padding: 7px 10px;
   }
 }
 </style>

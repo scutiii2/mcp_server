@@ -129,7 +129,7 @@ describe("AccountDrawer", () => {
     expect(wrapper.find('input[role="switch"]').exists()).toBe(false);
     expect(wrapper.find("select").exists()).toBe(false);
     expect(wrapper.find(".chip-x").exists()).toBe(false);
-    expect(buttonLabels(wrapper)).toEqual(["×"]);
+    expect(wrapper.findAll("button").map((button) => button.attributes("aria-label"))).toEqual(["Close"]);
   });
 
   it("disables the controls while a call runs", () => {

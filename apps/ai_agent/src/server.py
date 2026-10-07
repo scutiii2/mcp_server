@@ -310,8 +310,13 @@ def cancel(request_id: str) -> dict[str, Any]:
 
 
 def main() -> None:
-    mcp_upstream.connect()
-    mcp_upstream.warn_unmatched_tool_globs()
+    if agent_config.PROVIDER_ID == "laya":
+        from src.llm import laya_provider
+
+        laya_provider.prepare()
+    else:
+        mcp_upstream.connect()
+        mcp_upstream.warn_unmatched_tool_globs()
     agent_registry.register(
         _AGENT_ID, _AGENT_LABEL, _AGENT_URL,
         entry=SPEC.entry, orchestrator=SPEC.orchestrator, focus=SPEC.focus,
@@ -329,7 +334,8 @@ def main() -> None:
         uvicorn.run(app, host=HOST, port=PORT, log_level=mcp.settings.log_level.lower())
     finally:
         agent_registry.deregister(_AGENT_ID)
-        mcp_upstream.close()
+        if agent_config.PROVIDER_ID != "laya":
+            mcp_upstream.close()
 
 
 if __name__ == "__main__":

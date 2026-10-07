@@ -1,0 +1,15 @@
+{
+  "label": "Triage Assistant",
+  "port": 9110,
+  "enabled": true,
+  "entry": false,
+  "llm": {
+    "provider": "laya",
+    "gateway": "local",
+    "model": "convaiinnovations/laya"
+  },
+  "persona": "",
+  "focus": "Classify short technical issue descriptions and log excerpts by category, severity and whether investigation is needed. Returns fixed classifications and uncertainty; does not explain causes, fetch logs, call tools or perform actions.",
+  "tools": { "allow": [], "deny": ["*"] },
+  "orchestrator": false
+}

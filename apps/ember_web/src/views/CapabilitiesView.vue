@@ -580,9 +580,9 @@ h3 {
   gap: 8px;
 }
 .toolbar {
+  align-items: last baseline;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 8px 12px;
   margin-bottom: 16px;
 }

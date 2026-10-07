@@ -89,3 +89,19 @@ describe("LineChart", () => {
     expect(chart().find(".plot").attributes("aria-label")).toMatch(/^Response time over time/);
   });
 });
+
+describe("optional area fill", () => {
+  it("fills consecutive runs but leaves missing-data gaps unfilled", () => {
+    const samples = [
+      { bucket: "2026-10-01T00:00:00", values: { p50: 10 } },
+      { bucket: "2026-10-02T00:00:00", values: { p50: 20 } },
+      { bucket: "2026-10-03T00:00:00", values: { p50: null } },
+      { bucket: "2026-10-04T00:00:00", values: { p50: 30 } },
+    ];
+    expect(chart({ series: samples }).findAll("polygon")).toHaveLength(0);
+    const filled = chart({ series: samples, fill: true });
+    expect(filled.findAll("polygon")).toHaveLength(1);
+    expect(filled.findAll("polyline")).toHaveLength(1);
+    expect(filled.findAll(".dot:not(.ringed)")).toHaveLength(1);
+  });
+});

@@ -76,7 +76,7 @@ const ICONS = {
           :title="switchTitle"
           :checked="checked"
           :disabled="switching || locked"
-          @click.prevent="emit('switch')"
+          @change="emit('switch')"
         />
         <small v-if="scope" class="scope">{{ scope }}</small>
       </span>

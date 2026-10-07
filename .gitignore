@@ -32,10 +32,11 @@ __pycache__/
 /apps/ai_agent/.env
 /apps/ai_agent/configs/*
 !/apps/ai_agent/configs/*.example
-# ai_agent's real agent definitions (only agents.json.template is committed)
+# ai_agent's real agent definitions (the templates below are committed)
 # and its per-agent token usage log.
 /apps/ai_agent/agents/*
 !/apps/ai_agent/agents/agents.json.template
+!/apps/ai_agent/agents/triage-assistant.json.template
 /apps/ai_agent/data/
 
 # mcp_server's real SMTP-account addresses. The equivalent data lived in the old root-level config.json,

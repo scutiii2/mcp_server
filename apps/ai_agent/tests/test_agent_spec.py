@@ -37,6 +37,31 @@ def test_load_file_applies_defaults(tmp_path):
     assert spec.source == tmp_path / "calc.json"
 
 
+def test_laya_specialist_is_local_and_needs_no_generation_settings(tmp_path, monkeypatch):
+    for key in ("AI_AGENT_PROVIDER", "AI_AGENT_GATEWAY", "AI_AGENT_MODEL", "AI_AGENT_PORT"):
+        monkeypatch.setenv(key, os.getenv(key, ""))
+    spec = agent_spec.load_file(_write(tmp_path, "triage-assistant", {
+        "port": 9110, "llm": {"provider": "laya"}, "tools": {"deny": ["*"]},
+    }))
+    agent_spec.apply_to_environ(spec)
+    assert os.environ["AI_AGENT_PROVIDER"] == "laya"
+    assert os.environ["AI_AGENT_GATEWAY"] == "local"
+    assert not spec.tools.allows("any_tool")
+
+
+@pytest.mark.parametrize("extra", [
+    {"entry": True}, {"orchestrator": True},
+    {"llm": {"provider": "laya", "gateway": "openrouter"}},
+    {"llm": {"provider": "laya", "model": "gpt-x"}},
+    {"llm": {"provider": "laya", "max_tokens": 100}},
+    {"llm": {"provider": "laya", "reasoning_effort": "high"}},
+])
+def test_laya_rejects_cloud_or_generation_configuration(tmp_path, extra):
+    data = {"port": 9110, "llm": {"provider": "laya"}, **extra}
+    with pytest.raises(AgentSpecError, match="Laya triage"):
+        agent_spec.load_file(_write(tmp_path, "triage-assistant", data))
+
+
 def test_load_file_reads_every_field(tmp_path):
     data = {
         "label": "Ember",

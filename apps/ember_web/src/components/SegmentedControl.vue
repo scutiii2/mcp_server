@@ -1,87 +1,118 @@
 <script setup lang="ts" generic="T extends string">
-// A pill with one segment per choice and a white thumb that slides to the chosen
-// one. Plain buttons with aria-pressed, so keyboard and screen readers get a
-// button group; segments share the width equally so the thumb can move by whole
-// steps. Use it for a handful of mutually exclusive choices.
+import { onBeforeUnmount, onMounted, ref, watchPostEffect } from "vue";
+
+// A neutral button group with an accent highlight that slides between choices.
+// Measure the selected button so labels can have different widths.
 const props = defineProps<{
   options: readonly { value: T; label: string }[];
   ariaLabel?: string;
+  label?: string;
 }>();
 
 const model = defineModel<T>({ required: true });
+const root = ref<HTMLDivElement>();
+const buttons = ref<HTMLButtonElement[]>([]);
+const position = ref({ left: 0, top: 0, width: 0, height: 0 });
+let observer: ResizeObserver | undefined;
 
-/** Position of the chosen option; -1 hides the thumb. */
-const index = () => props.options.findIndex((o) => o.value === model.value);
+function updatePosition(): void {
+  const selected = buttons.value.find((button) => button.dataset.value === model.value);
+  position.value = selected
+    ? { left: selected.offsetLeft, top: selected.offsetTop, width: selected.offsetWidth, height: selected.offsetHeight }
+    : { left: 0, top: 0, width: 0, height: 0 };
+}
+
+watchPostEffect(() => {
+  // Options and model can change without a click (URL navigation, permissions).
+  void props.options;
+  updatePosition();
+  observer?.disconnect();
+  if (root.value) observer?.observe(root.value);
+  buttons.value.forEach((button) => observer?.observe(button));
+});
+onMounted(() => {
+  if (typeof ResizeObserver !== "undefined") {
+    observer = new ResizeObserver(updatePosition);
+    if (root.value) observer.observe(root.value);
+    buttons.value.forEach((button) => observer?.observe(button));
+  }
+  updatePosition();
+});
+onBeforeUnmount(() => observer?.disconnect());
 </script>
 
 <template>
-  <div class="segmented" role="group" :aria-label="ariaLabel" :style="{ '--n': options.length, '--i': index() }">
-    <span :class="['thumb', { hidden: index() < 0 }]" aria-hidden="true" />
+  <div class="segmented-control" role="group" :aria-label="ariaLabel ?? label">
+    <span v-if="label" class="group-label">{{ label }}</span>
+    <div ref="root" class="segmented">
+    <span class="thumb" aria-hidden="true" :style="{ width: `${position.width}px`, height: `${position.height}px`, top: `${position.top}px`, transform: `translateX(${position.left}px)`, opacity: position.width ? 1 : 0 }" />
     <button
       v-for="o in options"
       :key="o.value"
+      ref="buttons"
+      :data-value="o.value"
       type="button"
+      class="segment"
       :class="{ active: o.value === model }"
       :aria-pressed="o.value === model"
       @click="model = o.value"
     >
       {{ o.label }}
     </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.segmented-control { display: inline-flex; flex-direction: column; gap: 7px; min-width: 0; max-width: 100%; }
+.group-label { padding-left: 8px; font-size: 0.8em; font-weight: 500; color: var(--muted); }
 .segmented {
-  /* Text, thumb and focus ring sit on the accent track in both themes, so they
-     stay white (--accent-contrast turns dark in dark mode). */
-  --on-track: #fff;
   position: relative;
-  display: inline-grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  display: inline-flex;
+  gap: 4px;
   max-width: 100%;
-  padding: 3px;
+  overflow-x: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  background: var(--accent);
+  background: var(--surface);
+  align-self: flex-start;
 }
 .thumb {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc((100% - 6px) / var(--n));
+  top: 0;
+  left: 0;
   border-radius: var(--radius-full);
-  background: var(--on-track);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transform: translateX(calc(var(--i) * 100%));
-  transition: transform 0.18s ease;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  pointer-events: none;
+  transition: transform 0.18s ease, width 0.18s ease;
 }
-.thumb.hidden {
-  opacity: 0;
-}
-button {
+button.segment {
   position: relative;
   z-index: 1;
-  padding: 4px 14px;
+  flex: 0 0 auto;
+  padding: 7px 16px;
   border: none;
   border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 0.85em;
-  font-weight: 600;
+  font-weight: 400;
   white-space: nowrap;
-  color: var(--on-track);
+  color: var(--muted);
   background: transparent;
   transition: color 0.18s ease;
 }
-button.active {
+button.segment.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+button.segment:hover {
   color: var(--accent);
 }
-button:focus-visible {
-  outline: 2px solid var(--on-track);
+button.segment:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-/* The active segment sits on the white thumb, where a white ring would vanish. */
-button.active:focus-visible {
-  outline-color: var(--accent);
-}
+@media (max-width: 767px) { button.segment { padding: 7px 10px; } }
+@media (prefers-reduced-motion: reduce) { .thumb, button.segment { transition: none; } }
 </style>

@@ -200,7 +200,7 @@ async function confirm(): Promise<void> {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0" /></svg>
             <input v-model="search" type="text" placeholder="Search name or email" aria-label="Search accounts" />
           </label>
-          <SegmentedControl class="status-filter" v-model="status" :options="STATUS_OPTIONS" aria-label="Account status" />
+          <SegmentedControl class="status-filter" v-model="status" :options="STATUS_OPTIONS" label="Status" aria-label="Account status" />
         </div>
 
         <p v-if="loadError" class="error">error: {{ loadError }}</p>
@@ -289,9 +289,9 @@ async function confirm(): Promise<void> {
 
 <style scoped>
 .toolbar {
+  align-items: last baseline;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 8px;
   padding: 14px;
   border-bottom: 1px solid var(--border);
@@ -321,26 +321,6 @@ color: var(--muted);
   width: 100%;
   min-width: 0;
   font-size: 0.85em;
-}
-.status-filter {
-  border: 1px solid var(--border);
-  background: var(--bg);
-}
-.status-filter :deep(.thumb) {
-  background: var(--surface);
-  box-shadow: none;
-}
-.status-filter :deep(button) {
-  color: var(--muted);
-  font-weight: 400;
-  padding: 4px 10px;
-  font-size: 0.8em;
-}
-.status-filter :deep(button.active) {
-  color: var(--text);
-}
-.status-filter :deep(button:focus-visible) {
-  outline-color: var(--accent);
 }
 .accounts-panel {
   min-width: 0;

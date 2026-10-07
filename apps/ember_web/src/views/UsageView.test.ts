@@ -411,3 +411,16 @@ describe("Export .md", () => {
     expect(exportButton(wrapper).attributes("disabled")).toBeDefined();
   });
 });
+
+describe("activity line chart", () => {
+  it("keeps inactive days at zero between real daily values", async () => {
+    mine.mockResolvedValue(usage({ since: "2026-10-13T00:00:00", daily: [
+      { date: "2026-10-13", tokens: 10 }, { date: "2026-10-15", tokens: 30 },
+    ] }));
+    const wrapper = await mountView();
+    expect(wrapper.find(".activity polyline").exists()).toBe(true);
+    expect(wrapper.find(".activity polygon").attributes("fill")).toBe("var(--accent)");
+    await wrapper.find(".activity .chart .chip").trigger("click");
+    expect(wrapper.findAll(".activity .chart tbody tr td").map((cell) => cell.text())).toEqual(["10", "0", "30"]);
+  });
+});

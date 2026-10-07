@@ -105,9 +105,9 @@ watch(range, load);
     <div class="column">
       <h2>Analytics</h2>
       <div class="toolbar">
-        <SegmentedControl :model-value="tab" :options="TAB_OPTIONS" aria-label="View" @update:model-value="showTab" />
+        <SegmentedControl :model-value="tab" :options="TAB_OPTIONS" label="View" aria-label="View" @update:model-value="showTab" />
         <template v-if="tab !== 'entries'">
-          <SegmentedControl v-model="range" :options="RANGE_OPTIONS" aria-label="Range" />
+          <SegmentedControl v-model="range" :options="RANGE_OPTIONS" label="Period" aria-label="Range" />
           <button type="button" class="chip" :disabled="busy" @click="refresh">Refresh</button>
           <span class="note">Times in UTC</span>
         </template>
@@ -172,9 +172,9 @@ watch(range, load);
 <style scoped src="../components/analytics/overview.css"></style>
 <style scoped>
 .toolbar {
+  align-items: last baseline;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 10px 16px;
   margin: 12px 0 16px;
 }

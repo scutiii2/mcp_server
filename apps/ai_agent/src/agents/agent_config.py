@@ -7,6 +7,7 @@ real request.
 from __future__ import annotations
 
 import inspect
+import importlib
 import os
 from pathlib import Path
 from typing import Any
@@ -47,13 +48,14 @@ def _load_secrets_into_environ() -> None:
 # as a visible auth failure.
 _load_secrets_into_environ()
 
-from src.llm import anthropic_provider, cancellation, cooldown, openai_provider  # noqa: E402
+from src.llm import cancellation, cooldown  # noqa: E402
 from src.llm.base_provider import ChatCancelled, ChatResult  # noqa: E402
 from src.llm.model_limits import context_window_for  # noqa: E402
 
 _PROVIDERS = {
-    "anthropic": anthropic_provider,
-    "openai": openai_provider,
+    "anthropic": "src.llm.anthropic_provider",
+    "openai": "src.llm.openai_provider",
+    "laya": "src.llm.laya_provider",
 }
 
 
@@ -69,11 +71,14 @@ def _resolve() -> tuple[str, Any]:
         raise AgentConfigError(
             f"AI_AGENT_PROVIDER is not set in {_SECRETS_PATH} - must be one of: {', '.join(sorted(_PROVIDERS))}"
         )
-    module = _PROVIDERS.get(provider_id)
-    if module is None:
+    module_name = _PROVIDERS.get(provider_id)
+    if module_name is None:
         raise AgentConfigError(
             f"Unknown AI_AGENT_PROVIDER {provider_id!r} - must be one of: {', '.join(sorted(_PROVIDERS))}"
         )
+    # Import only the selected provider: a local Laya agent must not depend on
+    # a cloud gateway, persona configuration or cloud SDK initialization.
+    module = importlib.import_module(module_name)
     if not module.has_api_key():
         raise AgentConfigError(
             f"AI_AGENT_PROVIDER is {provider_id!r} but its API key is not configured in {_SECRETS_PATH}"
@@ -167,6 +172,8 @@ def status() -> dict[str, Any]:
         reason = "missing_key"
     elif cooldown.is_in_cooldown(PROVIDER_ID):
         reason = "rate_limited"
+    elif not _PROVIDER_MODULE.is_available():
+        reason = "unavailable"
     model = MODEL or _PROVIDER_MODULE.DEFAULT_MODEL
     return {
         "provider_id": PROVIDER_ID,

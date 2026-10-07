@@ -18,7 +18,6 @@ const emit = defineEmits<{ reset: [] }>();
       <p v-if="description" class="description">{{ description }}</p>
     </div>
     <div class="control">
-      <slot />
       <button
         v-if="modified"
         type="button"
@@ -32,6 +31,7 @@ const emit = defineEmits<{ reset: [] }>();
           <path d="M3 3v5h5" />
         </svg>
       </button>
+      <slot />
     </div>
   </div>
 </template>

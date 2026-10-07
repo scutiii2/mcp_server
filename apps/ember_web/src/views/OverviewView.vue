@@ -45,9 +45,6 @@ const groups = computed(() => {
 
 <template>
   <section class="overview">
-    <header class="topbar">
-      <nav class="crumb" aria-label="Breadcrumb"><span>ember</span><span aria-hidden="true">/</span><span aria-current="page">Overview</span></nav>
-    </header>
     <div class="column">
       <div class="heading">
         <div><h2>Overview</h2><p>A place to start. Everything you need, close by.</p></div>
@@ -88,9 +85,6 @@ const groups = computed(() => {
 a { color: inherit; text-decoration: none; }
 svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.topbar { height: 62px; border-bottom: 1px solid var(--border); padding: 0 32px; display: flex; align-items: center; }
-.crumb { display: flex; gap: 14px; align-items: center; font-size: 0.85em; color: var(--muted); }
-.crumb span:first-child { font-weight: 500; color: var(--text); }
 .column { max-width: 980px; padding: 32px 16px 26px; margin: auto; }
 .heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
 h2 { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; }
@@ -131,7 +125,6 @@ h3 { font-size: 1em; font-weight: 600; margin: 0; }
 .footer span:first-child { display: flex; align-items: center; gap: 6px; }
 .footer svg { width: 13px; height: 13px; }
 @media (max-width: 767px) {
-  .topbar { height: 50px; padding: 0 18px; }
   .column { padding: 24px 16px; }
   .identity, .hero-art { display: none; }
   .hero { padding: 22px; }

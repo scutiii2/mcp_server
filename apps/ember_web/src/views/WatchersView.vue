@@ -173,7 +173,7 @@ onUnmounted(stopTimers);
       <div class="toolbar">
         <input v-model="search" type="search" placeholder="Search watchers" aria-label="Search watchers" class="search" />
         <CapabilityFocus v-if="focusOptions.length" :model-value="focus" :options="focusOptions" @update:model-value="setFocus" />
-        <SegmentedControl v-model="range" :options="RANGE_OPTIONS" aria-label="Range" />
+        <SegmentedControl v-model="range" :options="RANGE_OPTIONS" label="Period" aria-label="Range" />
         <button type="button" class="chip" :disabled="refreshing" @click="refresh">Refresh</button>
       </div>
 
@@ -256,9 +256,9 @@ onUnmounted(stopTimers);
   background: var(--status-failed);
 }
 .toolbar {
+  align-items: last baseline;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 10px 14px;
   margin: 6px 0 14px;
 }
