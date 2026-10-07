@@ -2,17 +2,14 @@
 
 Deferred items — not scheduled, revisit when the trigger condition below is met.
 
-## Catalog item descriptions (added 2026-09-14)
+## Merge the small configs; clean up legacy secrets (deferred 2026-09-21, rewritten 2026-10-07)
 
-Give each item found by the catalog its own description (catalog_service currently lacks per-item descriptions).
+**Context**: Secrets are done: every project (ai_agent, mcp_server, ember_api) now has one `.env` plus `.env.example`. What is left is the legacy cleanup and merging the small config files. Catalog item descriptions (older item) were already built and were removed from this file on 2026-10-07.
 
-## One .env per project, and merge the small configs (deferred 2026-09-21, rewritten 2026-10-05)
-
-**Context**: Secrets and settings are split into many tiny files. ai_agent already uses a single `apps/ai_agent/.env` (with `.env.example`); mcp_server and ember_api still use several `secret_*.env` files. Not approved for implementation yet.
-
-**Secrets: one `.env` per project, like ai_agent**
-- **mcp_server** (done 2026-10-05): `.secrets/secret_*.env` merged into `apps/mcp_server/.env` (+ `.env.example`); `MCP_HOST` / `MCP_PORT` stay there. `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). Delete the legacy `.secrets/` real files once `.env` is confirmed.
-- **ember_api** (code done 2026-10-05): `secrets/secret_bootstrap_admin.env`, `secret_internal_api.env` and `secret_smtp.env` merged into `apps/ember_api/.env`; `src/utils/env_file.py` builds `.env` from an old `secrets/` folder on first start, else from `.env.example` (the example file still has to be created by hand: Claude's write to `.env*` is denied). Delete the legacy `secrets/` real files once `.env` is confirmed, and update `apps/ember_api/secrets/README.md`.
+**Secrets (done, checked 2026-10-07)**
+- **mcp_server**: `.secrets/secret_*.env` merged into `apps/mcp_server/.env`; `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). **Left**: `apps/mcp_server/.secrets/` still holds 4 legacy files (`secret_app.env`, `secret_internal_api.env`, `secret_smtp.env`, `secret_ssh.env`; gitignored). Delete them once `.env` is confirmed.
+- **ember_api**: merged into `apps/ember_api/.env` with a `.env.example`; the legacy `secrets/` folder is gone. Nothing left.
+- **ai_agent**: stale comments in `.env.example` are fixed.
 - `INTERNAL_API_TOKEN` stays in each project's own `.env` and must match across ember_api, ai_agent and mcp_server. Do not share one file across projects (each project stays self-contained).
 
 **Configs: stay in `configs/`; which ones can merge**
@@ -21,17 +18,15 @@ Give each item found by the catalog its own description (catalog_service current
 - **Keep separate**: `apps/ai_agent/configs/config_gateways.json` (3 KB, provider endpoints), `prompts.json` (persona text), `config_servers.json` (the MCP server list, reworked by the extensions item below), and `apps/ai_agent/data/agent_registry.json` (runtime registry, lives in `data/`, not a config).
 - **Nothing to merge**: ember_api already has the single `configs/config_app.json`; `apps/chat_cli/configs/` has one file. `apps/catalog_service/configs/` not checked.
 
-**Work involved**:
-- Update every loader, the `.example` twins, `.gitignore` entries and any `run.bat` first-run copy step to match ai_agent's `.env` handling.
-- Update `apps/ember_api/src/services/config_validation.py` per-file checkers (mcp_server has no equivalent file), tests, READMEs (including `apps/ember_api/secrets/README.md`) and the scaffold skills. Edit the skills under `.agents/skills/` (`aiagent-scaffold`, `mcp-capability-scaffold`, `root-project-scaffold`, `ember-feature-scaffold`), then sync to `.claude/skills/`; the pre-commit check enforces the match.
-- Add a one-time migration that reads the old files when the new one is missing, so existing real secrets (for example the bootstrap admin password) are not lost.
-- Fix stale comments in `apps/ai_agent/.env.example` (it still mentions `secret_llm.env`, `secret.env` and chat_app).
+**Work involved (configs only)**:
+- Merge `config_limits.json` and `config_tool_selection.json` in ai_agent: update the loaders, the `.example` twins, `.gitignore` entries and any first-run copy step.
+- Update `apps/ember_api/src/services/config_validation.py` per-file checkers, tests, READMEs and the scaffold skills. Edit the skills under `.agents/skills/`, then sync to `.claude/skills/`; the pre-commit check enforces the match.
 
 **Trade-off**: one typo in a merged file can break several settings at once.
 
-**Why not built now**: user asked to log it instead of implementing.
+**Why not built now**: small gain; not approved.
 
-**Revisit when**: user wants this built. mcp_server and ember_api secrets are done; configs are what is left.
+**Revisit when**: user wants this built. Only the ai_agent config merge and the `.secrets/` cleanup are left.
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 
@@ -76,7 +71,7 @@ Overlaps with the config-consolidation item above: `config_extensions.json` woul
 
 Ideas from the "what more can we add" discussion; none designed yet.
 
-- **Attachments with the pdf-assistant**: attach files to a chat message and let the pdf-assistant read them.
+- **Attachments with the pdf-assistant**: attachments exist (`ember_web/src/api/AttachmentsClient.ts`, `ember_api/src/routes/attachments.py`) as of 2026-10-07; unchecked whether the pdf-assistant reads them. Verify, then drop this bullet.
 - **Per-user quotas**: limit usage per account (builds on the existing usage gauges).
 - **Notifications when a long answer finishes**: for example a browser notification or a title badge when the tab is in the background.
 - **Mobile and PWA support**: installable app, touch layout, offline shell.
@@ -118,7 +113,7 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 **Smallest first step**: compose with `mcp_server` plus one app (for example `pdf_merger`), enough to test `list`, `restart` and `logs`.
 
-**Side issue**: `apps/mcp_server/zima_host.yaml` has an SMTP password in plain text, checked into the repo. Move it to a gitignored env file and rotate the password.
+**Side issue** (still open 2026-10-07, security): `apps/mcp_server/zima_host.yaml` line 16 has an SMTP password in plain text, checked into the repo. Move it to a gitignored env file and rotate the password. Worth doing before the Docker work.
 
 **Revisit when**: user wants it built (Docker Desktop installed first).
 
