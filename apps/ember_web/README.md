@@ -192,7 +192,18 @@ URL, token or key.
   revoke) and Settings
   ("Require approval for every tool": every account's answers then ask before
   each tool, the "Ask before tools" checkbox is locked on, and "Allow for this
-  chat" is not offered).
+  chat" is not offered). Delete account and Delete role sit in a red Danger
+  zone, last in the drawer and the editor.
+- Confirmations: no native `confirm()` is used anywhere. Every destructive or
+  discarding action asks in `ConfirmModal`, and the friction scales with the
+  severity. One chat, a few ticked chats, a forgotten device, a share link, a
+  saved prompt and a question edit that drops later messages ask once. Turning
+  a capability off uses the danger style. A severe action also makes you type
+  something before its button unlocks (`requireText`, with a character counter,
+  the field focused when the dialog opens): the username to delete an account,
+  the role's name to delete a role that accounts still hold, and `delete all` for
+  "Delete all chats". The dialog always has Cancel; Escape and a click outside
+  close it too.
 - Capability pages (`/capabilities/<name>`, needs `tools.use`): a capability
   that ships a `gui/page.json` gets its own page, and its card on the
   Capabilities page shows an "Open page" link while the capability is on.
