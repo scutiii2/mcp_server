@@ -218,6 +218,6 @@ def dispatch(arguments: dict[str, Any], depth: int) -> str:
     """Run a delegate_to_agent tool call from its model-supplied arguments.
     Shared by both providers so neither re-reads the argument names."""
     tier = arguments.get("model_tier")
-    if tier:
+    if isinstance(tier, str) and tier:
         return call(arguments["agent_id"], arguments["question"], depth, model_tier=tier)
     return call(arguments["agent_id"], arguments["question"], depth)

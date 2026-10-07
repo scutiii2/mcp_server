@@ -88,6 +88,10 @@ try:
     from src.mcp_client import mcp_upstream
     from src.llm.base_provider import ChatCancelled
     from src.llm import model_tiers
+    from src.llm.model_limits import context_window_for
+
+    # Parsed here so a malformed `models` block is a clean one-line exit.
+    _OWN_TIERS = model_tiers.as_records(model_tiers.own_tiers())
 except Exception as _exc:
     if not (isinstance(_exc, (FileNotFoundError, ValueError)) or type(_exc).__name__ in _CONFIG_ERROR_NAMES):
         raise
@@ -262,6 +266,8 @@ async def ask(
         "cancelled": False,
     }
     if result.model_tier:
+        # The tier model's own window, not the pinned model's.
+        reply["context_window"] = context_window_for(result.model)
         reply["model_tier"] = result.model_tier
     if result.model_note:
         reply["model_note"] = result.model_note
@@ -334,7 +340,7 @@ def main() -> None:
     agent_registry.register(
         _AGENT_ID, _AGENT_LABEL, _AGENT_URL,
         entry=SPEC.entry, orchestrator=SPEC.orchestrator, focus=SPEC.focus,
-        tiers=model_tiers.as_records(model_tiers.own_tiers()),
+        tiers=_OWN_TIERS,
     )
     try:
         # Same app, host, port and log level mcp.run(transport="streamable-http")

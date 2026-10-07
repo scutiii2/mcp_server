@@ -4,7 +4,7 @@ turned into provider request kwargs.
 Models differ in what they accept (e.g. current Claude models reject a
 non-default temperature; a non-reasoning OpenAI model rejects
 `reasoning`). Rather than keep a per-model table, a parameter the API
-refuses with a 400 is dropped for the rest of this process's life, with
+refuses with a 400 is dropped for that model for the rest of this process's life, with
 one warning - the turn then retries without it.
 """
 
@@ -30,7 +30,7 @@ class LlmOptions:
         self._provider_id = provider_id
         self._agent_id = agent_id
         self._llm = llm
-        self._dropped: set[str] = set()
+        self._dropped: set[tuple[str, str]] = set()
 
     def max_tokens(self, default: int) -> int:
         return self._llm.max_tokens or default
@@ -38,17 +38,17 @@ class LlmOptions:
     def max_tool_rounds(self, default: int) -> int:
         return self._llm.max_tool_rounds or default
 
-    def _sent(self) -> list[str]:
+    def _sent(self, model: str) -> list[str]:
         sent = []
-        if self._llm.temperature is not None and "temperature" not in self._dropped:
+        if self._llm.temperature is not None and (model, "temperature") not in self._dropped:
             sent.append("temperature")
-        if self._llm.reasoning_effort != "off" and "reasoning" not in self._dropped:
+        if self._llm.reasoning_effort != "off" and (model, "reasoning") not in self._dropped:
             sent.append("reasoning")
         return sent
 
-    def extra_kwargs(self) -> dict[str, Any]:
+    def extra_kwargs(self, model: str) -> dict[str, Any]:
         kwargs: dict[str, Any] = {}
-        for option in self._sent():
+        for option in self._sent(model):
             if option == "temperature":
                 kwargs["temperature"] = self._llm.temperature
             elif self._provider_id == "anthropic":
@@ -57,14 +57,15 @@ class LlmOptions:
                 kwargs["reasoning"] = {"effort": self._llm.reasoning_effort}
         return kwargs
 
-    def drop_rejected(self, message: str) -> bool:
+    def drop_rejected(self, message: str, model: str) -> bool:
         """True when `message` (a 400's text) names an option we sent; that
-        option is then never sent again. False = not ours, re-raise."""
+        option is then never sent again to that model (other models still get
+        it). False = not ours, re-raise."""
         text = message.lower()
-        for option in self._sent():
+        for option in self._sent(model):
             if any(marker in text for marker in _MARKERS[option]):
-                self._dropped.add(option)
-                _log.warning("agent %s: the model rejected %s; no longer sending it", self._agent_id, option)
+                self._dropped.add((model, option))
+                _log.warning("agent %s: model %s rejected %s; no longer sending it to it", self._agent_id, model, option)
                 return True
         return False
 

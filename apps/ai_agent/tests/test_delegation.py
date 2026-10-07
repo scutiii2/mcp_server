@@ -266,3 +266,11 @@ def test_dispatch_reads_the_tool_arguments():
     assert fake_call.call_args_list[0].kwargs == {}
     assert fake_call.call_args_list[1].args == ("calc", "q", 1)
     assert fake_call.call_args_list[1].kwargs == {"model_tier": "heavy"}
+
+
+def test_dispatch_ignores_a_non_string_model_tier():
+    with patch("src.agents.delegation.call", return_value="answer") as fake_call:
+        delegation.dispatch({"agent_id": "calc", "question": "q", "model_tier": 1}, 1)
+
+    assert fake_call.call_args.args == ("calc", "q", 1)
+    assert fake_call.call_args.kwargs == {}

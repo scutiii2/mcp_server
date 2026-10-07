@@ -1,6 +1,6 @@
 # Spec: Model tiers per gateway, chosen by the orchestrator per delegated task
 
-Status: DRAFT, not implemented. For review.
+Status: Implemented (see the plan docs/superpowers/plans/2026-10-08-model-tiers.md at the repo root).
 
 ## Problem
 
@@ -101,13 +101,13 @@ One small module, no provider imports:
   Gateway tiers filtered to the range. Logs a warning when the agent sets a
   cap but its gateway defines no tier inside the range (the cap then has no
   effect and the agent offers no choice).
-- `resolve(requested, effective, default_model) -> Resolution`
+- `resolve(requested, effective, default_model, agent_id) -> Resolution`
   - `requested` is `None` or a ladder name.
   - `None`, or no effective tiers: `Resolution(model=default_model, tier=None, note="")`.
   - `requested` in effective tiers: that tier's model id.
   - `requested` outside the range or not defined by the gateway: use the
     **nearest effective tier** (ties go to the weaker tier, cheaper) and set
-    `note`, e.g. `"heavy is not allowed for pdf-assistant; ran on standard"`.
+    `note`, e.g. `"heavy is not available for pdf-assistant; ran on standard"`.
   - Invalid string (not a ladder name): treated as `None` with a note.
 
 The agent applies this to **its own** request, whatever the caller sent. A
@@ -156,7 +156,7 @@ another process's gateway config.
 - The sync OpenAI path gets the same `model` value.
 - `ChatResult.model` already carries the model that ran; `server.ask` also
   returns `model_tier` and `model_note`.
-  Both keys are present only when set, so existing result and row shapes are unchanged.
+  `model_tier` is present only when set, so existing result and row shapes are unchanged.
 - Context-window and token-limit checks keep using `PROVIDER_ID` and the
   resolved model through the existing `context_window_for`.
 

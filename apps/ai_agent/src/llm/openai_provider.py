@@ -316,7 +316,7 @@ async def run_chat(
                         input=messages,
                         tools=schemas if schemas else None,
                         max_output_tokens=options.max_tokens(token_limits.max_output_tokens(PROVIDER_ID, _limit_gateway())),
-                        **options.extra_kwargs(),
+                        **options.extra_kwargs(model_name),
                     ) as stream:
                         async for event in stream:
                             if event.type == "response.output_text.delta":
@@ -329,7 +329,7 @@ async def run_chat(
                 except BadRequestError as error:
                     # A rejected per-agent option fails before any text
                     # streams; drop it and retry this round once without it.
-                    if text_parts or not options.drop_rejected(str(error)):
+                    if text_parts or not options.drop_rejected(str(error), model_name):
                         raise
             usage = getattr(response, "usage", None)
             round_tokens = getattr(usage, "total_tokens", None) if usage is not None else None

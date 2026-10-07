@@ -315,7 +315,7 @@ async def run_chat(
                         system=system_prompt,
                         messages=messages,
                         tools=schemas,
-                        **options.extra_kwargs(),
+                        **options.extra_kwargs(model_name),
                     ) as stream:
                         async for chunk in stream.text_stream:
                             text_parts.append(chunk)
@@ -327,7 +327,7 @@ async def run_chat(
                 except BadRequestError as error:
                     # A rejected per-agent option fails before any text
                     # streams; drop it and retry this round once without it.
-                    if text_parts or not options.drop_rejected(str(error)):
+                    if text_parts or not options.drop_rejected(str(error), model_name):
                         raise
             total_tokens += response.usage.input_tokens + response.usage.output_tokens
             input_tokens += response.usage.input_tokens

@@ -198,7 +198,7 @@ def test_main_registers_with_the_spec_flags(monkeypatch):
     monkeypatch.setattr(server.mcp_upstream, "connect", lambda: None)
     monkeypatch.setattr(server.mcp_upstream, "warn_unmatched_tool_globs", lambda: None)
     monkeypatch.setattr(server.mcp_upstream, "close", lambda: None)
-    monkeypatch.setattr(server.model_tiers, "own_tiers", lambda: [server.model_tiers.TierInfo("light", "haiku", "quick")])
+    monkeypatch.setattr(server, "_OWN_TIERS", [{"tier": "light", "id": "haiku", "use_for": "quick"}])
     monkeypatch.setattr(server.agent_registry, "register", lambda *a, **k: calls.setdefault("register", (a, k)))
     monkeypatch.setattr(server.agent_registry, "deregister", lambda agent_id: calls.setdefault("deregister", agent_id))
     monkeypatch.setattr(server.uvicorn, "run", lambda *a, **k: None)
@@ -219,6 +219,7 @@ def test_laya_main_warms_before_registration_without_an_upstream_connection(monk
 
     calls = []
     monkeypatch.setattr(server.agent_config, "PROVIDER_ID", "laya")
+    monkeypatch.setattr(server, "_OWN_TIERS", [])
     monkeypatch.setattr(laya_provider, "prepare", lambda: calls.append("warm"))
 
     def forbidden():
@@ -313,5 +314,22 @@ def test_ask_without_a_tier_adds_no_tier_keys():
         assert "model_tier" not in fake_run_chat.call_args.kwargs
         assert "model_tier" not in result and "model_note" not in result
         assert "model_tier" not in result["agent_usage"][0]
+
+    asyncio.run(_run())
+
+
+def test_ask_reports_the_tier_models_context_window_only_when_tiered():
+    async def _run():
+        tiered = ChatResult(response="ok", provider_id="anthropic", model="some-model", model_tier="light")
+        plain = ChatResult(response="ok", provider_id="anthropic", model="some-model")
+        with patch("src.server.agent_config.run_chat", new_callable=AsyncMock, side_effect=[tiered, plain]), \
+             patch("src.server.agent_config.status", return_value={"model": "m", "context_window": 1}), \
+             patch("src.server.context_window_for", return_value=777) as fake_window:
+            with_tier = await server.ask("q", model_tier="light")
+            without = await server.ask("q")
+
+        fake_window.assert_called_once_with("some-model")
+        assert with_tier["context_window"] == 777
+        assert without["context_window"] == 1
 
     asyncio.run(_run())
