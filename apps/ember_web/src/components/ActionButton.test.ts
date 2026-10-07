@@ -12,11 +12,11 @@ describe("ActionButton", () => {
   });
 
   it("draws a different icon for each name", () => {
-    const icons = (["export", "share", "summarize", "clear"] as const).map(
+    const icons = (["export", "share", "summarize", "clear", "mail", "lock", "close", "verify"] as const).map(
       (icon) => mount(ActionButton, { props: { icon } }).find("path").attributes("d"),
     );
 
-    expect(new Set(icons).size).toBe(4);
+    expect(new Set(icons).size).toBe(8);
   });
 
   it("is a plain button that passes click, title and disabled through", async () => {

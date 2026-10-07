@@ -53,14 +53,45 @@ const forgetButtons = (wrapper: Awaited<ReturnType<typeof mountView>>) => wrappe
 beforeEach(() => vi.clearAllMocks());
 
 describe("AccountView", () => {
-  it("groups the account into one card per task", async () => {
+  it("groups the account into a profile card, Security and Devices", async () => {
     const wrapper = await mountView([]);
 
-    expect(wrapper.findAll("section.card").map((s) => s.get("h3").text())).toEqual([
-      "Change email",
-      "Change password",
-      "Devices",
-    ]);
+    expect(wrapper.findAll("section.card").map((s) => s.get("h3").text())).toEqual(["Security", "Devices"]);
+    expect(wrapper.get(".profile .name").text()).toBe("maria");
+    expect(wrapper.get(".avatar").text()).toBe("M");
+    expect(wrapper.get(".profile .chip.ok").text()).toBe("verified");
+    expect(wrapper.get(".roles").text()).toBe("Member");
+  });
+
+  it("folds the permissions away behind a count", async () => {
+    const wrapper = await mountView([]);
+
+    expect(wrapper.get(".permissions summary").text()).toBe("1 permission");
+    expect(wrapper.get(".perm-list").text()).toBe("chat.use");
+  });
+
+  it("shows no banner for a verified email", async () => {
+    const wrapper = await mountView([]);
+
+    expect(wrapper.find(".banner").exists()).toBe(false);
+  });
+
+  it("opens one security form at a time, and closes it again", async () => {
+    const wrapper = await mountView([]);
+    expect(wrapper.find("form").exists()).toBe(false);
+
+    await wrapper.get(".toggle-email").trigger("click");
+    expect(wrapper.findAll("form")).toHaveLength(1);
+    expect(wrapper.get("form").text()).toContain("New email");
+    expect(wrapper.get(".toggle-email").text()).toBe("Close");
+    expect(wrapper.get(".toggle-email").attributes("aria-expanded")).toBe("true");
+
+    await wrapper.get(".toggle-password").trigger("click");
+    expect(wrapper.findAll("form")).toHaveLength(1);
+    expect(wrapper.get("form").text()).toContain("New password");
+
+    await wrapper.get(".toggle-password").trigger("click");
+    expect(wrapper.find("form").exists()).toBe(false);
   });
 
   it("asks before forgetting a device, and forgets nothing when cancelled", async () => {

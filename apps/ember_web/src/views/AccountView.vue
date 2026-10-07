@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { authClient, type KnownDevice } from "../api/AuthClient";
+import ActionButton from "../components/ActionButton.vue";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage, formatUtc } from "../utils/errors";
@@ -11,6 +12,14 @@ const router = useRouter();
 
 // The router only opens this page with an account.
 const account = computed(() => auth.account!);
+const initial = computed(() => account.value.username.charAt(0).toUpperCase());
+
+// Which security form is open; one at a time keeps the page short.
+const openForm = ref<"email" | "password" | null>(null);
+
+function toggle(form: "email" | "password"): void {
+  openForm.value = openForm.value === form ? null : form;
+}
 
 const emailForm = reactive({ email: "", password: "", busy: false, error: "", success: "" });
 const passwordForm = reactive({ next: "", confirm: "", current: "", busy: false, error: "", done: false });
@@ -93,38 +102,62 @@ async function changePassword(): Promise<void> {
     <div class="column">
       <h2>Account</h2>
 
-      <dl class="profile">
-        <dt>Username</dt>
-        <dd>{{ account.username }}</dd>
-        <dt>Email</dt>
-        <dd>
-          {{ account.email }}
-          <span v-if="account.email_verified" class="badge">verified</span>
-          <RouterLink v-else to="/verify-email" class="badge warn">{{
-            auth.needsVerification ? "unverified - verify now" : "unverified - verify (optional)"
-          }}</RouterLink>
-        </dd>
-        <dt>Roles</dt>
-        <dd>{{ account.roles.join(", ") || "None" }}</dd>
-        <dt>Permissions</dt>
-        <dd>
-          <template v-if="account.permissions.length">
-            <code v-for="p in account.permissions" :key="p">{{ p }}</code>
-          </template>
-          <span v-else class="muted">None</span>
-          <span v-if="auth.needsVerification && account.permissions.length" class="muted">
-            (inactive until your email is verified)
-          </span>
-        </dd>
-      </dl>
+      <div v-if="!account.email_verified" class="banner" role="status">
+        <span>
+          {{
+            auth.needsVerification
+              ? "Your email isn't verified. Permissions are paused until you enter the code."
+              : "Your email isn't verified. Verifying it is optional."
+          }}
+        </span>
+        <ActionButton icon="verify" class="verify" @click="router.push('/verify-email')">Verify now</ActionButton>
+      </div>
 
-      <section class="card" aria-labelledby="account-email">
-        <h3 id="account-email">Change email</h3>
-        <p v-if="auth.account?.email_verification_required === false" class="muted hint">
-          You'll get a code at the new address. Verifying it is optional.
-        </p>
-        <p v-else class="muted hint">You'll get a code at the new address. Until you enter it, your permissions are paused.</p>
-        <form class="stack" @submit.prevent="changeEmail">
+      <div class="card profile">
+        <div class="identity">
+          <div class="avatar" aria-hidden="true">{{ initial }}</div>
+          <div class="who">
+            <div class="name">{{ account.username }}</div>
+            <div class="email">
+              {{ account.email }}
+              <span v-if="account.email_verified" class="chip ok">verified</span>
+            </div>
+            <div class="roles">
+              <span v-for="r in account.roles" :key="r" class="chip">{{ r }}</span>
+              <span v-if="!account.roles.length" class="muted small">No roles</span>
+            </div>
+          </div>
+        </div>
+        <details class="permissions">
+          <summary>
+            {{ account.permissions.length }} {{ account.permissions.length === 1 ? "permission" : "permissions" }}
+            <span v-if="auth.needsVerification && account.permissions.length" class="muted">(inactive until your email is verified)</span>
+          </summary>
+          <div class="perm-list">
+            <code v-for="p in account.permissions" :key="p">{{ p }}</code>
+          </div>
+        </details>
+      </div>
+
+      <section class="card" aria-labelledby="account-security">
+        <h3 id="account-security">Security</h3>
+
+        <div class="row">
+          <div>
+            <div>Email</div>
+            <div class="muted small">
+              {{
+                auth.account?.email_verification_required === false
+                  ? "You'll get a code at the new address. Verifying it is optional."
+                  : "You'll get a code at the new address. Until you enter it, your permissions are paused."
+              }}
+            </div>
+          </div>
+          <ActionButton :icon="openForm === 'email' ? 'close' : 'mail'" class="toggle-email" :aria-expanded="openForm === 'email'" @click="toggle('email')">
+            {{ openForm === "email" ? "Close" : "Change" }}
+          </ActionButton>
+        </div>
+        <form v-if="openForm === 'email'" class="stack" @submit.prevent="changeEmail">
           <label>
             New email
             <input v-model="emailForm.email" type="email" autocomplete="email" required />
@@ -137,12 +170,22 @@ async function changePassword(): Promise<void> {
           <p v-else-if="emailForm.success" class="notice">{{ emailForm.success }}</p>
           <button class="primary" :disabled="emailForm.busy">Change email</button>
         </form>
-      </section>
 
-      <section class="card" aria-labelledby="account-password">
-        <h3 id="account-password">Change password</h3>
-        <p class="muted hint">Other devices where you're logged in will be logged out.</p>
-        <form class="stack" @submit.prevent="changePassword">
+        <div class="row">
+          <div>
+            <div>Password</div>
+            <div class="muted small">Other devices where you're logged in will be logged out.</div>
+          </div>
+          <ActionButton
+            :icon="openForm === 'password' ? 'close' : 'lock'"
+            class="toggle-password"
+            :aria-expanded="openForm === 'password'"
+            @click="toggle('password')"
+          >
+            {{ openForm === "password" ? "Close" : "Change" }}
+          </ActionButton>
+        </div>
+        <form v-if="openForm === 'password'" class="stack" @submit.prevent="changePassword">
           <label>
             New password
             <input v-model="passwordForm.next" type="password" autocomplete="new-password" minlength="8" required />
@@ -163,24 +206,25 @@ async function changePassword(): Promise<void> {
       </section>
 
       <section class="card" aria-labelledby="account-devices">
-        <h3 id="account-devices">Devices</h3>
-        <p class="muted hint">
-          Where you logged in from, told apart by browser and network. A login from a new one is noted in the activity log.
-        </p>
+        <div class="head">
+          <h3 id="account-devices">Devices</h3>
+          <span class="muted small">A login from a new one is noted in the activity log</span>
+        </div>
         <p v-if="devicesError" class="error">{{ devicesError }}</p>
         <p v-else-if="devices.length === 0" class="muted">None recorded yet.</p>
         <ul v-else class="devices">
-          <li v-for="d in devices" :key="d.id">
-            <div class="device">
-              <strong>{{ d.label }}</strong>
-              <span v-if="d.current" class="badge">this device</span>
-              <span class="muted">{{ d.ip_subnet }}</span>
+          <li v-for="d in devices" :key="d.id" :title="d.user_agent || '(no browser name)'">
+            <svg class="device-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v8H2zM5 14h6M8 11v3" /></svg>
+            <div class="device-main">
+              <div class="device-name">
+                <strong>{{ d.label }}</strong>
+                <span v-if="d.current" class="chip ok">this device</span>
+              </div>
+              <div class="muted small">
+                {{ d.ip_subnet }} · last used {{ formatUtc(d.last_seen_at) }} · first {{ formatUtc(d.first_seen_at) }}
+              </div>
             </div>
-            <div class="muted small">
-              last used {{ formatUtc(d.last_seen_at) }} · first {{ formatUtc(d.first_seen_at) }}
-            </div>
-            <div class="muted small ua" :title="d.user_agent">{{ d.user_agent || "(no browser name)" }}</div>
-            <button v-if="!d.current" type="button" class="forget" @click="pendingForget = d">Forget</button>
+            <ActionButton v-if="!d.current" icon="close" quiet class="forget" @click="pendingForget = d">Forget</ActionButton>
           </li>
         </ul>
       </section>
@@ -217,64 +261,136 @@ h2 {
   font-size: 1.2em;
 }
 h3 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 1em;
 }
-/* One block per task; the profile above is the same kind of card. */
 .card {
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
 }
-.profile {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 8px 16px;
-  margin: 0;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+.card > h3 {
+  margin-bottom: 4px;
 }
-.profile dt {
-  color: var(--muted);
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 8px;
 }
-.profile dd {
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  font-size: 0.9em;
+  color: var(--danger);
+}
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.avatar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-full);
+  font-size: 1.4em;
+  font-weight: 600;
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.who {
+  min-width: 0;
+}
+.name {
+  font-size: 1.2em;
+  font-weight: 600;
+}
+.email {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin: 0;
+  margin: 2px 0 6px;
   overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.9em;
 }
-.profile code {
+.roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.75em;
+  color: var(--muted);
+  background: var(--code-bg);
+}
+.chip.ok {
+  color: var(--accent);
+}
+.permissions {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+}
+.permissions summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.perm-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.perm-list code {
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 0.9em;
   background: var(--code-bg);
 }
-.badge {
-  padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  font-size: 0.75em;
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.row:first-of-type {
+  border-top: none;
+}
+.small {
+  font-size: 0.85em;
+}
+.muted {
   color: var(--muted);
-  text-decoration: none;
-}
-.badge.warn {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-.hint {
-  margin: 0 0 10px;
-  font-size: 0.9em;
 }
 .stack {
   display: grid;
   gap: 10px;
   max-width: 380px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
 }
 .stack label {
   display: grid;
@@ -306,48 +422,46 @@ h3 {
   cursor: default;
   opacity: 0.5;
 }
-.muted {
-  color: var(--muted);
-}
 .devices {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .devices li {
-  position: relative;
-  padding: 10px 90px 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
 }
-.device {
+.devices li:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+.device-icon {
+  flex: none;
+  box-sizing: content-box;
+  width: 16px;
+  height: 16px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  background: var(--code-bg);
+}
+.device-main {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.device-name {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-.small {
-  font-size: 0.85em;
-}
-.ua {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.forget {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  padding: 3px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  color: var(--text);
-  background: var(--bg);
 }
 .error {
   color: var(--danger);
@@ -356,12 +470,11 @@ h3 {
   color: var(--muted);
 }
 @media (max-width: 480px) {
-  .profile {
-    grid-template-columns: 1fr;
-    gap: 2px;
+  .identity {
+    gap: 12px;
   }
-  .profile dd {
-    margin-bottom: 8px;
+  .devices li {
+    align-items: flex-start;
   }
 }
 </style>
