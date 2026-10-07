@@ -32,7 +32,7 @@ service is the main use); only a boolean and a status code come back.
 
 One email to the creator's own address (`identity_context.current_email()`), never a tool argument, through
 `services/email.send_email` with the `notification` template. It needs `configs/config_email.json` (copy the
-`.example`, set `from`) and `SMTP_PASSWORD` in `.env`. The outcome is stored in the watcher's `detail["email"]`:
+`.example`, set `from`) and `SMTP_PASSWORD` in `.env`. The outcome is stored in the watcher's `detail["email_result"]` (`detail["email"]` stays the address):
 `sent`, `skipped: <reason>` or `failed: <reason>`. A missing or invalid config never stops a watcher.
 
 ## State and limits
@@ -42,3 +42,5 @@ and running watchers are resumed when the server starts. At most 5 running watch
 user keeps their newest 20 finished records. Watchers belong to their creator: list and cancel only see your own.
 
 Toggle: `"watch"` in `configs/config_capabilities.json`.
+Toggling it at runtime does not stop running watchers or resume records: watchers are resumed only at server start,
+and only when the capability is enabled.

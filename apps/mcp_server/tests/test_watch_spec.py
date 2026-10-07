@@ -70,3 +70,16 @@ def test_run_check_dispatches_by_kind(monkeypatch):
     apps = lambda: SimpleNamespace(apps=[SimpleNamespace(name="web", status="running")])
     assert run_check(spec(kind="app", target="web"), list_apps=apps).up is True
     assert calls == [("url", "https://example.com/", "ok"), ("tcp", "::1", 8080)]
+
+
+CONTROL_CHARACTERS = ["a" + chr(13) + chr(10) + "Bcc: x", "tab" + chr(9) + "here", "nul" + chr(0), "del" + chr(127)]
+
+
+@pytest.mark.parametrize("field", ["label", "contains", "target"])
+@pytest.mark.parametrize("bad", CONTROL_CHARACTERS)
+def test_build_spec_rejects_control_characters(field, bad):
+    values = dict(kind="url", target="https://example.com/", expect="up", contains="", label="")
+    values[field] = values[field] + bad
+
+    with pytest.raises(ValueError, match="control characters"):
+        build_spec(values["kind"], values["target"], values["expect"], values["contains"], values["label"], "alice", "a@x.io")

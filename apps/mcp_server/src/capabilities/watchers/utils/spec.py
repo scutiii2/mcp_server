@@ -55,6 +55,9 @@ def build_spec(kind: str, target: str, expect: str, contains: str, label: str, o
     """A validated, normalised spec, or a ValueError naming what to fix."""
     kind, expect = kind.strip().lower(), (expect or "up").strip().lower()
     target, contains, label = target.strip(), (contains or "").strip(), (label or "").strip()
+    for name, value in (("target", target), ("contains", contains), ("label", label)):
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError(f"{name} must not contain control characters.")
     if kind not in KINDS:
         raise ValueError(f"kind must be one of: {', '.join(KINDS)}.")
     if expect not in EXPECTS:

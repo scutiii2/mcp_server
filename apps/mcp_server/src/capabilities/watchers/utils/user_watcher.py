@@ -43,11 +43,11 @@ class UserWatcher(JobWatcher):
         return (WatcherPhase.COMPLETED if matched else WatcherPhase.RUNNING), detail
 
     def on_completed(self, detail: dict[str, Any]) -> None:
-        detail["email"] = self._notify("met")
+        detail["email_result"] = self._notify("met")
 
     def on_state_change(self, old: WatcherPhase, new: WatcherPhase, detail: dict[str, Any]) -> None:
         if new == WatcherPhase.TIMED_OUT:
-            detail["email"] = self._notify("timed_out")
+            detail["email_result"] = self._notify("timed_out")
             self._save_record(new, detail)
 
     def _notify(self, event: str) -> str:
@@ -63,8 +63,9 @@ class UserWatcher(JobWatcher):
     def _save_record(self, phase: WatcherPhase, detail: dict[str, Any]) -> None:
         """Every save carries the spec, so a record is always enough to resume from.
 
-        A cancelled watcher (stop event set) never writes: a poll that was
-        still running when `cancel` deleted the record must not bring it back."""
+        Once a watcher is cancelled (stop event set) the guard below stops its writes, so a poll
+        still running when `cancel` deleted the record does not bring it back. A write that was
+        already past the check when `cancel` landed can still go through (a microsecond window)."""
         if self._stop_event.is_set():
             return
         super()._save_record(phase, {**self.spec.to_detail(), **detail})

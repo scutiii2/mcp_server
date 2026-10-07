@@ -62,7 +62,8 @@ def test_completes_when_the_check_matches_expect_up_and_notifies_once(tmp_path):
     saved = record(tmp_path, cls, "w-k1")
     assert saved.phase == WatcherPhase.COMPLETED
     assert sent == [("w-k1", "met", 3)]
-    assert saved.detail["email"] == "sent" and saved.detail["checks"] == 3
+    assert saved.detail["email_result"] == "sent" and saved.detail["checks"] == 3
+    assert saved.detail["email"] == "alice@x.io"
     assert saved.detail["owner"] == "alice" and saved.detail["target"] == "https://example.com/"
     assert saved.detail["last_check"] == UP.detail
 
@@ -83,7 +84,8 @@ def test_an_unknown_result_never_matches_and_the_watcher_times_out_with_an_email
     saved = record(tmp_path, cls, "w-k3")
     assert saved.phase == WatcherPhase.TIMED_OUT
     assert [(event) for _key, event, _n in sent] == ["timed_out"]
-    assert saved.detail["email"] == "sent" and saved.detail["owner"] == "alice"
+    assert saved.detail["email_result"] == "sent" and saved.detail["owner"] == "alice"
+    assert saved.detail["email"] == "alice@x.io"
 
 
 def test_the_email_outcome_is_recorded_as_given(tmp_path):
@@ -91,7 +93,7 @@ def test_the_email_outcome_is_recorded_as_given(tmp_path):
 
     cls("w-k4", tmp_path, spec()).run()
 
-    assert record(tmp_path, cls, "w-k4").detail["email"] == "skipped: email is not configured"
+    assert record(tmp_path, cls, "w-k4").detail["email_result"] == "skipped: email is not configured"
 
 
 def test_a_notifier_that_raises_is_recorded_and_the_watcher_still_completes(tmp_path):
@@ -101,7 +103,7 @@ def test_a_notifier_that_raises_is_recorded_and_the_watcher_still_completes(tmp_
 
     saved = record(tmp_path, cls, "w-k5")
     assert saved.phase == WatcherPhase.COMPLETED
-    assert saved.detail["email"].startswith("failed: RuntimeError") and "smtp down" in saved.detail["email"]
+    assert saved.detail["email_result"].startswith("failed: RuntimeError") and "smtp down" in saved.detail["email_result"]
 
 
 def test_a_cancelled_watcher_never_sends_mail(tmp_path):
@@ -115,7 +117,7 @@ def test_a_cancelled_watcher_never_sends_mail(tmp_path):
     watcher.on_state_change(WatcherPhase.RUNNING, WatcherPhase.TIMED_OUT, timed_out)
 
     assert sent == []
-    assert done["email"] == "skipped: cancelled" and timed_out["email"] == "skipped: cancelled"
+    assert done["email_result"] == "skipped: cancelled" and timed_out["email_result"] == "skipped: cancelled"
 
 
 def test_from_record_restores_the_spec_the_poll_count_and_start_time(tmp_path):
