@@ -72,8 +72,8 @@ typos are caught at startup.
 | `llm.reasoning_effort` | no | `off` | `off`, `low`, `medium`, `high`. Maps to the Anthropic thinking budget or OpenAI `reasoning_effort`. |
 | `llm.max_tokens` | no | today's hard-coded value | Output token cap per model call. |
 | `llm.max_tool_rounds` | no | `6` | Cap on the tool loop. |
-| `persona` | no | `""` | Persona text placed in the system prompt. |
-| `instructions` | no | `""` (shared text) | Replaces `tool_use_instructions` from `configs/prompts.json` for this agent only. Empty uses the shared text. |
+| `persona` | no | `""` | Persona text placed after the identity line in the system prompt. |
+| `instructions` | no | `""` (built-in default) | Tool-use instructions placed last in the system prompt. Empty uses `DEFAULT_INSTRUCTIONS` in `src/llm/agent_roles.py`. |
 | `focus` | no | `""` | One-line summary of what the agent is good at. Used for the orchestrator roster and for Laya routing. Should be concrete. |
 | `tools.allow` | no | `[]` (all) | fnmatch globs on mcp_server tool names without the `main__` prefix. Empty means all tools. |
 | `tools.deny` | no | `[]` | Globs removed after `allow`. Deny wins. |
@@ -105,8 +105,7 @@ more specialists as extra files.
 The gateway for a supervised agent comes from `llm.gateway` in
 `agents/<id>.json`. Omitted, it is the provider's default gateway (`claude`
 for anthropic, `gpt` for openai), pinned over `AI_AGENT_GATEWAY` and
-`.env`. `--gateway`, `--role`, `AI_AGENT_GATEWAY` and
-`AI_AGENT_ROLE` only affect an instance started the old way (`python -m
+`.env`. `--gateway` and `AI_AGENT_GATEWAY` only affect an instance started the old way (`python -m
 src.server`, no agent file). Saved launcher presets that pass `--gateway` no
 longer affect the supervisor.
 
@@ -275,55 +274,18 @@ so ember_api can refuse an agent that would ignore the option.
 `status` reports `tool_approval: true`, so a caller that needs tools asked about
 (ember_api) can refuse an older agent that would ignore the option.
 
-## Roles
+## Prompts
 
-Copy `configs/prompts.json.example` to
-`configs/prompts.json` before running - like `.env`
-above, the real file is gitignored so a fresh checkout only has the
-`.example` twin, and `ai_agent` (and its tests) won't start without it.
+Each agent's system prompt comes from its own `agents/<id>.json`, in this order:
 
-To run with a specific AI agent persona (a set of system-prompt instructions
-tailored to a domain or use case), pass `--role` or set `AI_AGENT_ROLE`:
+1. An identity line, `Your name is Ember: <role>`. The role is `Orchestrator`
+   for an orchestrator, else the file's `label` (`Ember: Researcher`,
+   `Ember: Reviewer`).
+2. `persona`.
+3. For an orchestrator, the roster of specialists, rebuilt each turn.
+4. `instructions`. Empty uses `DEFAULT_INSTRUCTIONS` in `src/llm/agent_roles.py`.
 
-```
-python -m src.server --role ops_specialist
-```
-
-or in `.env`:
-
-```
-AI_AGENT_ROLE=ops_specialist
-```
-
-The CLI flag takes precedence over the environment variable, which takes
-precedence over the `default_role` in `configs/prompts.json`.
-
-An agent file's `persona` replaces the role. `AI_AGENT_ROLE` / `--role` apply
-only to an instance started without an agent file.
-
-An unknown role id fails loudly at startup, naming the bad id and the valid
-alternatives - no silent fallback. Role selection is fixed for the process
-lifetime; there is no per-request or runtime override.
-
-One role ships out of the box:
-- `generic` (the default) - empty persona, preserving the original hardcoded
-  system prompt behavior.
-
-To add a new role, edit `configs/prompts.json` and add an entry
-under `roles` with a `label` (human-readable name) and `persona`
-(system-prompt instructions):
-
-```json
-{
-  "my_role": {
-    "label": "My Custom Role",
-    "persona": "You are an expert in ... "
-  }
-}
-```
-
-No code change is required - the new role is available immediately on the next
-process restart.
+There is no shared prompt file. Edit the agent's file and restart it.
 
 Agent files give each instance its own id, so any number of same-provider agents can run side by side.
 

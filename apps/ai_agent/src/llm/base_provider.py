@@ -6,7 +6,7 @@ between several, so ProviderSpec/ModelOption/ModelAvailability* and the
 Ollama-only RecursiveRoundRecord - all built for chat_app's per-request
 provider dropdown - have no equivalent need here. ChatCancelled,
 ToolCallRecord and ChatResult carry over unchanged. SYSTEM_PROMPT moved to
-agent_roles.py, which composes it from configs/prompts.json
+agent_roles.py, which composes it from the agent file
 instead of a fixed string.
 """
 

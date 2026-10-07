@@ -122,11 +122,8 @@ class AgentSpec:
     llm: LlmSpec
     enabled: bool = True
     entry: bool = False
-    # None = no persona in a file: use prompts.json's role
-    # (the env-var path). A file spec always has a string, "" included.
-    persona: str | None = ""
-    # Replaces prompts.json's shared tool_use_instructions for
-    # this agent; "" = use the shared text.
+    persona: str = ""
+    # "" = agent_roles.DEFAULT_INSTRUCTIONS.
     instructions: str = ""
     focus: str = ""
     tools: ToolScope = field(default_factory=ToolScope)
@@ -320,7 +317,7 @@ def load_dir(directory: Path) -> list[AgentSpec]:
 def from_env() -> AgentSpec:
     """The spec of an instance started the old way (python -m src.server
     with AI_AGENT_PROVIDER/AI_AGENT_PORT/...). It is an orchestrator so it
-    still gets delegate_to_agent; persona None means "use the role"."""
+    still gets delegate_to_agent."""
     provider = os.getenv("AI_AGENT_PROVIDER") or ""
     raw_port = os.getenv("AI_AGENT_PORT", "9100")
     try:
@@ -336,7 +333,6 @@ def from_env() -> AgentSpec:
             gateway=os.getenv("AI_AGENT_GATEWAY") or None,
             model=os.getenv("AI_AGENT_MODEL") or None,
         ),
-        persona=None,
         orchestrator=True,
     )
 

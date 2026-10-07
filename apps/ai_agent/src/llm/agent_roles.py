@@ -1,71 +1,28 @@
-"""Resolves this ai_agent instance's active persona role, once, at import
-time - fails loudly if AI_AGENT_ROLE names an id not present in
-configs/prompts.json, rather than discovering that on the
-first real request.
+"""Builds this ai_agent instance's system prompt from its agent file
+(agents/<id>.json), once, at import time.
 
-SYSTEM_PROMPT (imported by anthropic_provider.py/openai_provider.py in
-place of the old base_provider.SYSTEM_PROMPT constant) is built from, in
-order: an identity line derived from the config's app_name/app_description
-(so every role can answer "what's your name"), the resolved role's persona
-text, then the config's shared tool_use_instructions. Editing
-tool_use_instructions once updates every role. The generic role's persona
-is empty, so its SYSTEM_PROMPT is just identity + tool_use_instructions.
+SYSTEM_PROMPT (imported by anthropic_provider.py/openai_provider.py) is
+built from, in order: an identity line ("Your name is Ember: <role>", the
+role being "Orchestrator" for an orchestrator and the file's label for any
+other agent), the file's persona, the orchestrator roster (per request, see
+system_prompt_for) and the file's instructions. An agent file with no
+instructions gets DEFAULT_INSTRUCTIONS.
 """
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
 
 from src.agents import agent_spec
-from src.agents.agent_spec import RosterEntry
-from src.core.seed import seed_from_example
+from src.agents.agent_spec import AgentSpec, RosterEntry
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "prompts.json"
-
-_config: dict[str, Any] | None = None
-
-
-class AgentRoleError(Exception):
-    """Raised at import time for an AI_AGENT_ROLE naming an id that isn't
-    in configs/prompts.json's "roles" map, for the config
-    file itself being missing, or for the config being malformed (missing
-    a required key)."""
-
-
-def _load() -> dict[str, Any]:
-    global _config
-    if _config is None:
-        seed_from_example(_CONFIG_PATH)
-        try:
-            _config = json.loads(_CONFIG_PATH.read_text())
-        except FileNotFoundError as exc:
-            raise AgentRoleError(
-                f"{_CONFIG_PATH} not found - copy {_CONFIG_PATH}.example to it"
-            ) from exc
-    return _config
-
-
-def _resolve() -> tuple[str, dict[str, Any]]:
-    # An agent file's persona replaces the role (AI_AGENT_ROLE is only for
-    # instances started the old way, whose spec has persona None).
-    spec = agent_spec.current()
-    if spec.persona is not None:
-        return spec.id, {"persona": spec.persona, "instructions": spec.instructions}
-    config = _load()
-    try:
-        roles = config["roles"]
-        role_id = os.getenv("AI_AGENT_ROLE") or config["default_role"]
-    except KeyError as exc:
-        raise AgentRoleError(f"{_CONFIG_PATH} is missing required key {exc}") from exc
-    role = roles.get(role_id)
-    if role is None:
-        raise AgentRoleError(
-            f"Unknown AI_AGENT_ROLE {role_id!r} - must be one of: {', '.join(sorted(roles))}"
-        )
-    return role_id, role
+APP_NAME = "Ember"
+APP_DESCRIPTION = "Support tool that reads real system state through tools instead of manual lookups."
+DEFAULT_INSTRUCTIONS = (
+    "You are a helpful assistant with access to tools. Use them to get real data rather than guessing, "
+    "and say so plainly when no tool can answer the question. Confirm with the user before any "
+    "destructive or hard-to-reverse action."
+)
 
 
 def roster_block(roster: Sequence[RosterEntry]) -> str:
@@ -80,28 +37,20 @@ def roster_block(roster: Sequence[RosterEntry]) -> str:
     )
 
 
-def _compose_system_prompt(config: dict[str, Any], role: dict[str, Any], roster_text: str = "") -> str:
-    tool_use_instructions = role.get("instructions") or ""
-    if not tool_use_instructions:
-        try:
-            tool_use_instructions = config["tool_use_instructions"]
-        except KeyError as exc:
-            raise AgentRoleError(f"{_CONFIG_PATH} is missing required key {exc}") from exc
-    app_name = config.get("app_name") or ""
-    app_description = config.get("app_description") or ""
-    identity = ""
-    if app_name:
-        identity = f"Your name is {app_name}, an AI Assistant."
-        if app_description:
-            identity += f" {app_description}"
-        identity += " When asked who you are or what your name is, answer with your name and this role."
-    persona = role.get("persona") or ""
-    parts = [p for p in (identity, persona, roster_text, tool_use_instructions) if p]
-    return "\n\n".join(parts)
+def _identity(spec: AgentSpec) -> str:
+    role = "Orchestrator" if spec.orchestrator else (spec.label or spec.id)
+    return (
+        f"Your name is {APP_NAME}: {role}, an AI Assistant. {APP_DESCRIPTION} "
+        "When asked who you are or what your name is, answer with your name and this role."
+    )
 
 
-ROLE_ID, _ROLE = _resolve()
-SYSTEM_PROMPT = _compose_system_prompt(_load(), _ROLE)
+def _compose_system_prompt(spec: AgentSpec, roster_text: str = "") -> str:
+    parts = (_identity(spec), spec.persona, roster_text, spec.instructions or DEFAULT_INSTRUCTIONS)
+    return "\n\n".join(p for p in parts if p)
+
+
+SYSTEM_PROMPT = _compose_system_prompt(agent_spec.current())
 
 # Appended to SYSTEM_PROMPT per request when chat_app's caveman toggle is on.
 # A prompt-level instruction, not a post-process filter: a regex pass would
@@ -120,5 +69,5 @@ CAVEMAN_INSTRUCTIONS = (
 def system_prompt_for(caveman: bool = False, roster: Sequence[RosterEntry] = ()) -> str:
     """SYSTEM_PROMPT, with this turn's orchestrator roster (if any) placed
     before the tool-use instructions, and caveman instructions appended."""
-    prompt = _compose_system_prompt(_load(), _ROLE, roster_block(roster)) if roster else SYSTEM_PROMPT
+    prompt = _compose_system_prompt(agent_spec.current(), roster_block(roster)) if roster else SYSTEM_PROMPT
     return f"{prompt}\n\n{CAVEMAN_INSTRUCTIONS}" if caveman else prompt

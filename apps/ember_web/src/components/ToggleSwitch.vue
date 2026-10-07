@@ -24,6 +24,8 @@ defineProps<{ small?: boolean; title?: string }>();
 
 <style scoped>
 .toggle {
+  /* Anchors the visually hidden input: unanchored, focusing it scrolls the page root. */
+  position: relative;
   --w: 52px;
   --h: 24px;
   display: inline-flex;
