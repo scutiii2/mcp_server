@@ -92,6 +92,11 @@ from src.capabilities import tables  # noqa: E402
 with capability_registry.capturing(mcp, tables.META.id, label=tables.META.label):
     from src.capabilities.tables import tool as tables_tool  # noqa: E402,F401
 
+from src.capabilities import watchers  # noqa: E402
+
+with capability_registry.capturing(mcp, watchers.META.id, label=watchers.META.label):
+    from src.capabilities.watchers import tool as watchers_tool  # noqa: E402,F401
+
 for _name in capability_registry.names():
     if not capability_enabled(_capabilities_config, _name):
         capability_registry.set_enabled(mcp, _name, False)
@@ -191,6 +196,12 @@ async def _serve() -> None:
         # Flushing costs nothing here and is the difference between the
         # warning being seen and not.
         print("\n".join(banner), flush=True)
+
+        # Restart the watchers that were running when the server last stopped.
+        if capability_registry.is_enabled(watchers.META.id):
+            from src.capabilities.watchers.utils.user_watcher import UserWatcher
+
+            UserWatcher.resume_all(settings.watchers_dir)
 
         app = mcp.streamable_http_app()
         # Reads chat_app's X-Requester-Username/X-Requester-Email headers

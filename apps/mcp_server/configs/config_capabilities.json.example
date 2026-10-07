@@ -22,5 +22,8 @@
   },
   "data": {
     "enabled": true
+  },
+  "watch": {
+    "enabled": true
   }
 }
