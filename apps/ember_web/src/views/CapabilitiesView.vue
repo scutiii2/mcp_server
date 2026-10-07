@@ -141,11 +141,10 @@ function capabilityPage(capability: CapabilityInfo): SectionPage | null {
 }
 
 /** Where an extension's Open button leads: its own web UI when it names a
- * usable one (a new tab), else our page for its tools (needs tools.use), else nowhere. */
+ * usable one (a new tab), else nowhere (its tools are listed in its card). */
 function extensionPage(e: ExtensionInfo): SectionPage | null {
   const web = safeWebUrl(e.web_url);
-  if (web) return { to: web, external: true, label: "Open app" };
-  return canTools.value ? { to: `/extensions/${encodeURIComponent(e.id)}`, external: false } : null;
+  return web ? { to: web, external: true, label: "Open app" } : null;
 }
 
 function extensionSummary(g: { extension: ExtensionInfo; tools: ToolInfo[] }): string {

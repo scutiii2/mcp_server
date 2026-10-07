@@ -78,7 +78,6 @@ async function show(options: { admin?: boolean; query?: string; permissions?: st
     routes: [
       { path: "/capabilities", component: CapabilitiesView },
       { path: "/capabilities/:name", component: { template: "<div />" } },
-      { path: "/extensions/:id", component: { template: "<div />" } },
     ],
   });
   await router.push(options.query ? `/capabilities?q=${options.query}` : "/capabilities");
@@ -389,15 +388,12 @@ describe("CapabilitiesView extension cards", () => {
     expect(link.attributes("rel")).toBe("noopener noreferrer");
   });
 
-  it("opens the tools page of an extension without a web UI, and never links a non-http address", async () => {
+  it("gives an extension without a web UI no Open button, and never links a non-http address", async () => {
     mocks.extensions.mockResolvedValue([ext("notes"), ext("odd id/x", null), ext("bad", "javascript:alert(1)")]);
     const w = await show({ permissions: WITH_CHAT });
 
     expect(openButtons(w).map((a) => [a.text(), a.attributes("href")])).toEqual([
       ["Open page", "/capabilities/pdf"],
-      ["Open page", "/extensions/notes"],
-      ["Open page", "/extensions/odd%20id%2Fx"],
-      ["Open page", "/extensions/bad"],
     ]);
   });
 

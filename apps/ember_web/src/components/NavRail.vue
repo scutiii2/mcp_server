@@ -31,12 +31,12 @@ const alertLabel = computed(() => {
   return `Config issues: ${parts.join(", ")}`;
 });
 
-// A chat opened by id, a capability's own page and an extension's own page
-// have no rail item of their own, so they keep their parent page marked.
+// A chat opened by id and a capability's own page have no rail item of
+// their own, so they keep their parent page marked.
 function isOpenedFromHere(to: string): boolean {
   return (
     (to === "/" && route.name === "chat-id") ||
-    (to === "/capabilities" && (route.name === "capability-page" || route.name === "extension-page"))
+    (to === "/capabilities" && route.name === "capability-page")
   );
 }
 

@@ -156,6 +156,14 @@ describe("the merged Capabilities page", () => {
     expect(router.currentRoute.value.name).toBe("capabilities");
   });
 
+  it("sends the old page of one extension to Capabilities", async () => {
+    me.mockResolvedValue(ACCOUNT_WITH_TOOLS);
+
+    await router.push("/extensions/pdf");
+
+    expect(router.currentRoute.value.name).toBe("capabilities");
+  });
+
   it("opens for chat.use alone, to switch extensions", async () => {
     me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use"] });
 

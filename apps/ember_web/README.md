@@ -160,10 +160,9 @@ URL, token or key.
   (remembered per account, shown in the chat header). Admins add extensions (button on top) and remove
   them (in the card; a dialog asks first). An extension's Open button leads to its `web_url` (for
   example `pdf_merger` and its web app) in a new tab, labelled "Open app"; only http(s) addresses
-  count, and it works without `tools.use` and when the extension is not connected. Any other extension
-  (with `tools.use`) gets "Open page" to `/extensions/<id>`: its label, description, web app link and
-  its tools as rows that open the same run form (a failed extension shows its error and no tools).
-  `/extensions` redirects to this page. Without `tools.use` only the extensions are listed. Tools that
+  count, and it works without `tools.use` and when the extension is not connected. An extension with no
+  web app has no Open button: its card lists its tools as rows that open the run form (a failed
+  extension shows its error and no tools). `/extensions` and `/extensions/<id>` redirect to this page. Without `tools.use` only the extensions are listed. Tools that
   no capability or extension lists go under "Other tools".
 - Agents page (`chat.use`): a card per agent from `GET /api/agents` - name, id,
   Entry / Orchestrator badges, what it is for, and a status (running, offline,

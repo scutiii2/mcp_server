@@ -50,12 +50,8 @@ export const router = createRouter({
     },
     // The Extensions page was merged into Capabilities; old links and bookmarks still work.
     { path: "/extensions", redirect: (to) => ({ path: "/capabilities", query: to.query }) },
-    {
-      path: "/extensions/:id",
-      name: "extension-page",
-      component: () => import("../views/ExtensionPageView.vue"),
-      meta: { permission: "tools.use" },
-    },
+    // An extension no longer has a page of its own; its card on Capabilities has everything.
+    { path: "/extensions/:id", redirect: "/capabilities" },
     {
       path: "/agents",
       name: "agents",
