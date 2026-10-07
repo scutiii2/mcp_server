@@ -177,10 +177,15 @@ export class SlashCommandRunner {
     }
   }
 
-  /** Built-in commands plus the tools of `enabledExtensions`; extensions are
-   * left out (not failed) when the tool list can't be read. */
-  async list(enabledExtensions: readonly string[] = []): Promise<CommandInfo[]> {
-    const builtIns = await this.builtIns();
+  /** Built-in commands (without those of `disabledCapabilities`, which the
+   * account switched off for itself) plus the tools of `enabledExtensions`;
+   * extensions are left out (not failed) when the tool list can't be read. */
+  async list(
+    enabledExtensions: readonly string[] = [],
+    disabledCapabilities: readonly string[] = [],
+  ): Promise<CommandInfo[]> {
+    const all = await this.builtIns();
+    const builtIns = disabledCapabilities.length ? all.filter((c) => !disabledCapabilities.includes(c.capability)) : all;
     if (!enabledExtensions.length) return builtIns;
     const taken = new Set(builtIns.map((c) => c.capability));
     const enabled = new Set(enabledExtensions);
@@ -203,11 +208,18 @@ export class SlashCommandRunner {
   }
 
   /** The result as Markdown for the chat. */
-  async run(text: string, enabledExtensions: readonly string[] = []): Promise<string> {
+  async run(
+    text: string,
+    enabledExtensions: readonly string[] = [],
+    disabledCapabilities: readonly string[] = [],
+  ): Promise<string> {
     try {
       if (text.replace(/^\//, "").trim() === "help") return asMarkdown(await commandsClient.helpIndex());
       const parsed = parseCommand(text);
-      const commands = await this.list(enabledExtensions);
+      if (disabledCapabilities.includes(parsed.capability)) {
+        throw new CommandError(`"${parsed.capability}" is switched off in your chats. Switch it on on the Capabilities page.`);
+      }
+      const commands = await this.list(enabledExtensions, disabledCapabilities);
       const ofCapability = commands.filter((c) => c.capability === parsed.capability);
       if (parsed.command === "help") {
         // mcp_server only has help for its own capabilities.

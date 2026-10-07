@@ -155,9 +155,11 @@ URL, token or key.
 - Capabilities page (`tools.use` or `chat.use`): mcp_server's built-in capabilities and its extensions
   (other MCP servers) as one list of identical collapsible cards (All / Built-in / Extensions filter,
   and a tool filter). A card shows a status dot, name and id, what it brings, an Open button and an
-  on/off switch with who it is for. A capability's switch is for "Everyone" (admins only; a dialog asks
-  first). An extension's is for "You": it picks the extensions the agent may use in your chats
-  (remembered per account, shown in the chat header). Admins add extensions (button on top) and remove
+  on/off switch with who it is for. Every card's switch is for "You": it picks what the agent and `/` commands may use in your
+  own chats, remembered per account on this device. Built-in capabilities start on, extensions start
+  off (shown in the chat settings). A built-in capability switched off for you sends its tool names
+  as `disabled_tools` with each question; admins turn one off for everyone with a button inside its
+  card (a dialog asks first), which also locks the switch. Admins add extensions (button on top) and remove
   them (in the card; a dialog asks first). An extension's Open button leads to its `web_url` (for
   example `pdf_merger` and its web app) in a new tab, labelled "Open app"; only http(s) addresses
   count, and it works without `tools.use` and when the extension is not connected. An extension with no

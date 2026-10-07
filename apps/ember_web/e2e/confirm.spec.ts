@@ -204,8 +204,11 @@ test("switching a capability asks first: off is a danger confirm, on a plain one
   await expect(card("PDF files")).toContainText("1 tool");
   await expect(card("Legacy")).toContainText("1 tool");
 
-  // Turn PDF files off: it asks, and Cancel changes nothing.
-  await card("PDF files").getByTitle("Turn off").click();
+  // Open the card: the button for everyone is inside it (the switch in its header is only yours).
+  await card("PDF files").getByRole("button", { name: /PDF files/ }).click();
+
+  // Turn PDF files off for everyone: it asks, and Cancel changes nothing.
+  await card("PDF files").getByRole("button", { name: "Turn off for everyone" }).click();
   const dialog = page.getByRole("dialog", { name: "Turn off capability" });
   await expect(dialog).toContainText('Turn off "PDF files" for every mcp_server client (chat_app, agents, ember)?');
   await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -215,7 +218,7 @@ test("switching a capability asks first: off is a danger confirm, on a plain one
 
   // Confirm: turning off is the risky way round, so the button has the danger style. It is then off
   // here and on the server, and the tools mcp_server lists no longer include its tool.
-  await card("PDF files").getByTitle("Turn off").click();
+  await card("PDF files").getByRole("button", { name: "Turn off for everyone" }).click();
   const turnOff = dialog.getByRole("button", { name: "Turn off" });
   await expect(turnOff).toHaveClass(/danger/);
   await turnOff.click();
@@ -224,7 +227,7 @@ test("switching a capability asks first: off is a danger confirm, on a plain one
   await expect(card("Legacy")).toContainText("1 tool");
 
   // Turn it back on: a plain confirm, no danger style.
-  await card("PDF files").getByTitle("Turn on").click();
+  await card("PDF files").getByRole("button", { name: "Turn on for everyone" }).click();
   const onDialog = page.getByRole("dialog", { name: "Turn on capability" });
   await expect(onDialog).toContainText('Turn on "PDF files" for every mcp_server client');
   const turnOn = onDialog.getByRole("button", { name: "Turn on" });

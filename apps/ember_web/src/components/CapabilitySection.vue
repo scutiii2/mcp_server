@@ -35,6 +35,8 @@ withDefaults(
     scope?: string;
     switchTitle?: string;
     switching?: boolean;
+    /** The switch is shown but cannot be flipped (the capability is off for everyone). */
+    locked?: boolean;
   }>(),
   { status: undefined, icon: undefined, page: null, control: "none", scope: "", switchTitle: "" },
 );
@@ -73,7 +75,7 @@ const ICONS = {
         <ToggleSwitch
           :title="switchTitle"
           :checked="checked"
-          :disabled="switching"
+          :disabled="switching || locked"
           @click.prevent="emit('switch')"
         />
         <small v-if="scope" class="scope">{{ scope }}</small>

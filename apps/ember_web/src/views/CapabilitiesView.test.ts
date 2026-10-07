@@ -314,11 +314,15 @@ describe("CapabilitiesView", () => {
     expect(w.text()).toContain("Help text");
   });
 
-  it("gives admins an on/off switch that asks first and then switches", async () => {
+  const everyone = (w: Wrapper) => w.get("button.everyone");
+
+  it("gives admins a button in the card that turns a capability on or off for everyone, asking first", async () => {
     mocks.setCapability.mockResolvedValue({ ...CAPS[2]!, enabled: true });
     const w = await show({ admin: true });
+    await head(w, "Legacy").trigger("click");
+    expect(everyone(w).text()).toBe("Turn on for everyone");
 
-    await w.findAll("input[type=checkbox]")[2]!.trigger("click");
+    await everyone(w).trigger("click");
     expect(mocks.setCapability).not.toHaveBeenCalled();
     expect(w.getComponent(ConfirmModal).props("message")).toContain('Turn on "Legacy"');
     expect(w.getComponent(ConfirmModal).props("danger")).toBe(false);
@@ -331,8 +335,9 @@ describe("CapabilitiesView", () => {
 
   it("does not switch anything when the admin declines", async () => {
     const w = await show({ admin: true });
+    await head(w, "PDF files").trigger("click");
 
-    await w.findAll("input[type=checkbox]")[0]!.trigger("click");
+    await everyone(w).trigger("click");
     await w.getComponent(ConfirmModal).get(".cancel").trigger("click");
 
     expect(w.findComponent(ConfirmModal).exists()).toBe(false);
@@ -341,11 +346,20 @@ describe("CapabilitiesView", () => {
 
   it("marks turning a capability off as a dangerous action", async () => {
     const w = await show({ admin: true });
+    await head(w, "PDF files").trigger("click");
+    expect(everyone(w).text()).toBe("Turn off for everyone");
 
-    await w.findAll("input[type=checkbox]")[0]!.trigger("click");
+    await everyone(w).trigger("click");
 
     expect(w.getComponent(ConfirmModal).props("message")).toContain("Turn off");
     expect(w.getComponent(ConfirmModal).props("danger")).toBe(true);
+  });
+
+  it("shows no everyone button to an account that is not an admin", async () => {
+    const w = await show({ permissions: ["tools.use", "chat.use"] });
+    await head(w, "PDF files").trigger("click");
+
+    expect(w.find("button.everyone").exists()).toBe(false);
   });
 
   it("shows other users a plain On/Off badge and no switch", async () => {
@@ -483,7 +497,7 @@ describe("the page layout", () => {
 
     expect(w.get("details.how summary").text()).toBe("How switches work");
     expect(w.get(".intro").text()).not.toContain("slash");
-    expect(w.get("details.how p").text()).toContain("only used in your chats while you switch it on");
+    expect(w.get("details.how p").text()).toContain("remembered on this device");
   });
 
   it("puts the filter and the kind toggle on one row", async () => {
@@ -499,7 +513,7 @@ describe("the page layout", () => {
     const w = await show({ permissions: WITH_CHAT });
 
     const titles = w.findAll(".group-title").map((h) => h.text());
-    expect(titles).toEqual(["Built-in · switches apply to every client", "Extensions · switches apply to your chats", "Other"]);
+    expect(titles).toEqual(["Built-in · switches apply to your chats", "Extensions · switches apply to your chats", "Other"]);
 
     await w.findAll(".kinds button").find((b) => b.text() === "Built-in")!.trigger("click");
     expect(w.find(".group-title").exists()).toBe(false);
@@ -520,5 +534,54 @@ describe("the page layout", () => {
     expect(w.findAll("ul.cards")).toHaveLength(1);
     expect(w.get(".res-label").text()).toBe("Resources");
     expect(w.find(".resources .res-icon").exists()).toBe(true);
+  });
+});
+
+describe("built-in switches for your own chats", () => {
+  const WITH_CHAT = ["tools.use", "chat.use"];
+  const boxes = (w: Wrapper) => w.findAll("input[type=checkbox]");
+
+  it("gives each built-in card a switch for you, on to begin with", async () => {
+    const w = await show({ permissions: WITH_CHAT });
+
+    expect(boxes(w)).toHaveLength(3);
+    expect(boxes(w).map((b) => (b.element as HTMLInputElement).checked)).toEqual([true, true, false]);
+    expect(w.findAll(".scope").map((s) => s.text())).toEqual(["You", "You", "You"]);
+  });
+
+  it("switches one off for you at once, without asking, and says so", async () => {
+    const w = await show({ permissions: WITH_CHAT });
+    const chat = useChatStore();
+
+    await boxes(w)[0]!.trigger("click");
+
+    expect(chat.disabledCapabilities).toEqual(["pdf"]);
+    expect(mocks.setCapability).not.toHaveBeenCalled();
+    expect(w.findComponent(ConfirmModal).exists()).toBe(false);
+    expect(head(w, "PDF files").text()).toContain("Off for you");
+    expect((boxes(w)[0]!.element as HTMLInputElement).checked).toBe(false);
+
+    await head(w, "PDF files").trigger("click");
+    expect(w.text()).toContain("Switched off in your chats");
+
+    await boxes(w)[0]!.trigger("click");
+    expect(chat.disabledCapabilities).toEqual([]);
+    expect(head(w, "PDF files").text()).toContain("2 tools");
+  });
+
+  it("keeps the switch of a capability that is off for everyone off, and locked", async () => {
+    const w = await show({ permissions: WITH_CHAT });
+
+    const legacy = boxes(w)[2]!.element as HTMLInputElement;
+    expect(legacy.checked).toBe(false);
+    expect(legacy.disabled).toBe(true);
+    expect(head(w, "Legacy").text()).toContain("off");
+  });
+
+  it("leaves the everyone switch to admins, inside the card", async () => {
+    const w = await show({ permissions: [...WITH_CHAT, "admin.manage"] });
+    await head(w, "PDF files").trigger("click");
+
+    expect(w.get("button.everyone").text()).toBe("Turn off for everyone");
   });
 });

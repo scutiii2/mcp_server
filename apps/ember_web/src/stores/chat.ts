@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import { chatsClient, type ChatSearchHit } from "../api/ChatsClient";
+import { commandsClient } from "../api/CommandsClient";
 import { settingsClient } from "../api/SettingsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import { ApiError } from "../api/http";
@@ -94,13 +95,21 @@ function extensionsKey(accountId: number): string {
   return `ember_web.extensions.${accountId}`;
 }
 
-function readExtensions(accountId: number): string[] {
+function disabledCapabilitiesKey(accountId: number): string {
+  return `ember_web.disabledCapabilities.${accountId}`;
+}
+
+function readStringList(key: string): string[] {
   try {
-    const parsed: unknown = JSON.parse(readPreference(extensionsKey(accountId)) ?? "[]");
+    const parsed: unknown = JSON.parse(readPreference(key) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
   } catch {
     return [];
   }
+}
+
+function readExtensions(accountId: number): string[] {
+  return readStringList(extensionsKey(accountId));
 }
 
 // Per-viewer convenience: blocked storage just means the default (off).
@@ -184,6 +193,13 @@ export const useChatStore = defineStore("chat", () => {
   // None by default: a newly added extension is never in scope unasked.
   // Remembered per account.
   const enabledExtensions = ref<string[]>([]);
+  // Built-in capabilities this account switched off for its own chats (the
+  // switch on the Capabilities page). Everything is on by default. Remembered
+  // per account, on this device, like the extensions above.
+  const disabledCapabilities = ref<string[]>([]);
+  // What each capability's tools are called, to turn the choice above into the
+  // tool names ember_api passes on; read when a question is first sent.
+  let capabilityTools: Map<string, string[]> | null = null;
   // Slash commands (tools.use): the runner caches the command list and tool
   // schemas, so it's replaced per account.
   let commandRunner = new SlashCommandRunner();
@@ -398,6 +414,8 @@ export const useChatStore = defineStore("chat", () => {
       chime.value = accountId === null || readPreference(chimeKey(accountId)) !== "0";
       allowedTools.value = accountId !== null ? readAllowedTools(accountId) : {};
       enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
+      disabledCapabilities.value = accountId !== null ? readStringList(disabledCapabilitiesKey(accountId)) : [];
+      capabilityTools = null;
       forceToolApproval.value = false;
       if (accountId !== null) void refreshSettings();
       commandRunner = new SlashCommandRunner();
@@ -572,7 +590,7 @@ export const useChatStore = defineStore("chat", () => {
     if (!auth.hasPermission("tools.use")) return;
     const started = generation;
     try {
-      const list = await commandRunner.list(enabledExtensions.value);
+      const list = await commandRunner.list(enabledExtensions.value, disabledCapabilities.value);
       if (started === generation) commands.value = list;
     } catch {
       if (started === generation) commands.value = [];
@@ -591,7 +609,7 @@ export const useChatStore = defineStore("chat", () => {
     clockStart.value = began;
     const started = generation;
     try {
-      const result = await commandRunner.run(text, enabledExtensions.value);
+      const result = await commandRunner.run(text, enabledExtensions.value, disabledCapabilities.value);
       if (started !== generation) return;
       const seconds = Number(((Date.now() - began) / 1000).toFixed(1));
       await appendMessages(
@@ -629,6 +647,14 @@ export const useChatStore = defineStore("chat", () => {
       await runCommand(question);
       return true;
     }
+    // Which tools the account switched off: needed before anything is changed.
+    let disabledTools: string[];
+    try {
+      disabledTools = await resolveDisabledTools();
+    } catch (err) {
+      sendError.value = `Couldn't check which capabilities you switched off, so nothing was sent: ${errorMessage(err)}`;
+      return false;
+    }
     // The administrator may have changed what is required since the page loaded.
     void refreshSettings();
 
@@ -662,6 +688,7 @@ export const useChatStore = defineStore("chat", () => {
         question,
         caveman: caveman.value,
         enabled_extensions: enabledExtensions.value,
+        ...(disabledTools.length ? { disabled_tools: disabledTools } : {}),
         title: conversation.title,
         ...(truncateTo === undefined ? {} : { truncate_to: truncateTo }),
         ...(askBeforeTools.value || forceToolApproval.value
@@ -942,6 +969,34 @@ export const useChatStore = defineStore("chat", () => {
     if (accountId !== undefined) writePreference(cavemanKey(accountId), on ? "1" : "0");
   }
 
+  /** The tool names of the capabilities the account switched off. Reads the
+   * capability list once, and only when something is switched off; a failed
+   * read throws, so a question never goes out with those tools still on offer. */
+  async function resolveDisabledTools(): Promise<string[]> {
+    if (disabledCapabilities.value.length === 0) return [];
+    if (capabilityTools === null) {
+      const started = generation;
+      const list = await commandsClient.capabilities();
+      if (started !== generation) throw new Error("the account changed");
+      capabilityTools = new Map(list.map((c) => [c.name, c.tools]));
+    }
+    const names = disabledCapabilities.value.flatMap((name) => capabilityTools?.get(name) ?? []);
+    return [...new Set(names)].sort();
+  }
+
+  /** Lets the agent (and slash commands) use built-in capability `name`'s tools, or not. */
+  function setCapabilityEnabled(name: string, on: boolean): void {
+    const next = new Set(disabledCapabilities.value);
+    if (on) next.delete(name);
+    else next.add(name);
+    disabledCapabilities.value = [...next].sort();
+    const accountId = auth.account?.id;
+    if (accountId !== undefined) {
+      writePreference(disabledCapabilitiesKey(accountId), JSON.stringify(disabledCapabilities.value));
+    }
+    void loadCommands();
+  }
+
   /** Lets the agent (and slash commands) use extension `id`'s tools, or not. */
   function setExtensionEnabled(id: string, on: boolean): void {
     const next = new Set(enabledExtensions.value);
@@ -1127,6 +1182,8 @@ export const useChatStore = defineStore("chat", () => {
     decideApproval,
     enabledExtensions,
     setExtensionEnabled,
+    disabledCapabilities,
+    setCapabilityEnabled,
     refreshCommands,
     clearChat,
     summarizeChat,

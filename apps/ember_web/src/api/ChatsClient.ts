@@ -38,6 +38,8 @@ export interface TurnStart {
   caveman: boolean;
   /** mcp_server extensions whose tools the agent may use. */
   enabled_extensions: string[];
+  /** Tools of the built-in capabilities this account switched off for its own chats. */
+  disabled_tools?: string[];
   /** Used only when this turn creates the chat. */
   title?: string;
   /** Regenerate / edit: index of the question this one replaces; it and

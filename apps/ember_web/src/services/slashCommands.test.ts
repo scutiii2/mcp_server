@@ -72,3 +72,26 @@ describe("a command that offers a file", () => {
     expect(await new SlashCommandRunner().run("/files export")).toBe("plain output");
   });
 });
+
+describe("capabilities the account switched off", () => {
+  it("leaves their commands out of the list", async () => {
+    const runner = new SlashCommandRunner();
+
+    expect((await runner.list([], [])).map((c) => c.capability)).toEqual(["files"]);
+    expect(await runner.list([], ["files"])).toEqual([]);
+    expect((await runner.list([], ["other"])).map((c) => c.capability)).toEqual(["files"]);
+  });
+
+  it("refuses to run one, and says how to switch it back on", async () => {
+    const out = await new SlashCommandRunner().run("/files export", [], ["files"]);
+
+    expect(out).toBe('❌ "files" is switched off in your chats. Switch it on on the Capabilities page.');
+    expect(runTool).not.toHaveBeenCalled();
+  });
+
+  it("still runs the ones that are on", async () => {
+    runTool.mockResolvedValue({ text: "done", isError: false });
+
+    expect(await new SlashCommandRunner().run("/files export", [], ["other"])).toBe("done");
+  });
+});

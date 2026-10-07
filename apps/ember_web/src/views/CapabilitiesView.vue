@@ -31,7 +31,7 @@ import { safeWebUrl } from "../utils/webUrl";
 
 const auth = useAuthStore();
 const chat = useChatStore();
-const { enabledExtensions } = storeToRefs(chat);
+const { enabledExtensions, disabledCapabilities } = storeToRefs(chat);
 const server = new McpServerClient();
 
 const capabilities = ref<CapabilityInfo[]>([]);
@@ -84,6 +84,9 @@ const canChat = computed(() => auth.hasPermission("chat.use"));
 // Capabilities, tools and resources need tools.use; an extension's switch needs only chat.use.
 const canTools = computed(() => auth.hasPermission("tools.use"));
 const switchedOn = computed(() => new Set(enabledExtensions.value));
+const switchedOffByMe = computed(() => new Set(disabledCapabilities.value));
+/** A built-in capability this account switched off for its own chats (it may still be on for others). */
+const offForMe = (capability: CapabilityInfo): boolean => capability.enabled && switchedOffByMe.value.has(capability.name);
 const showBuiltin = computed(() => canTools.value && kind.value !== "extensions");
 const showExtensions = computed(() => kind.value !== "builtin");
 // Headings tell the groups apart, and the two kinds of switch; only when both can show.
@@ -130,7 +133,15 @@ const countText = (tools: number, resources: number): string =>
   `${tools} tool${tools === 1 ? "" : "s"}${resources ? ` · ${resources} resource${resources === 1 ? "" : "s"}` : ""}`;
 
 function capabilitySummary(capability: CapabilityInfo, tools: number): string {
-  return capability.enabled ? countText(tools, resourcesOf(capability).length) : "off";
+  if (!capability.enabled) return "off";
+  if (offForMe(capability)) return "Off for you";
+  return countText(tools, resourcesOf(capability).length);
+}
+
+function capabilitySwitchTitle(capability: CapabilityInfo): string {
+  return capability.enabled
+    ? "Let the agent and slash commands use its tools in your chats"
+    : "Turned off for everyone by an administrator";
 }
 
 /** Where a capability's Open button leads: its own page, while it is on. */
@@ -310,9 +321,10 @@ onMounted(load);
       <details class="how muted">
         <summary>How switches work</summary>
         <p>
-          A built-in capability's switch is for every mcp_server client (admins only, and it asks first). An extension
-          is another MCP server: its tools are only used in your chats while you switch it on. You can also run tools
-          with <code>/</code> commands in the chat.
+          Each switch decides what the agent and the <code>/</code> commands may use in your own chats, and is
+          remembered on this device. Built-in capabilities start on; an extension (another MCP server) starts off.
+          Switching one off here does not stop you running its tools on this page. Admins can also turn a built-in
+          capability off for everyone, from inside its card.
         </p>
       </details>
       <div v-if="!loading && !loadError" class="toolbar">
@@ -345,7 +357,7 @@ onMounted(load);
 
         <template v-if="showBuiltin">
           <h4 v-if="groupHeadings && grouped.groups.length" class="group-title">
-            Built-in <span class="muted">· switches apply to every client</span>
+            Built-in <span v-if="canChat" class="muted">· switches apply to your chats</span>
           </h4>
           <CapabilitySection
             v-for="g in grouped.groups"
@@ -355,19 +367,22 @@ onMounted(load);
             icon="builtin"
             :open="isOpen(g.capability.name)"
             :summary="capabilitySummary(g.capability, g.tools.length)"
-            :status="g.capability.enabled ? 'ok' : 'off'"
-            :dimmed="!g.capability.enabled"
+            :status="g.capability.enabled && !offForMe(g.capability) ? 'ok' : 'off'"
+            :dimmed="!g.capability.enabled || offForMe(g.capability)"
             :page="capabilityPage(g.capability)"
-            :control="isAdmin ? 'switch' : 'badge'"
-            :checked="g.capability.enabled"
-            scope="Everyone"
-            :switch-title="g.capability.enabled ? 'Turn off for every client' : 'Turn on for every client'"
-            :switching="switching === g.capability.name"
+            :control="canChat ? 'switch' : 'badge'"
+            :checked="g.capability.enabled && !offForMe(g.capability)"
+            scope="You"
+            :switch-title="capabilitySwitchTitle(g.capability)"
+            :locked="!g.capability.enabled"
             @toggle="toggleSection(g.capability.name)"
-            @switch="toggleCapability(g.capability)"
+            @switch="chat.setCapabilityEnabled(g.capability.name, offForMe(g.capability))"
           >
-            <p v-if="!g.capability.enabled" class="muted">Turned off: its tools and resources aren't offered to anyone.</p>
+            <p v-if="!g.capability.enabled" class="muted">Turned off for everyone: its tools and resources aren't offered to anyone.</p>
             <template v-else>
+              <p v-if="offForMe(g.capability)" class="muted">
+                Switched off in your chats: the agent and <code>/</code> commands don't use its tools. You can still run them here.
+              </p>
               <p v-if="g.tools.length === 0 && resourcesOf(g.capability).length === 0" class="muted">Nothing registered.</p>
               <ul v-if="g.tools.length" class="cards">
                 <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
@@ -382,6 +397,16 @@ onMounted(load);
                 </li>
               </ul>
             </template>
+            <div v-if="isAdmin" class="card-foot">
+              <button
+                type="button"
+                class="everyone"
+                :disabled="switching === g.capability.name"
+                @click="toggleCapability(g.capability)"
+              >
+                {{ g.capability.enabled ? "Turn off for everyone" : "Turn on for everyone" }}
+              </button>
+            </div>
           </CapabilitySection>
         </template>
 
@@ -614,6 +639,23 @@ h3 {
 .card-foot {
   display: flex;
   justify-content: flex-end;
+}
+.everyone {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--muted);
+  background: transparent;
+}
+.everyone:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.everyone:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 .search {
   box-sizing: border-box;
