@@ -71,9 +71,12 @@ function onAddRole(event: Event): void {
 <template>
   <aside class="drawer admin-panel" :aria-label="`Account ${account.username}`">
     <header>
-      <div class="who">
-        <b class="name">{{ account.username }}</b>
-        <span class="muted small-text">{{ account.email }}</span>
+      <div class="identity">
+        <span class="avatar" aria-hidden="true">{{ account.username.slice(0, 2).toUpperCase() }}</span>
+        <div class="who">
+          <b class="name">{{ account.username }}</b>
+          <span class="muted small-text">{{ account.email }}</span>
+        </div>
       </div>
       <button type="button" class="x" aria-label="Close" @click="emit('close')">×</button>
     </header>
@@ -147,11 +150,33 @@ function onAddRole(event: Event): void {
 .drawer {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 14px;
+  padding: 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
+}
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.drawer > section:not(.danger-zone) {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
 }
 header {
   display: flex;
@@ -197,14 +222,13 @@ h4 {
 }
 .buttons {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .chips {
   margin-top: 0;
 }
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   .drawer {
     position: fixed;
     inset: auto 0 var(--rail-height) 0;

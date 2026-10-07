@@ -82,39 +82,45 @@ onMounted(loadInvites);
 
 <template>
   <div class="admin-panel">
-    <form class="row-form" @submit.prevent="createInvite">
-      <input v-model="inviteeEmail" type="email" placeholder="Invitee email (optional)" aria-label="Invitee email" />
-      <ToggleSwitch
-        small
-        :checked="byEmail"
-        :disabled="!inviteeEmail.trim()"
-        @change="byEmail = ($event.target as HTMLInputElement).checked"
-      >
-        Email the code
-      </ToggleSwitch>
-      <button class="primary" :disabled="creating">
-        {{ creating ? "Creating ..." : "Create invite" }}
-      </button>
-    </form>
-    <p v-if="createError" class="error">{{ createError }}</p>
+    <header class="section-head"><div><h3>Invites</h3><p>Give someone access to your workspace.</p></div></header>
+    <section class="card invite-create">
+      <h3>Create an invite</h3>
+      <p class="muted">Codes are valid for 7 days and can be used once.</p>
+      <form class="row-form" @submit.prevent="createInvite">
+        <input v-model="inviteeEmail" type="email" placeholder="Invitee email (optional)" aria-label="Invitee email" />
+        <ToggleSwitch
+          small
+          :checked="byEmail"
+          :disabled="!inviteeEmail.trim()"
+          @change="byEmail = ($event.target as HTMLInputElement).checked"
+        >
+          Email the code
+        </ToggleSwitch>
+        <button class="primary" :disabled="creating">
+          {{ creating ? "Creating ..." : "Create invite" }}
+        </button>
+      </form>
+      <p v-if="createError" class="error">{{ createError }}</p>
 
-    <div v-if="created" class="created">
-      <p>
-        Invite code (shown only now, valid 7 days, works once):
-        <code class="code">{{ created.code }}</code>
-        <CopyButton :text="created.code" label="Copy invite code" />
-      </p>
-      <p v-if="created.email_sent" class="muted">Emailed to {{ created.invite.invitee_email }}.</p>
-      <p v-else-if="created.email_error" class="error">
-        Email failed: {{ created.email_error }} - pass the code on by hand.
-      </p>
-    </div>
+      <div v-if="created" class="created">
+        <p>
+          Invite code (shown only now, valid 7 days, works once):
+          <code class="code">{{ created.code }}</code>
+          <CopyButton :text="created.code" label="Copy invite code" />
+        </p>
+        <p v-if="created.email_sent" class="muted">Emailed to {{ created.invite.invitee_email }}.</p>
+        <p v-else-if="created.email_error" class="error">
+          Email failed: {{ created.email_error }} - pass the code on by hand.
+        </p>
+      </div>
+      <p class="notice">The invite code appears only once, immediately after creation.</p>
+    </section>
 
     <h3>Open invites</h3>
     <p v-if="listError" class="error">error: {{ listError }}</p>
     <p v-if="invites.length === 0 && !listError" class="muted">No open invites.</p>
-    <div class="table-wrap">
-      <table v-if="invites.length">
+    <div v-if="invites.length" class="table-wrap">
+      <table>
         <thead>
           <tr><th>Invitee</th><th>Delivery</th><th>Created</th><th>Expires</th><th></th></tr>
         </thead>
@@ -146,6 +152,32 @@ onMounted(loadInvites);
 </template>
 
 <style scoped>
+.invite-create.card {
+
+  padding: 20px;
+
+  background: var(--bg);
+
+}
+.invite-create h3 {
+  margin: 0 0 4px;
+}
+.invite-create > p {
+  margin: 0;
+  font-size: 0.9em;
+}
+.invite-create .row-form {
+  margin-top: 18px;
+  gap: 14px;
+}
+.invite-create > .notice {
+  margin-top: 16px;
+  font-size: 0.8em;
+}
+.table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
 .created {
   margin-top: 14px;
   padding: 12px 14px;
@@ -174,7 +206,7 @@ table {
 }
 th,
 td {
-  padding: 8px;
+  padding: 14px 16px;
   border-top: 1px solid var(--border);
   text-align: left;
 }
@@ -183,6 +215,7 @@ th {
   font-size: 0.85em;
   font-weight: 500;
   color: var(--muted);
+  background: var(--surface);
 }
 .invitee {
   overflow-wrap: anywhere;

@@ -108,6 +108,17 @@ onMounted(load);
 </template>
 
 <style scoped>
+.card {
+
+  padding: 20px;
+
+  background: var(--bg);
+
+}
+.card > .muted {
+  max-width: 620px;
+  font-size: 0.9em;
+}
 .card h3 {
   margin: 0;
 }
@@ -116,7 +127,7 @@ onMounted(load);
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 18px;
 }
 .chip.scope {
   margin-left: auto;

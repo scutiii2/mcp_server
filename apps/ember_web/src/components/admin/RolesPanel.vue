@@ -120,11 +120,14 @@ onMounted(load);
 
 <template>
   <div class="admin-panel">
+    <header class="section-head">
+      <div><h3>Roles &amp; permissions</h3><p>Define what each role can access.</p></div>
+      <button type="button" class="primary new" @click="openCreate">+ New role</button>
+    </header>
     <p v-if="loadError" class="error">error: {{ loadError }}</p>
 
     <div class="layout">
       <nav class="list" aria-label="Roles">
-        <button type="button" class="small new" @click="openCreate">+ New role</button>
         <ul>
           <li v-for="r in roles" :key="r.id">
             <button type="button" :class="['role', { selected: r.id === selectedId }]" :aria-pressed="r.id === selectedId" @click="select(r)">
@@ -183,13 +186,13 @@ onMounted(load);
   gap: 16px;
   align-items: start;
 }
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 .list ul {
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   border: 1px solid var(--border);
@@ -200,7 +203,7 @@ onMounted(load);
   border-top: 1px solid var(--border);
 }
 .new {
-  width: 100%;
+  flex-shrink: 0;
 }
 .role {
   display: flex;
@@ -208,7 +211,7 @@ onMounted(load);
   align-items: baseline;
   gap: 2px 6px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 14px 16px;
   border: none;
   cursor: pointer;
   font: inherit;
@@ -222,6 +225,7 @@ onMounted(load);
 }
 .role-name {
   overflow-wrap: anywhere;
+  font-weight: 600;
 }
 .count {
   flex-basis: 100%;

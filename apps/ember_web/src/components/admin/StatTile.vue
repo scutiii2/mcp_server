@@ -6,6 +6,7 @@ defineProps<{ label: string; value: number | null; warn?: boolean }>();
 
 <template>
   <div class="tile">
+    <span v-if="$slots.default" :class="['icon', { warn: warn && value }]" aria-hidden="true"><slot /></span>
     <span class="label">{{ label }}</span>
     <span :class="['value', { warn: warn && value }]">{{ value ?? "–" }}</span>
   </div>
@@ -13,14 +14,27 @@ defineProps<{ label: string; value: number | null; warn?: boolean }>();
 
 <style scoped>
 .tile {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 14px;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--code-bg);
+  background: var(--surface);
+}
+.icon {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  color: var(--muted);
+}
+.icon.warn {
+  color: var(--warning);
 }
 .label {
+  padding-right: 24px;
   font-size: 0.8em;
   color: var(--muted);
 }
@@ -30,6 +44,6 @@ defineProps<{ label: string; value: number | null; warn?: boolean }>();
   line-height: 1.2;
 }
 .value.warn {
-  color: var(--danger);
+  color: var(--warning);
 }
 </style>

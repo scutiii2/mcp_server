@@ -103,6 +103,10 @@ function save(): void {
 <style scoped>
 .editor {
   min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
 }
 header {
   display: flex;

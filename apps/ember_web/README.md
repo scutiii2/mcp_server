@@ -8,6 +8,11 @@ URL, token or key.
 
 ## Features
 
+- Admin workspace: account overview, searchable account list with status filters,
+  account detail panel (bottom sheet on mobile), roles and permissions, invites,
+  and workspace settings. The header's Invite account shortcut opens Invites;
+  section selection stays in the URL. Uses the app's light and dark theme tokens.
+
 - Log in, register with an invite code, verify your email (ember_api
   accounts - separate from chat_app's).
 - Chat with the main agent, with live token streaming and the tools it runs.

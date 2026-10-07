@@ -28,6 +28,18 @@ beforeEach(() => {
 });
 
 describe("AdminView", () => {
+  it("opens invites from the header without dropping other URL options", async () => {
+    const { wrapper, router } = await view();
+    await router.replace({ query: { tab: "roles", source: "overview" } });
+    await flushPromises();
+
+    await wrapper.findAll("button").find((button) => button.text() === "＋ Invite account")!.trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toEqual({ tab: "invites", source: "overview" });
+    expect(wrapper.get('[aria-label="Admin section"] button.active').text()).toBe("Invites");
+  });
+
   it("shows the overview counts above the tabs", async () => {
     const { wrapper } = await view();
 

@@ -50,12 +50,19 @@ function select(id: TabId): void {
 <template>
   <section class="admin-view">
     <div class="column">
-      <h2>Admin</h2>
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Workspace administration</p>
+          <h2>Admin</h2>
+          <p class="description">Manage people, access, and workspace settings.</p>
+        </div>
+        <button type="button" class="invite-button" @click="select('invites')">＋ Invite account</button>
+      </header>
       <div class="stats">
-        <StatTile label="Accounts" :value="summary?.accounts ?? null" />
-        <StatTile label="Unverified" :value="summary?.unverified ?? null" warn />
-        <StatTile label="Disabled" :value="summary?.disabled ?? null" />
-        <StatTile label="Open invites" :value="summary?.open_invites ?? null" />
+        <StatTile label="Accounts" :value="summary?.accounts ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M20 21v-2a4 4 0 0 0-3-3.9M17 3a4 4 0 0 1 0 8" /></svg></StatTile>
+        <StatTile label="Unverified" :value="summary?.unverified ?? null" warn><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3zM3 5l9 7 9-7" /></svg></StatTile>
+        <StatTile label="Disabled" :value="summary?.disabled ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10h14v11H5zM8 10V7a4 4 0 0 1 8 0v3" /></svg></StatTile>
+        <StatTile label="Open invites" :value="summary?.open_invites ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L9 15M22 2l-7 20-6-7-7-6z" /></svg></StatTile>
       </div>
       <p v-if="summaryError" class="error">Couldn't load the overview: {{ summaryError }}</p>
       <SegmentedControl class="tabs" :model-value="tab" :options="TAB_OPTIONS" aria-label="Admin section" @update:model-value="select" />
@@ -65,7 +72,10 @@ function select(id: TabId): void {
       <AccountsPanel v-if="tab === 'accounts'" @changed="loadSummary" />
       <RolesPanel v-else-if="tab === 'roles'" />
       <InvitesPanel v-else-if="tab === 'invites'" @changed="loadSummary" />
-      <SettingsPanel v-else />
+      <div v-else class="admin-panel">
+        <header class="section-head"><div><h3>Workspace settings</h3><p>Controls that apply to every account.</p></div></header>
+        <SettingsPanel />
+      </div>
     </div>
   </section>
 </template>
@@ -77,25 +87,123 @@ function select(id: TabId): void {
   overflow-y: auto;
 }
 .column {
-  max-width: 820px;
+  max-width: 980px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 30px 24px;
+}
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.page-head > div {
+  min-width: 0;
+}
+.eyebrow {
+  margin: 0 0 5px;
+  color: var(--accent);
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+.invite-button {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.invite-button:hover {
+  background: color-mix(in srgb, var(--accent) 90%, var(--text));
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.stats svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 h2 {
-  margin: 0 0 12px;
+  margin: 0 0 4px;
   font-size: 1.2em;
 }
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 24px;
 }
 .error {
   margin: 0 0 12px;
   color: var(--danger);
 }
 .tabs {
-  margin-bottom: 18px;
+  display: flex;
+  width: 100%;
+  gap: 4px;
+  padding: 0 0 10px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+.tabs :deep(.thumb) {
+  display: none;
+}
+.tabs :deep(button) {
+  padding: 7px 16px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.tabs :deep(button.active) {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  font-weight: 600;
+}
+.tabs :deep(button:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (max-width: 767px) {
+  .column {
+    padding: 22px 16px;
+  }
+  .page-head {
+    align-items: flex-start;
+  }
+  .invite-button {
+    padding: 7px 12px;
+    font-size: 0.8em;
+  }
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .tabs {
+    justify-content: space-between;
+    gap: 0;
+  }
+  .tabs :deep(button) {
+    padding: 7px 10px;
+  }
 }
 </style>

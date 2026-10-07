@@ -190,49 +190,70 @@ async function confirm(): Promise<void> {
 
 <template>
   <div class="admin-panel">
-    <div class="toolbar">
-      <input v-model="search" type="text" placeholder="Search name or email" aria-label="Search accounts" />
-      <SegmentedControl v-model="status" :options="STATUS_OPTIONS" aria-label="Account status" />
-    </div>
-
-    <p v-if="loadError" class="error">error: {{ loadError }}</p>
-    <template v-if="!selected">
-      <p v-if="actionError" class="error">{{ actionError }}</p>
-      <p v-if="notice" class="notice">{{ notice }}</p>
-    </template>
-
+    <header class="section-head">
+      <div><h3>Accounts</h3><p>Choose an account to manage its details and access.</p></div>
+    </header>
     <div :class="['layout', { open: selected }]">
-      <table v-if="accounts.length" class="accounts">
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Roles</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="a in accounts" :key="a.id" :class="{ selected: a.id === selectedId }" @click="select(a)">
-            <td>
-              <button type="button" class="name" :aria-pressed="a.id === selectedId" @click.stop="select(a)">
-                {{ a.username }}
-              </button>
-              <span v-if="a.id === myId" class="badge">you</span>
-              <span v-if="a.is_protected" class="badge">protected</span>
-              <div class="muted email">{{ a.email }}</div>
-            </td>
-            <td>
-              <span v-for="r in a.roles" :key="r.id" class="chip fixed">{{ r.name }}</span>
-              <span v-if="a.roles.length === 0" class="muted">No roles</span>
-            </td>
-            <td>
-              <span v-if="!a.is_active" class="badge warn">disabled</span>
-              <span v-else-if="!a.email_verified" class="badge warn">unverified</span>
-              <span v-else class="badge">active</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else-if="!loadError" class="muted empty">No accounts match.</p>
+      <div class="accounts-panel">
+        <div class="toolbar">
+          <label class="search-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0" /></svg>
+            <input v-model="search" type="text" placeholder="Search name or email" aria-label="Search accounts" />
+          </label>
+          <SegmentedControl class="status-filter" v-model="status" :options="STATUS_OPTIONS" aria-label="Account status" />
+        </div>
+
+        <p v-if="loadError" class="error">error: {{ loadError }}</p>
+        <template v-if="!selected">
+          <p v-if="actionError" class="error">{{ actionError }}</p>
+          <p v-if="notice" class="notice">{{ notice }}</p>
+        </template>
+
+        <table v-if="accounts.length" class="accounts">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Roles</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="a in accounts" :key="a.id" :class="{ selected: a.id === selectedId }" @click="select(a)">
+              <td>
+                <div class="identity">
+                  <span class="avatar" aria-hidden="true">{{ a.username.slice(0, 2).toUpperCase() }}</span>
+                  <div>
+                    <button type="button" class="name" :aria-pressed="a.id === selectedId" @click.stop="select(a)">
+                      {{ a.username }}
+                    </button>
+                    <span v-if="a.id === myId" class="badge">you</span>
+                    <span v-if="a.is_protected" class="badge">protected</span>
+                    <div class="muted email">{{ a.email }}</div>
+                    <div class="mobile-roles">
+                      <span v-for="r in a.roles" :key="r.id" class="chip fixed">{{ r.name }}</span>
+                      <span v-if="a.roles.length === 0" class="muted">No roles</span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span v-for="r in a.roles" :key="r.id" class="chip fixed">{{ r.name }}</span>
+                <span v-if="a.roles.length === 0" class="muted">No roles</span>
+              </td>
+              <td>
+                <span v-if="!a.is_active" class="account-status disabled"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0" /></svg>disabled</span>
+                <span v-else-if="!a.email_verified" class="account-status unverified"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0" /></svg>unverified</span>
+                <span v-else class="account-status active"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>active</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else-if="!loadError" class="muted empty">No accounts match.</p>
+        <footer v-if="!loadError" class="list-footer">
+          <span>{{ accounts.length }} {{ accounts.length === 1 ? "account" : "accounts" }} shown</span>
+          <span>Select a name to view details ↗</span>
+        </footer>
+      </div>
 
       <AccountDrawer
         v-if="selected"
@@ -272,47 +293,157 @@ async function confirm(): Promise<void> {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
 }
-.toolbar input {
-  flex: 1 1 200px;
+.search-field {
+display: flex;
+  align-items: center;
+  gap: 8px;
+flex: 1 1 180px;
+  max-width: 330px;
+  padding: 7px 10px;
+border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+color: var(--muted);
+  background: var(--surface);
   min-width: 0;
+}
+.search-field svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+.search-field input[type="text"] {
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  min-width: 0;
+  font-size: 0.85em;
+}
+.status-filter {
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.status-filter :deep(.thumb) {
+  background: var(--surface);
+  box-shadow: none;
+}
+.status-filter :deep(button) {
+  color: var(--muted);
+  font-weight: 400;
+  padding: 4px 10px;
+  font-size: 0.8em;
+}
+.status-filter :deep(button.active) {
+  color: var(--text);
+}
+.status-filter :deep(button:focus-visible) {
+  outline-color: var(--accent);
+}
+.accounts-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.accounts-panel > .error, .accounts-panel > .notice {
+  padding: 0 14px;
+}
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.identity > div {
+  min-width: 0;
+}
+.avatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--code-bg);
+  color: var(--muted);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.mobile-roles {
+  display: none;
+}
+.account-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 0.85em;
+  text-transform: capitalize;
+}
+.account-status svg {
+  width: 14px;
+  height: 14px;
+}
+.account-status.active {
+  color: var(--success);
+}
+.account-status.unverified {
+  color: var(--warning);
+}
+.account-status.disabled {
+  color: var(--muted);
+}
+.list-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.75em;
 }
 .layout {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   align-items: start;
 }
 .layout.open {
-  grid-template-columns: minmax(0, 1fr) 250px;
-}
-@media (max-width: 720px) {
-  .layout.open {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  grid-template-columns: minmax(0, 1fr) 280px;
 }
 .accounts {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+.accounts th:first-child {
+  width: 52%;
+}
+.accounts th:nth-child(2) {
+  width: 25%;
 }
 .accounts th {
-  padding: 6px 8px;
+  padding: 11px 16px;
   text-align: left;
-  font-size: 0.8em;
+  font-size: 0.75em;
   font-weight: 500;
   color: var(--muted);
+  background: var(--surface);
 }
 .accounts td {
-  padding: 8px;
+  padding: 15px 16px;
   border-top: 1px solid var(--border);
-  vertical-align: top;
+  vertical-align: middle;
+  font-size: 0.85em;
 }
 .accounts tbody tr {
   cursor: pointer;
 }
 .accounts tbody tr:hover,
 .accounts tbody tr.selected {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
 }
 .name {
   margin-right: 6px;
@@ -333,6 +464,47 @@ async function confirm(): Promise<void> {
   margin: 0 4px 4px 0;
 }
 .empty {
-  margin: 12px 0;
+margin: 0;
+  padding: 24px 16px;
+}
+@media (max-width: 767px) {
+  .layout.open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .search-field {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .status-filter {
+    width: 100%;
+  }
+  .accounts th:nth-child(2), .accounts td:nth-child(2) {
+    display: none;
+  }
+  .accounts th:first-child {
+    width: 65%;
+  }
+  .accounts th:last-child {
+    width: 35%;
+  }
+  .accounts th, .accounts td {
+    padding: 12px 10px;
+  }
+  .avatar {
+    width: 28px;
+    height: 28px;
+  }
+  .identity {
+    gap: 8px;
+  }
+  .mobile-roles {
+    display: flex;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    font-size: 0.85em;
+  }
+  .list-footer span:last-child {
+    display: none;
+  }
 }
 </style>
