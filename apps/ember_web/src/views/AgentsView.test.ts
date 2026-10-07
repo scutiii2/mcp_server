@@ -24,13 +24,19 @@ const AGENTS = [
   agent("old", { status: "disabled", focus: "" }),
 ];
 
-async function mountView() {
+type Wrapper = ReturnType<typeof mount>;
+
+const chip = (wrapper: Wrapper, text: string) => wrapper.findAll("button.chip").find((b) => b.text() === text)!;
+
+/** The page opens on the map; `asCards` flips it to the card grid. */
+async function mountView(asCards = true) {
   const wrapper = mount(AgentsView);
   await flushPromises();
+  if (asCards) await chip(wrapper, "Cards").trigger("click");
   return wrapper;
 }
 
-const cards = (wrapper: Awaited<ReturnType<typeof mountView>>) => wrapper.findAll(".agent-card");
+const cards = (wrapper: Wrapper) => wrapper.findAll(".agent-card");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -75,7 +81,7 @@ describe("AgentsView", () => {
     expect(wrapper.find(".summary").text()).toBe("2 running · 1 offline · 1 disabled");
 
     list.mockResolvedValue([agent("ember", { entry: true })]);
-    await wrapper.find("button.chip").trigger("click");
+    await chip(wrapper, "Refresh").trigger("click");
     await flushPromises();
 
     expect(wrapper.find(".summary").text()).toBe("1 running");
@@ -94,7 +100,7 @@ describe("AgentsView", () => {
     const wrapper = await mountView();
     list.mockRejectedValue(new Error("boom"));
 
-    await wrapper.find("button.chip").trigger("click");
+    await chip(wrapper, "Refresh").trigger("click");
     await flushPromises();
 
     expect(wrapper.find(".error").text()).toContain("boom");
@@ -111,5 +117,63 @@ describe("AgentsView", () => {
     wrapper.unmount();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  describe("map view", () => {
+    const node = (wrapper: Wrapper, id: string) => wrapper.findAll(".node").find((n) => n.find(".agent-id").text() === id)!;
+
+    it("opens on the map with a node per agent and no cards", async () => {
+      const wrapper = await mountView(false);
+
+      expect(wrapper.findAll(".node")).toHaveLength(4);
+      expect(cards(wrapper)).toHaveLength(0);
+      expect(chip(wrapper, "Cards").exists()).toBe(true);
+    });
+
+    it("switches between the map and the cards", async () => {
+      const wrapper = await mountView(false);
+
+      await chip(wrapper, "Cards").trigger("click");
+      expect(wrapper.findAll(".node")).toHaveLength(0);
+      expect(cards(wrapper)).toHaveLength(4);
+
+      await chip(wrapper, "Map").trigger("click");
+      expect(wrapper.findAll(".node")).toHaveLength(4);
+    });
+
+    it("selects the entry agent first and links it to the next layer", async () => {
+      const wrapper = await mountView(false);
+
+      expect(node(wrapper, "ember").classes()).toContain("picked");
+      const details = wrapper.find(".details");
+      expect(details.find("h3").text()).toBe("EMBER");
+      expect(details.text()).toContain("New chats");
+      expect(details.text()).toContain("REVIEWER, PDF, OLD");
+    });
+
+    it("shows the details of the clicked node", async () => {
+      const wrapper = await mountView(false);
+
+      await node(wrapper, "pdf").trigger("click");
+
+      expect(node(wrapper, "pdf").classes()).toContain("picked");
+      expect(node(wrapper, "ember").classes()).not.toContain("picked");
+      const details = wrapper.find(".details");
+      expect(details.find("h3").text()).toBe("PDF");
+      expect(details.text()).toContain("pdf does things.");
+      expect(details.text()).toContain("Offline");
+      expect(details.text()).toContain("EMBER");
+    });
+
+    it("falls back to the entry agent when the selected one disappears", async () => {
+      const wrapper = await mountView(false);
+      await node(wrapper, "pdf").trigger("click");
+
+      list.mockResolvedValue([AGENTS[0], AGENTS[1]]);
+      await chip(wrapper, "Refresh").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find(".details h3").text()).toBe("EMBER");
+    });
   });
 });
