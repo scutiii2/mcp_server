@@ -98,7 +98,9 @@ watch(
 </template>
 
 <style scoped>
-.delete-button {
+/* button.delete-button, not .delete-button: a parent's `.info-page .danger` (same
+ * specificity, loaded later) would otherwise reset the padding the bin needs. */
+button.delete-button {
   position: relative;
   box-sizing: border-box;
   height: 34px;
@@ -114,7 +116,7 @@ watch(
   background: transparent;
   transition: width 0.35s cubic-bezier(0.6, 0, 0.3, 1);
 }
-.delete-button:disabled {
+button.delete-button:disabled {
   cursor: default;
   opacity: 0.5;
 }
@@ -172,7 +174,7 @@ watch(
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .delete-button,
+  button.delete-button,
   .bin,
   .lid,
   .letter,
