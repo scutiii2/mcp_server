@@ -60,7 +60,7 @@ async function load(): Promise<void> {
       usageClient.mine(days, since, { groupBy: groupBy.value }),
       isAdmin.value ? usageClient.allAccounts(days, since) : Promise.resolve([]),
       usageClient.records(days, since, { limit: 100 }).catch(() => {
-        failed = true; // the table is extra: the report still shows
+        failed = true; // the list is extra: the report still shows
         return [];
       }),
     ]);
@@ -76,7 +76,13 @@ async function load(): Promise<void> {
   }
 }
 
-const GROUP_HEADINGS: Record<UsageGroupBy, string> = { agent: "Agent", provider: "Provider", gateway: "Gateway", model: "Model" };
+const GROUP_OPTIONS: { value: UsageGroupBy; label: string }[] = [
+  { value: "agent", label: "Agent" },
+  { value: "model", label: "Model" },
+  { value: "provider", label: "Provider" },
+  { value: "gateway", label: "Gateway" },
+];
+const GROUP_HEADINGS = Object.fromEntries(GROUP_OPTIONS.map((o) => [o.value, o.label])) as Record<UsageGroupBy, string>;
 // The heading follows the loaded report, not the selector, which may already show the next choice.
 const groupHeading = computed(() => GROUP_HEADINGS[usage.value?.report.group_by ?? groupBy.value]);
 
@@ -88,6 +94,9 @@ function localTime(value: string): string {
 function tokens(n: number): string {
   return n.toLocaleString();
 }
+
+// Each group's share of the grouped total, for its bar.
+const groupTotal = computed(() => Math.max(1, usage.value?.report.groups.reduce((sum, g) => sum + g.tokens, 0) ?? 0));
 
 const maxDaily = computed(() => Math.max(1, ...(usage.value?.report.daily.map((d) => d.tokens) ?? [])));
 
@@ -142,21 +151,24 @@ onMounted(() => {
       <p v-else-if="!usage && loading" class="muted">loading ...</p>
 
       <template v-if="usage">
-        <div class="limits">
-          <div v-for="w in [{ key: '6 hours', v: usage.six_hour }, { key: '7 days', v: usage.weekly }]" :key="w.key" class="card">
-            <div class="limit-head">
-              <span>Last {{ w.key }}</span>
-              <span class="muted">
-                {{ tokens(w.v.used) }}<template v-if="w.v.limit"> / {{ tokens(w.v.limit) }}</template> tokens
-              </span>
+        <div class="panel limits">
+          <div class="panel-head"><h3>Limits</h3><span class="muted small">Rolling windows</span></div>
+          <div class="limit-grid">
+            <div v-for="w in [{ key: '6 hours', v: usage.six_hour }, { key: '7 days', v: usage.weekly }]" :key="w.key">
+              <div class="limit-head">
+                <span>Last {{ w.key }}</span>
+                <span class="muted">
+                  {{ tokens(w.v.used) }}<template v-if="w.v.limit"> / {{ tokens(w.v.limit) }}</template> tokens
+                </span>
+              </div>
+              <div v-if="w.v.limit" class="bar" role="progressbar" :aria-valuenow="percent(w.v)" aria-valuemin="0" aria-valuemax="100">
+                <span :class="{ full: percent(w.v) >= 90 }" :style="{ width: `${percent(w.v)}%` }" />
+              </div>
+              <p v-else class="muted small">No limit.</p>
+              <p v-if="w.v.reset_at && w.v.used" class="muted small">
+                Oldest tokens stop counting at {{ formatUtc(w.v.reset_at) }}.
+              </p>
             </div>
-            <div v-if="w.v.limit" class="bar" role="progressbar" :aria-valuenow="percent(w.v)" aria-valuemin="0" aria-valuemax="100">
-              <span :class="{ full: percent(w.v) >= 90 }" :style="{ width: `${percent(w.v)}%` }" />
-            </div>
-            <p v-else class="muted small">No limit.</p>
-            <p v-if="w.v.reset_at && w.v.used" class="muted small">
-              Oldest tokens stop counting at {{ formatUtc(w.v.reset_at) }}.
-            </p>
           </div>
         </div>
 
@@ -164,110 +176,94 @@ onMounted(() => {
           <div class="stat"><strong>{{ tokens(usage.report.total_tokens) }}</strong><span>tokens</span></div>
           <div class="stat"><strong>{{ tokens(usage.report.turns) }}</strong><span>answers</span></div>
           <div class="stat"><strong>{{ tokens(usage.report.chats) }}</strong><span>chats</span></div>
-          <div class="stat"><strong>{{ tokens(usage.report.summary_tokens) }}</strong><span>on summaries</span></div>
-          <div v-if="peak !== null" class="stat"><strong>{{ hourLabel(peak) }}</strong><span>busiest hour (your time)</span></div>
-          <div v-if="favorite" class="stat"><strong class="text">{{ favorite }}</strong><span>favorite agent</span></div>
         </div>
 
-        <template v-if="year">
-          <h3>Last 12 months</h3>
-          <UsageHeatmap v-if="year.report.daily.length" :daily="year.report.daily" :today="today" />
-          <p v-else class="muted">No usage in the last 12 months.</p>
-          <p class="muted small">Days are UTC days.</p>
-        </template>
-
-        <h3>Per day</h3>
-        <p v-if="usage.report.daily.length === 0" class="muted">No usage in this period.</p>
-        <div v-else class="daily">
-          <div v-for="d in usage.report.daily" :key="d.date" class="day" :title="`${dayLabel(d.date)}: ${tokens(d.tokens)} tokens`">
-            <span class="day-bar" :style="{ height: `${Math.max(4, (d.tokens / maxDaily) * 100)}%` }" />
-            <span class="day-label">{{ dayLabel(d.date) }}</span>
+        <div class="panel activity">
+          <div class="panel-head"><h3>Activity</h3><span class="muted small">Per day, UTC</span></div>
+          <p v-if="usage.report.daily.length === 0" class="muted">No usage in this period.</p>
+          <div v-else class="daily">
+            <div v-for="d in usage.report.daily" :key="d.date" class="day" :title="`${dayLabel(d.date)}: ${tokens(d.tokens)} tokens`">
+              <span class="day-bar" :style="{ height: `${Math.max(4, (d.tokens / maxDaily) * 100)}%` }" />
+              <span class="day-label">{{ dayLabel(d.date) }}</span>
+            </div>
           </div>
+
+          <template v-if="year">
+            <h4>Last 12 months</h4>
+            <UsageHeatmap v-if="year.report.daily.length" :daily="year.report.daily" :today="today" />
+            <p v-else class="muted">No usage in the last 12 months.</p>
+            <p class="muted small">Days are UTC days.</p>
+          </template>
+
+          <p v-if="peak !== null || favorite" class="insights">
+            <span v-if="peak !== null" class="insight">Busiest hour (your time) <strong>{{ hourLabel(peak) }}</strong></span>
+            <span v-if="favorite" class="insight">Favorite agent <strong>{{ favorite }}</strong></span>
+            <span class="insight">Active days <strong>{{ usage.report.daily.length }}</strong></span>
+          </p>
         </div>
 
-        <h3>By agent</h3>
-        <p v-if="usage.report.by_agent.length === 0" class="muted">None.</p>
-        <table v-else>
-          <thead>
-            <tr><th>Agent</th><th>Model</th><th class="num">Tokens</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="a in usage.report.by_agent" :key="`${a.agent}/${a.model}`">
-              <td>{{ a.agent }}</td>
-              <td>{{ a.model || "-" }}</td>
-              <td class="num">{{ tokens(a.tokens) }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <h3>
-          By
-          <select v-model="groupBy" class="group-by" aria-label="Group usage by">
-            <option value="agent">agent</option>
-            <option value="provider">provider</option>
-            <option value="gateway">gateway</option>
-            <option value="model">model</option>
-          </select>
-        </h3>
-        <p v-if="usage.report.groups.length === 0" class="muted">None.</p>
-        <table v-else class="groups">
-          <thead>
-            <tr><th>{{ groupHeading }}</th><th class="num">Tokens</th><th class="num">In</th><th class="num">Out</th><th class="num">Turns</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="g in usage.report.groups" :key="g.key">
-              <td>{{ g.key }}</td>
-              <td class="num">{{ tokens(g.tokens) }}</td>
-              <td class="num">{{ tokens(g.input_tokens) }}</td>
-              <td class="num">{{ tokens(g.output_tokens) }}</td>
-              <td class="num">{{ g.turns }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <h3>Recent calls</h3>
-        <p v-if="recordsFailed" class="muted">Could not load recent calls.</p>
-        <p v-else-if="records.length === 0" class="muted">None.</p>
-        <div v-else class="table-scroll">
-          <table class="records">
+        <div class="panel breakdown">
+          <div class="panel-head">
+            <h3>Breakdown</h3>
+            <SegmentedControl v-model="groupBy" :options="GROUP_OPTIONS" aria-label="Group usage by" />
+          </div>
+          <p v-if="usage.report.groups.length === 0" class="muted">None.</p>
+          <table v-else class="groups">
             <thead>
-              <tr>
-                <th>When</th><th>Agent</th><th>Provider</th><th>Gateway</th><th>Model</th>
-                <th class="num">In</th><th class="num">Out</th><th class="num">Total</th>
-              </tr>
+              <tr><th>{{ groupHeading }}</th><th>Share</th><th class="num">Tokens</th><th class="num">Turns</th></tr>
             </thead>
             <tbody>
-              <tr v-for="r in records" :key="r.id">
-                <td>{{ localTime(r.started_at ?? r.created_at) }}</td>
-                <td>{{ r.agent_id ?? r.agent ?? "unknown" }}<span v-if="r.delegated_by" class="muted"> ← {{ r.delegated_by }}</span></td>
-                <td>{{ r.provider_id ?? "-" }}</td>
-                <td>{{ r.gateway ?? "-" }}</td>
-                <td>{{ r.model ?? "-" }}</td>
-                <td class="num">{{ r.input_tokens === null ? "-" : tokens(r.input_tokens) }}</td>
-                <td class="num">{{ r.output_tokens === null ? "-" : tokens(r.output_tokens) }}</td>
-                <td class="num">{{ tokens(r.total_tokens) }}</td>
+              <tr v-for="g in usage.report.groups" :key="g.key">
+                <td>{{ g.key }}</td>
+                <td class="share">
+                  <div class="bar"><span :style="{ width: `${Math.round((g.tokens / groupTotal) * 100)}%` }" /></div>
+                  <span class="muted small">{{ tokens(g.input_tokens) }} in · {{ tokens(g.output_tokens) }} out</span>
+                </td>
+                <td class="num">{{ tokens(g.tokens) }}</td>
+                <td class="num">{{ g.turns }}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <template v-if="isAdmin">
-          <h3>All accounts</h3>
+        <div class="panel recent">
+          <div class="panel-head"><h3>Recent calls</h3><span class="muted small">Last 100</span></div>
+          <p v-if="recordsFailed" class="muted">Could not load recent calls.</p>
+          <p v-else-if="records.length === 0" class="muted">None.</p>
+          <ul v-else class="calls">
+            <li v-for="r in records" :key="r.id" class="call">
+              <div class="call-main">
+                <div>
+                  <span class="call-agent">{{ r.agent_id ?? r.agent ?? "unknown" }}</span>
+                  <span v-if="r.delegated_by" class="muted"> ← {{ r.delegated_by }}</span>
+                  <span v-if="r.provider_id" class="chip">{{ r.provider_id }}</span>
+                  <span v-if="r.gateway" class="chip">{{ r.gateway }}</span>
+                </div>
+                <div class="muted small">{{ localTime(r.started_at ?? r.created_at) }}<template v-if="r.model"> · {{ r.model }}</template></div>
+              </div>
+              <div class="call-tokens">
+                <strong>{{ tokens(r.total_tokens) }}</strong>
+                <span v-if="r.input_tokens !== null && r.output_tokens !== null" class="muted small">
+                  {{ tokens(r.input_tokens) }} in / {{ tokens(r.output_tokens) }} out
+                </span>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="isAdmin" class="panel accounts">
+          <div class="panel-head"><h3>All accounts</h3><span class="muted small">Admin only</span></div>
           <p v-if="accounts.length === 0" class="muted">No usage in this period.</p>
-          <table v-else>
-            <thead>
-              <tr><th>Account</th><th class="num">Tokens</th><th class="num">Answers</th><th>Last used</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="a in accounts" :key="a.account_id">
-                <td>{{ a.username }}</td>
-                <td class="num">{{ tokens(a.tokens) }}</td>
-                <td class="num">{{ tokens(a.turns) }}</td>
-                <td>{{ a.last_used_at ? formatUtc(a.last_used_at) : "-" }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </template>
+          <ul v-else class="calls">
+            <li v-for="a in accounts" :key="a.account_id" class="call">
+              <div class="call-main">
+                <div class="call-agent">{{ a.username }}</div>
+                <div class="muted small">{{ tokens(a.turns) }} answers · last used {{ a.last_used_at ? formatUtc(a.last_used_at) : "-" }}</div>
+              </div>
+              <div class="call-tokens"><strong>{{ tokens(a.tokens) }}</strong></div>
+            </li>
+          </ul>
+        </div>
       </template>
     </div>
   </section>
@@ -297,8 +293,14 @@ h2 {
   font-size: 1.2em;
 }
 h3 {
-  margin: 24px 0 10px;
+  margin: 0;
   font-size: 1em;
+}
+h4 {
+  margin: 16px 0 8px;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--muted);
 }
 .ranges {
   display: flex;
@@ -319,16 +321,28 @@ h3 {
   cursor: default;
   opacity: 0.5;
 }
-.limits {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-}
-.card {
-  padding: 12px 14px;
+.panel {
+  margin-top: 12px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
+}
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.panel-head .small {
+  margin: 0;
+}
+.limit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
 }
 .limit-head {
   display: flex;
@@ -339,7 +353,7 @@ h3 {
   font-size: 0.9em;
 }
 .bar {
-  height: 8px;
+  height: 6px;
   border-radius: var(--radius-full);
   overflow: hidden;
   background: var(--code-bg);
@@ -367,25 +381,34 @@ h3 {
   display: flex;
   flex-direction: column;
   padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
 }
 .stat strong {
   font-size: 1.3em;
-}
-.stat strong.text {
-  font-size: 1em;
-  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 .stat span {
   font-size: 0.8em;
   color: var(--muted);
 }
+.insights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 14px 0 0;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+.insight strong {
+  font-weight: 600;
+  color: var(--text);
+}
 .daily {
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 140px;
+  height: 110px;
   padding-bottom: 20px;
   overflow-x: auto;
 }
@@ -399,7 +422,7 @@ h3 {
 }
 .day-bar {
   display: block;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-radius: 2px 2px 0 0;
   background: var(--accent);
 }
 .day-label {
@@ -421,31 +444,74 @@ table {
 }
 th,
 td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  border-top: 1px solid var(--border);
   text-align: left;
+  vertical-align: middle;
 }
 th {
+  padding-top: 0;
+  border-top: none;
+  font-size: 0.8em;
+  font-weight: 500;
   color: var(--muted);
-  font-weight: 600;
 }
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.group-by {
-  padding: 2px 6px;
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+.share {
+  width: 45%;
 }
-.table-scroll {
-  overflow-x: auto;
+.share .small {
+  display: block;
+  margin-top: 3px;
 }
-.records td {
-  white-space: nowrap;
+.calls {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.call {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+}
+.call:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+.call-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.call-agent {
+  font-weight: 500;
+}
+.call-main .small {
+  margin: 2px 0 0;
+}
+.call-tokens {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.call-tokens .small {
+  margin: 2px 0 0;
+}
+.chip {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.8em;
+  color: var(--muted);
+  background: var(--code-bg);
 }
 .muted {
   color: var(--muted);

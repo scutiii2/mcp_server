@@ -135,9 +135,9 @@ describe("the new figures", () => {
   it("shows the busiest hour and the favorite agent", async () => {
     const wrapper = await mountView();
 
-    const stats = wrapper.findAll(".stat").map((s) => s.text());
-    expect(stats).toContain("2 PMbusiest hour (your time)");
-    expect(stats).toContain("claude opusfavorite agent");
+    const insights = wrapper.findAll(".insight").map((s) => s.text());
+    expect(insights).toContain("Busiest hour (your time) 2 PM");
+    expect(insights).toContain("Favorite agent claude opus");
   });
 
   it("moves the busiest hour into the viewer's time zone", async () => {
@@ -145,7 +145,7 @@ describe("the new figures", () => {
 
     const wrapper = await mountView();
 
-    expect(wrapper.findAll(".stat").map((s) => s.text())).toContain("4 PMbusiest hour (your time)");
+    expect(wrapper.findAll(".insight").map((s) => s.text())).toContain("Busiest hour (your time) 4 PM");
   });
 
   it("leaves both out when nothing was used in the period", async () => {
@@ -153,9 +153,7 @@ describe("the new figures", () => {
 
     const wrapper = await mountView();
 
-    const text = wrapper.find(".stats").text();
-    expect(text).not.toContain("busiest hour");
-    expect(text).not.toContain("favorite agent");
+    expect(wrapper.find(".insights").exists()).toBe(false);
   });
 });
 
@@ -211,6 +209,9 @@ describe("the 12-month heatmap", () => {
   });
 });
 
+const groupButton = (wrapper: Awaited<ReturnType<typeof mountView>>, label: string) =>
+  wrapper.findAll(".breakdown button").find((b) => b.text() === label)!;
+
 function row(extra: Partial<UsageRecordRow> = {}): UsageRecordRow {
   return {
     id: 1,
@@ -240,7 +241,7 @@ describe("group by", () => {
     );
     const wrapper = await mountView();
 
-    await wrapper.find("select.group-by").setValue("provider");
+    await groupButton(wrapper, "Provider").trigger("click");
     await flushPromises();
 
     expect(mine).toHaveBeenLastCalledWith(30, undefined, expect.objectContaining({ groupBy: "provider" }));
@@ -257,7 +258,7 @@ describe("group by", () => {
     mine.mockResolvedValue(
       usage({ group_by: "gateway", groups: [{ key: "azure", tokens: 30, input_tokens: 20, output_tokens: 10, turns: 1 }] }),
     );
-    await wrapper.find("select.group-by").setValue("gateway");
+    await groupButton(wrapper, "Gateway").trigger("click");
     await flushPromises();
     expect(wrapper.find("table.groups th").text()).toBe("Gateway");
   });
@@ -266,7 +267,7 @@ describe("group by", () => {
     const wrapper = await mountView();
 
     expect(wrapper.find("table.groups").exists()).toBe(false);
-    expect(wrapper.find("h3 + p.muted").text()).toBe("None.");
+    expect(wrapper.find(".breakdown > p.muted").text()).toBe("None.");
   });
 
   it("keeps the heading of the loaded report while the next grouping loads", async () => {
@@ -275,7 +276,7 @@ describe("group by", () => {
     const wrapper = await mountView();
     mine.mockReturnValue(new Promise(() => {})); // the provider report is still loading
 
-    await wrapper.find("select.group-by").setValue("provider");
+    await groupButton(wrapper, "Provider").trigger("click");
 
     expect(wrapper.find("table.groups th").text()).toBe("Agent");
   });
@@ -306,7 +307,7 @@ describe("group by", () => {
   });
 });
 
-describe("the records table", () => {
+describe("the recent calls list", () => {
   it("asks for the latest 100 rows of the period", async () => {
     await mountView();
 
@@ -317,7 +318,7 @@ describe("the records table", () => {
     records.mockResolvedValue([row()]);
     const wrapper = await mountView();
 
-    const text = wrapper.find("table.records tbody tr").text();
+    const text = wrapper.find(".calls .call").text();
     expect(text).toContain("calc");
     expect(text).toContain("← main");
     expect(text).toContain("openai");
@@ -327,15 +328,17 @@ describe("the records table", () => {
     expect(text).toContain(new Date("2026-10-04T09:12:04Z").toLocaleString());
   });
 
-  it("shows a dash for what an older row lacks", async () => {
+  it("leaves out what an older row lacks", async () => {
     records.mockResolvedValue([
       row({ agent_id: null, agent: null, provider_id: null, gateway: null, model: null, input_tokens: null, output_tokens: null, delegated_by: null, started_at: null }),
     ]);
     const wrapper = await mountView();
 
-    const cells = wrapper.findAll("table.records tbody tr td").map((c) => c.text());
-    expect(cells[0]).toBe(new Date("2026-10-04T09:12:06Z").toLocaleString());
-    expect(cells.slice(1)).toEqual(["unknown", "-", "-", "-", "-", "-", "25"]);
+    const item = wrapper.find(".calls .call");
+    expect(item.text()).toContain(new Date("2026-10-04T09:12:06Z").toLocaleString());
+    expect(item.find(".call-agent").text()).toBe("unknown");
+    expect(item.find(".chip").exists()).toBe(false);
+    expect(item.find(".call-tokens").text()).toBe("25");
   });
 
   it("is left out, and the report still shows, when its request fails", async () => {
@@ -345,7 +348,7 @@ describe("the records table", () => {
 
     expect(wrapper.find(".error").exists()).toBe(false);
     expect(wrapper.find(".stats").exists()).toBe(true);
-    expect(wrapper.find("table.records").exists()).toBe(false);
+    expect(wrapper.find(".calls").exists()).toBe(false);
     expect(wrapper.text()).toContain("Could not load recent calls.");
     expect(wrapper.text()).not.toMatch(/Recent calls\s*None\./);
   });
