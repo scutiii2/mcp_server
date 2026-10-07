@@ -54,8 +54,8 @@ describe("NavRail", () => {
 
     const links = pageLinks(wrapper);
 
-    // chat.use -> Chat, Extensions, Agents, Usage, Settings; tools.use -> Capabilities
-    expect(links.map((l) => l.attributes("aria-label"))).toEqual(["Chat", "Capabilities", "Extensions", "Agents", "Usage", "Settings"]);
+    // chat.use -> Chat, Agents, Usage, Settings; tools.use or chat.use -> Capabilities
+    expect(links.map((l) => l.attributes("aria-label"))).toEqual(["Chat", "Capabilities", "Agents", "Usage", "Settings"]);
     for (const link of links) {
       expect(link.text()).toBe("");
       expect(link.find("svg").exists()).toBe(true);
@@ -91,14 +91,14 @@ describe("NavRail", () => {
     expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Capabilities"]);
   });
 
-  it("keeps Extensions marked while one extension's page is open", async () => {
+  it("keeps Capabilities marked while one extension's page is open", async () => {
     const { wrapper, router } = setup(ACCOUNT);
     await router.push("/extensions/pdf");
     await flushPromises();
 
     const current = pageLinks(wrapper).filter((l) => l.classes().includes("current"));
 
-    expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Extensions"]);
+    expect(current.map((l) => l.attributes("aria-label"))).toEqual(["Capabilities"]);
   });
 
   it("shows no pages while the email still has to be verified", () => {

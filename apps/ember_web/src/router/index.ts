@@ -39,7 +39,8 @@ export const router = createRouter({
       path: "/capabilities",
       name: "capabilities",
       component: () => import("../views/CapabilitiesView.vue"),
-      meta: { permission: "tools.use" },
+      // tools.use for the capabilities and tools, chat.use for switching extensions.
+      meta: { permission: ["tools.use", "chat.use"] },
     },
     {
       path: "/capabilities/:name",
@@ -47,12 +48,8 @@ export const router = createRouter({
       component: () => import("../views/CapabilityPageView.vue"),
       meta: { permission: "tools.use" },
     },
-    {
-      path: "/extensions",
-      name: "extensions",
-      component: () => import("../views/ExtensionsView.vue"),
-      meta: { permission: "chat.use" },
-    },
+    // The Extensions page was merged into Capabilities; old links and bookmarks still work.
+    { path: "/extensions", redirect: (to) => ({ path: "/capabilities", query: to.query }) },
     {
       path: "/extensions/:id",
       name: "extension-page",

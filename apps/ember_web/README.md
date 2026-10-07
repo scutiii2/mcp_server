@@ -152,20 +152,19 @@ URL, token or key.
   current offset rounded to a whole hour, so a half-hour zone can be off by an
   hour and a daylight-saving change inside the period is ignored.
   The page also reads each capability's resources and lets admins switch capabilities on/off.
-- Extensions page: mcp_server's extensions (other MCP servers) with their
-  status and tools; switch on the ones the agent may use in your chats
-  (remembered per account, shown in the chat header). Admins add
-  extensions and remove them (a dialog asks first; its confirm button drops
-  its label into a bin while the request runs). Each tile has one "Open page" button. For an
-  extension whose config entry names a `web_url` (for example `pdf_merger`
-  and its web app) it opens that web UI in a new tab; only http(s)
-  addresses count, and it works without `tools.use` and when the extension
-  is not connected. Any other extension (with `tools.use`) opens
-  `/extensions/<id>`: its label, description, web app link and its tools
-  as rows that open the same run form as the Capabilities page (a failed
-  extension shows its error and no tools). On the Capabilities page the tools
-  an extension brings sit in a card of their own per extension (no on/off
-  switch); tools that no capability or extension lists go under "Other tools".
+- Capabilities page (`tools.use` or `chat.use`): mcp_server's built-in capabilities and its extensions
+  (other MCP servers) as one list of identical collapsible cards (All / Built-in / Extensions filter,
+  and a tool filter). A card shows a status dot, name and id, what it brings, an Open button and an
+  on/off switch with who it is for. A capability's switch is for "Everyone" (admins only; a dialog asks
+  first). An extension's is for "You": it picks the extensions the agent may use in your chats
+  (remembered per account, shown in the chat header). Admins add extensions (button on top) and remove
+  them (in the card; a dialog asks first). An extension's Open button leads to its `web_url` (for
+  example `pdf_merger` and its web app) in a new tab, labelled "Open app"; only http(s) addresses
+  count, and it works without `tools.use` and when the extension is not connected. Any other extension
+  (with `tools.use`) gets "Open page" to `/extensions/<id>`: its label, description, web app link and
+  its tools as rows that open the same run form (a failed extension shows its error and no tools).
+  `/extensions` redirects to this page. Without `tools.use` only the extensions are listed. Tools that
+  no capability or extension lists go under "Other tools".
 - Agents page (`chat.use`): a card per agent from `GET /api/agents` - name, id,
   Entry / Orchestrator badges, what it is for, and a status (running, offline,
   disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
@@ -360,7 +359,7 @@ src/
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Capabilities, Extensions, Agents, Watchers, Usage, Settings, Analytics, ConfigIssues,
+  views/        pages: Overview, Chat, Capabilities, Agents, Watchers, Usage, Settings, Analytics, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, SettingRow, AuthCard
@@ -368,7 +367,7 @@ src/
     analytics/  the Analytics Overview and Traffic tabs: ActivityChart (stacked columns), LineChart, StatTile / KindStatTile, Sparkline, BarList, HourHeatmap, TrafficPanel
                 (hand-drawn SVG/CSS; shared hover/keyboard state in useBucketCursor, shared frame in chart.css; series colours `--kind-*`, `--http-*`, `--latency-*`)
     watchers/   the Watchers page's WatcherTimeline, WatcherList, CapabilityFocus (status colours `--status-*`)
-    infoPage.css  shared look of the Extensions / Watchers / Analytics / Config pages
+    infoPage.css  shared look of the Agents / Watchers / Analytics / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
                 tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics and watcher helpers, saved-prompt helpers

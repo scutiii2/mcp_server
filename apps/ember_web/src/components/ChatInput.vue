@@ -409,28 +409,6 @@ function onKeydown(event: KeyboardEvent): void {
     </p>
     <div :class="['box', { dragging }]">
       <input ref="fileInput" type="file" multiple hidden @change="onPick" />
-      <button type="button" class="attach" title="Attach files (text, code, PDF, Word, Excel)" @click="fileInput?.click()">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path
-            d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
-      <TemplatePicker
-        :templates="templates"
-        :loading="templatesLoading"
-        :error="templatesError"
-        :can-save="draft.trim() !== ''"
-        @open="emit('templatesNeeded')"
-        @pick="(template) => insertText(template.body)"
-        @manage="emit('manageTemplates', '')"
-        @save="emit('manageTemplates', draft.trim())"
-      />
       <textarea
         ref="textarea"
         v-model="draft"
@@ -440,30 +418,58 @@ function onKeydown(event: KeyboardEvent): void {
         @keydown="onKeydown"
         @paste="onPaste"
       />
-      <span class="send-slot">
-        <button v-if="busy" type="button" class="round stop" title="Stop (Esc)" @click="emit('stop')">
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-            <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
-          </svg>
-        </button>
-        <button v-else type="submit" class="round send" :title="reading ? 'Reading attachments …' : 'Send'" :disabled="!canSend">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <div class="tools">
+        <button type="button" class="attach" title="Attach files (text, code, PDF, Word, Excel)" @click="fileInput?.click()">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <path
-              d="M12 19V5M5 12l7-7 7 7"
+              d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"
               fill="none"
               stroke="currentColor"
-              stroke-width="2.4"
+              stroke-width="1.8"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
           </svg>
         </button>
-        <!-- Outlives the Send button, which turns into Stop the moment a turn starts. -->
-        <svg v-if="flights" :key="flights" class="plane" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" @animationend="flights = 0">
-          <path d="M22 2 2 9.5l7.5 3L12.5 22z" fill="currentColor" />
-        </svg>
-      </span>
+        <TemplatePicker
+          :templates="templates"
+          :loading="templatesLoading"
+          :error="templatesError"
+          :can-save="draft.trim() !== ''"
+          @open="emit('templatesNeeded')"
+          @pick="(template) => insertText(template.body)"
+          @manage="emit('manageTemplates', '')"
+          @save="emit('manageTemplates', draft.trim())"
+        />
+        <!-- The chat page's own controls (settings, status) sit beside the attach button. -->
+        <slot name="tools" />
+        <span class="spacer" />
+        <span class="send-slot">
+          <button v-if="busy" type="button" class="round stop" title="Stop (Esc)" @click="emit('stop')">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
+            </svg>
+          </button>
+          <button v-else type="submit" class="round send" :title="reading ? 'Reading attachments …' : 'Send'" :disabled="!canSend">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                d="M12 19V5M5 12l7-7 7 7"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <!-- Outlives the Send button, which turns into Stop the moment a turn starts. -->
+          <svg v-if="flights" :key="flights" class="plane" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" @animationend="flights = 0">
+            <path d="M22 2 2 9.5l7.5 3L12.5 22z" fill="currentColor" />
+          </svg>
+        </span>
+      </div>
     </div>
+    <p class="keys">Enter to send · Shift+Enter for a new line</p>
   </form>
 </template>
 
@@ -518,9 +524,9 @@ function onKeydown(event: KeyboardEvent): void {
 }
 .box {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 8px 8px 8px 16px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 10px 8px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--surface);
@@ -529,13 +535,33 @@ function onKeydown(event: KeyboardEvent): void {
 .box.dragging {
   border-color: var(--accent);
 }
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: -6px;
+}
+.spacer {
+  flex: 1;
+}
+.keys {
+  margin: 6px 0 0;
+  font-size: 0.75em;
+  text-align: center;
+  color: var(--muted);
+}
+@media (hover: none) {
+  .keys {
+    display: none;
+  }
+}
 .attach {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
-  margin-left: -8px;
   padding: 0;
   border: none;
   cursor: pointer;
@@ -593,7 +619,7 @@ function onKeydown(event: KeyboardEvent): void {
   background: transparent;
 }
 textarea {
-  flex: 1;
+  width: 100%;
   max-height: calc(1.55em * 5); /* 5 lines, then it scrolls */
   padding: 6px 0;
   border: none;

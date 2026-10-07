@@ -110,7 +110,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
         Chime when done
       </ToggleSwitch>
       <RouterLink to="/settings" class="all-settings">All settings</RouterLink>
-      <RouterLink to="/extensions" class="extensions" title="Which extensions' tools the agent may use in your chats">
+      <RouterLink to="/capabilities" class="extensions" title="Which extensions' tools the agent may use in your chats">
         Extensions: {{ enabledExtensions.length ? enabledExtensions.join(", ") : "off" }}
       </RouterLink>
     </div>

@@ -48,7 +48,7 @@ async function open(path = "/extensions/pdf") {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: "/extensions", component: { template: "<div />" } },
+      { path: "/capabilities", component: { template: "<div />" } },
       { path: "/extensions/:id", component: ExtensionPageView },
     ],
   });
@@ -85,7 +85,7 @@ describe("ExtensionPageView", () => {
     expect(app.attributes("target")).toBe("_blank");
     expect(app.attributes("rel")).toBe("noopener noreferrer");
     expect(wrapper.findAll("li.tool .title").map((t) => t.text()).sort()).toEqual(["Inspect", "Merge"]);
-    expect(wrapper.find('a[href="/extensions"]').exists()).toBe(true);
+    expect(wrapper.find('a[href="/capabilities"]').exists()).toBe(true);
   });
 
   it("has no web app link when the extension names none", async () => {
@@ -122,7 +122,7 @@ describe("ExtensionPageView", () => {
     const { wrapper } = await open("/extensions/nope");
 
     expect(wrapper.text()).toMatch(/unknown extension/i);
-    expect(wrapper.find('a[href="/extensions"]').exists()).toBe(true);
+    expect(wrapper.find('a[href="/capabilities"]').exists()).toBe(true);
   });
 
   it("shows a load failure instead of a half-drawn page", async () => {

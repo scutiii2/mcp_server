@@ -1,56 +1,70 @@
 <script setup lang="ts">
-import type { CapabilityInfo } from "../api/CommandsClient";
 import OpenPageButton from "./OpenPageButton.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
 
-/** One built-in capability as a collapsible card: the header (name, how much
- * it brings, and for admins the on/off switch) and, when open, whatever the
- * parent puts in the slot. Closed by default; the parent holds the state. */
-defineProps<{
-  capability: CapabilityInfo;
-  open: boolean;
-  /** Tools and resources it brings, for the closed summary line. */
-  toolCount: number;
-  resourceCount: number;
-  isAdmin: boolean;
-  switching: boolean;
-  /** No on/off state to show (a group that is not a real capability). */
-  hideState?: boolean;
-}>();
+/** Where the section's "Open ..." button leads. */
+export interface SectionPage {
+  to: string;
+  /** A web app in a new tab (up-right arrow) rather than a page of this app. */
+  external: boolean;
+  label?: string;
+}
+
+/** One built-in capability or one extension as a collapsible card: the header
+ * (status dot, name, how much it brings, an Open button and an on/off switch)
+ * and, when open, whatever the parent puts in the slot. Closed by default; the
+ * parent holds the state. The switch only asks (`switch`); the parent decides
+ * what flipping it means (a capability for everyone, an extension for you). */
+withDefaults(
+  defineProps<{
+    label: string;
+    name: string;
+    open: boolean;
+    /** The closed summary line: what it brings, or why it brings nothing. */
+    summary: string;
+    /** The dot before the name; none for a group that is not a real item. */
+    status?: "ok" | "bad" | "off";
+    dimmed?: boolean;
+    page?: SectionPage | null;
+    /** A switch, a read-only On/Off badge, or neither. */
+    control?: "switch" | "badge" | "none";
+    checked?: boolean;
+    /** Who the switch is for, shown under it ("Everyone", "You"). */
+    scope?: string;
+    switchTitle?: string;
+    switching?: boolean;
+  }>(),
+  { status: undefined, page: null, control: "none", scope: "", switchTitle: "" },
+);
 const emit = defineEmits<{ toggle: []; switch: [] }>();
 </script>
 
 <template>
-  <article :class="['card', { off: !capability.enabled, open }]">
+  <article :class="['card', { off: dimmed, open }]">
     <header class="card-head">
       <button type="button" class="head-button" :aria-expanded="open" @click="emit('toggle')">
         <span class="chevron" aria-hidden="true">{{ open ? "▾" : "▸" }}</span>
+        <span v-if="status" :class="['dot', status]" aria-hidden="true" />
         <span class="heading">
-          <h3>{{ capability.label ?? capability.name }}</h3>
-          <code class="name">{{ capability.name }}</code>
+          <h3>{{ label }}</h3>
+          <code class="name">{{ name }}</code>
         </span>
-        <span class="summary muted">
-          <template v-if="!capability.enabled">off</template>
-          <template v-else>
-            {{ toolCount }} tool{{ toolCount === 1 ? "" : "s" }}<template v-if="resourceCount">
-              · {{ resourceCount }} resource{{ resourceCount === 1 ? "" : "s" }}</template
-            >
-          </template>
-        </span>
+        <span :class="['summary', status === 'bad' ? 'bad' : 'muted']">{{ summary }}</span>
       </button>
-      <template v-if="capability.has_gui && capability.enabled">
+      <template v-if="page">
         <span class="divider" aria-hidden="true" />
-        <OpenPageButton :to="`/capabilities/${encodeURIComponent(capability.name)}`" />
+        <OpenPageButton :to="page.to" :external="page.external" :label="page.label" />
       </template>
-      <template v-if="hideState" />
-      <ToggleSwitch
-        v-else-if="isAdmin"
-        :title="capability.enabled ? 'Turn off' : 'Turn on'"
-        :checked="capability.enabled"
-        :disabled="switching"
-        @click.prevent="emit('switch')"
-      />
-      <span v-else class="badge">{{ capability.enabled ? "On" : "Off" }}</span>
+      <span v-if="control === 'switch'" class="control">
+        <ToggleSwitch
+          :title="switchTitle"
+          :checked="checked"
+          :disabled="switching"
+          @click.prevent="emit('switch')"
+        />
+        <small v-if="scope" class="scope">{{ scope }}</small>
+      </span>
+      <span v-else-if="control === 'badge'" class="badge">{{ checked ? "On" : "Off" }}</span>
     </header>
     <div v-if="open" class="body">
       <slot />
@@ -98,6 +112,21 @@ const emit = defineEmits<{ toggle: []; switch: [] }>();
 .chevron {
   color: var(--muted);
 }
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+.dot.ok {
+  background: var(--success);
+}
+.dot.bad {
+  background: var(--danger);
+}
+.dot.off {
+  background: var(--muted);
+}
 .heading {
   display: flex;
   flex-wrap: wrap;
@@ -121,6 +150,20 @@ h3 {
   white-space: nowrap;
 }
 .muted {
+  color: var(--muted);
+}
+.bad {
+  color: var(--danger);
+}
+.control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+}
+.scope {
+  font-size: 0.7em;
   color: var(--muted);
 }
 .badge {

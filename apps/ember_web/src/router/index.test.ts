@@ -148,8 +148,24 @@ describe("the merged Capabilities page", () => {
     expect(router.currentRoute.value.query.q).toBe("merge");
   });
 
-  it("still needs the tools.use permission", async () => {
+  it("sends the old Extensions address to Capabilities", async () => {
+    me.mockResolvedValue(ACCOUNT_WITH_TOOLS);
+
+    await router.push("/extensions");
+
+    expect(router.currentRoute.value.name).toBe("capabilities");
+  });
+
+  it("opens for chat.use alone, to switch extensions", async () => {
     me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use"] });
+
+    await router.push("/capabilities");
+
+    expect(router.currentRoute.value.name).toBe("capabilities");
+  });
+
+  it("stays closed to an account with neither tools.use nor chat.use", async () => {
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["watchers.view"] });
 
     await router.push("/capabilities");
 

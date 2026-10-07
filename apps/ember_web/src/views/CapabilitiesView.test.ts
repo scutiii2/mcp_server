@@ -7,6 +7,7 @@ import type { CapabilityInfo } from "../api/CommandsClient";
 import type { ResourceInfo, ToolInfo } from "../api/types";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
+import { useChatStore } from "../stores/chat";
 import CapabilitiesView from "./CapabilitiesView.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -21,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../api/ExtensionsClient", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/ExtensionsClient")>()),
-  extensionsClient: { list: mocks.extensions },
+  extensionsClient: { list: mocks.extensions, remove: vi.fn(), add: vi.fn() },
 }));
 
 vi.mock("../api/CommandsClient", () => ({
@@ -65,18 +66,19 @@ const ACCOUNT: Account = {
   permissions: ["tools.use"],
 };
 
-async function show(options: { admin?: boolean; query?: string } = {}) {
+async function show(options: { admin?: boolean; query?: string; permissions?: string[] } = {}) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().account = {
     ...ACCOUNT,
-    permissions: options.admin ? ["tools.use", "admin.manage"] : ["tools.use"],
+    permissions: options.permissions ?? (options.admin ? ["tools.use", "admin.manage"] : ["tools.use"]),
   };
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: "/capabilities", component: CapabilitiesView },
       { path: "/capabilities/:name", component: { template: "<div />" } },
+      { path: "/extensions/:id", component: { template: "<div />" } },
     ],
   });
   await router.push(options.query ? `/capabilities?q=${options.query}` : "/capabilities");
@@ -360,5 +362,110 @@ describe("CapabilitiesView", () => {
 
     expect(w.text()).toContain("server down");
     expect(sections(w)).toHaveLength(0);
+  });
+});
+
+describe("CapabilitiesView extension cards", () => {
+  const ext = (id: string, webUrl?: string | null, status = "connected") => ({
+    id,
+    label: id.toUpperCase(),
+    description: "",
+    status,
+    error: status === "error" ? "down" : null,
+    tools: [`${id}__run`],
+    web_url: webUrl,
+  });
+  const WITH_CHAT = ["tools.use", "chat.use"];
+  const openButtons = (w: Wrapper) =>
+    w.findAll("article.card a").filter((a) => a.text() === "Open page" || a.text() === "Open app");
+
+  it("opens the web UI of an extension that has one, in a new tab", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf", "http://127.0.0.1:5174")]);
+    const w = await show({ permissions: WITH_CHAT });
+
+    const link = w.get("a[href='http://127.0.0.1:5174/']");
+    expect(link.text()).toBe("Open app");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
+  });
+
+  it("opens the tools page of an extension without a web UI, and never links a non-http address", async () => {
+    mocks.extensions.mockResolvedValue([ext("notes"), ext("odd id/x", null), ext("bad", "javascript:alert(1)")]);
+    const w = await show({ permissions: WITH_CHAT });
+
+    expect(openButtons(w).map((a) => [a.text(), a.attributes("href")])).toEqual([
+      ["Open page", "/capabilities/pdf"],
+      ["Open page", "/extensions/notes"],
+      ["Open page", "/extensions/odd%20id%2Fx"],
+      ["Open page", "/extensions/bad"],
+    ]);
+  });
+
+  it("still opens the web UI when the extension is not connected", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2", "https://pdf.example", "error")]);
+    const w = await show({ permissions: WITH_CHAT });
+
+    expect(w.find("a[href='https://pdf.example/']").exists()).toBe(true);
+    expect(head(w, "PDF2").text()).toContain("Not connected");
+  });
+
+  it("gives each extension a switch for your chats that applies at once", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2")]);
+    const w = await show({ permissions: WITH_CHAT });
+    const chat = useChatStore();
+    const box = () => w.findAll("input[type=checkbox]").at(-1)!.element as HTMLInputElement;
+
+    expect(box().checked).toBe(false);
+    await w.findAll("input[type=checkbox]").at(-1)!.trigger("click");
+
+    expect(chat.enabledExtensions).toEqual(["pdf2"]);
+    expect(box().checked).toBe(true);
+    expect(w.findComponent(ConfirmModal).exists()).toBe(false);
+    expect(w.findAll(".scope").map((s) => s.text())).toContain("You");
+  });
+
+  it("does not give an extension a switch without chat.use", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2")]);
+    const w = await show();
+
+    expect(w.findAll("input[type=checkbox]")).toHaveLength(0);
+  });
+
+  it("lists only the extensions when the account lacks tools.use", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2")]);
+    const w = await show({ permissions: ["chat.use"] });
+
+    expect(mocks.capabilities).not.toHaveBeenCalled();
+    expect(mocks.listTools).not.toHaveBeenCalled();
+    expect(sectionNames(w)).toEqual(["PDF2"]);
+    expect(w.find(".kinds").exists()).toBe(false);
+    expect(openButtons(w)).toHaveLength(0);
+  });
+
+  it("filters the cards by kind", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2")]);
+    const w = await show({ permissions: WITH_CHAT });
+    const pick = (label: string) => w.findAll(".kinds button").find((b) => b.text() === label)!.trigger("click");
+
+    await pick("Extensions");
+    expect(sectionNames(w)).toEqual(["PDF2"]);
+
+    await pick("Built-in");
+    expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "Other tools"]);
+
+    await pick("All");
+    expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "PDF2", "Other tools"]);
+  });
+
+  it("lets only admins add and remove extensions", async () => {
+    mocks.extensions.mockResolvedValue([ext("pdf2")]);
+    const user = await show({ permissions: WITH_CHAT });
+    expect(user.text()).not.toContain("Add extension");
+
+    const admin = await show({ permissions: [...WITH_CHAT, "admin.manage"] });
+    expect(admin.text()).toContain("Add extension");
+    await head(admin, "PDF2").trigger("click");
+    await admin.get("button.danger").trigger("click");
+    expect(admin.getComponent(ConfirmModal).props("message")).toContain('Remove "PDF2"');
   });
 });

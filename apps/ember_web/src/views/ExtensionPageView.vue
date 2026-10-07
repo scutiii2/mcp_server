@@ -85,7 +85,7 @@ watch(id, load);
 
 <template>
   <div class="page">
-    <p><RouterLink to="/extensions">← Extensions</RouterLink></p>
+    <p><RouterLink to="/capabilities">← Capabilities</RouterLink></p>
     <p v-if="loading" class="muted">Loading…</p>
     <p v-else-if="problem" class="error" role="alert">{{ problem }}</p>
     <template v-else-if="extension">

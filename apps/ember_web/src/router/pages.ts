@@ -27,15 +27,8 @@ export const NAV_PAGES: NavPage[] = [
     to: "/capabilities",
     label: "Capabilities",
     icon: ["m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z", "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65", "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"],
-    description: "What mcp_server offers, by capability: run its tools, read its resources; admins switch capabilities on and off.",
-    permission: "tools.use",
-  },
-  {
-    to: "/extensions",
-    label: "Extensions",
-    icon: ["M12 22v-5", "M9 8V2", "M15 8V2", "M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"],
-    description: "Other MCP servers behind mcp_server; pick the ones your chats may use.",
-    permission: "chat.use",
+    description: "What mcp_server offers: its capabilities and extensions (other MCP servers). Run their tools, read their resources, pick the extensions your chats may use; admins switch capabilities on and off.",
+    permission: ["tools.use", "chat.use"],
   },
   {
     to: "/agents",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { storeToRefs } from "pinia";
 import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue";
 import { useRoute } from "vue-router";
 import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
@@ -6,24 +7,31 @@ import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
-import CapabilitySection from "../components/CapabilitySection.vue";
+import AddExtensionModal from "../components/AddExtensionModal.vue";
+import CapabilitySection, { type SectionPage } from "../components/CapabilitySection.vue";
 import MarkdownContent from "../components/MarkdownContent.vue";
-import OpenPageButton from "../components/OpenPageButton.vue";
+import SegmentedControl from "../components/SegmentedControl.vue";
 import ToolCard from "../components/ToolCard.vue";
 import ToolRunModal from "../components/ToolRunModal.vue";
 import { useAuthStore } from "../stores/auth";
+import { useChatStore } from "../stores/chat";
 import { groupTools, inExtensionNamespace } from "../utils/capabilityGroups";
 import { errorMessage } from "../utils/errors";
 import { formatToolResult } from "../utils/toolResultFormat";
 import { safeWebUrl } from "../utils/webUrl";
 
-/** mcp_server's built-in capabilities, each with the tools it brings (run
- * them in place) and its resources to read; admins can switch a capability on
- * or off for every mcp_server client. The old Tools and Capabilities pages in
- * one: collapsed by default, opened while a filter is typed. A tool is a row
- * (label and name); a click opens its description and run form in a modal. */
+/** What mcp_server offers, as one list of identical cards: its built-in
+ * capabilities and the extensions (other MCP servers) it passes on. Each card
+ * brings tools (run them in place) and resources to read, may have an Open
+ * button, and has a switch: a capability's is for every mcp_server client
+ * (admins only, asked first), an extension's is for your own chats. Admins
+ * also add and remove extensions. Collapsed by default, opened while a filter
+ * is typed. A tool is a row (label and name); a click opens its description
+ * and run form in a modal. */
 
 const auth = useAuthStore();
+const chat = useChatStore();
+const { enabledExtensions } = storeToRefs(chat);
 const server = new McpServerClient();
 
 const capabilities = ref<CapabilityInfo[]>([]);
@@ -34,6 +42,13 @@ const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
 const switching = ref<string | null>(null);
+// Which kind of card is listed.
+type Kind = "all" | "builtin" | "extensions";
+const kind = ref<Kind>("all");
+// The extension the confirm dialog asks about, and the id of the one being removed.
+const pendingRemove = ref<ExtensionInfo | null>(null);
+const removing = ref<string | null>(null);
+const addOpen = ref(false);
 
 // ?q= prefills the filter (links to a single tool use it).
 const initialQuery = useRoute().query.q;
@@ -65,6 +80,12 @@ const readError = ref("");
 const reader = useTemplateRef<HTMLElement>("reader");
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
+const canChat = computed(() => auth.hasPermission("chat.use"));
+// Capabilities, tools and resources need tools.use; an extension's switch needs only chat.use.
+const canTools = computed(() => auth.hasPermission("tools.use"));
+const switchedOn = computed(() => new Set(enabledExtensions.value));
+const showBuiltin = computed(() => canTools.value && kind.value !== "extensions");
+const showExtensions = computed(() => kind.value !== "builtin");
 const grouped = computed(() => groupTools(capabilities.value, tools.value, query.value, extensions.value));
 const selectedTool = computed(() => tools.value.find((t) => t.name === openTool.value) ?? null);
 
@@ -86,12 +107,7 @@ const otherResources = computed(() => {
   return unclaimedResources.value.filter((r) => !owned.has(r));
 });
 const showOther = computed(() => grouped.value.otherTools.length > 0 || (!filtering.value && otherResources.value.length > 0));
-const otherCapability: CapabilityInfo = { name: "extensions", label: "Other tools", enabled: true, tools: [], resources: [] };
 
-/** An extension drawn as a capability card; it has no on/off switch here. */
-function extensionCapability(extension: ExtensionInfo): CapabilityInfo {
-  return { name: extension.id, label: extension.label, enabled: true, tools: [], resources: [] };
-}
 const extensionKey = (id: string): string => `\0ext:${id}`;
 function resourcesOfExtension(extension: ExtensionInfo): ResourceInfo[] {
   return filtering.value ? [] : (extensionResources.value.get(extension.id) ?? []);
@@ -103,19 +119,49 @@ function resourcesOf(capability: CapabilityInfo): ResourceInfo[] {
 }
 
 const nothingShown = computed(
-  () => grouped.value.groups.length === 0 && grouped.value.extensionGroups.length === 0 && !showOther.value,
+  () =>
+    (!showBuiltin.value || (grouped.value.groups.length === 0 && !showOther.value)) &&
+    (!showExtensions.value || grouped.value.extensionGroups.length === 0),
 );
+
+const countText = (tools: number, resources: number): string =>
+  `${tools} tool${tools === 1 ? "" : "s"}${resources ? ` · ${resources} resource${resources === 1 ? "" : "s"}` : ""}`;
+
+function capabilitySummary(capability: CapabilityInfo, tools: number): string {
+  return capability.enabled ? countText(tools, resourcesOf(capability).length) : "off";
+}
+
+/** Where a capability's Open button leads: its own page, while it is on. */
+function capabilityPage(capability: CapabilityInfo): SectionPage | null {
+  return capability.has_gui && capability.enabled
+    ? { to: `/capabilities/${encodeURIComponent(capability.name)}`, external: false }
+    : null;
+}
+
+/** Where an extension's Open button leads: its own web UI when it names a
+ * usable one (a new tab), else our page for its tools (needs tools.use), else nowhere. */
+function extensionPage(e: ExtensionInfo): SectionPage | null {
+  const web = safeWebUrl(e.web_url);
+  if (web) return { to: web, external: true, label: "Open app" };
+  return canTools.value ? { to: `/extensions/${encodeURIComponent(e.id)}`, external: false } : null;
+}
+
+function extensionSummary(g: { extension: ExtensionInfo; tools: ToolInfo[] }): string {
+  if (g.extension.status !== "connected") return "Not connected";
+  return countText(canTools.value ? g.tools.length : g.extension.tools.length, resourcesOfExtension(g.extension).length);
+}
 
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
+    // Without tools.use only the extensions are listed (to switch them on or off).
     const [caps, toolList, res, exts] = await Promise.all([
-      commandsClient.capabilities(),
-      server.listTools(),
-      server.listResources().catch(() => [] as ResourceInfo[]),
-      // Only for grouping: without it the extension tools sit under "Other tools".
-      extensionsClient.list().catch(() => [] as ExtensionInfo[]),
+      canTools.value ? commandsClient.capabilities() : [],
+      canTools.value ? server.listTools() : [],
+      canTools.value ? server.listResources().catch(() => [] as ResourceInfo[]) : [],
+      // Without it the extension tools would sit under "Other tools".
+      canTools.value ? extensionsClient.list().catch(() => [] as ExtensionInfo[]) : extensionsClient.list(),
     ]);
     capabilities.value = caps;
     tools.value = [...toolList].sort((a, b) => a.title.localeCompare(b.title));
@@ -168,6 +214,36 @@ async function runSwitch(): Promise<void> {
     actionError.value = errorMessage(err);
   } finally {
     switching.value = null;
+  }
+}
+
+function onAdded(created: ExtensionInfo): void {
+  extensions.value = [...extensions.value.filter((e) => e.id !== created.id), created];
+  addOpen.value = false;
+  chat.refreshCommands();
+}
+
+const removeMessage = computed(() =>
+  pendingRemove.value
+    ? `Remove "${pendingRemove.value.label}"? Its tools stop being offered to every mcp_server client.`
+    : "",
+);
+
+async function confirmRemove(): Promise<void> {
+  const extension = pendingRemove.value;
+  if (!extension) return;
+  actionError.value = "";
+  removing.value = extension.id;
+  try {
+    await extensionsClient.remove(extension.id);
+    extensions.value = extensions.value.filter((e) => e.id !== extension.id);
+    chat.setExtensionEnabled(extension.id, false);
+    chat.refreshCommands();
+  } catch (err) {
+    actionError.value = errorMessage(err);
+  } finally {
+    removing.value = null;
+    pendingRemove.value = null;
   }
 }
 
@@ -225,12 +301,27 @@ onMounted(load);
         <h2>
           Capabilities <span v-if="tools.length" class="count">{{ tools.length }} tools</span>
         </h2>
-        <input v-if="!loading && !loadError" v-model="query" type="search" class="search" placeholder="Filter tools" />
+        <div class="head-actions">
+          <input v-if="!loading && !loadError" v-model="query" type="search" class="search" placeholder="Filter tools" />
+          <button v-if="isAdmin" type="button" class="primary" @click="addOpen = true">Add extension</button>
+        </div>
       </div>
       <p class="muted intro">
-        What mcp_server can do, grouped by capability. Open one to run its tools and read its resources. You can also
-        run tools with <code>/</code> commands in the chat.
+        What mcp_server can do: its built-in capabilities and the extensions (other MCP servers) it passes on. Open one
+        to run its tools and read its resources. An extension's tools are only used in your chats while you switch it
+        on. You can also run tools with <code>/</code> commands in the chat.
       </p>
+      <SegmentedControl
+        v-if="canTools && !loading && !loadError"
+        v-model="kind"
+        class="kinds"
+        aria-label="Show"
+        :options="[
+          { value: 'all', label: 'All' },
+          { value: 'builtin', label: 'Built-in' },
+          { value: 'extensions', label: 'Extensions' },
+        ]"
+      />
 
       <p v-if="loading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
@@ -238,82 +329,94 @@ onMounted(load);
 
       <template v-if="!loading && !loadError">
         <p v-if="nothingShown && filtering" class="muted">Nothing matches "{{ query.trim() }}".</p>
-        <p v-else-if="nothingShown" class="muted">No capabilities or tools exposed.</p>
+        <p v-else-if="nothingShown" class="muted">No capabilities, extensions or tools exposed.</p>
 
-        <CapabilitySection
-          v-for="g in grouped.groups"
-          :key="g.capability.name"
-          :capability="g.capability"
-          :open="isOpen(g.capability.name)"
-          :tool-count="g.tools.length"
-          :resource-count="resourcesOf(g.capability).length"
-          :is-admin="isAdmin"
-          :switching="switching === g.capability.name"
-          @toggle="toggleSection(g.capability.name)"
-          @switch="toggleCapability(g.capability)"
-        >
-          <p v-if="!g.capability.enabled" class="muted">Turned off: its tools and resources aren't offered to anyone.</p>
-          <template v-else>
-            <p v-if="g.tools.length === 0 && resourcesOf(g.capability).length === 0" class="muted">Nothing registered.</p>
-            <ul v-if="g.tools.length" class="cards">
+        <template v-if="showBuiltin">
+          <CapabilitySection
+            v-for="g in grouped.groups"
+            :key="g.capability.name"
+            :label="g.capability.label ?? g.capability.name"
+            :name="g.capability.name"
+            :open="isOpen(g.capability.name)"
+            :summary="capabilitySummary(g.capability, g.tools.length)"
+            :status="g.capability.enabled ? 'ok' : 'off'"
+            :dimmed="!g.capability.enabled"
+            :page="capabilityPage(g.capability)"
+            :control="isAdmin ? 'switch' : 'badge'"
+            :checked="g.capability.enabled"
+            scope="Everyone"
+            :switch-title="g.capability.enabled ? 'Turn off for every client' : 'Turn on for every client'"
+            :switching="switching === g.capability.name"
+            @toggle="toggleSection(g.capability.name)"
+            @switch="toggleCapability(g.capability)"
+          >
+            <p v-if="!g.capability.enabled" class="muted">Turned off: its tools and resources aren't offered to anyone.</p>
+            <template v-else>
+              <p v-if="g.tools.length === 0 && resourcesOf(g.capability).length === 0" class="muted">Nothing registered.</p>
+              <ul v-if="g.tools.length" class="cards">
+                <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
+              </ul>
+              <ul v-if="resourcesOf(g.capability).length" class="resources">
+                <li v-for="r in resourcesOf(g.capability)" :key="r.uri">
+                  <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
+                  <code class="name">{{ r.uri }}</code>
+                  <span v-if="r.description" class="muted">{{ r.description }}</span>
+                </li>
+              </ul>
+            </template>
+          </CapabilitySection>
+        </template>
+
+        <template v-if="showExtensions">
+          <CapabilitySection
+            v-for="g in grouped.extensionGroups"
+            :key="g.extension.id"
+            :label="g.extension.label"
+            :name="g.extension.id"
+            :open="isOpen(extensionKey(g.extension.id))"
+            :summary="extensionSummary(g)"
+            :status="g.extension.status === 'connected' ? 'ok' : 'bad'"
+            :dimmed="canChat && !switchedOn.has(g.extension.id)"
+            :page="extensionPage(g.extension)"
+            :control="canChat ? 'switch' : 'none'"
+            :checked="switchedOn.has(g.extension.id)"
+            scope="You"
+            switch-title="Let the agent and slash commands use its tools in your chats"
+            @toggle="toggleSection(extensionKey(g.extension.id))"
+            @switch="chat.setExtensionEnabled(g.extension.id, !switchedOn.has(g.extension.id))"
+          >
+            <p v-if="g.extension.description" class="muted">{{ g.extension.description }}</p>
+            <p v-if="g.extension.status !== 'connected'" class="error">
+              Not connected{{ g.extension.error ? `: ${g.extension.error}` : "" }}
+            </p>
+            <p
+              v-else-if="canTools && g.tools.length === 0 && resourcesOfExtension(g.extension).length === 0"
+              class="muted"
+            >
+              Nothing registered.
+            </p>
+            <ul v-if="canTools && g.tools.length" class="cards">
               <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
             </ul>
-            <ul v-if="resourcesOf(g.capability).length" class="resources">
-              <li v-for="r in resourcesOf(g.capability)" :key="r.uri">
+            <ul v-if="resourcesOfExtension(g.extension).length" class="resources">
+              <li v-for="r in resourcesOfExtension(g.extension)" :key="r.uri">
                 <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
                 <code class="name">{{ r.uri }}</code>
                 <span v-if="r.description" class="muted">{{ r.description }}</span>
               </li>
             </ul>
-          </template>
-        </CapabilitySection>
+            <div v-if="isAdmin" class="card-foot">
+              <button type="button" class="danger" @click="pendingRemove = g.extension">Remove</button>
+            </div>
+          </CapabilitySection>
+        </template>
 
         <CapabilitySection
-          v-for="g in grouped.extensionGroups"
-          :key="g.extension.id"
-          :capability="extensionCapability(g.extension)"
-          :open="isOpen(extensionKey(g.extension.id))"
-          :tool-count="g.tools.length"
-          :resource-count="resourcesOfExtension(g.extension).length"
-          :is-admin="false"
-          :switching="false"
-          hide-state
-          @toggle="toggleSection(extensionKey(g.extension.id))"
-        >
-          <p v-if="g.extension.status === 'error'" class="error">
-            Not connected{{ g.extension.error ? `: ${g.extension.error}` : "" }}
-          </p>
-          <p v-else-if="g.tools.length === 0 && resourcesOfExtension(g.extension).length === 0" class="muted">
-            Nothing registered.
-          </p>
-          <OpenPageButton
-            v-if="safeWebUrl(g.extension.web_url)"
-            class="open-app"
-            :to="safeWebUrl(g.extension.web_url)!"
-            external
-            label="Open app"
-          />
-          <ul v-if="g.tools.length" class="cards">
-            <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
-          </ul>
-          <ul v-if="resourcesOfExtension(g.extension).length" class="resources">
-            <li v-for="r in resourcesOfExtension(g.extension)" :key="r.uri">
-              <button type="button" class="link" @click="startRead(r)">{{ r.name }}</button>
-              <code class="name">{{ r.uri }}</code>
-              <span v-if="r.description" class="muted">{{ r.description }}</span>
-            </li>
-          </ul>
-        </CapabilitySection>
-
-        <CapabilitySection
-          v-if="showOther"
-          :capability="otherCapability"
+          v-if="showBuiltin && showOther"
+          label="Other tools"
+          name="extensions"
           :open="isOpen(OTHER)"
-          :tool-count="grouped.otherTools.length"
-          :resource-count="filtering ? 0 : otherResources.length"
-          :is-admin="false"
-          :switching="false"
-          hide-state
+          :summary="countText(grouped.otherTools.length, filtering ? 0 : otherResources.length)"
           @toggle="toggleSection(OTHER)"
         >
           <ul v-if="grouped.otherTools.length" class="cards">
@@ -354,6 +457,20 @@ onMounted(load);
       @confirm="runSwitch"
       @close="pendingSwitch = null"
     />
+
+    <ConfirmModal
+      v-if="pendingRemove"
+      open
+      title="Remove extension"
+      :message="removeMessage"
+      confirm-label="Remove"
+      danger
+      :busy="removing !== null"
+      @confirm="confirmRemove"
+      @close="pendingRemove = null"
+    />
+
+    <AddExtensionModal v-if="isAdmin" :open="addOpen" @close="addOpen = false" @added="onAdded" />
 
     <ToolRunModal
       :tool="selectedTool"
@@ -403,6 +520,19 @@ h3 {
   color: var(--muted);
   background: var(--surface);
 }
+.head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.kinds {
+  margin-bottom: 14px;
+}
+.card-foot {
+  display: flex;
+  justify-content: flex-end;
+}
 .search {
   flex: 0 1 260px;
   min-width: 0;
@@ -445,9 +575,6 @@ h3 {
   font-size: 0.8em;
   color: var(--muted);
   overflow-wrap: anywhere;
-}
-.open-app {
-  justify-self: start;
 }
 .link {
   padding: 0;
