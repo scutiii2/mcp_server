@@ -37,6 +37,7 @@ CommandFor = Callable[[AgentSpec], Sequence[str]]
 Deregister = Callable[[str], None]
 Out = Callable[[str], None]
 Sleep = Callable[[float], Awaitable[None]]
+Publish = Callable[[Sequence[AgentSpec]], None]
 
 
 def _print(line: str) -> None:
@@ -198,9 +199,11 @@ class Supervisor:
         out: Out = _print,
         policy_factory: Callable[[], CrashPolicy] = CrashPolicy,
         sleep: Sleep = asyncio.sleep,
+        publish: Publish = agent_registry.write_definitions,
     ) -> None:
         self._specs = specs
         self._deregister = deregister
+        self._publish = publish
         self._out = out
         self._children = [
             AgentProcess(spec, command_for, deregister, out, policy_factory(), sleep)
@@ -211,6 +214,7 @@ class Supervisor:
         # Entries a crashed earlier run left behind for OUR agents only.
         for spec in self._specs:
             await asyncio.to_thread(self._deregister, spec.id)
+        await asyncio.to_thread(self._publish, self._specs)
         self._out(f"[supervisor] starting {', '.join(c.spec.id for c in self._children) or 'no agents'}")
         try:
             await asyncio.gather(*(child.run() for child in self._children))

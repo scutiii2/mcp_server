@@ -17,7 +17,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "agent_registry.json"
 
@@ -63,12 +63,12 @@ def _replace_with_retry(source: str, target: Path) -> None:
             time.sleep(_REPLACE_POLL_SECONDS)
 
 
-def _write(path: Path, agents: list[dict[str, Any]]) -> None:
+def _write(path: Path, agents: list[dict[str, Any]], key: str = "agents") -> None:
     """Writes a temp file in the same directory, then swaps it over `path`
     in one step, so a concurrent reader (another instance, or this one's
     per-turn reload) sees the old file or the new one - never a truncated
     half. The temp file is removed if anything fails."""
-    payload = json.dumps({"agents": agents}, indent=2) + "\n"
+    payload = json.dumps({key: agents}, indent=2) + "\n"
     fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as file:
@@ -204,3 +204,40 @@ def get_agent(agent_id: str | None) -> dict[str, Any] | None:
 
 def all_agents() -> list[dict[str, Any]]:
     return list(_AGENTS)
+
+
+def _definitions_path() -> Path:
+    return _CONFIG_PATH.with_name("agent_definitions.json")
+
+
+def write_definitions(specs: Iterable[Any]) -> None:
+    """Publishes every agent the supervisor knows (from agents/*.json) next
+    to the registry, enabled or not. The registry lists only agents that are
+    running, so this is how readers (ember_api's Agents page) tell an agent
+    that is stopped or switched off from one that does not exist. Written
+    once at supervisor start - an agent's file is read only then. Silently
+    gives up on any OSError, like register()."""
+    records = [
+        {
+            "id": spec.id, "label": spec.label, "focus": spec.focus,
+            "entry": spec.entry, "orchestrator": spec.orchestrator, "enabled": spec.enabled,
+        }
+        for spec in specs
+    ]
+    path = _definitions_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _write(path, records, key="defined")
+    except OSError:
+        pass
+
+
+def read_definitions() -> list[dict[str, Any]]:
+    """What write_definitions() published; empty when nothing was (an
+    instance started without the supervisor) or the file is unreadable."""
+    try:
+        data = json.loads(_definitions_path().read_text(encoding="utf-8"))
+        defined = data.get("defined", [])
+    except (OSError, ValueError, AttributeError):
+        return []
+    return defined if isinstance(defined, list) else []

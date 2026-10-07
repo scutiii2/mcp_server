@@ -212,11 +212,16 @@ def test_registry_route_serves_the_registry_as_json():
     from starlette.testclient import TestClient
 
     agents = [{"id": "main", "label": "Main", "url": "http://10.0.0.5:9100/mcp", "entry": True}]
-    with patch("src.server.agent_registry.reload"), patch("src.server.agent_registry.all_agents", return_value=agents):
+    defined = [{"id": "main", "label": "Main", "enabled": True}, {"id": "off", "label": "Off", "enabled": False}]
+    with (
+        patch("src.server.agent_registry.reload"),
+        patch("src.server.agent_registry.all_agents", return_value=agents),
+        patch("src.server.agent_registry.read_definitions", return_value=defined),
+    ):
         response = TestClient(server.mcp.streamable_http_app()).get("/registry")
 
     assert response.status_code == 200
-    assert response.json() == {"agents": agents}
+    assert response.json() == {"agents": agents, "defined": defined}
 
 
 def test_agent_url_defaults_to_the_host_and_falls_back_to_loopback_for_bind_all():

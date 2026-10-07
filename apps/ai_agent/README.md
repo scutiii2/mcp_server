@@ -141,7 +141,9 @@ agent file that uses the `openai` provider and the same id.
 ember_api finds agents through the registry. On the same machine it reads
 `data/agent_registry.json`; from another machine it fetches `GET /registry`
 (served by every instance, same JSON, behind `INTERNAL_API_TOKEN` like
-`/mcp`). On the ai_agent machine:
+`/mcp`). Both also carry `defined`: every agent in `agents/`, running or not
+(the supervisor writes `data/agent_definitions.json` at start), so the Agents
+page can show an agent that is stopped or disabled. On the ai_agent machine:
 
 - `AI_AGENT_HOST=0.0.0.0` so it accepts outside connections.
 - `AI_AGENT_ADVERTISE_URL=http://10.0.0.5` (an address peers can reach, no

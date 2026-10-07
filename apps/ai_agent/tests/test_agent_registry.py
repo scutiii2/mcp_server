@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from src.agents import agent_registry
+from src.agents.agent_spec import AgentSpec, LlmSpec
 
 
 def _configure(monkeypatch, tmp_path, agents):
@@ -269,3 +270,26 @@ def test_roster_and_specialists_survive_a_corrupt_registry_file(monkeypatch, tmp
 
     assert [r.id for r in agent_routing.specialists()] == ["calc"]
     assert [r.id for r in asyncio.run(agent_routing.roster_for("q"))] == ["calc"]
+
+
+def test_definitions_round_trip_and_include_disabled_agents():
+    specs = [
+        AgentSpec(id="ember", label="Ember", port=9100, llm=LlmSpec(provider="anthropic"), entry=True, orchestrator=True, focus="General."),
+        AgentSpec(id="off", label="Off", port=9101, llm=LlmSpec(provider="anthropic"), enabled=False),
+    ]
+
+    agent_registry.write_definitions(specs)
+
+    assert agent_registry.read_definitions() == [
+        {"id": "ember", "label": "Ember", "focus": "General.", "entry": True, "orchestrator": True, "enabled": True},
+        {"id": "off", "label": "Off", "focus": "", "entry": False, "orchestrator": False, "enabled": False},
+    ]
+    # The registry itself is untouched: definitions live in their own file.
+    assert agent_registry.all_agents() == []
+
+
+def test_definitions_are_empty_when_nothing_was_published_or_the_file_is_broken():
+    assert agent_registry.read_definitions() == []
+    agent_registry._CONFIG_PATH.parent.mkdir(parents=True)
+    agent_registry._definitions_path().write_text("{not json", encoding="utf-8")
+    assert agent_registry.read_definitions() == []

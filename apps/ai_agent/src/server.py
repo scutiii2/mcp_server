@@ -253,10 +253,12 @@ async def ask(
 @mcp.custom_route("/registry", methods=["GET"])
 async def registry(_request: Request) -> JSONResponse:
     """The agent registry (the same JSON as data/agent_registry.json), so
-    ember_api can find agents by URL instead of by file path. Behind the
+    ember_api can find agents by URL instead of by file path, plus `defined`:
+    every agent in agents/ (running or not, from agent_definitions.json). Behind the
     internal token like /mcp (see internal_auth.PROTECTED_PATHS)."""
     await asyncio.to_thread(agent_registry.reload)
-    return JSONResponse({"agents": agent_registry.all_agents()})
+    defined = await asyncio.to_thread(agent_registry.read_definitions)
+    return JSONResponse({"agents": agent_registry.all_agents(), "defined": defined})
 
 
 @mcp.tool()

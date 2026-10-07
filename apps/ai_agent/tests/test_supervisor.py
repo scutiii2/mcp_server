@@ -167,3 +167,21 @@ def test_stop_during_spawn_does_not_orphan_the_child(tmp_path):
 
     child = asyncio.run(scenario())
     assert child._proc.returncode is not None
+
+
+def test_start_publishes_every_defined_agent_including_disabled(tmp_path):
+    published = []
+    specs = [_spec("calc", tmp_path=tmp_path), _spec("off", enabled=False, tmp_path=tmp_path)]
+    sup = supervisor.Supervisor(
+        specs,
+        command_for=lambda spec: [sys.executable, "-c", "pass"],
+        deregister=lambda agent_id: None,
+        out=lambda line: None,
+        policy_factory=lambda: supervisor.CrashPolicy(max_crashes=1),
+        sleep=lambda seconds: asyncio.sleep(0),
+        publish=published.append,
+    )
+
+    asyncio.run(asyncio.wait_for(sup.run(), timeout=30))
+
+    assert published == [specs]

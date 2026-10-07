@@ -76,8 +76,9 @@ to sit alongside the modules that write to them:
   `INTERNAL_API_TOKEN`), gitignored; `../.env.example` is the committed twin.
 
 - **`../data/`** - state the program writes, gitignored:
-  `agent_registry.json` (the running agents, see `agents/agent_registry.py`)
-  and `usage/YYYY-MM-DD.<agent id>.jsonl` (one usage row per finished `ask`,
+  `agent_registry.json` (the running agents, see `agents/agent_registry.py`),
+  `agent_definitions.json` (every agent file, enabled or not; the supervisor
+  writes it at start) and `usage/YYYY-MM-DD.<agent id>.jsonl` (one usage row per finished `ask`,
   see `core/usage_log.py`; `AI_AGENT_USAGE_DIR` overrides the folder).
 
 There is no `logs/` folder and no database: output goes to the console
