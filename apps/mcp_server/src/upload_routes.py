@@ -22,6 +22,7 @@ step up in what an unauthenticated caller on the network could do.
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 from uuid import uuid4
 
@@ -30,6 +31,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src.config import settings
+from src.services import table_loader, tables
+from src.services.identity_context import REQUESTER_USERNAME_HEADER
 
 # Deliberately tight, not a generic upload endpoint: no built-in tool
 # consumes an uploaded file today. Extend this set only when a new file-shaped param actually
@@ -80,6 +83,44 @@ async def upload_file(request: Request) -> JSONResponse:
     return JSONResponse({"path": str(saved_path.resolve())})
 
 
+async def upload_table(request: Request) -> JSONResponse:
+    """Keeps an uploaded CSV/XLSX as an in-memory table for the data tools.
+
+    Unlike /upload, nothing is written to disk and no path comes back: the
+    caller gets an opaque `table_id`, bound to the requesting account (the
+    X-Requester-Username header, as /download reads it). Parsing is blocking
+    work, so it runs in a worker thread, not on the event loop."""
+    if not _token_valid(request):
+        return JSONResponse({"error": "Invalid or missing internal API token"}, status_code=401)
+
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or not hasattr(upload, "filename"):
+        return JSONResponse({"error": "'file' is required"}, status_code=400)
+
+    filename = upload.filename or ""
+    content = await upload.read()
+    try:
+        parsed = await asyncio.to_thread(table_loader.load_table, filename, content)
+        table = tables.registry.add(
+            request.headers.get(REQUESTER_USERNAME_HEADER, ""), filename, parsed, len(content)
+        )
+    except tables.TableRefused as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+
+    return JSONResponse(
+        {
+            "table_id": table.id,
+            "filename": table.filename,
+            "rows": table.row_count,
+            "columns": list(table.columns),
+            "sheet": table.sheet,
+            "notes": list(table.notes),
+        }
+    )
+
+
 def install_upload_routes(app: Starlette) -> None:
-    """Add the file-upload route to an existing Starlette app."""
+    """Add the file-upload routes to an existing Starlette app."""
     app.add_route("/upload", upload_file, methods=["POST"])
+    app.add_route("/upload/table", upload_table, methods=["POST"])
