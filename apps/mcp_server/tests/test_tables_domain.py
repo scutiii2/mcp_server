@@ -185,3 +185,16 @@ def test_long_cell_text_is_clipped():
     cell = domain.head(registry, "a", table_id).rows[0][0]
 
     assert len(cell) == domain.CELL_CHARS + 3 and cell.endswith("...")
+
+
+def test_aggregate_without_group_by_and_no_matching_rows_is_one_empty_total(registry, table_id):
+    result = domain.aggregate(
+        registry,
+        "alice",
+        table_id,
+        [Measure(column="units", fn="count"), Measure(column="units", fn="sum"), Measure(column="sold", fn="max")],
+        conditions=[cond("region", "=", "MARS")],
+    )
+
+    assert [(g.keys, g.values) for g in result.groups] == [([], [0, None, None])]
+    assert result.total_groups == 1

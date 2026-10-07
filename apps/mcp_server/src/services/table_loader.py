@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import re
 import zipfile
 from datetime import date, datetime
@@ -51,13 +52,15 @@ def parse_number(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        result = float(value)
+        return result if math.isfinite(result) else None
     if not isinstance(value, str):
         return None
     text = value.strip()
     if not _NUMBER.fullmatch(text):
         return None
-    return float(text.rstrip("%").replace(",", ""))
+    result = float(text.rstrip("%").replace(",", ""))
+    return result if math.isfinite(result) else None
 
 
 def parse_date(value: Any) -> datetime | None:
@@ -88,6 +91,8 @@ def _csv_rows(content: bytes) -> list[list[Any]]:
     rows: list[list[Any]] = []
     try:
         for row in csv.reader(io.StringIO(text, newline=""), delimiter=delimiter):
+            if not any(_filled(cell) for cell in row):
+                continue
             rows.append(row)
             if len(rows) > MAX_ROWS + 1:
                 raise TableRefused(f"The file has more than {MAX_ROWS:,} rows.")
@@ -111,6 +116,8 @@ def _xlsx_rows(content: bytes) -> tuple[str, list[list[Any]]]:
         for sheet in workbook.worksheets:
             rows: list[list[Any]] = []
             for row in sheet.iter_rows(values_only=True):
+                if not any(_filled(cell) for cell in row):
+                    continue
                 rows.append(list(row))
                 if len(rows) > MAX_ROWS + 1:
                     raise TableRefused(f"The sheet has more than {MAX_ROWS:,} rows.")
@@ -155,11 +162,17 @@ def _build(rows: list[list[Any]], sheet: str | None) -> ParsedTable:
 
 def _names(cells: list[Any]) -> list[str]:
     seen: dict[str, int] = {}
+    used: set[str] = set()
     names: list[str] = []
     for position, cell in enumerate(cells, start=1):
         base = str(cell).strip() if _filled(cell) else f"column_{position}"
         seen[base] = seen.get(base, 0) + 1
-        names.append(base if seen[base] == 1 else f"{base}_{seen[base]}")
+        name = base if seen[base] == 1 else f"{base}_{seen[base]}"
+        while name in used:
+            seen[base] += 1
+            name = f"{base}_{seen[base]}"
+        used.add(name)
+        names.append(name)
     return names
 
 

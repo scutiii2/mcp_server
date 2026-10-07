@@ -155,3 +155,25 @@ def test_parse_number_and_parse_date():
     assert parse_date("2026-01-31") == datetime(2026, 1, 31)
     assert parse_date("2026-01-31 10:30:00") == datetime(2026, 1, 31, 10, 30)
     assert parse_date("31/01/2026") is None and parse_date(None) is None
+
+
+def test_blank_rows_do_not_count_toward_the_row_cap(monkeypatch):
+    monkeypatch.setattr(table_loader, "MAX_ROWS", 3)
+
+    parsed = load_table("a.csv", b"a\n1\n2\n" + b"\n" * 20)
+    assert parsed.row_count == 2
+
+    content = workbook_bytes({"S": [["a"], [1], [2]] + [[None]] * 20})
+    assert load_table("a.xlsx", content).row_count == 2
+
+
+def test_an_absurdly_long_digit_string_is_not_a_number():
+    assert parse_number("9" * 400) is None
+    assert parse_number(float("inf")) is None
+
+
+def test_a_duplicate_header_rename_never_collides_with_an_existing_name():
+    parsed = load_table("a.csv", b"x,x,x_2\n1,2,3\n")
+
+    assert len(set(parsed.columns)) == 3
+    assert parsed.columns[:2] == ["x", "x_2"]

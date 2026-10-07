@@ -30,11 +30,13 @@ they are for the agent only.
 
 ## Limits
 
-30 minute TTL; 10 tables per account, 20 in total; 15 MB per file; 200,000 rows; 200 columns; 100 MB of stored
-uploads in total. Results are capped at 50 rows or 100 groups, cell text at 200 characters.
+30 minute TTL; 10 tables per account, 20 in total; 15 MB per file; 200,000 rows; 200 columns; 100 MB of estimated memory
+in total (each table is charged the larger of its file size and rows x columns x 40 bytes). Results are capped at 50 rows or 100 groups, cell text at 200 characters.
 Column types: number if at least 95% of the non-empty cells parse as numbers (`1,234.5` and `12%` do), else date if
 at least 95% parse as ISO dates, else text. Cells that fail the type are left empty and reported in `notes`.
 Empty cells never match a comparison; use `is_null` / `not_null`.
+Eviction under the table-count and memory caps is oldest-first across all users, so one user's large uploads can
+evict other users' tables. Numeric ids of 16+ digits are typed as float and lose precision.
 
 ## Security
 

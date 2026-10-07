@@ -132,6 +132,8 @@ def aggregate(
         for accumulator, (_fn, index) in zip(accumulators, plan, strict=True):
             accumulator.add(table.data[index][row])
 
+    if not group_indexes and not groups:
+        groups[()] = [_Accumulator() for _ in plan]
     items = [(key, [acc.result(fn) for acc, (fn, _i) in zip(accs, plan, strict=True)]) for key, accs in groups.items()]
     items = _sorted(items, _sort_position(table, sort_by, group_indexes, labels), descending)
     shown = items[:limit]

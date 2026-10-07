@@ -33,7 +33,7 @@ def clock() -> Clock:
 
 @pytest.fixture
 def registry(clock: Clock) -> TableRegistry:
-    return TableRegistry(ttl_seconds=60, max_per_owner=2, max_tables=3, max_total_bytes=100, clock=clock)
+    return TableRegistry(ttl_seconds=60, max_per_owner=2, max_tables=3, max_total_bytes=100, bytes_per_cell=0, clock=clock)
 
 
 def test_add_returns_an_opaque_id_and_get_returns_the_table(registry):
@@ -115,3 +115,22 @@ def test_list_for_hides_expired_and_other_owners(registry, clock):
     registry.add("bob", "b.csv", parsed(), 10)
 
     assert registry.list_for("alice") == [fresh]
+
+
+def test_the_charge_is_the_estimated_memory_when_that_exceeds_the_file_size(clock):
+    registry = TableRegistry(ttl_seconds=60, max_total_bytes=1000, bytes_per_cell=10, clock=clock)
+    first = registry.add("a", "1.csv", parsed(rows=5), 20)  # 5 rows x 2 columns x 10 = 100, not 20
+    assert first.size_bytes == 20 and first.charged_bytes == 100
+    for owner in "bcdefghi":
+        registry.add(owner, f"{owner}.csv", parsed(rows=5), 20)  # 9 x 100 = 900
+    assert registry.get(first.id, "a") is first
+    registry.add("j", "j.csv", parsed(rows=5), 20)  # 1000 fits exactly
+    assert registry.get(first.id, "a") is first
+    registry.add("k", "k.csv", parsed(rows=5), 20)  # over: the oldest goes
+    assert registry.get(first.id, "a") is None
+
+
+def test_a_table_whose_estimated_memory_exceeds_the_cap_is_refused(clock):
+    registry = TableRegistry(max_total_bytes=100, bytes_per_cell=40, clock=clock)
+    with pytest.raises(TableRefused, match="too large"):
+        registry.add("a", "wide.csv", parsed(rows=2), 10)  # 2 x 2 x 40 = 160 > 100

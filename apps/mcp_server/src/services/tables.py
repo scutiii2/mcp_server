@@ -31,6 +31,9 @@ MAX_FILE_BYTES = 15 * 1024 * 1024
 MAX_TOTAL_BYTES = 100 * 1024 * 1024
 MAX_ROWS = 200_000
 MAX_COLUMNS = 200
+# A parsed cell costs far more memory than its bytes in the file; this is the
+# estimate the byte cap charges per cell when that exceeds the file size.
+BYTES_PER_CELL = 40
 
 
 class TableRefused(ValueError):
@@ -60,6 +63,7 @@ class Table:
     data: tuple[tuple[Any, ...], ...]
     row_count: int
     size_bytes: int
+    charged_bytes: int
     notes: tuple[str, ...]
     expires_at: float
 
@@ -71,22 +75,28 @@ class TableRegistry:
         max_per_owner: int = MAX_PER_OWNER,
         max_tables: int = MAX_TABLES,
         max_total_bytes: int = MAX_TOTAL_BYTES,
+        bytes_per_cell: int = BYTES_PER_CELL,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._ttl = ttl_seconds
         self._max_per_owner = max_per_owner
         self._max_tables = max_tables
         self._max_total = max_total_bytes
+        self._bytes_per_cell = bytes_per_cell
         self._clock = clock
         self._entries: OrderedDict[str, Table] = OrderedDict()
         self._total = 0
         self._lock = threading.Lock()
 
     def add(self, owner: str, filename: str, parsed: ParsedTable, size_bytes: int) -> Table:
-        """Keeps `parsed` for `owner`, evicting the oldest entries to stay inside the caps."""
+        """Keeps `parsed` for `owner`, evicting the oldest entries to stay inside the caps.
+
+        The byte cap is charged the larger of the file size and an estimate of the
+        memory the parsed cells use."""
         if not owner:
             raise TableRefused("The caller is not identified, so the table cannot be kept.")
-        if size_bytes > self._max_total:
+        charge = max(size_bytes, parsed.row_count * len(parsed.columns) * self._bytes_per_cell)
+        if charge > self._max_total:
             raise TableRefused(f"The file is too large to keep (limit {self._max_total // (1024 * 1024)} MB).")
         table = Table(
             id=secrets.token_urlsafe(16),
@@ -98,6 +108,7 @@ class TableRegistry:
             data=tuple(tuple(column) for column in parsed.data),
             row_count=parsed.row_count,
             size_bytes=size_bytes,
+            charged_bytes=charge,
             notes=tuple(parsed.notes),
             expires_at=self._clock() + self._ttl,
         )
@@ -106,11 +117,11 @@ class TableRegistry:
             while self._count_for(owner) >= self._max_per_owner:
                 self._drop(next(key for key, entry in self._entries.items() if entry.owner == owner))
             while self._entries and (
-                len(self._entries) >= self._max_tables or self._total + size_bytes > self._max_total
+                len(self._entries) >= self._max_tables or self._total + charge > self._max_total
             ):
                 self._drop(next(iter(self._entries)))
             self._entries[table.id] = table
-            self._total += size_bytes
+            self._total += charge
         return table
 
     def get(self, table_id: str, owner: str) -> Table | None:
@@ -147,7 +158,7 @@ class TableRegistry:
             self._drop(key)
 
     def _drop(self, key: str) -> None:
-        self._total -= self._entries.pop(key).size_bytes
+        self._total -= self._entries.pop(key).charged_bytes
 
 
 # The one store this server uses; tests swap it.
