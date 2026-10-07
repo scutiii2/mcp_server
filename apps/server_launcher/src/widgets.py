@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import time
 import tkinter as tk
+import tkinter.font as tkfont
+from tkinter import ttk
 from typing import Callable
 
-from .theme import _HOVER_DURATION_MS, _HOVER_LIGHTEN, _RADIUS, _ease_in_out, _lighten
+from .theme import (
+    _ACCENT, _BG, _BORDER, _HOVER_DURATION_MS, _HOVER_LIGHTEN, _RADIUS, _RADIUS_LG, _RADIUS_MD, _RADIUS_SM, _ease_in_out,
+    _lighten,
+)
 
 
 class _HoverCanvas(tk.Canvas):
@@ -114,6 +119,38 @@ def _rounded_rect_points(x1: float, y1: float, x2: float, y2: float, radius: flo
     ]
 
 
+def _fit_text(text: str, font, max_width: float) -> str:
+    """Shorten text with an ellipsis so it fits in max_width pixels."""
+    measure = tkfont.Font(font=font).measure
+    if measure(text) <= max_width:
+        return text
+    while text and measure(text + "…") > max_width:
+        text = text[:-1]
+    return text + "…"
+
+
+_SCROLLBAR_STYLE = "Ember.Vertical.TScrollbar"
+
+
+def make_scrollbar(parent, command) -> ttk.Scrollbar:
+    """Slim dark scrollbar (no arrows) in the launcher palette; the native
+    one is light grey and ignores Tk colors."""
+    style = ttk.Style(parent)
+    if _SCROLLBAR_STYLE not in getattr(style, "_ember_styles", set()):
+        style.theme_use("clam")
+        style.layout(_SCROLLBAR_STYLE, [(
+            "Vertical.Scrollbar.trough",
+            {"sticky": "ns", "children": [("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]},
+        )])
+        style.configure(
+            _SCROLLBAR_STYLE, troughcolor=_BG, background=_BORDER, bordercolor=_BG,
+            lightcolor=_BORDER, darkcolor=_BORDER, relief="flat", width=10,
+        )
+        style.map(_SCROLLBAR_STYLE, background=[("active", _lighten(_BORDER, 0.2))])
+        style._ember_styles = {_SCROLLBAR_STYLE}
+    return ttk.Scrollbar(parent, orient="vertical", style=_SCROLLBAR_STYLE, command=command)
+
+
 class RoundedButton(_HoverCanvas):
     """A clickable rounded-rect chip with centered text - used for the
     tab toggle and Start/Stop/Restart. Redraws on <Configure> so it still
@@ -123,6 +160,7 @@ class RoundedButton(_HoverCanvas):
     def __init__(
         self, parent, text: str, command=None, *, bg: str, fill: str, outline: str, fg: str,
         font=("Segoe UI", 10), radius: int = _RADIUS, padx: int = 14, pady: int = 6, selected: bool = False,
+        underline: str | None = None,
     ) -> None:
         super().__init__(
             parent, bg=bg, highlightthickness=0, bd=0, cursor="hand2" if command else "arrow",
@@ -135,6 +173,8 @@ class RoundedButton(_HoverCanvas):
         self.text = text
         self.font = font
         self.radius = radius
+        # Accent line along the bottom edge while selected (tab bar).
+        self.underline = underline
 
         probe = self.create_text(0, 0, text=text, font=font, anchor="nw")
         bbox = self.bbox(probe)
@@ -156,6 +196,9 @@ class RoundedButton(_HoverCanvas):
         self._draw_hover_sheen(1, 1, w - 1, h - 1)
         self.create_polygon(points, smooth=True, fill="", outline=self.outline, width=1)
         self.create_text(w / 2, h / 2, text=self.text, fill=self.fg, font=self.font)
+        if self.underline and self.selected:
+            inset = self.radius
+            self.create_line(inset, h - 2, w - inset, h - 2, fill=self.underline, width=2)
 
     def _on_click(self, _event) -> None:
         self._flash_press()
@@ -268,14 +311,19 @@ class RoundedCard(_HoverCanvas):
         self.create_polygon(points, smooth=True, fill=self.fill, outline="")
         self._draw_hover_sheen(1, 1, w - 1, h - 1)
         self.create_polygon(points, smooth=True, fill="", outline=self.outline, width=1)
+        if self.selected:
+            self.create_line(2, 8, 2, h - 8, fill=_ACCENT, width=2)
         if self.dot_color is not None:
             r = 5
             self.create_oval(16 - r, h / 2 - r, 16 + r, h / 2 + r, fill=self.dot_color, outline=self.fg_dim, width=1)
         elif self.icon:
             self.create_text(16, h / 2, text=self.icon, fill=self.fg_dim, font=("Segoe UI", 11), anchor="w")
-        self.create_text(38, h / 2, text=self.name, fill=self.fg, font=self.font, anchor="w")
+        name_room = w - 38 - 12
         if self.secondary:
+            secondary_w = tkfont.Font(font=self.font).measure(self.secondary)
             self.create_text(w - 12, h / 2, text=self.secondary, fill=self.fg_dim, font=self.font, anchor="e")
+            name_room -= secondary_w + 8
+        self.create_text(38, h / 2, text=_fit_text(self.name, self.font, name_room), fill=self.fg, font=self.font, anchor="w")
 
     def _on_click(self, _event) -> None:
         self._flash_press()
@@ -356,7 +404,7 @@ class ScrollableFrame(tk.Frame):
     def __init__(self, parent, *, bg: str) -> None:
         super().__init__(parent, bg=bg)
         self._canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0)
-        self._scrollbar = tk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
+        self._scrollbar = make_scrollbar(self, self._canvas.yview)
         self._canvas.configure(yscrollcommand=self._scrollbar.set)
         self._canvas.pack(side="left", fill="both", expand=True)
         self.body = tk.Frame(self._canvas, bg=bg)
@@ -385,3 +433,51 @@ class ScrollableFrame(tk.Frame):
     def _on_wheel(self, event) -> None:
         if self._content_overflows():
             self._canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+
+
+class MemberCard(tk.Canvas):
+    """Read-only row for one server in a saved group: icon tile, title with a
+    muted detail line, and a port chip on the right. Drawn on one canvas so
+    the card gets the large (card) corner radius."""
+
+    def __init__(
+        self, parent, *, bg: str, fill: str, outline: str, tile_fill: str, accent: str,
+        fg: str, fg_dim: str, title: str, detail: str, chip: str, icon: str = "☷", height: int = 60,
+    ) -> None:
+        super().__init__(parent, bg=bg, highlightthickness=0, bd=0, height=height)
+        self.fill, self.outline, self.tile_fill, self.accent = fill, outline, tile_fill, accent
+        self.fg, self.fg_dim = fg, fg_dim
+        self.title, self.detail, self.chip, self.icon = title, detail, chip, icon
+        self._h = height
+        self.bind("<Configure>", self._redraw)
+        self._redraw()
+
+    def _redraw(self, _event=None) -> None:
+        w = self.winfo_width() if self.winfo_width() > 1 else 300
+        h = self._h
+        self.delete("all")
+        points = _rounded_rect_points(1, 1, w - 1, h - 1, _RADIUS_LG)
+        self.create_polygon(points, smooth=True, fill=self.fill, outline=self.outline, width=1)
+        tile = 36
+        tx, ty = 12, (h - tile) / 2
+        self.create_polygon(
+            _rounded_rect_points(tx, ty, tx + tile, ty + tile, _RADIUS_MD), smooth=True, fill=self.tile_fill, outline="",
+        )
+        self.create_text(tx + tile / 2, h / 2, text=self.icon, fill=self.accent, font=("Segoe UI", 13))
+
+        chip_font = ("Consolas", 9)
+        probe = self.create_text(0, 0, text=self.chip, font=chip_font, anchor="nw")
+        bbox = self.bbox(probe)
+        self.delete(probe)
+        cw, ch = (bbox[2] - bbox[0]) + 16, (bbox[3] - bbox[1]) + 6
+        cx2 = w - 14
+        self.create_polygon(
+            _rounded_rect_points(cx2 - cw, (h - ch) / 2, cx2, (h + ch) / 2, _RADIUS_SM),
+            smooth=True, fill=_BG, outline=self.outline, width=1,
+        )
+        self.create_text(cx2 - cw / 2, h / 2, text=self.chip, fill=self.fg_dim, font=chip_font)
+
+        text_x = tx + tile + 12
+        self.create_text(text_x, h / 2 - 9, text=self.title, fill=self.fg, font=("Segoe UI", 10, "bold"), anchor="w")
+        self.create_text(text_x, h / 2 + 10, text=self.detail, fill=self.fg_dim, font=("Segoe UI", 9), anchor="w")
+

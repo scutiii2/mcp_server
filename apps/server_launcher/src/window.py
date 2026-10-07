@@ -18,10 +18,10 @@ from .storage import (
     _load_and_clear_kept_running, _load_groups, _load_presets, _save_groups, _save_kept_running, _save_presets,
 )
 from .theme import (
-    _BG, _BORDER, _DIM_FG, _ERROR_FG, _FG, _FIELD_BG, _GREEN, _RED, _ROW_BG, _ROW_SELECTED, _SEPARATOR, _SIDEBAR_BG,
-    _SIDEBAR_WIDTH, _STATUS_FILLS,
+    _ACCENT, _ACCENT_CONTRAST, _BG, _BORDER, _DANGER, _DANGER_BORDER, _DIM_FG, _ERROR_FG, _FG, _FIELD_BG, _RADIUS_SM, _ROW_BG,
+    _ROW_SELECTED, _SEPARATOR, _SIDEBAR_BG, _SIDEBAR_WIDTH, _STATUS_FGS, _STATUS_FILLS, _TABBAR_BG,
 )
-from .widgets import PresetChip, RoundedButton, RoundedCard, ScrollableFrame
+from .widgets import MemberCard, PresetChip, RoundedButton, RoundedCard, ScrollableFrame, make_scrollbar
 
 
 class LauncherWindow:
@@ -64,23 +64,17 @@ class LauncherWindow:
         root.grid_columnconfigure(0, minsize=_SIDEBAR_WIDTH)
         root.grid_columnconfigure(2, weight=1)
 
-        tabbar = tk.Frame(root, bg=_BG)
-        tabbar.grid(row=0, column=0, columnspan=3, sticky="ew", padx=10, pady=(10, 6))
-        self.servers_tab_btn = RoundedButton(
-            tabbar, "Servers", command=lambda: self._set_tab("servers"),
-            bg=_BG, fill=_ROW_SELECTED, outline=_BORDER, fg=_FG,
-        )
+        tabbar = tk.Frame(root, bg=_TABBAR_BG)
+        tabbar.grid(row=0, column=0, columnspan=3, sticky="ew")
+        tabbar_inner = tk.Frame(tabbar, bg=_TABBAR_BG)
+        tabbar_inner.pack(fill="x", padx=10, pady=8)
+        self.servers_tab_btn = self._make_tab(tabbar_inner, "Servers", "servers")
         self.servers_tab_btn.pack(side="left", padx=(0, 4))
-        self.instances_tab_btn = RoundedButton(
-            tabbar, "Instances", command=lambda: self._set_tab("instances"),
-            bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
-        )
+        self.instances_tab_btn = self._make_tab(tabbar_inner, "Instances", "instances")
         self.instances_tab_btn.pack(side="left", padx=(0, 4))
-        self.groups_tab_btn = RoundedButton(
-            tabbar, "Groups", command=lambda: self._set_tab("groups"),
-            bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
-        )
+        self.groups_tab_btn = self._make_tab(tabbar_inner, "Groups", "groups")
         self.groups_tab_btn.pack(side="left")
+        tk.Frame(tabbar, bg=_SEPARATOR, height=1).pack(fill="x")
 
         sidebar = tk.Frame(root, bg=_SIDEBAR_BG, width=_SIDEBAR_WIDTH)
         sidebar.grid(row=1, column=0, sticky="ns")
@@ -103,8 +97,8 @@ class LauncherWindow:
         bottom_row.pack(fill="x")
         self._instance_actions_row = bottom_row
         self._kill_instances_button = RoundedButton(
-            bottom_row, "Kill Instances", command=self._kill_all_instances,
-            bg=_SIDEBAR_BG, fill=_RED, outline=_RED, fg=_FG,
+            bottom_row, "Kill instances", command=self._kill_all_instances,
+            bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_DANGER_BORDER, fg=_DANGER,
         )
         self._kill_instances_button.pack(side="left", expand=True, fill="x", padx=(0, 4))
         self._refresh_button = RoundedButton(
@@ -113,15 +107,15 @@ class LauncherWindow:
         )
         self._refresh_button.pack(side="left")
         self._clear_closed_button = RoundedButton(
-            bottom_actions, "Clear Closed", command=self._clear_closed_instances,
+            bottom_actions, "Clear closed", command=self._clear_closed_instances,
             bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
         )
         self._restart_all_button = RoundedButton(
-            bottom_actions, "Restart All", command=self._restart_all_instances,
+            bottom_actions, "Restart all", command=self._restart_all_instances,
             bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
         )
         self._create_group_button = RoundedButton(
-            bottom_actions, "Create Group", command=self._show_create_group_dialog,
+            bottom_actions, "Create group", command=self._show_create_group_dialog,
             bg=_SIDEBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
         )
 
@@ -142,11 +136,18 @@ class LauncherWindow:
 
     # ---- tabs / sidebar -------------------------------------------------
 
+    def _make_tab(self, parent: tk.Frame, text: str, tab: str) -> RoundedButton:
+        return RoundedButton(
+            parent, text, command=lambda: self._set_tab(tab),
+            bg=_TABBAR_BG, fill=_BG if tab == "servers" else _TABBAR_BG, outline=_TABBAR_BG, fg=_FG,
+            underline=_ACCENT, selected=tab == "servers",
+        )
+
     def _set_tab(self, tab: str) -> None:
         self.active_tab = tab
-        self.servers_tab_btn.set_selected(tab == "servers", _ROW_SELECTED if tab == "servers" else _ROW_BG)
-        self.instances_tab_btn.set_selected(tab == "instances", _ROW_SELECTED if tab == "instances" else _ROW_BG)
-        self.groups_tab_btn.set_selected(tab == "groups", _ROW_SELECTED if tab == "groups" else _ROW_BG)
+        self.servers_tab_btn.set_selected(tab == "servers", _BG if tab == "servers" else _TABBAR_BG)
+        self.instances_tab_btn.set_selected(tab == "instances", _BG if tab == "instances" else _TABBAR_BG)
+        self.groups_tab_btn.set_selected(tab == "groups", _BG if tab == "groups" else _TABBAR_BG)
         if tab == "instances":
             self._instance_actions.pack(side="bottom", fill="x", padx=10, pady=10, before=self._sidebar_scroll)
             self._kill_instances_button.pack(side="left", expand=True, fill="x", padx=(0, 4))
@@ -206,7 +207,7 @@ class LauncherWindow:
                     bg=_SIDEBAR_BG, fill=_ROW_SELECTED if selected else _ROW_BG, outline=_BORDER,
                     fg=_FG, fg_dim=_DIM_FG, name=instance.template.display_name,
                     secondary=f":{instance.port}",
-                    dot_color=_GREEN if instance.is_alive() else _DIM_FG,
+                    dot_color=_STATUS_FGS["running"] if instance.is_alive() else _DIM_FG,
                     selected=selected, command=lambda i=instance: self._select_instance(i.id),
                 )
                 card.pack(fill="x", pady=3)
@@ -322,7 +323,7 @@ class LauncherWindow:
             actions, "Cancel", command=dialog.destroy, bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
         ).pack(side="right")
         RoundedButton(
-            actions, "Save", command=save, bg=_BG, fill=_GREEN, outline=_GREEN, fg=_FG,
+            actions, "Save", command=save, bg=_BG, fill=_ACCENT, outline=_ACCENT, fg=_ACCENT_CONTRAST,
         ).pack(side="right", padx=(0, 6))
         name_entry.focus_set()
 
@@ -435,43 +436,28 @@ class LauncherWindow:
         header.pack(fill="x", padx=16, pady=(16, 8))
         tk.Label(header, text=group.name, bg=_BG, fg=_FG, font=("Segoe UI", 14, "bold")).pack(side="left")
         RoundedButton(
-            header, "Start All", command=lambda: self._start_group(group.name),
-            bg=_BG, fill=_GREEN, outline=_GREEN, fg=_FG,
+            header, "Start all", command=lambda: self._start_group(group.name),
+            bg=_BG, fill=_ACCENT, outline=_ACCENT, fg=_ACCENT_CONTRAST,
         ).pack(side="right")
         RoundedButton(
-            header, "Delete Group", command=lambda: self._delete_group(group.name),
-            bg=_BG, fill=_RED, outline=_RED, fg=_FG,
+            header, "Delete group", command=lambda: self._delete_group(group.name),
+            bg=_BG, fill=_BG, outline=_DANGER_BORDER, fg=_DANGER,
         ).pack(side="right", padx=(0, 6))
 
         members_scroll = ScrollableFrame(self.main, bg=_BG)
         members_scroll.pack(fill="both", expand=True)
         templates = {template.key: template for template in self.templates}
         for member in group.members:
-            card = tk.Frame(members_scroll.body, bg=_ROW_BG, highlightthickness=1, highlightbackground=_BORDER)
-            card.pack(fill="x", padx=16, pady=(0, 8))
             template = templates.get(member.template_key)
-            template_label = member.template_key
-            if template is None:
-                template_label += " (unavailable)"
-            else:
-                template_label += f" — {template.display_name}"
-            tk.Label(
-                card, text=f"{template_label}  :{member.port}", bg=_ROW_BG, fg=_FG,
-                font=("Segoe UI", 10, "bold"), anchor="w",
-            ).pack(fill="x", padx=10, pady=(8, 2))
-            if member.extra_env:
-                env_text = ", ".join(f"{key}={value}" for key, value in member.extra_env.items())
-            else:
-                env_text = "None"
-            tk.Label(card, text=f"Environment: {env_text}", bg=_ROW_BG, fg=_DIM_FG, anchor="w").pack(
-                fill="x", padx=10
-            )
-            tk.Label(
-                card, text=f"Extra args: {member.extra_args or 'None'}", bg=_ROW_BG, fg=_DIM_FG, anchor="w",
-            ).pack(fill="x", padx=10)
-            tk.Label(
-                card, text=f"Preset: {member.preset_name or 'None'}", bg=_ROW_BG, fg=_DIM_FG, anchor="w",
-            ).pack(fill="x", padx=10, pady=(0, 8))
+            title = template.display_name if template is not None else f"{member.template_key} (unavailable)"
+            env_text = ", ".join(f"{key}={value}" for key, value in member.extra_env.items()) or "no environment"
+            detail = f"{member.template_key} · {env_text} · {member.extra_args or 'no extra args'}"
+            if member.preset_name:
+                detail += f" · preset: {member.preset_name}"
+            MemberCard(
+                members_scroll.body, bg=_BG, fill=_ROW_BG, outline=_BORDER, tile_fill=_ROW_SELECTED, accent=_ACCENT,
+                fg=_FG, fg_dim=_DIM_FG, title=title, detail=detail, chip=f":{member.port}",
+            ).pack(fill="x", padx=16, pady=(0, 8))
 
     def _render_server_detail(self, template: ServerTemplate | None) -> None:
         self._clear_main()
@@ -535,12 +521,12 @@ class LauncherWindow:
             self._render_server_detail(template)
 
         RoundedButton(
-            header, "Start", command=start, bg=_BG, fill=_GREEN, outline=_GREEN, fg=_FG,
+            header, "Start", command=start, bg=_BG, fill=_ACCENT, outline=_ACCENT, fg=_ACCENT_CONTRAST,
             font=("Segoe UI", 10, "bold"),
         ).pack(side="right")
         if not template.agents:  # a preset holds the port, which agent files decide
             RoundedButton(
-                header, "Add as Preset", command=add_preset, bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
+                header, "Add as preset", command=add_preset, bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
             ).pack(side="right", padx=(0, 6))
 
         body = tk.Frame(self.main, bg=_BG)
@@ -582,7 +568,7 @@ class LauncherWindow:
         # An agent project's presets (from before agent files) set nothing it uses.
         presets = [] if template.agents else self.presets.get(template.key, [])
         if presets:
-            tk.Label(body, text="PRESETS", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
+            tk.Label(body, text="Presets", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
                 anchor="w", pady=(16, 4)
             )
             preset_row = tk.Frame(body, bg=_BG)
@@ -609,7 +595,7 @@ class LauncherWindow:
         tk.Label(row, text="Port", bg=_BG, fg=_DIM_FG, width=18, anchor="w").pack(side="left")
         tk.Label(row, text=port_text, bg=_BG, fg=_FG, anchor="w").pack(side="left")
 
-        tk.Label(parent, text="AGENTS", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
+        tk.Label(parent, text="Agents", bg=_BG, fg=_DIM_FG, font=("Segoe UI", 8, "bold")).pack(
             anchor="w", pady=(16, 4)
         )
         for agent in template.agents:
@@ -662,8 +648,9 @@ class LauncherWindow:
         self._status_label = RoundedButton(
             header, instance.status, bg=_BG,
             fill=_STATUS_FILLS.get(instance.status, _ROW_BG),
-            outline=_BORDER,
-            fg=_FG if instance.status in _STATUS_FILLS else _DIM_FG,
+            outline=_STATUS_FILLS.get(instance.status, _BORDER),
+            fg=_STATUS_FGS.get(instance.status, _DIM_FG),
+            radius=_RADIUS_SM, padx=10, pady=2, font=("Segoe UI", 9),
         )
         self._status_label.pack(side="left", padx=(10, 0))
 
@@ -674,7 +661,7 @@ class LauncherWindow:
 
         RoundedButton(
             header, "Stop", command=lambda: self._stop_instance(instance.id),
-            bg=_BG, fill=_RED, outline=_RED, fg=_FG,
+            bg=_BG, fill=_BG, outline=_DANGER_BORDER, fg=_DANGER,
         ).pack(side="right", padx=(6, 0))
         RoundedButton(
             header, "Restart", command=lambda: self._restart_instance(instance.id),
@@ -684,10 +671,10 @@ class LauncherWindow:
         log_frame = tk.Frame(self.main, bg=_BG)
         log_frame.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         text = tk.Text(
-            log_frame, bg="#0d0d12", fg="#c9c9d4", insertbackground=_FG, relief="flat",
+            log_frame, bg=_FIELD_BG, fg=_DIM_FG, insertbackground=_FG, relief="flat",
             font=("Consolas", 9), wrap="char", state="disabled",
         )
-        scrollbar = tk.Scrollbar(log_frame, command=text.yview)
+        scrollbar = make_scrollbar(log_frame, text.yview)
         text.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         text.pack(side="left", fill="both", expand=True)
@@ -709,7 +696,7 @@ class LauncherWindow:
         if self._status_label is None:
             return
         fill = _STATUS_FILLS.get(status, _ROW_BG)
-        fg = _FG if status in _STATUS_FILLS else _DIM_FG
+        fg = _STATUS_FGS.get(status, _DIM_FG)
         self._status_label.set(text=status, fill=fill, fg=fg)
 
     def _refresh_log_text(self, instance: "Instance") -> None:
@@ -874,10 +861,10 @@ class LauncherWindow:
         check, so building `running` itself is instant too."""
         running = [i for i in self.instances.values() if i.is_alive()]
         if not running:
-            messagebox.showinfo("Kill Instances", "No running instances.", parent=self.root)
+            messagebox.showinfo("Kill instances", "No running instances.", parent=self.root)
             return
         if not messagebox.askyesno(
-            "Kill Instances",
+            "Kill instances",
             f"Kill all {len(running)} running instance(s)? This cannot be undone.",
             parent=self.root,
         ):
@@ -896,10 +883,10 @@ class LauncherWindow:
         exit, so serial restarts would add up)."""
         running = [i for i in self.instances.values() if i.is_alive()]
         if not running:
-            messagebox.showinfo("Restart All", "No running instances.", parent=self.root)
+            messagebox.showinfo("Restart all", "No running instances.", parent=self.root)
             return
         if not messagebox.askyesno(
-            "Restart All",
+            "Restart all",
             f"Restart all {len(running)} running instance(s)?",
             parent=self.root,
         ):
@@ -929,7 +916,7 @@ class LauncherWindow:
         for instance_id, card in self.instance_dots.items():
             instance = self.instances.get(instance_id)
             if instance is not None:
-                card.set_dot_color(_GREEN if instance.is_alive() else _DIM_FG)
+                card.set_dot_color(_STATUS_FGS["running"] if instance.is_alive() else _DIM_FG)
         if self.active_tab == "instances" and self.selected_instance_id:
             self._refresh_log()
         self.root.after(_POLL_MS, self._tick)
