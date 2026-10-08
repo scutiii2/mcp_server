@@ -20,7 +20,7 @@ watch(account, (now) => {
 <template>
   <div class="shell">
     <NavRail />
-    <main class="page">
+    <main class="page" :class="{ 'has-tabs': account && !auth.needsVerification }">
       <!-- KeepAlive: switching to Tools and back keeps the chat (and a turn in
            flight) intact. Keyed by account so a different user never gets the
            previous user's cached pages. -->
@@ -51,6 +51,10 @@ watch(account, (now) => {
 @media (max-width: 767px) {
   .shell {
     flex-direction: column-reverse;
+  }
+  /* Room for the Chat button, which rises above the bottom bar. */
+  .page.has-tabs {
+    padding-bottom: 34px;
   }
 }
 </style>

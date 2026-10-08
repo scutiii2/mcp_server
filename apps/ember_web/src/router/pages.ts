@@ -11,6 +11,11 @@ export const ANALYTICS_PERMISSIONS = [...LOG_PERMISSIONS, "traffic.view"];
  * one of NAV_PAGES: it shows (and the page opens) only while there are issues. */
 export const CONFIG_ISSUES_ICON = ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z", "M12 9v4", "M12 17h.01"];
 
+/** Icons for the two tabs of the narrow-screen bar that are not in NAV_PAGES:
+ * Overview (it is the wordmark on the rail) and the account's Profile page. */
+export const OVERVIEW_ICON = ["M3 3h7v9H3z", "M14 3h7v5h-7z", "M14 12h7v9h-7z", "M3 16h7v5H3z"];
+export const PROFILE_ICON = ["M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"];
+
 export interface NavPage {
   to: string;
   label: string;

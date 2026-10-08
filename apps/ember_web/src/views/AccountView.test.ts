@@ -7,7 +7,7 @@ import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
 import AccountView from "./AccountView.vue";
 
-vi.mock("../api/AuthClient", () => ({ authClient: { devices: vi.fn(), forgetDevice: vi.fn() } }));
+vi.mock("../api/AuthClient", () => ({ authClient: { devices: vi.fn(), forgetDevice: vi.fn(), logout: vi.fn(() => Promise.resolve()) } }));
 
 const client = vi.mocked(authClient);
 
@@ -42,10 +42,14 @@ async function mountView(devices: KnownDevice[]) {
     permissions: ["chat.use"],
   };
   client.devices.mockResolvedValue(devices);
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/", component: { render: () => null } }] });
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: "/", component: { render: () => null } },
+      { path: "/login", name: "login", component: { render: () => null } },
+    ],
+  });
   const wrapper = mount(AccountView, { global: { plugins: [router] } });
   await flushPromises();
-  return wrapper;
+  return Object.assign(wrapper, { router });
 }
 
 const forgetButtons = (wrapper: Awaited<ReturnType<typeof mountView>>) => wrapper.findAll("button.forget");
@@ -56,11 +60,34 @@ describe("AccountView", () => {
   it("shows the account identity, security, access and remembered devices", async () => {
     const wrapper = await mountView([]);
 
-    expect(wrapper.findAll("section.card").map((s) => s.get("h3").text())).toEqual(["Security", "Roles & access", "Remembered devices"]);
+    expect(wrapper.findAll("section.card").map((s) => s.get("h3").text())).toEqual(["More pages", "Session", "Security", "Roles & access", "Remembered devices"]);
     expect(wrapper.get(".profile .name").text()).toBe("maria");
     expect(wrapper.get(".avatar").text()).toBe("M");
     expect(wrapper.get(".profile .chip.ok").text()).toBe("Email verified");
     expect(wrapper.get(".roles").text()).toBe("Member");
+  });
+
+  it("lists the pages the tab bar leaves out", async () => {
+    const wrapper = await mountView([]);
+
+    // chat.use: Agents and Settings; Chat, Capabilities and Usage are in the bar.
+    expect(wrapper.findAll(".more-list a").map((a) => a.text())).toEqual(["Agents", "Settings"]);
+    expect(wrapper.find(".more-list a.issues").exists()).toBe(false);
+  });
+
+  it("cycles the theme and logs out to the login page", async () => {
+    const wrapper = await mountView([]);
+    expect(wrapper.get(".session .row-copy .small").text()).toBe("System");
+
+    await wrapper.get("button.theme").trigger("click");
+    expect(wrapper.get(".session .row-copy .small").text()).toBe("Light");
+
+    await wrapper.get("button.logout").trigger("click");
+    await flushPromises();
+
+    expect(authClient.logout).toHaveBeenCalled();
+    expect(useAuthStore().account).toBeNull();
+    expect(wrapper.router.currentRoute.value.name).toBe("login");
   });
 
   it("folds the permissions away behind a count", async () => {

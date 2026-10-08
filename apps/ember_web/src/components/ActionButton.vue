@@ -3,7 +3,7 @@
  * Usage page. The icon takes the accent colour; `quiet` mutes it for the
  * secondary maintenance actions. Below 480px, or always with `iconOnly`, only
  * the icon stays; the label remains for screen readers. */
-export type ActionIcon = "export" | "share" | "summarize" | "clear" | "mail" | "lock" | "close" | "verify" | "more";
+export type ActionIcon = "export" | "share" | "summarize" | "clear" | "mail" | "lock" | "close" | "verify" | "more" | "theme" | "logout";
 
 // 16px viewBox, stroke only, drawn like the arrows in OpenPageButton.
 const PATHS: Record<ActionIcon, string> = {
@@ -16,6 +16,8 @@ const PATHS: Record<ActionIcon, string> = {
   close: "M4 4l8 8M12 4l-8 8",
   verify: "M3 8.5l3.5 3.5L13 5",
   more: "M2.5 8h1M7.5 8h1M12.5 8h1",
+  theme: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM8 2v12",
+  logout: "M6 14H3V2h3M10 11l3-3-3-3M13 8H6",
 };
 
 defineProps<{ icon: ActionIcon; quiet?: boolean; iconOnly?: boolean }>();

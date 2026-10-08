@@ -37,6 +37,7 @@ async function setup(account: Account | null) {
       ...NAV_PAGES.map((p) => ({ path: p.to, component: stub })),
       { path: "/capabilities/:name", name: "capability-page", component: stub },
       { path: "/account", component: stub },
+      { path: "/overview", component: stub },
       { path: "/config-issues", component: stub },
       { path: "/login", name: "login", component: stub },
     ],
@@ -46,7 +47,7 @@ async function setup(account: Account | null) {
   return { wrapper, router, auth };
 }
 
-const pageLinks = (wrapper: Awaited<ReturnType<typeof setup>>["wrapper"]) => wrapper.findAll("nav a");
+const pageLinks = (wrapper: Awaited<ReturnType<typeof setup>>["wrapper"]) => wrapper.findAll("nav.pages a");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -111,6 +112,49 @@ describe("NavRail", () => {
     expect(wrapper.find("button.theme").exists()).toBe(true);
   });
 
+  describe("the narrow-screen tab bar", () => {
+    const tabLinks = (wrapper: Awaited<ReturnType<typeof setup>>["wrapper"]) => wrapper.findAll("nav.tabs a");
+
+    it("has five fixed tabs, Chat in the middle", async () => {
+      const { wrapper } = await setup(ACCOUNT);
+
+      const labels = tabLinks(wrapper).map((l) => l.attributes("aria-label"));
+
+      // Chat is drawn last (it floats over the middle gap); the rest read left to right.
+      expect(labels).toEqual(["Overview", "Capabilities", "Usage", "Profile", "Chat"]);
+      expect(wrapper.find("nav.tabs .gap").exists()).toBe(true);
+      expect(wrapper.find("nav.tabs a.chat").attributes("href")).toBe("/");
+    });
+
+    it("marks the two tabs beside Chat", async () => {
+      const { wrapper } = await setup(ACCOUNT);
+
+      expect(wrapper.find("nav.tabs a.near-l").attributes("aria-label")).toBe("Capabilities");
+      expect(wrapper.find("nav.tabs a.near-r").attributes("aria-label")).toBe("Usage");
+    });
+
+    it("drops the tabs the account may not open but keeps Overview and Profile", async () => {
+      const { wrapper } = await setup({ ...ACCOUNT, permissions: [] });
+
+      expect(tabLinks(wrapper).map((l) => l.attributes("aria-label"))).toEqual(["Overview", "Profile"]);
+    });
+
+    it("keeps Chat marked while a chat is open by id", async () => {
+      const { wrapper, router } = await setup(ACCOUNT);
+      router.addRoute({ path: "/chat/:id", name: "chat-id", component: { template: "<div />" } });
+      await router.push("/chat/7");
+      await flushPromises();
+
+      expect(wrapper.find("nav.tabs a.chat").classes()).toContain("current");
+    });
+
+    it("is absent for a visitor", async () => {
+      const { wrapper } = await setup(null);
+
+      expect(wrapper.find("nav.tabs").exists()).toBe(false);
+    });
+  });
+
   describe("config issues alert", () => {
     const VIEWER: Account = { ...ACCOUNT, permissions: [...ACCOUNT.permissions, "config.issues.view"] };
     const issue = (severity: "error" | "warning") => ({ file: "f", key: "k", message: "m", severity });
@@ -161,7 +205,7 @@ describe("NavRail", () => {
 
       expect(labels(wrapper)).toEqual(["Usage", "Agents", "Chat", "Capabilities", "Settings"]);
       expect(wrapper.findAll("nav .divider")).toHaveLength(1);
-      expect(wrapper.find("nav").element.children[1]!.classList.contains("divider")).toBe(true);
+      expect(wrapper.find("nav.pages").element.children[1]!.classList.contains("divider")).toBe(true);
     });
 
     it("leaves hidden pages out", async () => {

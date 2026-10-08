@@ -1,14 +1,33 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import { authClient, type KnownDevice } from "../api/AuthClient";
 import ActionButton from "../components/ActionButton.vue";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
+import { useTheme } from "../composables/useTheme";
+import { CONFIG_ISSUES_ICON, visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
+import { useConfigIssuesStore } from "../stores/configIssues";
 import { errorMessage, formatUtc } from "../utils/errors";
 
 const auth = useAuthStore();
 const router = useRouter();
+
+// Theme and log out live here too: the narrow-screen nav bar has no room for them.
+const { theme, cycle } = useTheme();
+const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" } as const;
+
+// The narrow-screen bar holds only five pages; the rest are listed here, on
+// narrow screens only (the wide rail already shows them).
+const IN_TAB_BAR = new Set(["/", "/capabilities", "/usage"]);
+const morePages = computed(() => visiblePages((p) => auth.hasPermission(p)).filter((p) => !IN_TAB_BAR.has(p.to)));
+const configIssues = useConfigIssuesStore();
+const showConfigIssues = computed(() => auth.hasPermission("config.issues.view") && configIssues.issues.length > 0);
+
+async function logout(): Promise<void> {
+  await auth.logout();
+  await router.replace({ name: "login" });
+}
 
 // The router only opens this page with an account.
 const account = computed(() => auth.account!);
@@ -98,7 +117,8 @@ async function changePassword(): Promise<void> {
 </script>
 
 <template>
-  <section class="account-view">
+  <!-- Logging out clears the account a moment before the router leaves this page. -->
+  <section v-if="auth.account" class="account-view">
     <div class="column">
       <header class="page-head">
         <p class="eyebrow">Your workspace, your account</p>
@@ -132,6 +152,45 @@ async function changePassword(): Promise<void> {
           </p>
         </div>
       </div>
+
+      <section v-if="morePages.length || showConfigIssues" class="card more-pages" aria-labelledby="account-more">
+        <header class="section-header">
+          <span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" /></svg></span>
+          <div><h3 id="account-more">More pages</h3><p>The rest of Ember.</p></div>
+        </header>
+        <ul class="more-list">
+          <li v-for="p in morePages" :key="p.to">
+            <RouterLink :to="p.to">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in p.icon" :key="d" :d="d" /></svg>
+              <span>{{ p.label }}</span>
+            </RouterLink>
+          </li>
+          <li v-if="showConfigIssues">
+            <RouterLink to="/config-issues" class="issues">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in CONFIG_ISSUES_ICON" :key="d" :d="d" /></svg>
+              <span>Config issues</span>
+              <span class="count">{{ configIssues.issues.length }}</span>
+            </RouterLink>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card session" aria-labelledby="account-session">
+        <header class="section-header">
+          <span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg></span>
+          <div><h3 id="account-session">Session</h3><p>Appearance on this device, and signing out.</p></div>
+        </header>
+        <div class="security-body">
+          <div class="row">
+            <div class="row-copy"><div class="row-title">Theme</div><div class="muted small">{{ THEME_LABELS[theme] }}</div></div>
+            <ActionButton icon="theme" class="account-action theme" @click="cycle">Switch theme</ActionButton>
+          </div>
+          <div class="row">
+            <div class="row-copy"><div class="row-title">Log out</div><div class="muted small">End your session on this device.</div></div>
+            <ActionButton icon="logout" class="account-action logout" @click="logout">Log out</ActionButton>
+          </div>
+        </div>
+      </section>
 
       <div class="account-grid">
         <section class="card security" aria-labelledby="account-security">
@@ -662,6 +721,48 @@ button.forget  {
   font-size: .9em;
 }
 
+.more-pages  {
+  display: none;
+}
+
+.more-list  {
+  margin: 0;
+  padding: 0 18px 8px;
+  list-style: none;
+}
+
+.more-list a  {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  font-size: .9em;
+}
+
+.more-list a svg  {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.more-list a.issues svg  {
+  color: var(--warning);
+}
+
+.more-list .count  {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  text-align: center;
+  font-size: .8em;
+  color: var(--accent-contrast);
+  background: var(--warning);
+}
+
 .page-footer  {
   font-size: .7em;
   color: var(--muted);
@@ -764,6 +865,9 @@ button.forget  {
 }
 
 @media (max-width: 767px)  {
+  .more-pages  {
+    display: block;
+  }
   .column  {
     padding: 24px 16px;
     gap: 16px;

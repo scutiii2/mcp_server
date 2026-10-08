@@ -6,7 +6,7 @@
 import { computed } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { useTheme } from "../composables/useTheme";
-import { CONFIG_ISSUES_ICON, visiblePages } from "../router/pages";
+import { CONFIG_ISSUES_ICON, OVERVIEW_ICON, PROFILE_ICON, visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 import { useConfigIssuesStore } from "../stores/configIssues";
 import { useNavPrefsStore } from "../stores/navPrefs";
@@ -28,6 +28,33 @@ const pages = computed(() =>
     : { pinned: [], rest: [] },
 );
 const hasPages = computed(() => pages.value.pinned.length + pages.value.rest.length > 0);
+
+// Narrow screens show a fixed bar instead: Overview, Capabilities, Chat in the
+// middle, Usage, Profile. Only the permissions gate it; the arrangement does not.
+interface Tab {
+  to: string;
+  label: string;
+  icon: string[];
+  /** Beside the Chat button: its highlight runs under it. */
+  near?: "l" | "r";
+}
+const tabs = computed(() => {
+  const open = new Map(visiblePages((p) => auth.hasPermission(p)).map((p) => [p.to, p]));
+  // A copy, so setting `near` below never touches the shared page list.
+  const page = (to: string): Tab | undefined => {
+    const p = open.get(to);
+    return p && { to: p.to, label: p.label, icon: p.icon };
+  };
+  const left: Tab[] = [{ to: "/overview", label: "Overview", icon: OVERVIEW_ICON }];
+  const right: Tab[] = [{ to: "/account", label: "Profile", icon: PROFILE_ICON }];
+  const capabilities = page("/capabilities");
+  const usage = page("/usage");
+  if (capabilities) left.push(capabilities);
+  if (usage) right.unshift(usage);
+  left[left.length - 1]!.near = "l";
+  right[0]!.near = "r";
+  return { left, right, chat: page("/") };
+});
 
 const configIssues = useConfigIssuesStore();
 const showConfigAlert = computed(() => canBrowse.value && configIssues.issues.length > 0);
@@ -61,7 +88,35 @@ async function logout(): Promise<void> {
     <RouterLink v-if="canBrowse" to="/overview" class="wordmark" data-label="Overview" aria-label="Ember - overview of every page">E</RouterLink>
     <span v-else class="wordmark" aria-label="Ember">E</span>
 
-    <nav v-if="hasPages" aria-label="Pages">
+    <nav v-if="canBrowse" class="tabs" aria-label="Main pages">
+      <template v-for="(side, i) in [tabs.left, tabs.right]" :key="i">
+        <span v-if="i === 1" class="gap" aria-hidden="true" />
+        <RouterLink
+          v-for="t in side"
+          :key="t.to"
+          :to="t.to"
+          :aria-label="t.label"
+          :class="[t.near && `near-${t.near}`, { current: isOpenedFromHere(t.to) }]"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path v-for="d in t.icon" :key="d" :d="d" />
+          </svg>
+        </RouterLink>
+      </template>
+      <RouterLink
+        v-if="tabs.chat"
+        :to="tabs.chat.to"
+        class="chat"
+        :class="{ current: isOpenedFromHere(tabs.chat.to) }"
+        aria-label="Chat"
+      >
+        <svg viewBox="0 0 24 24" width="38" height="38" aria-hidden="true">
+          <path v-for="d in tabs.chat.icon" :key="d" :d="d" />
+        </svg>
+      </RouterLink>
+    </nav>
+
+    <nav v-if="hasPages" class="pages" aria-label="Pages">
       <template v-for="(group, i) in [pages.pinned, pages.rest]" :key="i">
         <span v-if="i === 1 && pages.pinned.length && pages.rest.length" class="divider" aria-hidden="true" />
         <RouterLink
@@ -274,41 +329,113 @@ svg {
   pointer-events: none;
 }
 
-/* Narrow screens: a bar along the bottom instead of a column. */
+/* The narrow-screen bar only; the column above is for wide screens. */
+.tabs {
+  display: none;
+}
+
+/* Narrow screens: a bar along the bottom with five fixed tabs and a big Chat
+   button in the middle that rises above it. The selected tab's highlight runs
+   under the Chat button when it is one of the two beside it. */
 @media (max-width: 767px) {
   .rail {
     flex-direction: row;
     width: 100%;
     height: var(--rail-height);
-    padding: 0 8px;
+    padding: 0 6px;
     border-right: none;
     border-top: 1px solid var(--border);
   }
-  nav {
-    flex-direction: row;
-    margin: 0;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .divider {
-    flex: none;
-    width: 1px;
-    height: 20px;
-    margin: 0 2px;
-  }
+  .wordmark,
+  .pages,
+  .alert,
   .bottom {
-    flex-direction: row;
-    margin: 0 0 0 auto;
-  }
-  nav a.router-link-exact-active,
-  nav a.current,
-  .account.router-link-exact-active {
-    box-shadow: inset 0 -2px 0 var(--accent);
-  }
-  [data-label]:hover::after,
-  [data-label]:focus-visible::after {
     display: none;
+  }
+  .tabs {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    height: 100%;
+    margin: 0;
+    gap: 0;
+  }
+  .tabs .gap {
+    flex: 0 0 92px;
+  }
+  .tabs a {
+    position: relative;
+    flex: 1;
+    display: grid;
+    place-items: center;
+    width: auto;
+    height: 44px;
+    margin: 0 2px;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+  .tabs a svg {
+    position: relative;
+  }
+  .tabs a::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    box-shadow: inset 0 -2px 0 var(--accent);
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+  .tabs a.near-l::before {
+    right: -46px;
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+  }
+  .tabs a.near-r::before {
+    left: -46px;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+  .tabs a.router-link-exact-active,
+  .tabs a.current {
+    color: var(--text);
+  }
+  .tabs a.router-link-exact-active::before,
+  .tabs a.current::before {
+    opacity: 1;
+  }
+  .tabs a.chat {
+    position: absolute;
+    left: 50%;
+    top: -34px;
+    z-index: 2;
+    width: 84px;
+    height: 84px;
+    margin: 0;
+    transform: translateX(-50%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    color: var(--text);
+    background: var(--bg);
+    /* A ring in the bar's colour cuts the circle out of the bar. */
+    box-shadow: 0 0 0 6px var(--surface);
+    transition: box-shadow 0.25s ease;
+  }
+  .tabs a.chat::before {
+    display: none;
+  }
+  .tabs a.chat.router-link-exact-active,
+  .tabs a.chat.current {
+    box-shadow: 0 0 0 6px var(--surface), inset 0 -4px 0 var(--accent);
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .tabs a,
+  .tabs a::before,
+  .tabs a.chat {
+    transition: none;
   }
 }
 </style>
