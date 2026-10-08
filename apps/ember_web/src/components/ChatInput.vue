@@ -28,9 +28,12 @@ const props = withDefaults(
     schemaFor?: (command: CommandInfo) => Promise<JsonSchema | null>;
     templatesLoading?: boolean;
     templatesError?: string;
+    suggestion?: string | null;
   }>(),
-  { commands: () => [], history: () => [], templates: () => [], templatesLoading: false, templatesError: "" },
+  { commands: () => [], history: () => [], templates: () => [], templatesLoading: false, templatesError: "", suggestion: null },
 );
+// suggestion: the predicted next question. It is the placeholder while the box
+// is empty; Tab on the empty box takes it (suggestionUsed), and it can be edited.
 // form: a command was picked from the suggestions; the chat may open its form.
 // templatesNeeded: the picker or a "#" wants the saved prompts.
 // manageTemplates: open the templates dialog; `draft` is the typed text to
@@ -41,6 +44,7 @@ const emit = defineEmits<{
   form: [command: CommandInfo];
   templatesNeeded: [];
   manageTemplates: [draft: string];
+  suggestionUsed: [];
 }>();
 
 const draft = ref("");
@@ -76,6 +80,13 @@ const isCommand = computed(() => draft.value.trimStart().startsWith("/"));
 const canSend = computed(
   () => !reading.value && (draft.value.trim() !== "" || (ready.value.length > 0 && !isCommand.value)),
 );
+const placeholder = computed(() => {
+  if (draft.value === "" && props.suggestion) return props.suggestion;
+  return props.commands.length
+    ? "Ask something, / for commands, # for saved prompts"
+    : "Ask something, # for saved prompts";
+});
+
 
 async function addFiles(files: FileList | File[] | null | undefined): Promise<void> {
   for (const file of Array.from(files ?? [])) {
@@ -367,6 +378,26 @@ function submit(): void {
  * IME (Japanese/Chinese input) is still composing a character. */
 function onKeydown(event: KeyboardEvent): void {
   const open = suggestions.value.length > 0;
+  // The predicted next question: Tab on an empty box takes it.
+  if (
+    event.key === "Tab" &&
+    !event.shiftKey &&
+    !event.isComposing &&
+    !open &&
+    draft.value === "" &&
+    props.suggestion
+  ) {
+    event.preventDefault();
+    draft.value = props.suggestion;
+    recallIndex.value = null;
+    emit("suggestionUsed");
+    void nextTick(() => {
+      autoGrow();
+      const end = draft.value.length;
+      textarea.value?.setSelectionRange(end, end);
+    });
+    return;
+  }
   if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
     event.preventDefault();
     const step = event.key === "ArrowDown" ? 1 : -1;
@@ -420,6 +451,7 @@ function onKeydown(event: KeyboardEvent): void {
         <button type="button" :aria-label="`Remove ${a.filename}`" @click="removeAttachment(a.id)">×</button>
       </li>
     </ul>
+    <p v-if="draft === '' && suggestion && recallIndex === null" class="recall">Tab to use the suggestion</p>
     <p v-if="recallIndex !== null" class="recall" aria-live="polite">
       Earlier question {{ recallIndex + 1 }} of {{ history.length }} · ↑ older · ↓ newer
     </p>
@@ -429,7 +461,7 @@ function onKeydown(event: KeyboardEvent): void {
         ref="textarea"
         v-model="draft"
         rows="1"
-        :placeholder="commands.length ? 'Ask something, / for commands, # for saved prompts' : 'Ask something, # for saved prompts'"
+        :placeholder="placeholder"
         @input="onInput"
         @keydown="onKeydown"
         @paste="onPaste"

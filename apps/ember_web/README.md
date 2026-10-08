@@ -27,6 +27,9 @@ URL, token or key.
   agent) until it finishes. In the tool list a step run by a delegated agent
   carries a badge with that agent's name, and the delegate step shows the text
   that agent has written so far while it works.
+- Suggested next prompt: after an answer the chat box shows a predicted next
+  message as its placeholder; Tab fills it in. Switch: Settings > Chat >
+  Suggest next prompt (saved to the account, off means no model call).
 - Stop button (takes effect at the agent's next round).
 - A running clock under the answer being written (`12.4 s`, then `1 min 03 s`),
   and beside "Running command ...". It counts from when you sent the question; for a
