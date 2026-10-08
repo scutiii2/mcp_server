@@ -261,6 +261,12 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
     if (method === "GET" && path === "/api/agents") {
       return json(route, [{ ...ENTRY_AGENT, entry: true, orchestrator: true, focus: "General questions.", status: "running", provider: "anthropic", gateway: null, model: null }]);
     }
+    // The predicted next prompt: the fake has none to offer. And the account switch for it.
+    if (method === "GET" && /^\/api\/chats\/[^/]+\/suggestion$/.test(path)) return json(route, { text: null });
+    if (method === "PATCH" && path === "/api/account/preferences") {
+      return json(route, { ...account, ...(request.postDataJSON() as Record<string, unknown>) });
+    }
+
     if (method === "GET" && path === "/api/chats") return json(route, [...api.chats.values()].map(summary));
     // Deleting every chat, or one.
     if (method === "DELETE" && path === "/api/chats") {

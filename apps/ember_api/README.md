@@ -119,12 +119,13 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 |---|---|---|---|
 | `POST` | `/api/auth/login` | - | `{username, password}` -> the account; sets the session cookie. `401` with one generic message on any failure; `429` + `Retry-After` after too many failures (`security.rate_limit`). |
 | `POST` | `/api/auth/logout` | cookie | `204`; deletes the session server-side and clears the cookie. |
-| `GET` | `/api/auth/me` | cookie | `{id, username, email, email_verified, email_verification_required, roles, permissions}` or `401`. `email_verification_required` mirrors `require_email_verification` in config. |
+| `GET` | `/api/auth/me` | cookie | `{id, username, email, email_verified, email_verification_required, prompt_suggestions, roles, permissions}` or `401`. `email_verification_required` mirrors `require_email_verification` in config. |
 | `POST` | `/api/auth/register` | - | `{username, email, password, invite_code}` -> `201 {account, verification_email_sent, email_error}`; logs in. `400` bad/expired/used invite, `409` taken username/email, `422` invalid fields. |
 | `POST` | `/api/auth/verify-email` | cookie | `{code}` -> the account, now verified. `400` wrong/expired code. |
 | `POST` | `/api/auth/verify-email/resend` | cookie | `{sent: true}`; `503` if SMTP failed, `409` if already verified. |
 | `POST` | `/api/account/email` | cookie | `{current_password, email}` -> `{account, verification_email_sent, email_error}`. The new email is unverified (permissions off) until its emailed code is entered. `400` wrong password, `409` email taken or bootstrap admin. |
 | `POST` | `/api/account/password` | cookie | `{current_password, new_password}` (8+ chars) -> the account. Logs out every other session. `400` wrong password, `409` bootstrap admin (change it in `.env`). |
+| `PATCH` | `/api/account/preferences` | logged in | `{prompt_suggestions: bool}`: whether chat suggests the next prompt. Returns the account. |
 | `GET` | `/api/account/devices` | cookie | Devices this account logged in from, most recent first: `[{id, label, user_agent, ip_subnet, first_seen_at, last_seen_at, current}]`. |
 | `DELETE` | `/api/account/devices/{id}` | cookie | `204`; its next login counts as a new device again. `404` unknown or another account's. |
 | `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
@@ -156,6 +157,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/chats/{id}/approvals` | `chat.use` | `{step_id, decision: allow \| always \| deny}` answers a tool the running answer waits to run (the `id` of an `approval_request` event) -> `{decided: true}`. `404` no answer running, `409` nothing waiting for that step (unknown or already answered), `502` agent unreachable. Only the chat's own account can; logged as `tool.approval`. |
 | `POST` | `/api/chats/{id}/cancel` | `chat.use` | `{cancelled}`; ai_agent stops at its next round, keeping what streamed. |
 | `POST` | `/api/chats/{id}/summarize` | `chat.use` | `{agent_id?}` (accepted but ignored; the entry agent summarizes) -> the chat, its history replaced by a `summary` message plus a `log_attachment` (raw messages, never sent to the agent again). `503` no entry agent is registered, `502` if the agent couldn't; nothing changes then. |
+| `GET` | `/api/chats/{id}/suggestion` | `chat.use` | The message the user will probably type next, `{text}` (null for none). One small model call per answer, cached, counted in usage as kind `suggestion`; off when the account's `prompt_suggestions` is off. |
 | `POST` | `/api/chats/{id}/clear` | `chat.use` | -> the chat, restarted: everything kept as one `log_attachment`. |
 | `POST` | `/api/chats/{id}/branch` | `chat.use` | `{upto}` -> `201` a new chat (server-made id, title `Branch of <title>`, same agent) holding the messages up to and including message `upto`, which must be one of the assistant's answers (`422` for a question, summary, raw log or command result, or an index past the end). The original is untouched and may still be answering. `404` unknown chat, `413` at the chat limit. |
 | `POST` | `/api/chats/{id}/messages` | `chat.use` | `{title, messages}` appends (slash-command calls and results), creating the chat if needed. |

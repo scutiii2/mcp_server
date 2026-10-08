@@ -736,3 +736,86 @@ describe("the tools row", () => {
     expect(wrapper.find("button.send").exists()).toBe(false);
   });
 });
+
+
+describe("the suggested next prompt", () => {
+  const valueOf = (wrapper: ReturnType<typeof mountInput>) => (wrapper.find("textarea").element as HTMLTextAreaElement).value;
+  const placeholder = (wrapper: ReturnType<typeof mountInput>) => wrapper.find("textarea").attributes("placeholder");
+
+  it("is the placeholder while the box is empty", () => {
+    const wrapper = mountInput({ suggestion: "Tell me more" });
+
+    expect(placeholder(wrapper)).toBe("Tell me more");
+    expect(wrapper.find(".recall").text()).toBe("Tab to use the suggestion");
+  });
+
+  it("keeps the usual placeholder without one", () => {
+    const wrapper = mountInput();
+
+    expect(placeholder(wrapper)).toContain("Ask something");
+    expect(wrapper.find(".recall").exists()).toBe(false);
+  });
+
+  it("gives way to what is typed and comes back when the box is emptied", async () => {
+    const wrapper = mountInput({ suggestion: "Tell me more" });
+
+    await wrapper.find("textarea").setValue("hel");
+    expect(placeholder(wrapper)).toContain("Ask something");
+    expect(wrapper.find(".recall").exists()).toBe(false);
+    await wrapper.find("textarea").setValue("");
+
+    expect(placeholder(wrapper)).toBe("Tell me more");
+  });
+
+  it("Tab puts it in the box and tells the parent, without sending", async () => {
+    const wrapper = mountInput({ suggestion: "Tell me more" });
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+
+    expect(valueOf(wrapper)).toBe("Tell me more");
+    expect(wrapper.emitted("suggestionUsed")).toHaveLength(1);
+    expect(wrapper.emitted("send")).toBeUndefined();
+  });
+
+  it("can be edited after Tab, then sent as typed", async () => {
+    const wrapper = mountInput({ suggestion: "Tell me more" });
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+
+    await wrapper.find("textarea").setValue("Tell me more about Dune");
+    await wrapper.find("textarea").trigger("keydown", { key: "Enter" });
+
+    expect(wrapper.emitted("send")).toEqual([["Tell me more about Dune"]]);
+  });
+
+  it("Enter on an empty box does not send it", async () => {
+    const wrapper = mountInput({ suggestion: "Tell me more" });
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Enter" });
+
+    expect(wrapper.emitted("send")).toBeUndefined();
+    expect(valueOf(wrapper)).toBe("");
+  });
+
+  it("Tab does nothing special when something is typed, or with Shift, or while composing", async () => {
+    const wrapper = mountInput({ suggestion: "Tell me more" });
+    await wrapper.find("textarea").setValue("my own words");
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+    expect(valueOf(wrapper)).toBe("my own words");
+
+    await wrapper.find("textarea").setValue("");
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab", shiftKey: true });
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab", isComposing: true });
+    expect(valueOf(wrapper)).toBe("");
+    expect(wrapper.emitted("suggestionUsed")).toBeUndefined();
+  });
+
+  it("Tab does nothing without a suggestion", async () => {
+    const wrapper = mountInput();
+
+    await wrapper.find("textarea").trigger("keydown", { key: "Tab" });
+
+    expect(valueOf(wrapper)).toBe("");
+    expect(wrapper.emitted("suggestionUsed")).toBeUndefined();
+  });
+});

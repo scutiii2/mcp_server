@@ -53,6 +53,7 @@ const {
   askBeforeTools,
   forceToolApproval,
   chime,
+  suggestion,
   clockStart,
   allowedTools,
   pendingApprovals,
@@ -393,6 +394,7 @@ useChatShortcuts({
           :busy="busy"
           :commands="commands"
           :history="history"
+          :suggestion="suggestion"
           :schema-for="chat.commandSchema"
           :templates="templates.templates"
           :templates-loading="templates.loading"
@@ -402,6 +404,7 @@ useChatShortcuts({
           @send="onSend"
           @stop="chat.stop"
           @form="openCommandForm"
+          @suggestion-used="chat.clearSuggestion"
         >
           <template #tools>
             <ChatSettingsMenu

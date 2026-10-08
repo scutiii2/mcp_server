@@ -157,6 +157,10 @@ export const useChatStore = defineStore("chat", () => {
   // A short chime when an answer arrives while the page is out of sight. On
   // by default; remembered per account.
   const chime = ref(true);
+  // The predicted next question, for the chat box's placeholder (Tab takes it).
+  // A new request number makes a slower, older answer harmless.
+  const suggestion = ref<string | null>(null);
+  let suggestionRequest = 0;
   // When the running answer (or command) began, for the clock; null otherwise.
   const clockStart = ref<number | null>(null);
   // How the watched turn ended, from its final event: only an answer chimes.
@@ -347,6 +351,32 @@ export const useChatStore = defineStore("chat", () => {
     if (backgroundRunning) pollTimer = setTimeout(() => void loadList(), BACKGROUND_POLL_MS);
   }
 
+  function clearSuggestion(): void {
+    suggestionRequest += 1;
+    suggestion.value = null;
+  }
+
+  /** Asks ember_api for chat `id`'s suggestion. Silent on any failure: it is
+   * a nicety, and a stale answer (another chat opened, a question sent) is dropped. */
+  async function fetchSuggestion(id: string): Promise<void> {
+    clearSuggestion();
+    if (!auth.promptSuggestions || activeId.value !== id) return;
+    const request = suggestionRequest;
+    try {
+      const { text } = await chatsClient.suggestion(id);
+      if (request === suggestionRequest && activeId.value === id) suggestion.value = text;
+    } catch {
+      // No suggestion; nothing to tell the user.
+    }
+  }
+
+  watch(
+    () => auth.promptSuggestions,
+    (on) => {
+      if (!on) clearSuggestion();
+    },
+  );
+
   /** Fetches a chat's transcript; watches its answer if one is running. */
   async function loadChat(id: string): Promise<void> {
     const started = generation;
@@ -373,6 +403,7 @@ export const useChatStore = defineStore("chat", () => {
     () => (auth.hasPermission("chat.use") ? (auth.account?.id ?? null) : null),
     (accountId) => {
       unfollow();
+      clearSuggestion();
       generation += 1;
       pending = [];
       saveError.value = "";
@@ -534,11 +565,13 @@ export const useChatStore = defineStore("chat", () => {
     void watchTurn(id, after, onEvent, controller.signal)
       .then(async (end) => {
         if (end === "aborted" || started !== generation) return;
-        if (end === "done" && turnOutcome === "answered" && chime.value) chimeIfAway();
+        const answered = end === "done" && turnOutcome === "answered";
+        if (answered && chime.value) chimeIfAway();
         const conversation = find(id);
         if (conversation) conversation.running = false;
         if (watcher === controller) unfollow();
         await loadChat(id);
+        if (answered && activeId.value === id) void fetchSuggestion(id);
       })
       .catch((err: unknown) => {
         if (started !== generation || controller.signal.aborted) return;
@@ -620,6 +653,7 @@ export const useChatStore = defineStore("chat", () => {
     const truncateTo = options.truncateTo;
     if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return false;
     sendError.value = "";
+    clearSuggestion();
     if (truncateTo === undefined && question.startsWith("/")) {
       await runCommand(question);
       return true;
@@ -830,6 +864,7 @@ export const useChatStore = defineStore("chat", () => {
 
   function newChat(): void {
     unfollow();
+    clearSuggestion();
     sendError.value = "";
     jumpIndex.value = null;
     activeId.value = null;
@@ -844,10 +879,12 @@ export const useChatStore = defineStore("chat", () => {
     jumpIndex.value = options.messageIndex ?? null;
     if (id === activeId.value) return;
     unfollow();
+    clearSuggestion();
     sendError.value = "";
     activeId.value = id;
     scheduleBackgroundPoll();
     if (conversation.messagesLoaded === false || conversation.running) await loadChat(id);
+    if (activeId.value === id && !find(id)?.running) void fetchSuggestion(id);
   }
 
   function clearJump(): void {
@@ -864,6 +901,7 @@ export const useChatStore = defineStore("chat", () => {
     const doomed = new Set(ids);
     if (activeId.value !== null && doomed.has(activeId.value)) {
       unfollow();
+      clearSuggestion();
       jumpIndex.value = null;
       activeId.value = null;
     }
@@ -986,6 +1024,7 @@ export const useChatStore = defineStore("chat", () => {
     if (doomed.size === 0) return;
     if (activeId.value !== null && doomed.has(activeId.value)) {
       unfollow();
+      clearSuggestion();
       jumpIndex.value = null;
       activeId.value = null;
     }
@@ -1027,11 +1066,13 @@ export const useChatStore = defineStore("chat", () => {
 
   /** Condenses the history into a summary the agent keeps as its memory. */
   function summarizeChat(): Promise<void> {
+    clearSuggestion();
     return rewrite("Summarizing ...", (id) => chatsClient.summarize(id));
   }
 
   /** Starts the conversation afresh; old messages stay as a collapsed log. */
   function clearChat(): Promise<void> {
+    clearSuggestion();
     return rewrite("Clearing ...", (id) => chatsClient.clear(id));
   }
 
@@ -1110,6 +1151,8 @@ export const useChatStore = defineStore("chat", () => {
     refreshSettings,
     setAskBeforeTools,
     chime,
+    suggestion,
+    clearSuggestion,
     setChime,
     clockStart,
     allowedTools,

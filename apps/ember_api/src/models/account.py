@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import String
+from sqlalchemy import String, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db import Base, utcnow
@@ -20,6 +20,9 @@ class Account(Base):
     is_protected: Mapped[bool] = mapped_column(default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
     email_verified: Mapped[bool] = mapped_column(default=False)
+    # Chat shows a predicted next prompt after each answer (costs one small
+    # model call per answer, so the account can switch it off).
+    prompt_suggestions: Mapped[bool] = mapped_column(default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     roles: Mapped[list[Role]] = relationship(

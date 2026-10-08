@@ -67,6 +67,13 @@ const DEFS: SettingDef[] = [
     keywords: ["sound", "notification", "audio"],
   },
   {
+    id: "chat-suggestions",
+    group: "chat",
+    label: "Suggest next prompt",
+    description: "Show a predicted next message in the chat box; press Tab to use it. Uses a small model call per answer. Saved to your account.",
+    keywords: ["autocomplete", "tab", "placeholder", "prediction", "follow-up"],
+  },
+  {
     id: "appearance-theme",
     group: "appearance",
     label: "Theme",
@@ -131,6 +138,7 @@ const modified = computed(() => ({
   "chat-terse": chat.caveman !== false,
   "chat-ask-tools": chat.askBeforeTools !== false,
   "chat-chime": chat.chime !== true,
+  "chat-suggestions": !auth.promptSuggestions,
   "appearance-theme": theme.value !== DEFAULT_THEME,
   "sidebar-pages": !isDefault(navPrefs.prefs),
   "admin-tool-approval": isAdmin.value && toolApprovalModified.value,
@@ -144,6 +152,11 @@ watch(modifiedCount, (count) => {
 
 function checked(event: Event): boolean {
   return (event.target as HTMLInputElement).checked;
+}
+
+/** Saved on the server; the switch only moves once it has said yes. */
+function setSuggestions(on: boolean): void {
+  auth.setPromptSuggestions(on).catch((err: unknown) => console.warn("ember_web: saving the preference failed", err));
 }
 
 /** Enter in the search box moves to the first setting that is left. */
@@ -247,6 +260,21 @@ onMounted(() => {
             @reset="chat.setChime(true)"
           >
             <ToggleSwitch small aria-label="Chime when done" :checked="chat.chime" @change="chat.setChime(checked($event))" />
+          </SettingRow>
+          <SettingRow
+            v-if="shown.has('chat-suggestions')"
+            setting-id="chat-suggestions"
+            label="Suggest next prompt"
+            description="Show a predicted next message in the chat box; press Tab to use it. Uses a small model call per answer. Saved to your account."
+            :modified="modified['chat-suggestions']"
+            @reset="setSuggestions(true)"
+          >
+            <ToggleSwitch
+              small
+              aria-label="Suggest next prompt"
+              :checked="auth.promptSuggestions"
+              @change="setSuggestions(checked($event))"
+            />
           </SettingRow>
         </div>
 

@@ -60,6 +60,8 @@ class AccountOut(BaseModel):
     # False when config_app.json lets unverified accounts work; the web app
     # then stops sending them to the verify page.
     email_verification_required: bool = True
+    # The chat suggests the next prompt after each answer.
+    prompt_suggestions: bool = True
 
     @classmethod
     def of(cls, account: Account, settings: Settings) -> AccountOut:
@@ -71,6 +73,7 @@ class AccountOut(BaseModel):
             roles=sorted(r.name for r in account.roles),
             permissions=sorted(account.permission_names),
             email_verification_required=settings.require_email_verification,
+            prompt_suggestions=account.prompt_suggestions,
         )
 
 
