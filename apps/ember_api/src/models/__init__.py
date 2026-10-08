@@ -17,6 +17,7 @@ from src.models.role import Permission, Role
 from src.models.shared_chat import SharedChat
 from src.models.traffic_bucket import TrafficBucket
 from src.models.usage import UsageRecord
+from src.models.user_extension import UserExtension
 
 __all__ = [
     "Account",
@@ -37,4 +38,5 @@ __all__ = [
     "SharedChat",
     "TrafficBucket",
     "UsageRecord",
+    "UserExtension",
 ]

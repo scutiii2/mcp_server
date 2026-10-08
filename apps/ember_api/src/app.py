@@ -35,6 +35,7 @@ from src.routes import (
     templates,
     traffic as traffic_routes,
     usage,
+    user_extensions,
     watchers,
 )
 from src.services.agent_directory import AgentDirectory, HttpRegistrySource
@@ -44,9 +45,11 @@ from src.services.backup_service import BackupScheduler, DatabaseBackup
 from src.services.migrations import MigrationRunner
 from src.services.chat_service import MAX_CHAT_BYTES
 from src.services.email_service import EmailSender, SmtpEmailSender
+from src.services.extension_probe import ExtensionProbe
 from src.services.log_service import LogWriter
 from src.services.mcp_proxy import McpProxy
 from src.services.otp_service import OtpService
+from src.services.secret_box import SecretBox, ensure_secrets_key
 from src.services.public_rate_limiter import PublicReadLimiter
 from src.services.share_service import purge_expired_shares
 from src.services.server_tools import McpServerTools, ServerTools
@@ -106,6 +109,8 @@ def create_app(
             print(f"Bootstrap admin created with password: {generated} (save it now, it won't be shown again)")
 
         internal_token = load_env_secrets(settings.env_path).get("INTERNAL_API_TOKEN")
+        # Raises SecretBoxError (a clear one-line message) when .env holds a key that is not valid.
+        secret_box = SecretBox(ensure_secrets_key(settings.env_path))
         upstream = httpx.AsyncClient(transport=upstream_transport, timeout=_UPSTREAM_TIMEOUT)
 
         app.state.settings = settings
@@ -113,6 +118,7 @@ def create_app(
         app.state.email_sender = email_sender or SmtpEmailSender(settings.env_path)
         app.state.upstream = upstream
         app.state.internal_token = internal_token or None
+        app.state.secret_box = secret_box
         app.state.agent_directory = AgentDirectory(
             HttpRegistrySource(settings.agents_registry_url, upstream, internal_token or None)
             if settings.agents_registry_url
@@ -120,6 +126,7 @@ def create_app(
         )
         app.state.mcp_proxy = McpProxy(upstream, internal_token or None, recorder)
         app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None, recorder)
+        app.state.extension_probe = ExtensionProbe(app.state.agent_gateway)
         app.state.server_tools = server_tools or McpServerTools(settings.mcp_server_url, internal_token or None, recorder)
         app.state.logs = log_writer
         app.state.traffic = recorder
@@ -169,6 +176,7 @@ def create_app(
     app.include_router(templates.router)
     app.include_router(nav_preferences.router)
     app.include_router(account_capabilities.router)
+    app.include_router(user_extensions.router)
     app.include_router(shares.router)
     app.include_router(shares.public_router)
     app.include_router(usage.router)

@@ -85,6 +85,11 @@ class TurnOptions:
     disabled_tools: tuple[str, ...] = ()
     # The browser can show the agent's clickable questions and send answers back.
     can_ask: bool = False
+    # The account's enabled private extensions as ai_agent wants them ({id, label, url, headers});
+    # headers are secrets, so this never shows in repr(). Loaded server-side, never from the browser.
+    private_extensions: tuple[dict[str, Any], ...] = field(default=(), repr=False)
+    # Enabled ones left out because their headers cannot be read: {id, label, error}.
+    private_skipped: tuple[dict[str, str], ...] = ()
 
 
 def _iso(value: Any) -> str | None:
@@ -479,6 +484,8 @@ class TurnRegistry:
             ):
                 await self._publish(turn, _clamped(event))
 
+        if turn.options.private_skipped:
+            await self._publish(turn, {"type": "notice", "notices": [dict(n) for n in turn.options.private_skipped]})
         turn.asking = True
         try:
             result = await self._gateway.ask(
@@ -494,6 +501,7 @@ class TurnRegistry:
                 allowed_tools=list(turn.options.allowed_tools),
                 disabled_tools=list(turn.options.disabled_tools),
                 ask_user=turn.options.can_ask,
+                private_extensions=list(turn.options.private_extensions) or None,
             )
         except AgentCallError as error:
             await self._logs.error(turn.account_id, "chat.answer", f"{turn.agent.id}: {error}")
@@ -502,6 +510,19 @@ class TurnRegistry:
         finally:
             turn.asking = False
 
+        errors = result.get("private_extension_errors")
+        if isinstance(errors, list) and errors:
+            await self._publish(
+                turn,
+                {
+                    "type": "notice",
+                    "notices": [
+                        {k: str(n.get(k) or "")[:300] for k in ("id", "label", "error")}
+                        for n in errors[:20]
+                        if isinstance(n, dict)
+                    ],
+                },
+            )
         cancelled = bool(result.get("cancelled"))
         response = str(result.get("response") or "")
         content = f"{turn.text}\n\n{response}" if cancelled and turn.text else response

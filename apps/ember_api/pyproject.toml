@@ -26,6 +26,8 @@ dependencies = [
     "openpyxl>=3.1",
     # Schema migrations (run at startup).
     "alembic>=1.13,<2.0",
+    # Encrypts the header values of users' private extensions at rest.
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]
