@@ -8,7 +8,8 @@ import asyncio
 from fastapi.testclient import TestClient
 
 from src.services import question_answers as qa
-from tests.conftest import FakeAgent
+from tests.conftest import FakeAgent, FakeEmailSender
+from tests.test_admin import login, make_member
 from tests.test_registration import as_admin
 from tests.test_turns import events, new_id, start, wait_until
 
@@ -152,3 +153,143 @@ def test_an_oversized_question_is_cut_down_before_it_is_shown(client: TestClient
     shown = registry.pending_question(account_id, chat_id, "q1")["questions"][0]
 
     assert len(shown["header"]) == qa.HEADER_MAX and len(shown["question"]) == qa.QUESTION_MAX
+
+
+# --- POST /api/chats/{id}/questions ----------------------------------------------------------------
+
+
+def answer(client: TestClient, chat_id: str, **body):
+    return client.post(f"/api/chats/{chat_id}/questions", json={"step_id": "q1", **body})
+
+
+GOOD = [ok(["CSV"]), ok(["Totals", "Chart"], "and a title")]
+
+
+def test_answering_needs_login(client: TestClient) -> None:
+    assert answer(client, new_id(), skipped=True).status_code == 401
+
+
+def test_answering_needs_chat_use(client: TestClient, email: FakeEmailSender) -> None:
+    make_member(client, email, verify=False)
+    login(client, "alice")
+
+    assert answer(client, new_id(), skipped=True).status_code == 403
+
+
+def test_answering_with_no_running_answer_is_404(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+
+    assert answer(client, new_id(), skipped=True).status_code == 404
+
+
+def test_answering_a_question_that_is_not_waiting_is_409(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    agent.hold = True
+    start(client, chat_id, "no question here")
+    wait_until(lambda: len(agent.asks) == 1)
+
+    assert answer(client, chat_id, skipped=True).status_code == 409
+    agent.release()
+
+
+def test_a_valid_answer_reaches_the_agent_and_lets_the_turn_finish(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+
+    response = answer(client, chat_id, answers=GOOD)
+
+    assert response.status_code == 200
+    assert response.json() == {"answered": True}
+    assert agent.answers[0][1:] == ("q1", GOOD, False)
+    stream = events(client, chat_id)
+    assert [e["type"] for e in stream if e["type"] in ("question_resolved", "final")] == ["question_resolved", "final"]
+    assert next(e for e in stream if e["type"] == "question_resolved")["outcome"] == "answered"
+
+
+def test_skipping_needs_no_answers(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+
+    response = answer(client, chat_id, skipped=True)
+
+    assert response.status_code == 200
+    assert agent.answers[0][1:] == ("q1", [], True)
+    stream = events(client, chat_id)
+    assert next(e for e in stream if e["type"] == "question_resolved")["outcome"] == "skipped"
+
+
+def test_an_invalid_answer_is_422_and_changes_nothing(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+    bad = {
+        "too few": [ok(["CSV"])],
+        "unknown label": [ok(["XML"]), ok(["Chart"])],
+        "two for a single-select": [ok(["CSV", "JSON"]), ok(["Chart"])],
+        "nothing chosen": [ok([]), ok(["Chart"])],
+    }
+
+    for name, answers in bad.items():
+        response = answer(client, chat_id, answers=answers)
+        assert response.status_code == 422, name
+        assert response.json()["detail"], name
+    assert agent.answers == []
+    assert answer(client, chat_id, answers=GOOD).status_code == 200  # still waiting, and answerable
+
+
+def test_body_limits_are_enforced(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+
+    too_long = [ok(["CSV"], "x" * (qa.OTHER_MAX + 1)), ok(["Chart"])]
+    assert answer(client, chat_id, answers=too_long).status_code == 422
+    assert client.post(f"/api/chats/{chat_id}/questions", json={"skipped": True}).status_code == 422
+    assert client.post(f"/api/chats/{chat_id}/questions", json={"step_id": "q1", "answers": "x"}).status_code == 422
+    assert agent.answers == []
+    answer(client, chat_id, skipped=True)
+
+
+def test_a_second_answer_to_the_same_question_is_409(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+    assert answer(client, chat_id, answers=GOOD).status_code == 200
+    events(client, chat_id)  # the turn is over
+
+    assert answer(client, chat_id, answers=GOOD).status_code in (404, 409)
+
+
+def test_the_agent_saying_nothing_is_waiting_is_409(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+    agent.answer_result = False
+
+    assert answer(client, chat_id, answers=GOOD).status_code == 409
+    agent.answer_result = None
+    answer(client, chat_id, skipped=True)
+
+
+def test_an_unreachable_agent_is_502(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+    agent.answer_error = "agent down"
+
+    assert answer(client, chat_id, answers=GOOD).status_code == 502
+    agent.answer_error = None
+    answer(client, chat_id, skipped=True)
+
+
+def test_another_account_cannot_answer(client: TestClient, agent: FakeAgent, email: FakeEmailSender) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    waiting_question(client, agent, chat_id)
+    make_member(client, email)
+    login(client, "alice")
+
+    assert answer(client, chat_id, skipped=True).status_code == 404
