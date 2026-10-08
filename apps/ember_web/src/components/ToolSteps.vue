@@ -4,6 +4,7 @@ import { computed } from "vue";
 import type { ActiveAgent, ToolStep } from "../api/types";
 import { stepKey, useChatStore } from "../stores/chat";
 import { useEntryAgentStore } from "../stores/entryAgent";
+import { describeAskUser } from "../utils/askUserStep";
 import { formatToolResult } from "../utils/toolResultFormat";
 import { toolTitle } from "../utils/toolTitles";
 import MarkdownContent from "./MarkdownContent.vue";
@@ -77,6 +78,11 @@ function workingLabel(step: ToolStep): string {
 function argumentsText(step: ToolStep): string {
   return Object.keys(step.arguments).length ? JSON.stringify(step.arguments, null, 2) : "";
 }
+
+/** A step where the agent asked the user: one line per question and answer. */
+function askedLines(step: ToolStep): string[] | null {
+  return describeAskUser(step);
+}
 </script>
 
 <template>
@@ -89,17 +95,25 @@ function argumentsText(step: ToolStep): string {
         <span v-if="badge(step)" class="agent-badge">{{ badge(step) }}</span>
       </summary>
       <div class="detail">
-        <p class="tool"><code>{{ step.tool }}</code></p>
-        <pre v-if="argumentsText(step)">{{ argumentsText(step) }}</pre>
-        <details v-if="workingText(step)" class="agent-text" open>
-          <summary>{{ workingLabel(step) }} is working</summary>
-          <pre>{{ workingText(step) }}</pre>
-        </details>
-        <template v-if="step.result">
-          <MarkdownContent v-if="formatToolResult(step.result)" :text="formatToolResult(step.result) ?? ''" />
-          <pre v-else>{{ step.result }}</pre>
+        <template v-if="askedLines(step)">
+          <p class="tool"><code>ask_user</code></p>
+          <ul class="asked">
+            <li v-for="(line, n) in askedLines(step)" :key="n">{{ line }}</li>
+          </ul>
         </template>
-        <p v-else-if="step.ok === null" class="muted">{{ live ? "running ..." : "no result (the answer was stopped)" }}</p>
+        <template v-else>
+          <p class="tool"><code>{{ step.tool }}</code></p>
+          <pre v-if="argumentsText(step)">{{ argumentsText(step) }}</pre>
+          <details v-if="workingText(step)" class="agent-text" open>
+            <summary>{{ workingLabel(step) }} is working</summary>
+            <pre>{{ workingText(step) }}</pre>
+          </details>
+          <template v-if="step.result">
+            <MarkdownContent v-if="formatToolResult(step.result)" :text="formatToolResult(step.result) ?? ''" />
+            <pre v-else>{{ step.result }}</pre>
+          </template>
+          <p v-else-if="step.ok === null" class="muted">{{ live ? "running ..." : "no result (the answer was stopped)" }}</p>
+        </template>
       </div>
     </details>
   </details>
@@ -183,6 +197,11 @@ function argumentsText(step: ToolStep): string {
 }
 .agent-text {
   margin: 0.3rem 0;
+}
+.asked {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
 }
 .muted {
   margin: 0;

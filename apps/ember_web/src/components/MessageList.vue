@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import type { ApprovalDecision, ChatMessage, PendingApproval, ToolStep } from "../api/types";
+import type {
+  ApprovalDecision,
+  ChatMessage,
+  PendingApproval,
+  PendingQuestion,
+  QuestionAnswer,
+  ToolStep,
+} from "../api/types";
 import type { CommandInfo } from "../api/CommandsClient";
 import { agentLabelFor } from "../utils/agentLabels";
 import { FILE_ONLY_QUESTION, splitAttachments } from "../utils/attachments";
@@ -13,6 +20,7 @@ import CopyButton from "./CopyButton.vue";
 import DownloadCards from "./DownloadCards.vue";
 import ElapsedTime from "./ElapsedTime.vue";
 import MarkdownContent from "./MarkdownContent.vue";
+import QuestionCard from "./QuestionCard.vue";
 import SaveButton from "./SaveButton.vue";
 import ToolSteps from "./ToolSteps.vue";
 import UsageChip from "./UsageChip.vue";
@@ -37,6 +45,10 @@ const props = defineProps<{
   /** The administrator requires approval for every tool: "Allow for this chat" is not offered. */
   approvalRequired?: boolean;
   deciding?: string[];
+  /** Questions the agent asked that wait for the user's answer, and the ones
+   * already answered but not yet confirmed (their buttons are off). */
+  questions?: PendingQuestion[];
+  answeringQuestions?: string[];
   /** When the answer being written started (a Date.now() value): shows a running clock. */
   since?: number | null;
   /** The slash commands the account may run, for the welcome card of an empty chat. */
@@ -54,6 +66,8 @@ const emit = defineEmits<{
   branch: [index: number];
   jumped: [];
   decide: [stepId: string, decision: ApprovalDecision];
+  "answer-question": [stepId: string, answers: QuestionAnswer[]];
+  "skip-question": [stepId: string];
 }>();
 
 const ARGS_OPEN_MAX_CHARS = 400;
@@ -408,6 +422,17 @@ onBeforeUnmount(() => {
           </div>
           <p class="note">No answer within 4 minutes counts as Deny.</p>
         </section>
+        <!-- The agent asked the user something and waits for the answer (no
+             time limit: they may be deciding). Nothing continues until they
+             answer or skip. -->
+        <QuestionCard
+          v-for="q in questions ?? []"
+          :key="q.id"
+          :pending="q"
+          :answering="answeringQuestions?.includes(q.id) ?? false"
+          @answer="(id, answers) => emit('answer-question', id, answers)"
+          @skip="(id) => emit('skip-question', id)"
+        />
         <AgentActivity />
         <span v-if="activity" class="activity"><span class="dot" />{{ activity }}</span>
         <MarkdownContent v-if="streaming" :text="hideDownloadMarkers(streaming)" />

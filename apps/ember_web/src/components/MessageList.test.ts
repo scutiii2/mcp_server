@@ -643,3 +643,40 @@ describe("the mark beside an answer", () => {
     expect(live.get(".assistant.live").classes()).not.toContain("command-reply");
   });
 });
+
+describe("question cards", () => {
+  const PENDING = {
+    id: "q1",
+    questions: [
+      { header: "Format", question: "Which format?", multi_select: false, options: [{ label: "CSV" }, { label: "JSON" }] },
+    ],
+  };
+
+  it("shows none without a question", () => {
+    expect(mountList({ busy: true, questions: [] }).findAll(".question-card")).toHaveLength(0);
+  });
+
+  it("shows one card per waiting question set while an answer is running", () => {
+    const wrapper = mountList({ busy: true, questions: [PENDING, { ...PENDING, id: "q2" }] });
+
+    expect(wrapper.findAll(".question-card")).toHaveLength(2);
+  });
+
+  it("passes the answer and the skip up", async () => {
+    const wrapper = mountList({ busy: true, questions: [PENDING] });
+
+    await wrapper.find("button.opt").trigger("click");
+    await wrapper.find(".question-card").trigger("submit");
+    await wrapper.find("button.skip").trigger("click");
+
+    expect(wrapper.emitted("answer-question")).toEqual([["q1", [{ selected: ["CSV"], other: null }]]]);
+    expect(wrapper.emitted("skip-question")).toEqual([["q1"]]);
+  });
+
+  it("turns the card's buttons off while its answer is on its way", () => {
+    const wrapper = mountList({ busy: true, questions: [PENDING], answeringQuestions: ["q1"] });
+
+    expect((wrapper.find("button.submit").element as HTMLButtonElement).disabled).toBe(true);
+    expect((wrapper.find("button.skip").element as HTMLButtonElement).disabled).toBe(true);
+  });
+});

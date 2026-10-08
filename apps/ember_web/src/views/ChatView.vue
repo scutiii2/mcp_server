@@ -58,6 +58,8 @@ const {
   allowedTools,
   pendingApprovals,
   deciding,
+  pendingQuestions,
+  answeringQuestions,
   searchQuery,
   searchActive,
   searchHits,
@@ -377,10 +379,14 @@ useChatShortcuts({
         :commands="commands"
         :agent-labels="agentLabels"
         :deciding="deciding"
+        :questions="pendingQuestions"
+        :answering-questions="answeringQuestions"
         :approval-required="forceToolApproval"
         :saved-prompts="savedPrompts"
         @save-prompt="saveAsPrompt"
         @decide="chat.decideApproval"
+        @answer-question="chat.answerQuestion"
+        @skip-question="chat.skipQuestion"
         :regenerate-index="chat.regenerateIndex"
         :jump-index="chat.jumpIndex"
         @jumped="chat.clearJump"
