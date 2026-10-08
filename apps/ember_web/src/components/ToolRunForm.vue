@@ -139,6 +139,11 @@ function onFileInput(field: ToolField, event: Event): void {
   input.value = "";
 }
 
+/** Moving between the zone's own children fires dragleave too; only leaving the zone counts. */
+function onDropLeave(event: DragEvent, name: string): void {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null) && dragging.value === name) dragging.value = null;
+}
+
 function onDrop(field: ToolField, event: DragEvent): void {
   dragging.value = null;
   void upload(field, event.dataTransfer?.files[0]);
@@ -200,7 +205,7 @@ function inputType(field: ToolField): string {
           v-if="f.widget === 'file'"
           :class="['drop', { over: dragging === f.name }]"
           @dragover.prevent="dragging = f.name"
-          @dragleave="dragging = null"
+          @dragleave="onDropLeave($event, f.name)"
           @drop.prevent="onDrop(f, $event)"
         >
           <input :id="`field-${f.name}`" type="file" class="file-input" @change="onFileInput(f, $event)" />
@@ -353,7 +358,7 @@ textarea:focus {
 }
 .drop.over {
   border-color: var(--accent);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 .shows {
   display: grid;

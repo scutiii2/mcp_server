@@ -547,9 +547,14 @@ function onKeydown(event: KeyboardEvent): void {
   border-radius: var(--radius-xl);
   background: var(--surface);
 }
-.box:focus-within,
-.box.dragging {
+.box:focus-within {
   border-color: var(--accent);
+}
+/* A file is being dragged over: dashed and tinted, so it reads as a drop target and not as focus. */
+.box.dragging {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 .tools {
   display: flex;
