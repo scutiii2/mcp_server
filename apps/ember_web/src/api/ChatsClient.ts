@@ -1,5 +1,5 @@
 import { apiRequest } from "./http";
-import type { ApprovalDecision, ChatMessage } from "./types";
+import type { ApprovalDecision, ChatMessage, QuestionAnswer } from "./types";
 
 /** A chat as ember_api lists it: no transcript. Times are naive UTC. */
 export interface ChatSummary {
@@ -49,6 +49,8 @@ export interface TurnStart {
   ask_before_tools?: boolean;
   /** Tools the user already allowed for this chat: they run without asking. */
   allowed_tools?: string[];
+  /** This page can show the agent's clickable questions and send answers back. */
+  can_ask?: boolean;
 }
 
 export interface TurnStarted {
@@ -107,6 +109,9 @@ export const chatsClient = {
   /** Answers a tool the running answer waits to run (an approval_request's id). */
   decide: (id: string, stepId: string, decision: ApprovalDecision) =>
     apiRequest<{ decided: boolean }>("POST", `${path(id)}/approvals`, { step_id: stepId, decision }),
+  /** Answers (or skips) the questions the running answer waits on (a question_request's id). */
+  answerQuestion: (id: string, stepId: string, payload: { answers: QuestionAnswer[]; skipped: boolean }) =>
+    apiRequest<{ answered: boolean }>("POST", `${path(id)}/questions`, { step_id: stepId, ...payload }),
   cancel: (id: string) => apiRequest<{ cancelled: boolean }>("POST", `${path(id)}/cancel`),
   /** Replaces the history with a summary plus the raw log (asks an agent). */
   summarize: (id: string) => apiRequest<ChatDetail>("POST", `${path(id)}/summarize`, {}),
