@@ -633,14 +633,15 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 /* An answer sits beside a small round mark; everything in it goes in the second
-   column. A command's result (a tool's output, not the agent's words) has none. */
-.assistant:not(.command-reply) {
+   column. A command's result (a tool's output, not the agent's words) looks the
+   same, with a plain "/" mark instead of the accent-colored spark. */
+.assistant {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   column-gap: 10px;
   align-items: start;
 }
-.assistant:not(.command-reply)::before {
+.assistant::before {
   content: "✦";
   grid-column: 1;
   grid-row: 1;
@@ -653,7 +654,15 @@ onBeforeUnmount(() => {
   color: var(--accent-contrast);
   background: var(--accent);
 }
-.assistant:not(.command-reply) > * {
+.assistant.command-reply::before {
+  content: "/";
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+}
+.assistant > * {
   grid-column: 2;
 }
 .attachment {
@@ -680,12 +689,6 @@ onBeforeUnmount(() => {
 .command {
   font-family: var(--mono);
   font-size: 0.9em;
-}
-.command-result {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
 }
 .summary {
   padding: 10px 14px;
