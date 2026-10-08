@@ -20,6 +20,7 @@ from src.deps import (
     get_agent_gateway,
     get_db_session,
     get_log_writer,
+    get_secret_box,
     get_settings,
     get_settings_service,
     get_turns,
@@ -47,6 +48,7 @@ from src.services.chat_service import (
 )
 from src.services.folder_service import FolderNotFound
 from src.services.permissions import CHAT_USE
+from src.services.secret_box import SecretBox
 from src.services.settings_service import FORCE_TOOL_APPROVAL, SettingsService
 from src.services.turns import (
     MAX_AGENT_USAGE_ROWS,
@@ -58,6 +60,7 @@ from src.services.turns import (
     TurnOptions,
     TurnRegistry,
 )
+from src.services.user_extension_service import UserExtensionService
 from src.services.usage_service import LimitBlock, UsageService
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
@@ -641,6 +644,7 @@ async def start_turn(
     directory: AgentDirectory = Depends(get_agent_directory),
     settings: Settings = Depends(get_settings),
     app_settings: SettingsService = Depends(get_settings_service),
+    box: SecretBox = Depends(get_secret_box),
 ) -> TurnOut:
     """Saves the question and starts answering it in ember_api. The answer
     keeps going (and is saved) even if the browser leaves; watch it via
@@ -672,6 +676,8 @@ async def start_turn(
     # When the administrator requires it, the browser's choice does not matter:
     # every tool asks, and no tool is pre-allowed.
     forced = await app_settings.get_bool(FORCE_TOOL_APPROVAL)
+    # The caller's own private extensions, read here from the database: the browser cannot name one.
+    private = await UserExtensionService(session, account.id, box).enabled_for_turn()
     try:
         options = TurnOptions(
             caveman=body.caveman,
@@ -679,6 +685,8 @@ async def start_turn(
             ask_before_tools=body.ask_before_tools or forced,
             allowed_tools=() if forced else tuple(dict.fromkeys(body.allowed_tools)),
             disabled_tools=tuple(dict.fromkeys(body.disabled_tools)),
+            private_extensions=private.items,
+            private_skipped=private.skipped,
         )
         turn = turns.start(account.id, chat_id, agent, _caller(account), options)
     except TurnConflict as error:
