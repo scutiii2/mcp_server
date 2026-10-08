@@ -119,6 +119,26 @@ def test_a_failing_private_call_never_shows_a_header_value(bound, pool):
     assert caught.value.__cause__ is None
 
 
+def test_a_short_private_result_is_returned_whole(bound, pool):
+    assert mcp_upstream.call_tool("u_notes__search", {}) == "found 3"
+
+
+def test_a_huge_private_result_is_cut_with_a_note(bound, pool):
+    big = "x" * 60_000
+
+    async def call(account, spec, tool, arguments):
+        return types.CallToolResult(content=[types.TextContent(type="text", text=big)])
+
+    pool.call = call
+
+    out = mcp_upstream.call_tool("u_notes__search", {})
+
+    limit = mcp_upstream.MAX_PRIVATE_RESULT_CHARS
+    assert limit == 50_000
+    assert out.startswith("x" * limit)
+    assert out[limit:] == "\n\n[Truncated: the extension returned 60000 characters; only the first 50000 are shown.]"
+
+
 def test_a_built_in_call_is_unchanged(pool):
     with patch.object(mcp_upstream.client, "call_tool", return_value=types.CallToolResult(
         content=[types.TextContent(type="text", text="pong")]

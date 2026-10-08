@@ -46,6 +46,10 @@ client = SyncMcpClient()
 # live on the same connection loop as `client`.
 private_pool = PrivateSessionPool()
 
+# A private server is not trusted to keep its answers small: more than this is
+# cut before it reaches the model.
+MAX_PRIVATE_RESULT_CHARS = 50_000
+
 # Appended to the description of any tool whose MCP meta sets
 # ai_explain_result - the tool itself stays deterministic and never calls
 # an AI; this only tells the assistant that ran it what to do afterward.
@@ -152,7 +156,13 @@ def _call_private(name: str, arguments: dict[str, Any]) -> str:
     except Exception as error:  # noqa: BLE001 - say what happened without a header value or a traceback
         raise RuntimeError(describe_error(error, spec.secrets)) from None
     parts = [getattr(block, "text", str(block)) for block in result.content]
-    return "\n".join(parts) if parts else "(no output)"
+    text = "\n".join(parts) if parts else "(no output)"
+    if len(text) > MAX_PRIVATE_RESULT_CHARS:
+        return (
+            f"{text[:MAX_PRIVATE_RESULT_CHARS]}\n\n[Truncated: the extension returned {len(text)} characters; "
+            f"only the first {MAX_PRIVATE_RESULT_CHARS} are shown.]"
+        )
+    return text
 
 
 async def prefetch_private(turn: "private_turn.PrivateTurn") -> None:
