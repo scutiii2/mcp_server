@@ -156,7 +156,7 @@ async function logout(): Promise<void> {
     </RouterLink>
 
     <div class="bottom">
-      <a v-if="canAdmin" :href="adminUrl" class="admin-link" data-label="Ember Admin" aria-label="Open Ember Admin">
+      <a v-if="canAdmin" :href="adminUrl" target="_blank" rel="noopener noreferrer" class="admin-link" data-label="Ember Admin" aria-label="Open Ember Admin">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3 3 7v5c0 5 5 8 9 10 4-2 9-5 9-10V7zM8 12l3 3 5-6" /></svg>
       </a>
       <button

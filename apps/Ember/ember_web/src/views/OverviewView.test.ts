@@ -48,9 +48,11 @@ describe("OverviewView", () => {
     auth.account = { ...auth.account!, permissions: ["traffic.view", "roles.manage"] };
     await wrapper.vm.$nextTick();
     expect(wrapper.findAll(".card").map((link) => link.attributes("href"))).toEqual([
-      "/account", "http://localhost:5175/",
+      "/account", "http://localhost:5176/",
     ]);
     expect(wrapper.find(".hero").exists()).toBe(false);
+    expect(wrapper.get(".admin-shortcut").attributes("target")).toBe("_blank");
+    expect(wrapper.get(".admin-shortcut").attributes("rel")).toBe("noopener noreferrer");
   });
 
   it("does not offer permission-gated actions to unverified accounts", () => {

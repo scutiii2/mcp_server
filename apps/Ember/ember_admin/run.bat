@@ -8,7 +8,7 @@ REM LABEL: Ember Admin
 REM DESCRIPTION: Vue 3 + TypeScript admin app for ember: accounts, analytics, capabilities and extensions, through ember_api.
 cd /d "%~dp0"
 
-if not defined EMBER_ADMIN_PORT set EMBER_ADMIN_PORT=5175
+if not defined EMBER_ADMIN_PORT set EMBER_ADMIN_PORT=5176
 
 if not exist "node_modules" (
     echo Installing ember_admin dependencies ...

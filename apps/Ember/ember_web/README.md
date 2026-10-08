@@ -425,7 +425,7 @@ uses `usage.all.view`. Navigation and controls follow these permissions, and the
 API enforces every action. Delegated administrators can only grant or change
 roles within their own permissions.
 
-Administrators can open Ember Admin from the desktop rail or the Overview page (also on mobile). The link uses this host on port 5175 by default. Set `VITE_EMBER_ADMIN_URL` before starting Vite or building to use a different address, such as `https://admin.example.com/` or a reverse-proxy path `/admin/`. It appears for verified accounts with access to an Ember Admin page, including delegated administrators.
+Administrators can open Ember Admin from the desktop rail or the Overview page (also on mobile). The link opens in a new tab and uses this host on port 5176 by default (matching Server Launcher; port 5175 is used by Video Downloader). Set `VITE_EMBER_ADMIN_URL` before starting Vite or building to use a different address, such as `https://admin.example.com/` or a reverse-proxy path `/admin/`. It appears for verified accounts with access to an Ember Admin page, including delegated administrators.
 
 Content pages share heading typography, description typography, and horizontal spacing through `ember_web/src/components/pageLayout.css` (also imported by Ember Admin).
 

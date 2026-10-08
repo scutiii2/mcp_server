@@ -1,7 +1,7 @@
 # ember_admin
 
 Admin web app for ember, built with Vue 3, TypeScript and Vite. It runs on
-port 5175 (`EMBER_ADMIN_PORT`) and talks only to [ember_api](../ember_api)
+port 5176 (`EMBER_ADMIN_PORT`) and talks only to [ember_api](../ember_api)
 over the same origin, like [ember_web](../ember_web): its Vite server forwards
 `/api` to ember_api, so the browser holds no server URL or token.
 
@@ -15,13 +15,13 @@ and extension calls to mcp_server).
 - `server_launcher` lists it as **Ember Admin** (detected from `run.bat`).
 - `npm run dev`
 
-Open <http://127.0.0.1:5175> and log in with an account that has
+Open <http://127.0.0.1:5176> and log in with an account that has
 at least one of the page permissions below. A login made in ember_web also works here: cookies are not
 scoped by port, so the same ember_api session cookie is sent.
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `EMBER_ADMIN_PORT` | `5175` | Vite's port. |
+| `EMBER_ADMIN_PORT` | `5176` | Vite's port. |
 | `EMBER_API_PORT` | `8030` | Where Vite forwards `/api` (ember_api). |
 
 ## Pages
@@ -52,7 +52,10 @@ stays available while permissions are paused so the account can correct its emai
 
 Personal Settings uses Ember Web's appearance and sidebar controls, with searchable
 settings, modified indicators, and individual resets. Theme and sidebar changes
-apply immediately on this device. Sidebar order, pins, and hidden pages are stored
+stay as drafts until saved through the bottom Save/Revert bar. Revert restores
+the saved preferences; leaving with a draft asks before discarding it, and
+reloading warns about unsaved changes. The bar sits above the mobile navigation.
+Sidebar order, pins, and hidden pages are stored
 per account in this browser, independently of Ember Web. Hidden administration
 pages stay reachable from the workspace overview; Profile and Settings always stay
 in the rail. Workspace settings continue to control server-wide policy separately.

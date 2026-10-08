@@ -112,7 +112,7 @@ function onDragStart(event: DragEvent, id: string): void {
       :modified="modified"
       @reset="reset"
     />
-    <p v-if="navPrefs.error" class="error" role="alert">{{ navPrefs.error }}</p>
+    <p v-if="navPrefs.error && !props.modelValue" class="error" role="alert">{{ navPrefs.error }}</p>
     <ul class="rows" aria-label="Sidebar pages" @dragleave="onListDragLeave">
       <template v-for="(row, i) in rows" :key="row.page.to">
       <li

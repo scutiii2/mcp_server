@@ -76,7 +76,7 @@ const groups = computed(() => {
           </RouterLink>
         </div>
       </section>
-      <a v-if="canAdmin" :href="adminUrl" class="card admin-shortcut" aria-label="Open Ember Admin">
+      <a v-if="canAdmin" :href="adminUrl" target="_blank" rel="noopener noreferrer" class="card admin-shortcut" aria-label="Open Ember Admin">
         <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 3 7v5c0 5 5 8 9 10 4-2 9-5 9-10V7zM8 12l3 3 5-6" /></svg></span>
         <div class="copy"><h4>Ember Admin</h4><p>Manage your workspace, access, capabilities, and extensions.</p></div>
         <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M10 14 21 3M21 14v7H3V3h7" /></svg>
