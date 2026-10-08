@@ -172,6 +172,20 @@ describe("the merged Capabilities page", () => {
     expect(router.currentRoute.value.name).toBe("capabilities");
   });
 
+  it("opens the Supermarket for chat.use alone", async () => {
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use"] });
+
+    await router.push("/capabilities/supermarket");
+
+    expect(router.currentRoute.value.name).toBe("supermarket");
+  });
+
+  it("keeps the Supermarket from being taken for a capability page", () => {
+    expect(router.resolve("/capabilities/supermarket").name).toBe("supermarket");
+    expect(router.resolve("/capabilities/pdf").name).toBe("capability-page");
+  });
+
+
   it("stays closed to an account with neither tools.use nor chat.use", async () => {
     me.mockResolvedValue({ ...ACCOUNT, permissions: ["watchers.view"] });
 
