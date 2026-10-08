@@ -65,7 +65,7 @@ def test_ask_hands_disabled_tools_to_run_chat():
     captured = {}
 
     async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False,
-                            approval_mode="off", allowed_tools=None, disabled_tools=None):
+                            approval_mode="off", allowed_tools=None, disabled_tools=None, ask_user=False):
         captured["disabled"] = disabled_tools
         return ChatResult(response="done")
 

@@ -71,7 +71,7 @@ from starlette.responses import JSONResponse
 _CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError", "AgentSpecError"}
 try:
     from src.agents import agent_config, agent_events, agent_registry
-    from src.core import approvals, internal_auth, usage_log
+    from src.core import approvals, internal_auth, questions, usage_log
     from src.mcp_client import mcp_upstream
     from src.llm.base_provider import ChatCancelled
     from src.llm import model_tiers
@@ -179,6 +179,7 @@ async def ask(
     disabled_tools: list[str] | None = None,
     model_tier: str | None = None,
     reasoning_effort: str | None = None,
+    ask_user: bool = False,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
@@ -205,6 +206,9 @@ async def ask(
     or "high"), set by a delegating orchestrator. It is capped at this
     agent's llm.max_effort, so a request above the cap runs at the cap; the
     result then carries `reasoning_effort` and, when changed, `effort_note`.
+    ask_user: the caller can show the user clickable questions and send their
+    answers back through answer_question(); only then is the ask_user tool
+    offered (top-level turns only).
     ctx, if the MCP client requested it, is FastMCP's injected Context -
     used below only to relay run_chat's live step/token events as MCP
     progress notifications; chat_app's own tool call never needs to pass
@@ -231,7 +235,7 @@ async def ask(
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
             on_event=on_event, caveman=caveman, approval_mode=approval_mode, allowed_tools=allowed_tools,
-            disabled_tools=disabled_tools, **tier_args,
+            disabled_tools=disabled_tools, ask_user=ask_user, **tier_args,
         )
     except ChatCancelled:
         return _cancelled_result()
@@ -307,8 +311,8 @@ def status() -> dict[str, Any]:
     """Live availability of this agent's pinned provider. `tool_approval`
     says ask() understands approval_mode, so a caller that needs tools asked
     about can refuse an agent that would ignore it; `tool_filter` says the same
-    of disabled_tools."""
-    return {**agent_config.status(), "tool_approval": True, "tool_filter": True}
+    of disabled_tools; `user_questions` says ask() understands ask_user."""
+    return {**agent_config.status(), "tool_approval": True, "tool_filter": True, "user_questions": True}
 
 
 @mcp.tool()
@@ -319,6 +323,22 @@ async def decide(request_id: str, step_id: str, decision: str) -> dict[str, Any]
     {"decided": False} when nothing is waiting for that request and step -
     unknown, already answered, or the turn ended."""
     return {"decided": approvals.BROKER.decide(request_id, step_id, decision)}
+
+
+@mcp.tool()
+async def answer_question(
+    request_id: str,
+    step_id: str,
+    answers: list[dict[str, Any]] | None = None,
+    skipped: bool = False,
+) -> dict[str, Any]:
+    """Answers the questions an ask() call raised with a `question_request`
+    event: `answers` has one entry per question, in order, each
+    {"selected": [option labels], "other": typed text or null}; or pass
+    skipped=True to decline. Returns {"answered": False} when nothing is
+    waiting for that request and step - unknown, already answered, or the
+    turn ended."""
+    return {"answered": questions.BROKER.answer(request_id, step_id, answers or [], skipped)}
 
 
 @mcp.tool()

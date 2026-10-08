@@ -17,7 +17,7 @@ from dotenv import dotenv_values
 
 from src.agents import agent_spec, delegation
 
-from src.core import approvals, tool_filter
+from src.core import approvals, questions, tool_filter
 from src.llm import llm_options, model_tiers
 from src.llm import reasoning_effort as effort_limits
 from src.core.seed import seed_from_example
@@ -96,6 +96,7 @@ async def run_chat(
     approval_mode: str = "off",
     allowed_tools: list[str] | None = None,
     disabled_tools: list[str] | None = None,
+    ask_user: bool = False,
     model_tier: str | None = None,
     reasoning_effort: str | None = None,
 ) -> ChatResult:
@@ -110,6 +111,9 @@ async def run_chat(
     for (delegation.py). It is resolved against this agent's own tiers and
     cap (llm/model_tiers.py); a request outside the cap is clamped, with a
     note on the result. None keeps the pinned model.
+
+    ask_user: the caller can show the user clickable questions (core/questions.py);
+    only a top-level turn (depth 0) is offered the tool.
 
     disabled_tools: tools the asking user switched off for their own chats
     (see core/tool_filter.py); they are not offered and not run.
@@ -137,6 +141,7 @@ async def run_chat(
     cancellation.register(request_id)
     delegated_usage, usage_token = delegation.bind_usage()
     approval_token = approvals.bind(policy)
+    question_token = questions.bind(questions.QuestionPolicy(ask_user and depth == 0))
     filter_token = tool_filter.bind(disabled_tools or ())
     effort_token = llm_options.bind_effort(effort.effort)
     try:
@@ -168,6 +173,7 @@ async def run_chat(
     finally:
         llm_options.reset_effort(effort_token)
         tool_filter.reset(filter_token)
+        questions.reset(question_token)
         approvals.reset(approval_token)
         delegation.reset_usage(usage_token)
         cancellation.clear(request_id)

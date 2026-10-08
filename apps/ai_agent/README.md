@@ -274,6 +274,11 @@ so ember_api can refuse an agent that would ignore the option.
 `status` reports `tool_approval: true`, so a caller that needs tools asked about
 (ember_api) can refuse an older agent that would ignore the option.
 
+`ask(ask_user=True)` offers the top-level agent clickable questions; answer or
+skip through `answer_question(request_id, step_id, answers, skipped)`. Questions
+emit `question_request` / `question_resolved`, wait up to 60 minutes with
+keepalive events, and Stop cancels the turn. `status()` reports `user_questions: true`.
+
 ## Prompts
 
 Each agent's system prompt comes from its own `agents/<id>.json`, in this order:

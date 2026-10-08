@@ -5,6 +5,14 @@ providers' tool loops. Plain sync tests around asyncio.run(), like test_approval
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+from src import server
+from src.core import approvals
+from src.llm import anthropic_provider, openai_provider
+from src.llm.base_provider import ChatResult
+
 
 import pytest
 
@@ -261,3 +269,260 @@ def test_handle_asks_and_returns_the_answers_as_the_tool_result() -> None:
         questions.reset(token)
 
     assert result == (questions.format_answers(QUESTIONS, ANSWERS), True)
+
+# --- the providers' tool loops ----------------------------------------------------------------
+
+ASK_ARGUMENTS = {"questions": QUESTIONS}
+
+
+def _anthropic_client(arguments):
+    tool_block = MagicMock(type="tool_use", input=arguments, id="t1")
+    tool_block.name = ask_user.TOOL_NAME
+    first = MagicMock(stop_reason="tool_use", content=[tool_block])
+    first.usage.input_tokens = 10
+    first.usage.output_tokens = 5
+    second = MagicMock(stop_reason="end_turn", content=[])
+    second.usage.input_tokens = 3
+    second.usage.output_tokens = 1
+
+    def round_cm(chunks, final):
+        async def gen():
+            for chunk in chunks:
+                yield chunk
+
+        stream = MagicMock()
+        stream.text_stream = gen()
+        stream.get_final_message = AsyncMock(return_value=final)
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=stream)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return cm
+
+    client = MagicMock()
+    client.messages.stream = MagicMock(side_effect=[round_cm([], first), round_cm(["Done"], second)])
+    return client
+
+
+def anthropic_turn(monkeypatch, recorder, dispatch, enabled=True, approval_mode="off"):
+    client = _anthropic_client(ASK_ARGUMENTS)
+    monkeypatch.setattr(anthropic_provider, "_get_client", lambda: client)
+    monkeypatch.setattr(anthropic_provider, "_dispatch", dispatch)
+    monkeypatch.setattr(anthropic_provider, "_tool_schemas", lambda enabled_extensions=None, roster=(): [])
+
+    async def scenario():
+        policy = questions.bind(questions.QuestionPolicy(enabled))
+        approval = approvals.bind(approvals.ApprovalPolicy(approval_mode))
+        try:
+            return await anthropic_provider.run_chat("which?", [], request_id=REQUEST, on_event=recorder)
+        finally:
+            approvals.reset(approval)
+            questions.reset(policy)
+
+    return run(scenario()), client
+
+
+def test_anthropic_asks_the_user_and_feeds_the_answers_back(monkeypatch) -> None:
+    dispatch = Mock(return_value="never")
+    rec = Recorder(answers=ANSWERS)
+
+    result, client = anthropic_turn(monkeypatch, rec, dispatch)
+
+    assert result.response == "Done"
+    dispatch.assert_not_called()
+    steps = [t for t in rec.types() if t in ("step_start", "question_request", "question_resolved", "step_end")]
+    assert steps == ["step_start", "question_request", "question_resolved", "step_end"]
+    expected = questions.format_answers(QUESTIONS, ANSWERS)
+    sent = client.messages.stream.call_args_list[1].kwargs["messages"][-1]["content"][0]
+    assert sent["content"] == expected
+    assert result.tool_calls[0].result == expected
+
+
+def test_anthropic_is_not_gated_by_tool_approval(monkeypatch) -> None:
+    rec = Recorder(answers=ANSWERS)
+
+    anthropic_turn(monkeypatch, rec, Mock(), approval_mode="ask")
+
+    assert "approval_request" not in rec.types()
+
+
+def test_anthropic_refuses_the_tool_when_it_was_not_offered(monkeypatch) -> None:
+    rec = Recorder()
+
+    result, _ = anthropic_turn(monkeypatch, rec, Mock(), enabled=False)
+
+    assert "question_request" not in rec.types()
+    assert result.tool_calls[0].result == questions.NOT_OFFERED
+
+
+def test_anthropic_stop_while_a_question_is_open_cancels_the_turn(monkeypatch) -> None:
+    rec = Recorder()
+
+    async def stopper(event: dict) -> None:
+        await rec(event)
+        if event["type"] == "question_request":
+            asyncio.get_running_loop().call_later(0.05, cancellation.cancel, REQUEST)
+
+    with pytest.raises(ChatCancelled):
+        anthropic_turn(monkeypatch, stopper, Mock())
+
+    assert rec.types()[-1] == "step_end"
+
+
+def test_anthropic_offers_the_schema_only_when_enabled() -> None:
+    with patch("src.llm.anthropic_provider.list_tools", return_value=[]):
+        off = anthropic_provider._tool_schemas([], ())
+        token = questions.bind(questions.QuestionPolicy(True))
+        try:
+            on = anthropic_provider._tool_schemas([], ())
+        finally:
+            questions.reset(token)
+
+    assert [s["name"] for s in off] == []
+    assert [s["name"] for s in on] == [ask_user.TOOL_NAME]
+    assert on[0]["input_schema"] == ask_user.tool_parameters()
+
+
+def _openai_client(arguments):
+    import json
+
+    def stream_cm(deltas, final):
+        events = [SimpleNamespace(type="response.output_text.delta", delta=text) for text in deltas]
+
+        async def _aiter():
+            for event in events:
+                yield event
+
+        stream = MagicMock()
+        stream.__aiter__ = Mock(return_value=_aiter())
+        stream.get_final_response = AsyncMock(return_value=final)
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=stream)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return cm
+
+    call = SimpleNamespace(
+        type="function_call", call_id="call-1", name=ask_user.TOOL_NAME, arguments=json.dumps(arguments)
+    )
+    one = SimpleNamespace(usage=SimpleNamespace(total_tokens=10), output=[call])
+    two = SimpleNamespace(usage=SimpleNamespace(total_tokens=2), output=[], output_text="Done")
+    return SimpleNamespace(responses=SimpleNamespace(stream=Mock(side_effect=[stream_cm([], one), stream_cm(["Done"], two)])))
+
+
+def openai_turn(monkeypatch, recorder, enabled=True):
+    monkeypatch.setenv("GPT_API_KEY", "sk-test")
+    dispatch = Mock(return_value="never")
+
+    async def scenario():
+        policy = questions.bind(questions.QuestionPolicy(enabled))
+        try:
+            with patch("src.llm.openai_provider._get_client", return_value=_openai_client(ASK_ARGUMENTS)), \
+                 patch("src.llm.openai_provider._dispatch", dispatch), \
+                 patch("src.llm.openai_provider.list_tools", return_value=[]):
+                return await openai_provider.run_chat("which?", [], request_id=REQUEST, on_event=recorder)
+        finally:
+            questions.reset(policy)
+
+    return run(scenario()), dispatch
+
+
+def test_openai_asks_the_user_and_feeds_the_answers_back(monkeypatch) -> None:
+    rec = Recorder(answers=ANSWERS)
+
+    result, dispatch = openai_turn(monkeypatch, rec)
+
+    assert result.response == "Done"
+    dispatch.assert_not_called()
+    request = [e for e in rec.events if e["type"] == "question_request"][0]
+    assert (request["id"], request["questions"]) == ("call-1", QUESTIONS)
+    assert result.tool_calls[0].result == questions.format_answers(QUESTIONS, ANSWERS)
+
+
+def test_openai_refuses_the_tool_when_it_was_not_offered(monkeypatch) -> None:
+    rec = Recorder()
+
+    result, _ = openai_turn(monkeypatch, rec, enabled=False)
+
+    assert "question_request" not in rec.types()
+    assert result.tool_calls[0].result == questions.NOT_OFFERED
+
+
+def test_openai_offers_the_schema_only_when_enabled() -> None:
+    with patch("src.llm.openai_provider.list_tools", return_value=[]):
+        off = openai_provider._tool_schemas([], ())
+        token = questions.bind(questions.QuestionPolicy(True))
+        try:
+            on = openai_provider._tool_schemas([], ())
+        finally:
+            questions.reset(token)
+
+    assert [s["name"] for s in off] == []
+    assert [s["name"] for s in on] == [ask_user.TOOL_NAME]
+    assert on[0]["parameters"] == ask_user.tool_parameters()
+
+
+# --- ask() / answer_question / agent_config ------------------------------------------------------------
+
+
+def _result() -> ChatResult:
+    return ChatResult(response="ok", provider_id="anthropic", model="m", total_tokens=1)
+
+
+def _ask_kwargs(**arguments) -> dict:
+    async def scenario():
+        with patch("src.server.agent_config.run_chat", new_callable=AsyncMock, return_value=_result()) as run_chat, \
+             patch("src.server.agent_config.status", return_value={"context_window": 1, "model": "m"}):
+            await server.ask("q", request_id="r", **arguments)
+        return run_chat.call_args.kwargs
+
+    return run(scenario())
+
+
+def test_ask_passes_ask_user_on_and_defaults_it_off() -> None:
+    assert _ask_kwargs(ask_user=True)["ask_user"] is True
+    assert _ask_kwargs()["ask_user"] is False
+
+
+def test_run_chat_enables_the_policy_for_a_top_level_turn_only() -> None:
+    from src.agents import agent_config
+
+    seen: list[bool] = []
+
+    async def fake_provider_run_chat(*args, **kwargs):
+        seen.append(questions.current().enabled)
+        return _result()
+
+    with patch.object(agent_config._PROVIDER_MODULE, "run_chat", fake_provider_run_chat):
+        run(agent_config.run_chat("q", [], [], request_id=REQUEST, ask_user=True))
+        run(agent_config.run_chat("q", [], [], request_id=REQUEST, ask_user=False))
+        run(agent_config.run_chat("q", [], [], request_id=REQUEST, depth=1, ask_user=True))
+
+    assert seen == [True, False, False]
+    assert questions.current().enabled is False
+
+
+def test_answer_question_answers_a_pending_question() -> None:
+    async def scenario():
+        waiter = asyncio.create_task(questions.BROKER.wait(REQUEST, "s1"))
+        await asyncio.sleep(0)
+        answered = await server.answer_question(REQUEST, "s1", ANSWERS, False)
+        return answered, await waiter
+
+    answered, answer = run(scenario())
+
+    assert answered == {"answered": True}
+    assert (answer.outcome, list(answer.answers)) == ("answered", ANSWERS)
+
+
+def test_answer_question_can_skip_and_reports_when_nothing_is_waiting() -> None:
+    async def scenario():
+        waiter = asyncio.create_task(questions.BROKER.wait(REQUEST, "s1"))
+        await asyncio.sleep(0)
+        skipped = await server.answer_question(REQUEST, "s1", None, True)
+        return skipped, (await waiter).outcome, await server.answer_question(REQUEST, "s1", None, True)
+
+    assert run(scenario()) == ({"answered": True}, "skipped", {"answered": False})
+
+
+def test_status_says_questions_are_understood() -> None:
+    with patch("src.server.agent_config.status", return_value={"available": True}):
+        assert server.status()["user_questions"] is True
