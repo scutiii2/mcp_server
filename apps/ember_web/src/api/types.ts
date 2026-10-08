@@ -115,6 +115,13 @@ export interface QuestionAnswer {
   other: string | null;
 }
 
+/** A private extension a turn could not use, and why. */
+export interface TurnNotice {
+  id: string;
+  label: string;
+  error: string;
+}
+
 /** Events of a turn ember_api runs, as its /events stream sends them. The
  * token/step ones are ai_agent's own, relayed. */
 export type TurnEvent = { sequence: number } & (
@@ -128,6 +135,7 @@ export type TurnEvent = { sequence: number } & (
   | { type: "approval_resolved"; id: string; outcome: string }
   | { type: "question_request"; id: string; questions: Question[] }
   | { type: "question_resolved"; id: string; outcome: string }
+  | { type: "notice"; notices: TurnNotice[] }
   | { type: "usage"; total_tokens: number; estimated: boolean }
   | { type: "summarizing" }
   | { type: "summarized" }

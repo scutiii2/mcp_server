@@ -15,6 +15,7 @@ import type {
   QuestionAnswer,
   ToolStep,
   TurnEvent,
+  TurnNotice,
 } from "../api/types";
 import {
   LegacyLocalChats,
@@ -136,6 +137,8 @@ export const useChatStore = defineStore("chat", () => {
   const loadError = ref("");
   const saveError = ref("");
   const sendError = ref("");
+  // Private extensions the latest answer could not use. Live only: not saved, not in a catch-up snapshot.
+  const notices = ref<TurnNotice[]>([]);
   const chatLoading = ref(false);
   // Summarize / clear in progress for the open chat.
   const working = ref("");
@@ -415,6 +418,7 @@ export const useChatStore = defineStore("chat", () => {
       saveError.value = "";
       loadError.value = "";
       sendError.value = "";
+      notices.value = [];
       activeId.value = null;
       jumpIndex.value = null;
       conversations.value = [];
@@ -491,6 +495,9 @@ export const useChatStore = defineStore("chat", () => {
         if (!pendingQuestions.value.some((q) => q.id === event.id)) {
           pendingQuestions.value.push({ id: event.id, questions: event.questions });
         }
+        break;
+      case "notice":
+        notices.value = event.notices;
         break;
       case "question_resolved":
         activity.value = "";
@@ -678,6 +685,7 @@ export const useChatStore = defineStore("chat", () => {
     const truncateTo = options.truncateTo;
     if (truncateTo !== undefined && !canReplaceFrom(truncateTo)) return false;
     sendError.value = "";
+    notices.value = [];
     clearSuggestion();
     if (truncateTo === undefined && question.startsWith("/")) {
       await runCommand(question);
@@ -892,6 +900,7 @@ export const useChatStore = defineStore("chat", () => {
     unfollow();
     clearSuggestion();
     sendError.value = "";
+    notices.value = [];
     jumpIndex.value = null;
     activeId.value = null;
     scheduleBackgroundPoll();
@@ -907,10 +916,15 @@ export const useChatStore = defineStore("chat", () => {
     unfollow();
     clearSuggestion();
     sendError.value = "";
+    notices.value = [];
     activeId.value = id;
     scheduleBackgroundPoll();
     if (conversation.messagesLoaded === false || conversation.running) await loadChat(id);
     if (activeId.value === id && !find(id)?.running) void fetchSuggestion(id);
+  }
+
+  function dismissNotices(): void {
+    notices.value = [];
   }
 
   function clearJump(): void {
@@ -1177,6 +1191,8 @@ export const useChatStore = defineStore("chat", () => {
     loadError,
     saveError,
     sendError,
+    notices,
+    dismissNotices,
     send,
     regenerateIndex,
     regenerate,
