@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mcp import types
 
+from src.core import approvals
 from src.mcp_client import mcp_upstream
 from src.mcp_client.sync_wrapper import SyncMcpClient
 from src.private_extensions import turn as private_turn
@@ -137,6 +138,45 @@ def test_a_huge_private_result_is_cut_with_a_note(bound, pool):
     assert limit == 50_000
     assert out.startswith("x" * limit)
     assert out[limit:] == "\n\n[Truncated: the extension returned 60000 characters; only the first 50000 are shown.]"
+
+
+@pytest.fixture
+def policy():
+    pol = approvals.ApprovalPolicy("off")
+    token = approvals.bind(pol)
+    yield pol
+    approvals.reset(token)
+
+
+def test_a_private_call_taints_the_turn_so_later_tools_ask(bound, pool, policy):
+    assert policy.tainted is False
+
+    mcp_upstream.call_tool("u_notes__search", {})
+
+    assert policy.tainted is True
+    assert policy.needs_approval("main__calc") is True
+
+
+def test_a_failing_private_call_taints_the_turn_too(bound, pool, policy):
+    pool.error = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        mcp_upstream.call_tool("u_notes__search", {})
+
+    assert policy.tainted is True
+
+
+def test_a_refused_private_call_does_not_taint_the_turn(bound, pool, policy):
+    with pytest.raises(PermissionError):
+        mcp_upstream.call_tool("u_notes__delete", {})
+
+    assert policy.tainted is False
+
+
+def test_a_private_call_without_a_bound_policy_never_changes_the_shared_default(bound, pool):
+    mcp_upstream.call_tool("u_notes__search", {})
+
+    assert approvals.current().tainted is False
 
 
 def test_a_built_in_call_is_unchanged(pool):

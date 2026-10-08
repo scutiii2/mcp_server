@@ -17,7 +17,7 @@ from typing import Any
 
 from src.agents import agent_spec
 
-from src.core import internal_auth, tool_filter
+from src.core import approvals, internal_auth, tool_filter
 
 from src.mcp_client import tool_progress
 from src.core.config_files import SERVERS_PATH
@@ -155,6 +155,10 @@ def _call_private(name: str, arguments: dict[str, Any]) -> str:
         result = client.run_coroutine(private_pool.call(turn.account, spec, upstream, arguments))
     except Exception as error:  # noqa: BLE001 - say what happened without a header value or a traceback
         raise RuntimeError(describe_error(error, spec.secrets)) from None
+    finally:
+        # Whatever came back (a result or an error message) is the server's text:
+        # every later tool this turn asks first.
+        approvals.mark_tainted()
     parts = [getattr(block, "text", str(block)) for block in result.content]
     text = "\n".join(parts) if parts else "(no output)"
     if len(text) > MAX_PRIVATE_RESULT_CHARS:

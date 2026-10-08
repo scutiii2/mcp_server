@@ -297,6 +297,11 @@ They always ask before running, even with `approval_mode="off"`, unless
 already in `allowed_tools`. An `always` decision allows the tool for the
 rest of the turn; mode `deny` refuses tools that need approval.
 
+A private tool's result is text from a server this agent does not control, so
+once one has run in a turn (whether it succeeded or failed) every later tool in
+that turn asks first as well, unless the user already allowed it for the chat.
+A result longer than 50,000 characters is cut, with a note saying so.
+
 An unavailable extension does not fail the turn: its tools are omitted and
 `ask()` includes `private_extension_errors: [{id, label, error}]` in the
 reply when there are errors. Header values are hidden in error messages.

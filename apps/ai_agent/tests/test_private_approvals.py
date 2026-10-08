@@ -96,3 +96,23 @@ def test_a_delegated_agent_cannot_ask_so_a_private_tool_is_refused():
 
     assert outcome == approvals.DELEGATED
     assert events == []
+
+
+def test_once_tainted_every_tool_asks_unless_already_allowed():
+    pol = approvals.ApprovalPolicy("off", {"main__ping"})
+    assert pol.needs_approval("main__calc") is False
+
+    pol.tainted = True
+
+    assert pol.needs_approval("main__calc") is True
+    assert pol.needs_approval("main__ping") is False
+
+
+def test_a_tainted_built_in_tool_asks_and_runs_after_allow():
+    pol = approvals.ApprovalPolicy("off")
+    pol.tainted = True
+
+    outcome, events = review(pol, "main__calc", "allow")
+
+    assert outcome is None
+    assert [e["type"] for e in events] == ["approval_request", "approval_resolved"]
