@@ -83,26 +83,28 @@ URL checks in `ember_api` are syntax only: `http` or `https`, a host, at most 10
 New package `src/private_extensions/`:
 
 - `guard.py`: `GuardedTransport`, an `httpx` async transport (or a network backend under it) that resolves the host itself and checks **every** resolved address before connecting, then connects to a checked address. Because every connection and every redirect hop goes through it, DNS rebinding and a redirect to `127.0.0.1` or `169.254.169.254` are both blocked. The blocklist: loopback, link-local, unspecified, multicast, reserved, the cloud metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`), and IPv4-mapped IPv6 forms of those. Private LAN ranges (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`) are allowed. A blocked address raises `BlockedAddress` with a message safe to show ("That address is not allowed").
-- The MCP SDK's `streamablehttp_client` must be given this transport. Check that the installed `mcp` version accepts an `httpx_client_factory`; if it does not, wrap the client creation so the factory is applied. Redirects are followed at most 3 hops, each through the guard.
-- `pool.py`: `PrivateSessionPool`. Sessions are keyed by `(account email, url, sha256 of the sorted headers)`, so a header change opens a new session. Idle expiry 300 seconds; at most 5 sessions per account and 50 in total (the oldest idle one is closed first); connect timeout 10 seconds (the existing `CONNECT_TIMEOUT_SECONDS`); call timeout 120 seconds. It uses the existing `open_session` pattern from `mcp_client/transports.py` and runs on the same background event loop as `SyncMcpClient`.
+- The MCP SDK's `streamablehttp_client` must be given this transport. Check that the installed `mcp` version accepts an `httpx_client_factory`; if it does not, wrap the client creation so the factory is applied. A redirect is followed only to the same scheme, host and port, at most 3 hops; any other target raises `RedirectRefused`, so a configured header (a token) is never sent to another host. Each hop also passes the guard. A connection is made to the checked IP address, with the original host kept in the `Host` header and as the TLS server name, so a second DNS answer cannot change where it connects.
+- Before `streamablehttp_client` is used, `open_private_session` makes one plain `initialize` POST through the same guarded client and raises on an HTTP error status (a wrong token is a 401). `mcp_server`'s `extensions.py` documents why: such a failure inside the SDK's own task group corrupts the event loop's cancel scopes.
+- `pool.py`: `PrivateSessionPool`. Sessions are keyed by `(account email, url, sha256 of the sorted headers)`, so a header change opens a new session. A session idle for more than 300 seconds is closed the next time the pool is used (and all are closed at shutdown); at most 5 sessions per account and 50 in total (the oldest idle one is closed first); connect timeout 10 seconds (the existing `CONNECT_TIMEOUT_SECONDS`); call timeout 120 seconds. It uses the existing `open_session` pattern from `mcp_client/transports.py` and runs on the same background event loop as `SyncMcpClient`.
 - `catalog.py`: for one turn, `bind(specs)` stores the specs in a `ContextVar`. `list_tools()` returns each connected extension's tools, namespaced `u_<slug>__<tool>`, capped at 100 tools per extension, and drops a tool whose full name exceeds 64 characters or does not match `^[a-zA-Z0-9_-]+$`, with the reason kept for the notice. A private tool never shadows a built-in or server-listed name (the `u_` prefix cannot clash with `main__`).
 
 ### Wiring
 
 - `server.py` `ask(...)` gains `private_extensions: list[dict[str, Any]] | None = None`. It binds them for the turn with `catalog.bind` and resets afterward, like `tool_filter` and `internal_auth`.
 - `mcp_upstream.list_tools` and `call_tool` merge in and route private tools. A call to a `u_...` name goes to the pooled session of that extension; an unknown or unbound `u_...` name is refused, so a model cannot name another account's tool.
-- `status()` adds `private_extensions: True`.
+- The tools are fetched before the provider starts, by an async `prefetch` run from `agent_config.run_chat` that connects to every extension concurrently on the connection loop. The providers' blocking `list_tools()` then only reads that cache, so it never waits on a network connection.
+- `status()` adds `private_extensions`: true, except when the agent's provider is `laya` (it has its own tool shortlist and does not list tools through `mcp_upstream`).
 - A new MCP tool `probe_extension(url, headers)` connects once through the guard, lists the tools, closes, and returns `{status, error, tools}`. It never raises for a bad server; the error is a short message without the headers.
-- A connect failure during a turn is recorded in the result as `private_extension_errors` and the turn continues without those tools. The system prompt for that turn gets one line naming the unavailable extension, so the model can tell the user.
+- A connect failure during a turn is recorded in the result as `private_extension_errors` and the turn continues without those tools.
 - Delegation: `delegation.py` does not forward `private_extensions`. A delegated agent never has private tools.
 
 ### Approval
 
 In `core/approvals.py`:
 
-- `ApprovalPolicy` gets `ask_tools: frozenset[str]`, the namespaced names of private tools for this turn (set by the same code that binds them).
-- `needs_approval(tool)` becomes: `tool not in allowed_tools` and (`mode != "off"` or `tool in ask_tools`).
-- In `review()`, a tool in `ask_tools` under mode `off` behaves as `ask`; under mode `deny` it is refused as it is today.
+- `ApprovalPolicy` gets `ask_prefixes: tuple[str, ...]`, set to `("u_",)` for a turn that has private extensions. Every private tool name starts with `u_`; no built-in or server-listed name does (those start with `main__`).
+- `needs_approval(tool)` becomes: `tool not in allowed_tools` and (`mode != "off"` or the name starts with one of `ask_prefixes`).
+- In `review()`, such a tool under mode `off` is handled as `ask`; under mode `deny` it is refused as today.
 - A user's "Allow for this chat" and "always" decisions already add the tool to `allowed_tools`; nothing else changes.
 
 ### Logging
@@ -166,7 +168,7 @@ Each part gets its own implementation plan and is committed task by task.
 
 ## Risks to check early
 
-- Whether the installed `mcp` SDK lets `streamablehttp_client` take a custom `httpx` client factory. If not, the guard needs a different hook, and this is the first thing to settle in part 1.
+- Settled: `streamablehttp_client` accepts `httpx_client_factory` (mcp SDK in use). A factory returns an `httpx.AsyncClient`; the guard is installed as its `transport`.
 - Whether `services/turns.py` and the `decide` route accept approvals when `ask_before_tools` is off.
 - Provider limits on tool names (64 characters, a restricted character set) for both providers.
 - The `anyio` cancel-scope problems documented in `mcp_server`'s `extensions.py` and `mcp_client/transports.py`: a connect to an unreachable host must go through the same plain-asyncio reachability probe before `streamablehttp_client`, then the guard.
