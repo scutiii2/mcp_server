@@ -105,6 +105,13 @@ describe("ExtensionsAdminView", () => {
     expect(wrapper.find("[data-id=notes]").exists()).toBe(false);
   });
 
+  it("gives the add form inputs accessible names", async () => {
+    const wrapper = await mounted();
+    expect(wrapper.find('input[aria-label="Name"]').attributes("data-test")).toBe("label");
+    expect(wrapper.find('input[aria-label="URL"]').attributes("data-test")).toBe("url");
+    expect(wrapper.find('input[aria-label="Description"]').exists()).toBe(true);
+  });
+
   it("works for an empty list", async () => {
     vi.spyOn(extensionsClient, "list").mockResolvedValue([]);
     const wrapper = await mounted();

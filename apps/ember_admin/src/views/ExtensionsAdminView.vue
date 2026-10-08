@@ -88,9 +88,9 @@ onMounted(load);
 
       <h3>Add an extension</h3>
       <form class="add" @submit.prevent="add">
-        <input v-model="label" data-test="label" type="text" placeholder="Name" required maxlength="80" autocomplete="off" />
-        <input v-model="url" data-test="url" type="text" placeholder="http://host:port/mcp" required maxlength="500" autocomplete="off" />
-        <input v-model="description" type="text" placeholder="What it is for (optional)" maxlength="500" autocomplete="off" />
+        <input v-model="label" data-test="label" type="text" placeholder="Name" aria-label="Name" required maxlength="80" autocomplete="off" />
+        <input v-model="url" data-test="url" type="text" placeholder="http://host:port/mcp" aria-label="URL" required maxlength="500" autocomplete="off" />
+        <input v-model="description" type="text" placeholder="What it is for (optional)" aria-label="Description" maxlength="500" autocomplete="off" />
         <button type="submit" class="primary" :disabled="adding">{{ adding ? "Adding…" : "Add" }}</button>
       </form>
       <p v-if="addError" class="error" role="alert" data-test="add-error">{{ addError }}</p>
