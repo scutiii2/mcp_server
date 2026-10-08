@@ -11,6 +11,12 @@ A provider's tool loop calls `review()` between announcing a step
 * ``deny``  - a tool needing approval is refused outright. A delegated agent
   gets this: it has no channel back to the user, so it cannot ask.
 
+A tool named in the policy's `ask_prefixes` asks even when the mode is
+``off`` (and is refused under ``deny``). Once a private tool has run in a
+turn the policy is `tainted`: from then on every tool asks, because the
+private server's output is untrusted text that could steer the model (a tool
+the user already allowed for the chat still runs without asking).
+
 The policy travels in a ContextVar, like tool_progress.py's sink, so the two
 providers' signatures stay as they are and the worker thread that runs
 ``delegate_to_agent`` (which copies the context) can read it.
@@ -49,16 +55,25 @@ class ApprovalPolicy:
     # Tools the user already allowed for this chat, and any they allow with
     # "always" during this turn.
     allowed_tools: set[str] = field(default_factory=set)
+    # Tools whose name starts with one of these always need approval, even in
+    # mode "off" (the user's own MCP servers - see private_extensions/turn.py).
+    ask_prefixes: tuple[str, ...] = ()
+    # Set once a private tool has run this turn: its output is text from a server
+    # we do not control and could steer the model, so from then on every tool
+    # asks (see mcp_upstream._call_private).
+    tainted: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in APPROVAL_MODES:
             raise ValueError(f"approval_mode must be one of {', '.join(APPROVAL_MODES)}, not {self.mode!r}")
 
     def needs_approval(self, tool: str) -> bool:
-        return self.mode != "off" and tool not in self.allowed_tools
+        return tool not in self.allowed_tools and (
+            self.mode != "off" or self.tainted or tool.startswith(self.ask_prefixes)
+        )
 
-
-_policy: ContextVar[ApprovalPolicy] = ContextVar("approval_policy", default=ApprovalPolicy())
+_DEFAULT = ApprovalPolicy()
+_policy: ContextVar[ApprovalPolicy] = ContextVar("approval_policy", default=_DEFAULT)
 
 
 def bind(policy: ApprovalPolicy) -> Token:
@@ -71,6 +86,15 @@ def reset(token: Token) -> None:
 
 def current() -> ApprovalPolicy:
     return _policy.get()
+
+
+def mark_tainted() -> None:
+    """Every later tool this turn asks (see ApprovalPolicy.tainted). A turn
+    without its own policy shares the default one with every caller, which is
+    never changed."""
+    policy = _policy.get()
+    if policy is not _DEFAULT:
+        policy.tainted = True
 
 
 class ApprovalBroker:

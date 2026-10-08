@@ -17,11 +17,17 @@ from typing import Any
 
 from src.agents import agent_spec
 
-from src.core import internal_auth, tool_filter
+from src.core import approvals, internal_auth, tool_filter
 
 from src.mcp_client import tool_progress
 from src.core.config_files import SERVERS_PATH
 from src.mcp_client.sync_wrapper import SyncMcpClient
+
+import asyncio
+
+from src.private_extensions import turn as private_turn
+from src.private_extensions.pool import PrivateSessionPool
+from src.private_extensions.spec import InvalidSpec, PrivateSpec, describe_error
 
 _CONFIG_PATH = SERVERS_PATH
 
@@ -35,6 +41,14 @@ _PREFIX = f"{_SERVER_ID}__"
 _log = logging.getLogger(__name__)
 
 client = SyncMcpClient()
+
+# Sessions to the users' own MCP servers (see src/private_extensions/); they
+# live on the same connection loop as `client`.
+private_pool = PrivateSessionPool()
+
+# A private server is not trusted to keep its answers small: more than this is
+# cut before it reaches the model.
+MAX_PRIVATE_RESULT_CHARS = 50_000
 
 # Appended to the description of any tool whose MCP meta sets
 # ai_explain_result - the tool itself stays deterministic and never calls
@@ -98,10 +112,16 @@ def list_tools(enabled_extensions: list[str] | None = None) -> list[Any]:
         if tool_filter.is_blocked(short):
             continue
         result.append(tool)
+    turn = private_turn.current()
+    if turn:
+        # Fetched before the provider started (prefetch_private), so this never waits on a network.
+        result.extend(tool for tool in turn.tools() if scope.allows(tool.name))
     return result
 
 
 def call_tool(name: str, arguments: dict[str, Any]) -> str:
+    if name.startswith(private_turn.TOOL_PREFIX):
+        return _call_private(name, arguments)
     if name.startswith(_PREFIX) and not agent_spec.current().tools.allows(unprefixed(name)):
         # The model only sees in-scope tools, but may still name another one.
         raise PermissionError(f"tool {name!r} is not available to this agent")
@@ -123,7 +143,53 @@ def call_tool(name: str, arguments: dict[str, Any]) -> str:
     return "\n".join(parts) if parts else "(no output)"
 
 
+def _call_private(name: str, arguments: dict[str, Any]) -> str:
+    turn = private_turn.current()
+    route = turn.route(name) if turn else None
+    if turn is None or route is None or not agent_spec.current().tools.allows(name):
+        # The model only sees this turn's tools, but may still name another.
+        raise PermissionError(f"tool {name!r} is not available to this agent")
+    spec, upstream = route
+    try:
+        # No identity is sent: the user's own server is not mcp_server.
+        result = client.run_coroutine(private_pool.call(turn.account, spec, upstream, arguments))
+    except Exception as error:  # noqa: BLE001 - say what happened without a header value or a traceback
+        raise RuntimeError(describe_error(error, spec.secrets)) from None
+    finally:
+        # Whatever came back (a result or an error message) is the server's text:
+        # every later tool this turn asks first.
+        approvals.mark_tainted()
+    parts = [getattr(block, "text", str(block)) for block in result.content]
+    text = "\n".join(parts) if parts else "(no output)"
+    if len(text) > MAX_PRIVATE_RESULT_CHARS:
+        return (
+            f"{text[:MAX_PRIVATE_RESULT_CHARS]}\n\n[Truncated: the extension returned {len(text)} characters; "
+            f"only the first {MAX_PRIVATE_RESULT_CHARS} are shown.]"
+        )
+    return text
+
+
+async def prefetch_private(turn: "private_turn.PrivateTurn") -> None:
+    """Connect to the turn's private extensions and list their tools, without
+    blocking the caller's event loop."""
+    await turn.prefetch(private_pool, lambda coro: asyncio.wrap_future(client.submit(coro)))
+
+
+async def probe_private(url: str, headers: dict[str, str] | None) -> dict[str, Any]:
+    """Connect once to `url` and report what it offers. Never raises."""
+    try:
+        spec = PrivateSpec.from_probe(url, headers)
+    except InvalidSpec as error:
+        return {"status": "error", "error": str(error), "tools": []}
+    try:
+        tools = await asyncio.wrap_future(client.submit(private_pool.probe(spec)))
+    except Exception as error:  # noqa: BLE001 - any failure is one "error" outcome
+        return {"status": "error", "error": describe_error(error, spec.secrets), "tools": []}
+    return {"status": "connected", "error": None, "tools": sorted(tool.name for tool in tools)[: private_turn.MAX_TOOLS]}
+
+
 def close() -> None:
+    client.run_coroutine(private_pool.aclose())
     client.close()
 
 

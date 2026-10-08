@@ -13,6 +13,7 @@ thread and waiting for its result.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -31,6 +32,14 @@ class SyncMcpClient:
 
     def _run(self, coro: Any) -> Any:
         return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+
+    def submit(self, coro: Any) -> concurrent.futures.Future:
+        """Start `coro` on the connection loop; the caller awaits or waits on the future."""
+        return asyncio.run_coroutine_threadsafe(coro, self._loop)
+
+    def run_coroutine(self, coro: Any) -> Any:
+        """Run `coro` on the connection loop and block until it is done."""
+        return self._run(coro)
 
     def connect_all(
         self,

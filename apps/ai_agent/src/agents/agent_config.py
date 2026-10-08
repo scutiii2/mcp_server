@@ -17,7 +17,8 @@ from dotenv import dotenv_values
 
 from src.agents import agent_spec, delegation
 
-from src.core import approvals, questions, tool_filter
+from src.core import approvals, internal_auth, questions, tool_filter
+from src.private_extensions import turn as private_turn
 from src.llm import llm_options, model_tiers
 from src.llm import reasoning_effort as effort_limits
 from src.core.seed import seed_from_example
@@ -97,6 +98,7 @@ async def run_chat(
     allowed_tools: list[str] | None = None,
     disabled_tools: list[str] | None = None,
     ask_user: bool = False,
+    private_extensions: list[dict[str, Any]] | None = None,
     model_tier: str | None = None,
     reasoning_effort: str | None = None,
 ) -> ChatResult:
@@ -118,6 +120,11 @@ async def run_chat(
     disabled_tools: tools the asking user switched off for their own chats
     (see core/tool_filter.py); they are not offered and not run.
 
+    private_extensions: the user's own MCP servers for this turn, as ember_api
+    sent them (see private_extensions/turn.py). Their tools are offered after
+    the user approves each one; a server that cannot be reached is reported
+    in `result.private_extension_errors` and the turn goes on without it.
+
     approval_mode / allowed_tools: see approvals.py - with "ask" a tool runs
     only after the user allows it (tools in allowed_tools were allowed
     already); "deny" refuses any tool that would need asking.
@@ -131,8 +138,12 @@ async def run_chat(
     requests this process is serving, with on_event dropped since a sync
     provider has nowhere to await it from.
     """
+    requester = internal_auth.current_requester()
+    private = private_turn.PrivateTurn.from_raw(private_extensions, requester.email or requester.username)
     # Validated before anything is registered: a bad mode must not start a turn.
-    policy = approvals.ApprovalPolicy(approval_mode, set(allowed_tools or ()))
+    policy = approvals.ApprovalPolicy(
+        approval_mode, set(allowed_tools or ()), ask_prefixes=(private_turn.TOOL_PREFIX,) if private else ()
+    )
     resolution = (
         model_tiers.resolve(model_tier, model_tiers.own_tiers(), MODEL, agent_spec.current().id)
         if model_tier else model_tiers.Resolution(MODEL, None)
@@ -143,10 +154,16 @@ async def run_chat(
     approval_token = approvals.bind(policy)
     question_token = questions.bind(questions.QuestionPolicy(ask_user and depth == 0))
     filter_token = tool_filter.bind(disabled_tools or ())
+    private_token = private_turn.bind(private)
     effort_token = llm_options.bind_effort(effort.effort)
     try:
         if cancellation.is_cancelled(request_id):
             raise ChatCancelled()
+        if private:
+            # Imported here: laya agents never load mcp_upstream.
+            from src.mcp_client import mcp_upstream
+
+            await mcp_upstream.prefetch_private(private)
         if inspect.iscoroutinefunction(_PROVIDER_MODULE.run_chat):
             result = await _PROVIDER_MODULE.run_chat(
                 question, history, resolution.model, enabled_extensions, request_id, depth,
@@ -169,9 +186,11 @@ async def run_chat(
         result.model_note = resolution.note
         result.reasoning_effort = effort.effort
         result.effort_note = effort.note
+        result.private_extension_errors = list(private.errors)
         return result
     finally:
         llm_options.reset_effort(effort_token)
+        private_turn.reset(private_token)
         tool_filter.reset(filter_token)
         questions.reset(question_token)
         approvals.reset(approval_token)
