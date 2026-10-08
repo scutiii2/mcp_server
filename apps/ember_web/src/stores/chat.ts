@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import { chatsClient, type ChatSearchHit } from "../api/ChatsClient";
-import { commandsClient } from "../api/CommandsClient";
 import { settingsClient } from "../api/SettingsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import { ApiError } from "../api/http";
@@ -27,6 +26,7 @@ import { splitAttachments, withAttachments } from "../utils/attachments";
 import { errorMessage } from "../utils/errors";
 import { toolTitle } from "../utils/toolTitles";
 import { useAuthStore } from "./auth";
+import { useAccountCapabilitiesStore } from "./accountCapabilities";
 
 const TITLE_MAX_CHARS = 60;
 // While a chat other than the open one is still being answered, the list is
@@ -89,27 +89,6 @@ function readAllowedTools(accountId: number): Record<string, string[]> {
   } catch {
     return {};
   }
-}
-
-function extensionsKey(accountId: number): string {
-  return `ember_web.extensions.${accountId}`;
-}
-
-function disabledCapabilitiesKey(accountId: number): string {
-  return `ember_web.disabledCapabilities.${accountId}`;
-}
-
-function readStringList(key: string): string[] {
-  try {
-    const parsed: unknown = JSON.parse(readPreference(key) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function readExtensions(accountId: number): string[] {
-  return readStringList(extensionsKey(accountId));
 }
 
 // Per-viewer convenience: blocked storage just means the default (off).
@@ -193,17 +172,12 @@ export const useChatStore = defineStore("chat", () => {
   // answer was sent but not yet confirmed by the agent.
   const pendingApprovals = ref<PendingApproval[]>([]);
   const deciding = ref<string[]>([]);
-  // mcp_server extensions whose tools the agent (and slash commands) may use.
-  // None by default: a newly added extension is never in scope unasked.
-  // Remembered per account.
-  const enabledExtensions = ref<string[]>([]);
-  // Built-in capabilities this account switched off for its own chats (the
-  // switch on the Capabilities page). Everything is on by default. Remembered
-  // per account, on this device, like the extensions above.
-  const disabledCapabilities = ref<string[]>([]);
-  // What each capability's tools are called, to turn the choice above into the
-  // tool names ember_api passes on; read when a question is first sent.
-  let capabilityTools: Map<string, string[]> | null = null;
+  // What this account has added on the Capabilities page, kept in ember_api:
+  // the extensions whose tools the agent (and slash commands) may use, and the
+  // built-in capabilities it may use. Nothing is added to begin with.
+  const accountCaps = useAccountCapabilitiesStore();
+  const enabledExtensions = computed(() => accountCaps.extensions);
+  const enabledCapabilities = computed(() => accountCaps.capabilities);
   // Slash commands (tools.use): the runner caches the command list and tool
   // schemas, so it's replaced per account.
   let commandRunner = new SlashCommandRunner();
@@ -444,9 +418,6 @@ export const useChatStore = defineStore("chat", () => {
       askBeforeTools.value = accountId !== null && readPreference(askBeforeToolsKey(accountId)) === "1";
       chime.value = accountId === null || readPreference(chimeKey(accountId)) !== "0";
       allowedTools.value = accountId !== null ? readAllowedTools(accountId) : {};
-      enabledExtensions.value = accountId !== null ? readExtensions(accountId) : [];
-      disabledCapabilities.value = accountId !== null ? readStringList(disabledCapabilitiesKey(accountId)) : [];
-      capabilityTools = null;
       forceToolApproval.value = false;
       if (accountId !== null) void refreshSettings();
       commandRunner = new SlashCommandRunner();
@@ -623,12 +594,18 @@ export const useChatStore = defineStore("chat", () => {
     if (!auth.hasPermission("tools.use")) return;
     const started = generation;
     try {
-      const list = await commandRunner.list(enabledExtensions.value, disabledCapabilities.value);
+      const list = await commandRunner.list(enabledExtensions.value, enabledCapabilities.value);
       if (started === generation) commands.value = list;
     } catch {
       if (started === generation) commands.value = [];
     }
   }
+
+  // The suggestions follow what the account has added.
+  watch([enabledExtensions, enabledCapabilities], () => {
+    void loadCommands();
+  });
+
 
   /** "/..." runs an mcp_server tool directly (no AI); the call and its
    * result are added to the chat. */
@@ -642,7 +619,7 @@ export const useChatStore = defineStore("chat", () => {
     clockStart.value = began;
     const started = generation;
     try {
-      const result = await commandRunner.run(text, enabledExtensions.value, disabledCapabilities.value);
+      const result = await commandRunner.run(text, enabledExtensions.value, enabledCapabilities.value);
       if (started !== generation) return;
       const seconds = Number(((Date.now() - began) / 1000).toFixed(1));
       await appendMessages(
@@ -681,14 +658,13 @@ export const useChatStore = defineStore("chat", () => {
       await runCommand(question);
       return true;
     }
-    // Which tools the account switched off: needed before anything is changed.
-    let disabledTools: string[];
-    try {
-      disabledTools = await resolveDisabledTools();
-    } catch (err) {
-      sendError.value = `Couldn't check which capabilities you switched off, so nothing was sent: ${errorMessage(err)}`;
+    // What the account added, as ember_api last saved it: needed before anything is changed.
+    await accountCaps.settled();
+    if (!accountCaps.ready) {
+      sendError.value = `Couldn't check which capabilities you added, so nothing was sent: ${accountCaps.error || "not loaded yet"}`;
       return false;
     }
+    const disabledTools = accountCaps.disabledTools;
     // The administrator may have changed what is required since the page loaded.
     void refreshSettings();
 
@@ -1007,45 +983,6 @@ export const useChatStore = defineStore("chat", () => {
     if (accountId !== undefined) writePreference(cavemanKey(accountId), on ? "1" : "0");
   }
 
-  /** The tool names of the capabilities the account switched off. Reads the
-   * capability list once, and only when something is switched off; a failed
-   * read throws, so a question never goes out with those tools still on offer. */
-  async function resolveDisabledTools(): Promise<string[]> {
-    if (disabledCapabilities.value.length === 0) return [];
-    if (capabilityTools === null) {
-      const started = generation;
-      const list = await commandsClient.capabilities();
-      if (started !== generation) throw new Error("the account changed");
-      capabilityTools = new Map(list.map((c) => [c.name, c.tools]));
-    }
-    const names = disabledCapabilities.value.flatMap((name) => capabilityTools?.get(name) ?? []);
-    return [...new Set(names)].sort();
-  }
-
-  /** Lets the agent (and slash commands) use built-in capability `name`'s tools, or not. */
-  function setCapabilityEnabled(name: string, on: boolean): void {
-    const next = new Set(disabledCapabilities.value);
-    if (on) next.delete(name);
-    else next.add(name);
-    disabledCapabilities.value = [...next].sort();
-    const accountId = auth.account?.id;
-    if (accountId !== undefined) {
-      writePreference(disabledCapabilitiesKey(accountId), JSON.stringify(disabledCapabilities.value));
-    }
-    void loadCommands();
-  }
-
-  /** Lets the agent (and slash commands) use extension `id`'s tools, or not. */
-  function setExtensionEnabled(id: string, on: boolean): void {
-    const next = new Set(enabledExtensions.value);
-    if (on) next.add(id);
-    else next.delete(id);
-    enabledExtensions.value = [...next].sort();
-    const accountId = auth.account?.id;
-    if (accountId !== undefined) writePreference(extensionsKey(accountId), JSON.stringify(enabledExtensions.value));
-    void loadCommands();
-  }
-
   /** After extensions were added or removed: re-read tools and commands. */
   function refreshCommands(): void {
     commandRunner.invalidate();
@@ -1224,9 +1161,7 @@ export const useChatStore = defineStore("chat", () => {
     deciding,
     decideApproval,
     enabledExtensions,
-    setExtensionEnabled,
-    disabledCapabilities,
-    setCapabilityEnabled,
+    enabledCapabilities,
     refreshCommands,
     clearChat,
     summarizeChat,

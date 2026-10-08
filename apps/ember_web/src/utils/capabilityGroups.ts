@@ -31,6 +31,33 @@ function ownedByExtension(extension: ExtensionInfo, tool: ToolInfo): boolean {
   return extension.tools.includes(tool.name) || inExtensionNamespace(extension.id, tool.name);
 }
 
+export interface AddedOnly {
+  capabilities: CapabilityInfo[];
+  extensions: ExtensionInfo[];
+  tools: ToolInfo[];
+}
+
+/** What the account has added: only those capabilities and extensions, and the
+ * tools left once the ones of everything not added are removed, so they do not
+ * turn up as "other tools". */
+export function addedOnly(
+  capabilities: CapabilityInfo[],
+  extensions: ExtensionInfo[],
+  tools: ToolInfo[],
+  addedCapabilities: readonly string[],
+  addedExtensions: readonly string[],
+): AddedOnly {
+  const capabilityIds = new Set(addedCapabilities);
+  const extensionIds = new Set(addedExtensions);
+  const hiddenTools = new Set(capabilities.filter((c) => !capabilityIds.has(c.name)).flatMap((c) => c.tools));
+  const hiddenExtensions = extensions.filter((e) => !extensionIds.has(e.id));
+  return {
+    capabilities: capabilities.filter((c) => capabilityIds.has(c.name)),
+    extensions: extensions.filter((e) => extensionIds.has(e.id)),
+    tools: tools.filter((t) => !hiddenTools.has(t.name) && !hiddenExtensions.some((e) => ownedByExtension(e, t))),
+  };
+}
+
 function extensionMatches(extension: ExtensionInfo, q: string): boolean {
   return extension.id.toLowerCase().includes(q) || extension.label.toLowerCase().includes(q);
 }

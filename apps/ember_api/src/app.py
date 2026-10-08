@@ -19,6 +19,7 @@ from src.json_only import JsonOnlyMiddleware
 from src.security import SecurityMiddleware
 from src.routes import (
     account,
+    account_capabilities,
     admin,
     attachments,
     auth,
@@ -167,6 +168,7 @@ def create_app(
     app.include_router(chat_folders.router)
     app.include_router(templates.router)
     app.include_router(nav_preferences.router)
+    app.include_router(account_capabilities.router)
     app.include_router(shares.router)
     app.include_router(shares.public_router)
     app.include_router(usage.router)

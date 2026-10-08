@@ -69,7 +69,7 @@ _CHAT_ID_PATTERN = r"^[A-Za-z0-9-]{8,64}$"
 # extension's `<id>__<tool>`, `delegate_to_agent`).
 _TOOL_NAME = re.compile(r"[A-Za-z0-9_.\-]{1,120}")
 MAX_ALLOWED_TOOLS = 200
-MAX_DISABLED_TOOLS = 500
+MAX_DISABLED_TOOLS = 2000
 # Browser-made UUIDs; anything else is refused before touching the database.
 ChatId = Path(pattern=_CHAT_ID_PATTERN)
 # Room for a question plus a few attached files' text (20k characters each).

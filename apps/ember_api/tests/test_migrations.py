@@ -146,6 +146,7 @@ class TestDatabaseFromBeforeMigrations:
             conn.execute("DROP TABLE app_settings")  # made after the baseline, so a legacy database lacks it
             conn.execute("DROP TABLE traffic_buckets")  # likewise
             conn.execute("DROP TABLE nav_preferences")  # likewise
+            conn.execute("DROP TABLE account_capabilities")  # likewise
             drop_chat_folders(conn)
             conn.execute("ALTER TABLE accounts DROP COLUMN prompt_suggestions")  # added after the baseline too
             for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
@@ -277,6 +278,7 @@ class TestLaterMigration:
             conn.execute("DROP TABLE app_settings")  # a legacy database predates it
             conn.execute("DROP TABLE traffic_buckets")
             conn.execute("DROP TABLE nav_preferences")  # likewise
+            conn.execute("DROP TABLE account_capabilities")  # likewise
             for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
                 conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")
             drop_chat_folders(conn)

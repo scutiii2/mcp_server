@@ -1,3 +1,4 @@
+import { accountCapabilitiesClient } from "../api/AccountCapabilitiesClient";
 import { flushPromises } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,9 @@ import { watchTurn } from "../services/turnStream";
 import { useAuthStore } from "./auth";
 import { useChatStore } from "./chat";
 
+vi.mock("../api/AccountCapabilitiesClient", () => ({
+  accountCapabilitiesClient: { get: vi.fn(), set: vi.fn() },
+}));
 vi.mock("../api/ChatsClient", () => ({
   chatsClient: {
     list: vi.fn(),
@@ -80,6 +84,7 @@ const REQUEST = { type: "approval_request", id: "step0", tool: "tool_srv_stopApp
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+  vi.mocked(accountCapabilitiesClient.get).mockResolvedValue({ capabilities: [], extensions: [], disabled_tools: [] });
   sequence = 0;
   watch.mockImplementation(async (_id, _after, onEvent) => {
     emit = onEvent;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CapabilityInfo } from "../api/CommandsClient";
 import type { ExtensionInfo } from "../api/ExtensionsClient";
 import type { ToolInfo } from "../api/types";
-import { groupTools } from "./capabilityGroups";
+import { addedOnly, groupTools } from "./capabilityGroups";
 
 const cap = (name: string, tools: string[], extra: Partial<CapabilityInfo> = {}): CapabilityInfo => ({
   name,
@@ -119,5 +119,38 @@ describe("groupTools", () => {
 
   it("treats a blank query as no filter", () => {
     expect(groupTools(CAPS, TOOLS, "   ").groups).toHaveLength(3);
+  });
+});
+
+describe("addedOnly", () => {
+  const caps = [
+    { name: "pdf", enabled: true, label: "PDF files", tools: ["tool_pdf_merge"], resources: [] },
+    { name: "calc", enabled: true, label: "Calculator", tools: ["tool_calc"], resources: [] },
+  ];
+  const exts = [
+    { id: "notes", label: "Notes", description: "", status: "connected", error: null, tools: ["notes__add"] },
+    { id: "wiki", label: "Wiki", description: "", status: "connected", error: null, tools: [] },
+  ];
+  const all = [tool("tool_pdf_merge", "Merge"), tool("tool_calc", "Calc"), tool("notes__add", "Add"), tool("wiki__find", "Find"), tool("stray", "Stray")];
+
+  it("keeps only the added capabilities and extensions", () => {
+    const out = addedOnly(caps, exts, all, ["pdf"], ["notes"]);
+
+    expect(out.capabilities.map((c) => c.name)).toEqual(["pdf"]);
+    expect(out.extensions.map((e) => e.id)).toEqual(["notes"]);
+  });
+
+  it("drops the tools of what is not added so they do not show up as other tools", () => {
+    const out = addedOnly(caps, exts, all, ["pdf"], ["notes"]);
+
+    expect(out.tools.map((t) => t.name)).toEqual(["tool_pdf_merge", "notes__add", "stray"]);
+  });
+
+  it("drops an extension's tools found by its namespace too", () => {
+    expect(addedOnly(caps, exts, all, [], []).tools.map((t) => t.name)).toEqual(["stray"]);
+  });
+
+  it("ignores added ids that no longer exist", () => {
+    expect(addedOnly(caps, exts, all, ["gone"], ["gone"]).capabilities).toEqual([]);
   });
 });
