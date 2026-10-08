@@ -114,13 +114,14 @@ Nothing logs a header value. Exceptions are reduced to their root-cause message 
 ## ember_web
 
 - `src/api/UserExtensionsClient.ts` for the four routes, and `src/stores/userExtensions.ts` (Pinia, per account, reset on account change) holding the list, an `error`, and `add`, `update`, `remove`, `refresh`.
-- **Supermarket** (`SupermarketView.vue`): a new **My extensions** section below Extensions, shown to every account with `chat.use`. Each row (reuse `SupermarketItem`) shows label, slug, status and tool count, with **Enable** or **Disable**, **Edit** and **Remove**. **Add your own extension** opens `UserExtensionModal.vue`. The state filter chips apply to this section too (Enabled = enabled rows).
-- `UserExtensionModal.vue`: label, URL, description and a header editor (name and value rows, value input masked, a row can be removed). On edit, the existing header **names** are shown with an empty value and the note "Leave blank to keep the saved value"; headers are sent only if the user changed any, as the whole set. The server's error message (blocked address, limit) is shown inline.
+- **Supermarket** (`SupermarketView.vue`): a new **My extensions** section below Extensions, shown to every account with `chat.use`. Each row (reuse `SupermarketItem`) shows label, slug, status and tool count, with **Enable** (shown as **Enabled** once on) or **Disable**, **Edit** and **Remove**; a row that cannot be reached shows the reason under its name. **Add your own extension** opens `UserExtensionModal.vue`. The state filter chips apply to this section too (Enabled = enabled rows).
+- `UserExtensionModal.vue`: label, URL, description and a header editor (name and value rows, value input masked, a row can be removed). On edit, the saved header **names** are listed and the editor stays closed. **Replace headers** opens an empty editor; saving then sends the whole new set (none removes them all). Without it, `headers` is not sent and the saved ones stay. If the address changes to another host and the headers are not being replaced, the modal says the saved headers will be removed (that is what `ember_api` does). The server's error message (blocked address, limit) is shown inline.
 - Remove uses the in-app confirm modal, not a type-to-confirm one (the user's own thing, easy to re-add).
 - **Capabilities page** (`CapabilitiesView.vue`): enabled private extensions are cards in the Extensions group, with the status dot, the tool names (no run button), a switch that disables the extension, and a "Private" label. They have no Open button and no resources.
-- The chat shows a `notice` turn event as a small line under the answer.
+- The chat shows a `notice` turn event as a banner above the messages ("<label> wasn't used in this answer: <reason>") until the next question, a new chat, another chat, or Dismiss. A watcher that joins after the notice was sent does not see it.
 - The approval card for a private tool is the existing one; no UI change beyond making sure it is shown when `ask_before_tools` is off.
 - Tokens only for styling (`ember-design-system` skill): no hex colours, radius tokens, `:focus-visible`, icon-only buttons get a name.
+- A `userExtensions` store loads the account's extensions at sign-in (accounts with `chat.use`); the Supermarket and the Capabilities page refresh it when they open, because the status comes from a live probe.
 
 ## Error handling
 
