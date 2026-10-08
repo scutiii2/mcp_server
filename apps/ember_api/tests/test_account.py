@@ -142,3 +142,32 @@ def test_protected_admin_is_refused(client: TestClient) -> None:
 
     assert (email_change.status_code, password_change.status_code) == (409, 409)
     assert ".env" in email_change.json()["detail"]
+
+
+# --- preferences ----------------------------------------------------------------
+
+
+def test_preferences_need_login(client: TestClient) -> None:
+    assert client.patch("/api/account/preferences", json={"prompt_suggestions": False}).status_code == 401
+
+
+def test_prompt_suggestions_start_on_and_can_be_turned_off_and_on(client: TestClient) -> None:
+    as_admin(client)
+    assert client.get("/api/auth/me").json()["prompt_suggestions"] is True
+
+    off = client.patch("/api/account/preferences", json={"prompt_suggestions": False})
+
+    assert off.status_code == 200
+    assert off.json()["prompt_suggestions"] is False
+    assert client.get("/api/auth/me").json()["prompt_suggestions"] is False
+    on = client.patch("/api/account/preferences", json={"prompt_suggestions": True})
+    assert on.json()["prompt_suggestions"] is True
+    assert client.get("/api/auth/me").json()["prompt_suggestions"] is True
+
+
+def test_preferences_refuse_anything_but_a_boolean(client: TestClient) -> None:
+    as_admin(client)
+
+    for body in ({"prompt_suggestions": "maybe"}, {"prompt_suggestions": 1}, {}):
+        assert client.patch("/api/account/preferences", json=body).status_code == 422, body
+    assert client.get("/api/auth/me").json()["prompt_suggestions"] is True

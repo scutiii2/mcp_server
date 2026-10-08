@@ -1,4 +1,4 @@
-"""/api/account: the logged-in user changes their own email or password,
+"""/api/account: the logged-in user changes their own email, password or preferences,
 and sees (or forgets) the devices they logged in from.
 
 Any logged-in account may call these, verified or not - an unverified user
@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
@@ -46,6 +46,11 @@ class ChangeEmailRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=1024)
     new_password: str = Field(min_length=8, max_length=1024)
+
+
+class PreferencesRequest(BaseModel):
+    # Strict: "maybe", 1 and a missing field are all refused (422).
+    prompt_suggestions: StrictBool
 
 
 class EmailChangedOut(BaseModel):
@@ -158,6 +163,25 @@ async def change_password(
     # current_account already proved the cookie is there and valid.
     await sessions.revoke_others(account.id, request.cookies[settings.session_cookie_name])
     await logs.action(account, "account.password", "Changed password; other sessions logged out")
+    return AccountOut.of(account, settings)
+
+
+@router.patch("/preferences")
+async def set_preferences(
+    body: PreferencesRequest,
+    db: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    account: Account = Depends(current_account),
+    logs: LogWriter = Depends(get_log_writer),
+) -> AccountOut:
+    """Switches the account keeps on the server because the server acts on
+    them: today, whether chat makes a model call to suggest the next prompt."""
+    if account.prompt_suggestions != body.prompt_suggestions:
+        account.prompt_suggestions = body.prompt_suggestions
+        await db.commit()
+        await logs.action(
+            account, "account.preferences", f"Prompt suggestions {'on' if body.prompt_suggestions else 'off'}"
+        )
     return AccountOut.of(account, settings)
 
 

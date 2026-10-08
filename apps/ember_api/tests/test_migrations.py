@@ -18,8 +18,8 @@ from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
 # The newest real migration; the tests' throwaway one comes after it.
-HEAD = "0006"
-NEXT = "0007"
+HEAD = "0007"
+NEXT = "0008"
 
 
 def make_database(tmp_path: Path) -> Database:
@@ -147,6 +147,7 @@ class TestDatabaseFromBeforeMigrations:
             conn.execute("DROP TABLE traffic_buckets")  # likewise
             conn.execute("DROP TABLE nav_preferences")  # likewise
             drop_chat_folders(conn)
+            conn.execute("ALTER TABLE accounts DROP COLUMN prompt_suggestions")  # added after the baseline too
             for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
                 conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")  # added after the baseline too
             conn.execute(
@@ -181,7 +182,7 @@ class TestDatabaseFromBeforeMigrations:
     def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
         scripts = tmp_path / "baseline_only"
-        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*"))
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*"))
         calls: list[int] = []
 
         async def backup() -> None:
@@ -205,9 +206,9 @@ def scripts_with_a_new_migration(tmp_path: Path) -> Path:
     """The real migrations plus a throwaway one adding a column."""
     scripts = tmp_path / "migrations"
     shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
-    (scripts / "versions" / "0007_add_nickname.py").write_text(
-        'revision = "0007"\n'
-        'down_revision = "0006"\n'
+    (scripts / "versions" / "0008_add_nickname.py").write_text(
+        'revision = "0008"\n'
+        'down_revision = "0007"\n'
         "branch_labels = None\n"
         "depends_on = None\n"
         "import sqlalchemy as sa\n"
@@ -279,6 +280,7 @@ class TestLaterMigration:
             for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
                 conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")
             drop_chat_folders(conn)
+            conn.execute("ALTER TABLE accounts DROP COLUMN prompt_suggestions")  # added after the baseline too
             conn.commit()
         calls: list[int] = []
 
