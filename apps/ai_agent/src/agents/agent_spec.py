@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlsplit, urlunsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 AGENTS_DIR = PROJECT_ROOT / "agents"
@@ -38,7 +39,7 @@ _DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt", "laya": "local"}
 _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-_TOP_KEYS = {"label", "port", "enabled", "entry", "llm", "persona", "instructions", "focus", "tools", "orchestrator", "routing"}
+_TOP_KEYS = {"label", "port", "url", "enabled", "entry", "llm", "identity", "persona", "instructions", "focus", "tools", "orchestrator", "routing"}
 _LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "min_tier", "max_tier", "max_effort"}
 _TOOLS_KEYS = {"allow", "deny"}
 _ROUTING_KEYS = {"laya", "top_k", "allow_auto", "min_score"}
@@ -127,6 +128,8 @@ class AgentSpec:
     llm: LlmSpec
     enabled: bool = True
     entry: bool = False
+    # "" = the shared identity template (prompt_config); else replaces the identity line.
+    identity: str = ""
     persona: str = ""
     # "" = agent_roles.DEFAULT_INSTRUCTIONS.
     instructions: str = ""
@@ -134,6 +137,9 @@ class AgentSpec:
     tools: ToolScope = field(default_factory=ToolScope)
     orchestrator: bool = False
     routing: RoutingSpec = field(default_factory=RoutingSpec)
+    # Address peers and ember_api reach this agent at (what it registers);
+    # None = derived from the host and port it listens on.
+    url: str | None = None
     source: Path | None = None
 
     def effective_gateway(self) -> str | None:
@@ -207,6 +213,23 @@ class _Checker:
         if value not in TIERS:
             raise self.fail(f"{prefix}{key}", f"must be one of: {', '.join(TIERS)}")
         return value
+
+
+def _agent_url(check: _Checker, data: dict[str, Any]) -> str | None:
+    """`url`: the http(s) address this agent registers under. A bare origin
+    gets /mcp, the path ai_agent serves."""
+    value = check.text(data, "url", None)
+    if not value:
+        return None
+    parts = urlsplit(value.strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
+        raise check.fail("url", "must be an http(s) address like http://10.0.0.5:9103/mcp")
+    try:
+        parts.port  # noqa: B018 - raises ValueError for a port out of range
+    except ValueError:
+        raise check.fail("url", "has an invalid port") from None
+    path = parts.path.rstrip("/") or "/mcp"
+    return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
 def load_file(path: Path) -> AgentSpec:
@@ -287,11 +310,13 @@ def load_file(path: Path) -> AgentSpec:
 
     return AgentSpec(
         id=agent_id,
+        url=_agent_url(check, data),
         label=check.text(data, "label", None) or agent_id,
         port=port,
         llm=llm,
         enabled=check.boolean(data, "enabled", True),
         entry=check.boolean(data, "entry", False),
+        identity=check.text(data, "identity", "") or "",
         persona=check.text(data, "persona", "") or "",
         instructions=check.text(data, "instructions", "") or "",
         focus=check.text(data, "focus", "") or "",

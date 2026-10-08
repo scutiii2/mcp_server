@@ -37,7 +37,8 @@ REQUESTER_USERNAME_HEADER = "X-Requester-Username"
 REQUESTER_EMAIL_HEADER = "X-Requester-Email"
 REQUESTER_META_KEY = "requester"
 # /registry lists every agent's URL, so it sits behind the token like /mcp.
-PROTECTED_PATHS = ("/mcp", "/registry")
+# /agents edits the agent files, so it sits behind the token too.
+PROTECTED_PATHS = ("/mcp", "/registry", "/agents")
 
 
 def load_token() -> str:

@@ -70,7 +70,7 @@ from starlette.responses import JSONResponse
 # Anything else (a real bug, ImportError...) still propagates untouched.
 _CONFIG_ERROR_NAMES = {"AgentConfigError", "AgentRoleError", "ConfigError", "AgentSpecError"}
 try:
-    from src.agents import agent_config, agent_events, agent_registry
+    from src.agents import agent_config, agent_events, agent_registry, agent_store
     from src.core import approvals, internal_auth, questions, usage_log
     from src.mcp_client import mcp_upstream
     from src.llm.base_provider import ChatCancelled
@@ -117,7 +117,8 @@ _AGENT_ID = SPEC.id
 # An env-var instance has no label of its own: keep today's "<vendor> Agent".
 _AGENT_LABEL = SPEC.label or f"{agent_config.status()['vendor_label']} Agent"
 try:
-    _AGENT_URL = _agent_url(HOST, PORT, os.getenv("AI_AGENT_ADVERTISE_URL"))
+    # The agent file's own `url` wins over the host/port/env derived one.
+    _AGENT_URL = SPEC.url or _agent_url(HOST, PORT, os.getenv("AI_AGENT_ADVERTISE_URL"))
 except ValueError as _exc:
     sys.stderr.write(f"\nai_agent cannot start - configuration error:\n  {_exc}\n\n")
     sys.exit(1)
@@ -294,6 +295,112 @@ async def registry(_request: Request) -> JSONResponse:
     await asyncio.to_thread(agent_registry.reload)
     defined = await asyncio.to_thread(agent_registry.read_definitions)
     return JSONResponse({"agents": agent_registry.all_agents(), "defined": defined})
+
+
+def _store_error(error: agent_store.AgentStoreError) -> JSONResponse:
+    return JSONResponse({"error": str(error)}, status_code=error.status)
+
+
+async def _json_object(request: Request) -> dict[str, Any] | None:
+    try:
+        body = await request.json()
+    except ValueError:
+        return None
+    return body if isinstance(body, dict) else None
+
+
+@mcp.custom_route("/agents/gateways", methods=["GET"])
+async def agent_gateways(_request: Request) -> JSONResponse:
+    """Providers and their gateways, for the admin UI's pickers."""
+    try:
+        return JSONResponse({"providers": await asyncio.to_thread(agent_store.gateway_catalog)})
+    except agent_store.AgentStoreError as error:
+        return _store_error(error)
+
+
+@mcp.custom_route("/agents/files", methods=["GET"])
+async def agent_files_list(_request: Request) -> JSONResponse:
+    """Every agents/<id>.json. The supervisor applies changes within seconds."""
+    return JSONResponse({"agents": await asyncio.to_thread(agent_store.list_agents)})
+
+
+@mcp.custom_route("/agents/files", methods=["POST"])
+async def agent_files_create(request: Request) -> JSONResponse:
+    """Body: {"id": "...", "config": {...agent file...}}."""
+    body = await _json_object(request)
+    config = body.get("config") if body else None
+    if body is None or not isinstance(config, dict):
+        return JSONResponse({"error": "body must be {\"id\": ..., \"config\": {...}}"}, status_code=400)
+    try:
+        created = await asyncio.to_thread(agent_store.create_agent, body.get("id"), config)
+    except agent_store.AgentStoreError as error:
+        return _store_error(error)
+    return JSONResponse(created, status_code=201)
+
+
+@mcp.custom_route("/agents/files/{agent_id}", methods=["GET"])
+async def agent_files_get(request: Request) -> JSONResponse:
+    try:
+        return JSONResponse(await asyncio.to_thread(agent_store.get_agent, request.path_params["agent_id"]))
+    except agent_store.AgentStoreError as error:
+        return _store_error(error)
+
+
+@mcp.custom_route("/agents/files/{agent_id}", methods=["PUT"])
+async def agent_files_update(request: Request) -> JSONResponse:
+    """Body: the whole agent file (replaces the old one)."""
+    config = await _json_object(request)
+    if config is None:
+        return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
+    try:
+        return JSONResponse(await asyncio.to_thread(agent_store.update_agent, request.path_params["agent_id"], config))
+    except agent_store.AgentStoreError as error:
+        return _store_error(error)
+
+
+@mcp.custom_route("/agents/files/{agent_id}", methods=["DELETE"])
+async def agent_files_delete(request: Request) -> JSONResponse:
+    try:
+        await asyncio.to_thread(agent_store.delete_agent, request.path_params["agent_id"])
+    except agent_store.AgentStoreError as error:
+        return _store_error(error)
+    return JSONResponse({"deleted": request.path_params["agent_id"]})
+
+
+@mcp.custom_route("/agents/prompts", methods=["GET"])
+async def agent_prompts_get(_request: Request) -> JSONResponse:
+    """The shared prompt texts every agent's system prompt is built from."""
+    return JSONResponse(await asyncio.to_thread(agent_store.get_prompts))
+
+
+@mcp.custom_route("/agents/prompts", methods=["PUT"])
+async def agent_prompts_put(request: Request) -> JSONResponse:
+    """Body: {key: text | null}; null (or blank) resets a text to its default.
+    The supervisor restarts every agent to apply it."""
+    changes = await _json_object(request)
+    if changes is None:
+        return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
+    try:
+        return JSONResponse(await asyncio.to_thread(agent_store.set_prompts, changes))
+    except agent_store.AgentStoreError as error:
+        return _store_error(error)
+
+
+@mcp.custom_route("/agents/prompt-preview", methods=["POST"])
+async def agent_prompt_preview(request: Request) -> JSONResponse:
+    """Body: {"id": ..., "config": {...draft agent file...}, "caveman": false}
+    -> {"prompt": the assembled system prompt}."""
+    body = await _json_object(request)
+    config = body.get("config") if body else None
+    if body is None or not isinstance(config, dict):
+        return JSONResponse({"error": "body must be {\"id\": ..., \"config\": {...}}"}, status_code=400)
+    try:
+        prompt = await asyncio.to_thread(
+            agent_store.preview_prompt, body.get("id"), config, body.get("caveman") is True
+        )
+    except agent_store.AgentStoreError as error:
+        return _store_error(error)
+    return JSONResponse({"prompt": prompt})
 
 
 @mcp.tool()

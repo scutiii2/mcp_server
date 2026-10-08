@@ -6,64 +6,54 @@ built from, in order: an identity line ("Your name is Ember: <role>", the
 role being "Orchestrator" for an orchestrator and the file's label for any
 other agent), the file's persona, the orchestrator roster (per request, see
 system_prompt_for) and the file's instructions. An agent file with no
-instructions gets DEFAULT_INSTRUCTIONS.
+instructions gets DEFAULT_INSTRUCTIONS. The identity wording, the default
+instructions, the roster intro and the caveman rule are editable shared text
+(prompt_config.py); an agent file's `identity` replaces its identity line.
 """
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Mapping, Sequence
 
-from src.agents import agent_spec
+from src.agents import agent_spec, prompt_config
 from src.agents.agent_spec import AgentSpec, RosterEntry
 
-APP_NAME = "Ember"
-APP_DESCRIPTION = "Support tool that reads real system state through tools instead of manual lookups."
-DEFAULT_INSTRUCTIONS = (
-    "You are a helpful assistant with access to tools. Use them to get real data rather than guessing, "
-    "and say so plainly when no tool can answer the question. Confirm with the user before any "
-    "destructive or hard-to-reverse action."
-)
+# The shared texts (identity wording, default instructions, roster intro,
+# caveman rule) come from configs/config_prompts.json over the defaults in
+# agent_config's prompt_config; read once here, so a change needs a restart.
+_PROMPTS = prompt_config.load()
+APP_NAME = _PROMPTS["app_name"]
+APP_DESCRIPTION = _PROMPTS["app_description"]
+DEFAULT_INSTRUCTIONS = _PROMPTS["default_instructions"]
+CAVEMAN_INSTRUCTIONS = _PROMPTS["caveman_instructions"]
 
 
-def roster_block(roster: Sequence[RosterEntry]) -> str:
+def roster_block(roster: Sequence[RosterEntry], prompts: Mapping[str, str] | None = None) -> str:
     """The orchestrator's view of its specialists, one line each."""
     if not roster:
         return ""
+    intro = (prompts or _PROMPTS)["roster_intro"]
     lines = "\n".join(f"- {r.id} - {r.label}: {r.focus or '(no focus given)'}" for r in roster)
-    return (
-        "You coordinate these specialist agents. When a part of the request fits one of them "
-        "better than you, hand that part to it with delegate_to_agent, then combine the answers:\n"
-        f"{lines}"
-    )
+    return f"{intro}\n{lines}"
 
 
-def _identity(spec: AgentSpec) -> str:
+def _identity(spec: AgentSpec, prompts: Mapping[str, str]) -> str:
+    """The agent file's own `identity`, else the shared template."""
+    if spec.identity:
+        return spec.identity
     role = "Orchestrator" if spec.orchestrator else (spec.label or spec.id)
-    return (
-        f"Your name is {APP_NAME}: {role}, an AI Assistant. {APP_DESCRIPTION} "
-        "When asked who you are or what your name is, answer with your name and this role."
+    return prompts["identity_template"].format(
+        app_name=prompts["app_name"], app_description=prompts["app_description"], role=role
     )
 
 
-def _compose_system_prompt(spec: AgentSpec, roster_text: str = "") -> str:
-    parts = (_identity(spec), spec.persona, roster_text, spec.instructions or DEFAULT_INSTRUCTIONS)
+def _compose_system_prompt(spec: AgentSpec, roster_text: str = "", prompts: Mapping[str, str] | None = None) -> str:
+    prompts = prompts or _PROMPTS
+    parts = (_identity(spec, prompts), spec.persona, roster_text, spec.instructions or prompts["default_instructions"])
     return "\n\n".join(p for p in parts if p)
 
 
 SYSTEM_PROMPT = _compose_system_prompt(agent_spec.current())
-
-# Appended to SYSTEM_PROMPT per request when chat_app's caveman toggle is on.
-# A prompt-level instruction, not a post-process filter: a regex pass would
-# risk mangling code blocks, error strings and proper nouns.
-CAVEMAN_INSTRUCTIONS = (
-    "Respond terse, like a smart caveman. Keep all technical substance; cut "
-    "only fluff. Drop articles (a/an/the), filler (just/really/basically), "
-    "pleasantries and hedging. Fragments are fine. Use short synonyms. Keep "
-    "code blocks, commands, file paths, error messages, identifiers and "
-    "numbers exactly as they are. Never drop not/no/never/only/except: they "
-    "flip meaning. Use full, plain sentences for warnings and for anything "
-    "irreversible or destructive. Write in the language the user writes in."
-)
 
 
 def system_prompt_for(caveman: bool = False, roster: Sequence[RosterEntry] = ()) -> str:
@@ -71,3 +61,10 @@ def system_prompt_for(caveman: bool = False, roster: Sequence[RosterEntry] = ())
     before the tool-use instructions, and caveman instructions appended."""
     prompt = _compose_system_prompt(agent_spec.current(), roster_block(roster)) if roster else SYSTEM_PROMPT
     return f"{prompt}\n\n{CAVEMAN_INSTRUCTIONS}" if caveman else prompt
+
+
+def preview(spec: AgentSpec, roster: Sequence[RosterEntry], prompts: Mapping[str, str], caveman: bool = False) -> str:
+    """The system prompt `spec` would get with `prompts` and this roster, for
+    the admin UI's preview (an orchestrator's roster is its delegable agents)."""
+    text = _compose_system_prompt(spec, roster_block(roster, prompts) if spec.orchestrator else "", prompts)
+    return f"{text}\n\n{prompts['caveman_instructions']}" if caveman else text

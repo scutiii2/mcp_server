@@ -185,3 +185,89 @@ def test_start_publishes_every_defined_agent_including_disabled(tmp_path):
     asyncio.run(asyncio.wait_for(sup.run(), timeout=30))
 
     assert published == [specs]
+
+
+def test_watching_supervisor_starts_restarts_and_stops_children(tmp_path):
+    import json
+
+    lines = []
+
+    def write(agent_id, port, **extra):
+        data = {"port": port, "llm": {"provider": "anthropic"}, **extra}
+        (tmp_path / f"{agent_id}.json").write_text(json.dumps(data), encoding="utf-8")
+
+    write("ember", 9301, entry=True)
+    from src.agents import agent_spec
+
+    async def scenario():
+        sup = supervisor.Supervisor(
+            agent_spec.load_dir(tmp_path),
+            command_for=lambda spec: [sys.executable, "-c", f"print('up {spec.port}', flush=True); import time; time.sleep(60)"],
+            deregister=lambda agent_id: None,
+            publish=lambda specs: None,
+            out=lines.append,
+            watch_dir=tmp_path,
+            poll_seconds=0.1,
+        )
+        task = asyncio.create_task(sup.run())
+
+        async def until(text):
+            for _ in range(300):
+                if text in lines:
+                    return
+                await asyncio.sleep(0.05)
+            raise AssertionError(f"{text!r} never appeared in {lines}")
+
+        await until("[ember] up 9301")
+        write("calc", 9302)
+        await until("[calc] up 9302")
+        write("calc", 9303)
+        await until("[calc] up 9303")
+        (tmp_path / "calc.json").unlink()
+        await until("[supervisor] stopped calc")
+        (tmp_path / "ember.json").write_text("{not json", encoding="utf-8")
+        await asyncio.sleep(0.4)
+        assert not task.done() and "[supervisor] stopped ember" not in lines
+        await sup.stop()
+        await asyncio.wait_for(task, timeout=15)
+
+    asyncio.run(scenario())
+
+
+def test_changing_a_shared_file_restarts_every_agent(tmp_path):
+    import json
+
+    from src.agents import agent_spec
+
+    (tmp_path / "ember.json").write_text(json.dumps({"port": 9401, "entry": True, "llm": {"provider": "anthropic"}}), encoding="utf-8")
+    shared = tmp_path / "shared.txt"
+    lines = []
+
+    async def scenario():
+        sup = supervisor.Supervisor(
+            agent_spec.load_dir(tmp_path),
+            command_for=lambda spec: [sys.executable, "-c", "print('up', flush=True); import time; time.sleep(60)"],
+            deregister=lambda agent_id: None,
+            publish=lambda specs: None,
+            out=lines.append,
+            watch_dir=tmp_path,
+            poll_seconds=0.1,
+            restart_on=[shared],
+        )
+        task = asyncio.create_task(sup.run())
+
+        async def until(count):
+            for _ in range(300):
+                if lines.count("[ember] up") >= count:
+                    return
+                await asyncio.sleep(0.05)
+            raise AssertionError(lines)
+
+        await until(1)
+        shared.write_text("changed", encoding="utf-8")
+        await until(2)
+        assert "[supervisor] shared files changed - restarted every agent" in lines
+        await sup.stop()
+        await asyncio.wait_for(task, timeout=15)
+
+    asyncio.run(scenario())

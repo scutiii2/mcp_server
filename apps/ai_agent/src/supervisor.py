@@ -9,6 +9,11 @@ then restarted with backoff - 1s, 2s, 4s... up to 60s - until it has
 crashed 5 times within 5 minutes, after which it is left stopped and the
 others keep running.
 
+The agents folder is rescanned every few seconds: a file added, edited,
+disabled or removed (the admin UI does this through server.py's /agents
+routes) starts, restarts or stops just that child. A folder that does not
+validate is ignored until it does.
+
 Run with:
     python -m src.supervisor
 """
@@ -23,7 +28,7 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable, Sequence
 
-from src.agents import agent_registry, agent_spec
+from src.agents import agent_registry, agent_spec, prompt_config
 from src.agents.agent_spec import AgentSpec
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +36,7 @@ MAX_CRASHES = 5
 CRASH_WINDOW_SECONDS = 300.0
 BACKOFF_CAP_SECONDS = 60.0
 STOP_GRACE_SECONDS = 10.0
+WATCH_POLL_SECONDS = 2.0  # how often agents/ is rescanned for added, changed or removed files
 LINE_LIMIT = 1024 * 1024  # longest child output line relayed whole
 
 CommandFor = Callable[[AgentSpec], Sequence[str]]
@@ -191,6 +197,12 @@ class AgentProcess:
 
 
 class Supervisor:
+    """Runs one AgentProcess per enabled spec. With `watch_dir` it also
+    polls that folder and reconciles: a new or re-enabled file starts a
+    child, a changed file restarts its child, a removed or disabled file
+    stops it. A folder that does not validate is ignored (and reported once)
+    until it does, so a half-finished edit never takes agents down."""
+
     def __init__(
         self,
         specs: list[AgentSpec],
@@ -200,15 +212,38 @@ class Supervisor:
         policy_factory: Callable[[], CrashPolicy] = CrashPolicy,
         sleep: Sleep = asyncio.sleep,
         publish: Publish = agent_registry.write_definitions,
+        watch_dir: Path | None = None,
+        poll_seconds: float = WATCH_POLL_SECONDS,
+        restart_on: Sequence[Path] = (),
     ) -> None:
         self._specs = specs
+        self._command_for = command_for
         self._deregister = deregister
         self._publish = publish
         self._out = out
-        self._children = [
-            AgentProcess(spec, command_for, deregister, out, policy_factory(), sleep)
-            for spec in specs if spec.enabled
-        ]
+        self._policy_factory = policy_factory
+        self._sleep = sleep
+        self._watch_dir = watch_dir
+        self._poll = poll_seconds
+        # Files every agent reads once at start (shared prompts): rewriting one restarts them all.
+        self._restart_on = tuple(restart_on)
+        self._restart_sig = self._signature()
+        self._children = [self._new_child(spec) for spec in specs if spec.enabled]
+        self._tasks: dict[str, asyncio.Task] = {}
+        self._stopped: asyncio.Event | None = None  # created in run(), inside the loop
+        self._last_error = ""
+
+    def _signature(self) -> tuple:
+        sig = []
+        for path in self._restart_on:
+            try:
+                sig.append(path.stat().st_mtime_ns)
+            except OSError:
+                sig.append(None)
+        return tuple(sig)
+
+    def _new_child(self, spec: AgentSpec) -> AgentProcess:
+        return AgentProcess(spec, self._command_for, self._deregister, self._out, self._policy_factory(), self._sleep)
 
     async def run(self) -> None:
         # Entries a crashed earlier run left behind for OUR agents only.
@@ -216,14 +251,87 @@ class Supervisor:
             await asyncio.to_thread(self._deregister, spec.id)
         await asyncio.to_thread(self._publish, self._specs)
         self._out(f"[supervisor] starting {', '.join(c.spec.id for c in self._children) or 'no agents'}")
+        self._stopped = asyncio.Event()
         try:
-            await asyncio.gather(*(child.run() for child in self._children))
+            for child in self._children:
+                self._tasks[child.spec.id] = asyncio.create_task(child.run())
+            if self._watch_dir is None:
+                await asyncio.gather(*self._tasks.values())
+            else:
+                await self._watch()
         finally:
             await self.stop()
-        if self._children and all(child.failed for child in self._children):
+        if self._watch_dir is None and self._children and all(child.failed for child in self._children):
             self._out("[supervisor] every agent failed - exiting")
 
+    async def _watch(self) -> None:
+        assert self._watch_dir is not None and self._stopped is not None
+        while not self._stopped.is_set():
+            try:
+                await asyncio.wait_for(self._stopped.wait(), self._poll)
+            except asyncio.TimeoutError:
+                pass
+            if self._stopped.is_set():
+                return
+            await self._reconcile()
+
+    async def _stop_child(self, child: AgentProcess) -> None:
+        agent_id = child.spec.id
+        await child.stop()
+        task = self._tasks.pop(agent_id, None)
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)
+        await asyncio.to_thread(self._deregister, agent_id)
+        self._children.remove(child)
+
+    async def _restart_all(self) -> None:
+        """Stop every running child, then start the enabled ones again."""
+        for child in list(self._children):
+            await self._stop_child(child)
+        for spec in self._specs:
+            if spec.enabled:
+                child = self._new_child(spec)
+                self._children.append(child)
+                self._tasks[spec.id] = asyncio.create_task(child.run())
+        self._out("[supervisor] shared files changed - restarted every agent")
+
+    async def _reconcile(self) -> None:
+        signature = await asyncio.to_thread(self._signature)
+        if signature != self._restart_sig:
+            self._restart_sig = signature
+            await self._restart_all()
+        try:
+            wanted = await asyncio.to_thread(agent_spec.load_dir, self._watch_dir)
+        except agent_spec.AgentSpecError as error:
+            if str(error) != self._last_error:
+                self._last_error = str(error)
+                self._out(f"[supervisor] agent files invalid, keeping what runs: {error}")
+            return
+        self._last_error = ""
+        if wanted == self._specs:
+            return
+        old = {spec.id: spec for spec in self._specs}
+        new = {spec.id: spec for spec in wanted}
+        running = {child.spec.id: child for child in self._children}
+        # Stop first, so a changed port is free before its child restarts.
+        for agent_id, child in list(running.items()):
+            spec = new.get(agent_id)
+            if spec is None or not spec.enabled or spec != old.get(agent_id):
+                await self._stop_child(child)
+                del running[agent_id]
+                self._out(f"[supervisor] stopped {agent_id}")
+        for spec in wanted:
+            if spec.enabled and spec.id not in running:
+                child = self._new_child(spec)
+                self._children.append(child)
+                self._tasks[spec.id] = asyncio.create_task(child.run())
+                self._out(f"[supervisor] started {spec.id}")
+        self._specs = wanted
+        await asyncio.to_thread(self._publish, wanted)
+
     async def stop(self) -> None:
+        if self._stopped is not None:
+            self._stopped.set()
         await asyncio.gather(*(child.stop() for child in self._children))
         # Children deregister on a clean exit; a terminated one cannot.
         for child in self._children:
@@ -237,7 +345,7 @@ def main() -> None:
         sys.stderr.write(f"\nai_agent cannot start - agent file error:\n  {error}\n\n")
         sys.exit(1)
     try:
-        asyncio.run(Supervisor(specs).run())
+        asyncio.run(Supervisor(specs, watch_dir=agent_spec.AGENTS_DIR, restart_on=[prompt_config.PATH]).run())
     except KeyboardInterrupt:
         pass
 

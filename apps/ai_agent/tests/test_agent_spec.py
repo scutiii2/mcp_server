@@ -285,3 +285,24 @@ def test_roster_entry_tiers_default_to_empty():
     assert agent_spec.RosterEntry("calc", "Calculator", "Math.").tiers == ()
     tier = agent_spec.TierInfo("light", "haiku", "quick")
     assert agent_spec.RosterEntry("calc", "Calculator", "Math.", (tier,)).tiers == (tier,)
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        (None, None),
+        ("http://10.0.0.5:9103", "http://10.0.0.5:9103/mcp"),
+        ("https://agents.example.com/calc/mcp/", "https://agents.example.com/calc/mcp"),
+    ],
+)
+def test_url_is_normalised(tmp_path, given, expected):
+    data = {"port": 9103, "llm": {"provider": "anthropic"}}
+    if given is not None:
+        data["url"] = given
+    assert agent_spec.load_file(_write(tmp_path, "calc", data)).url == expected
+
+
+@pytest.mark.parametrize("bad", ["10.0.0.5:9103", "ftp://host/mcp", "http://host/mcp?x=1", "http://host:99999/mcp"])
+def test_bad_url_is_refused(tmp_path, bad):
+    with pytest.raises(AgentSpecError, match="url"):
+        agent_spec.load_file(_write(tmp_path, "calc", {"port": 9103, "url": bad, "llm": {"provider": "anthropic"}}))
