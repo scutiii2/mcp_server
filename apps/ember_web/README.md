@@ -135,7 +135,7 @@ URL, token or key.
   (`/api/account-capabilities`), so it follows the account across devices; a new account starts with nothing added. Two exclusive
   filter chips, Enabled and Disabled, narrow the lists (clicking the active chip clears it; the choice is in the address as
   `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added; administrators
-  see "Turn on for everyone" there. Administrators also add and remove extensions in the Extensions section (`admin.manage`).
+  see "Turn on for everyone" there. Accounts with `extensions.manage` also add and remove extensions in the Extensions section.
 - "Ask before tools" toggle (off by default, remembered per account): each
   tool the agent wants to run waits for you. A card shows the tool's name and
   arguments with Allow once, Allow for this chat and Deny; nothing runs until
@@ -190,7 +190,7 @@ URL, token or key.
   (`/api/account-capabilities`), so it follows the account across devices; a new account starts with nothing added. Two exclusive
   filter chips, Enabled and Disabled, narrow the lists (clicking the active chip clears it; the choice is in the address as
   `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added; administrators
-  see "Turn on for everyone" there. Administrators also add and remove extensions in the Extensions section (`admin.manage`).
+  see "Turn on for everyone" there. Accounts with `extensions.manage` also add and remove extensions in the Extensions section.
 - Agents page (`chat.use`): a card per agent from `GET /api/agents` - name, id,
   Entry / Orchestrator badges, what it is for, its provider / gateway / model
   (a value the agent file does not set is left out), and a status (running,

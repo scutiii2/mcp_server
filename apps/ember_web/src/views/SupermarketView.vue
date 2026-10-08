@@ -14,8 +14,9 @@ import { errorMessage } from "../utils/errors";
 
 /** Everything the account can add: mcp_server's built-in capabilities and its
  * extensions, in two sections, with Add and Disable per row. A user can only
- * add or disable; administrators also add and remove extensions on the server
- * and can turn a built-in capability back on for everyone. Two exclusive filter
+ * add or disable; extensions.manage also permits adding and removing extensions
+ * on the server, and admin.manage permits turning a built-in capability back on
+ * for everyone. Two exclusive filter
  * chips (Enabled, Disabled) narrow both lists; the choice lives in the address
  * (?state=enabled|disabled). */
 
@@ -35,6 +36,7 @@ const pendingRemove = ref<ExtensionInfo | null>(null);
 const removing = ref(false);
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
+const canManageExtensions = computed(() => auth.hasPermission("extensions.manage"));
 // Capabilities need tools.use; the extension list needs chat.use or tools.use.
 const canTools = computed(() => auth.hasPermission("tools.use"));
 const accountLoading = computed(() => !account.ready && account.error === "");
@@ -188,7 +190,7 @@ onMounted(load);
 
         <div class="section-head">
           <h4 class="group-title">Extensions</h4>
-          <button v-if="isAdmin" type="button" class="primary" @click="addOpen = true">Add extension</button>
+          <button v-if="canManageExtensions" type="button" class="primary" @click="addOpen = true">Add extension</button>
         </div>
         <SupermarketItem
           v-for="e in extensionRows"
@@ -202,7 +204,7 @@ onMounted(load);
           @add="account.setExtension(e.id, true)"
           @disable="account.setExtension(e.id, false)"
         >
-          <template v-if="isAdmin" #actions>
+          <template v-if="canManageExtensions" #actions>
             <button type="button" class="remove" :aria-label="`Remove ${e.label}`" @click="pendingRemove = e">Remove</button>
           </template>
         </SupermarketItem>
@@ -222,7 +224,7 @@ onMounted(load);
     />
 
     <ConfirmModal
-      v-if="pendingRemove"
+      v-if="canManageExtensions && pendingRemove"
       open
       title="Remove extension"
       :message="removeMessage"
@@ -233,7 +235,7 @@ onMounted(load);
       @close="pendingRemove = null"
     />
 
-    <AddExtensionModal v-if="isAdmin" :open="addOpen" @close="addOpen = false" @added="onAdded" />
+    <AddExtensionModal v-if="canManageExtensions" :open="addOpen" @close="addOpen = false" @added="onAdded" />
   </section>
 </template>
 

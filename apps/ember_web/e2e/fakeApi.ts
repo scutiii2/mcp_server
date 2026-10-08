@@ -19,7 +19,7 @@ export const ACCOUNT = {
 export const ADMIN_ACCOUNT = {
   ...ACCOUNT,
   roles: ["Administrator"],
-  permissions: ["chat.use", "tools.use", "admin.manage"],
+  permissions: ["chat.use", "tools.use", "admin.manage", "extensions.manage"],
 };
 
 /** The agent GET /api/agent returns, and the one every new chat is stored with. */
@@ -153,6 +153,7 @@ const ADMIN_PERMISSIONS = [
   { name: "chat.use", description: "Chat with the agent" },
   { name: "tools.use", description: "Run mcp_server tools" },
   { name: "admin.manage", description: "Manage accounts" },
+  { name: "extensions.manage", description: "Add and remove mcp_server extensions (other MCP servers offered to every client)" },
 ];
 
 const json = (route: Route, body: unknown, status = 200) =>
