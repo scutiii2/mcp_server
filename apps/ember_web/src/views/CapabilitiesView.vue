@@ -14,7 +14,9 @@ import ToolRunModal from "../components/ToolRunModal.vue";
 import { useEveryoneSwitch } from "../composables/useEveryoneSwitch";
 import { useAccountCapabilitiesStore } from "../stores/accountCapabilities";
 import { useAuthStore } from "../stores/auth";
+import { useUserExtensionsStore } from "../stores/userExtensions";
 import { addedOnly, groupTools, inExtensionNamespace } from "../utils/capabilityGroups";
+import { matchesUserExtension, userExtensionSummary } from "../utils/userExtensions";
 import { errorMessage } from "../utils/errors";
 import { formatToolResult } from "../utils/toolResultFormat";
 import { safeWebUrl } from "../utils/webUrl";
@@ -30,6 +32,7 @@ import { safeWebUrl } from "../utils/webUrl";
 
 const auth = useAuthStore();
 const account = useAccountCapabilitiesStore();
+const userExt = useUserExtensionsStore();
 const server = new McpServerClient();
 
 const capabilities = ref<CapabilityInfo[]>([]);
@@ -83,6 +86,10 @@ const added = computed(() =>
   addedOnly(capabilities.value, extensions.value, tools.value, account.capabilities, account.extensions),
 );
 const grouped = computed(() => groupTools(added.value.capabilities, added.value.tools, query.value, added.value.extensions));
+// The account's own MCP servers that are on: they show with the extensions, as cards that only list
+// their tools (their tools work for the agent, not on this page).
+const privateShown = computed(() => userExt.items.filter((i) => i.enabled && matchesUserExtension(i, query.value)));
+const privateKey = (id: string): string => `\0private:${id}`;
 const selectedTool = computed(() => tools.value.find((t) => t.name === openTool.value) ?? null);
 // The account's choices load beside the page's own data.
 const accountLoading = computed(() => !account.ready && account.error === "");
@@ -119,11 +126,15 @@ function resourcesOf(capability: CapabilityInfo): ResourceInfo[] {
 const nothingShown = computed(
   () =>
     (!showBuiltin.value || (grouped.value.groups.length === 0 && !showOther.value)) &&
-    (!showExtensions.value || grouped.value.extensionGroups.length === 0),
+    (!showExtensions.value || (grouped.value.extensionGroups.length === 0 && privateShown.value.length === 0)),
 );
 // Nothing at all is added (not just filtered away): invite the user to the Supermarket.
 const nothingAdded = computed(
-  () => added.value.capabilities.length === 0 && added.value.extensions.length === 0 && added.value.tools.length === 0,
+  () =>
+    added.value.capabilities.length === 0 &&
+    added.value.extensions.length === 0 &&
+    added.value.tools.length === 0 &&
+    !userExt.items.some((i) => i.enabled),
 );
 
 const countText = (tools: number, resources: number): string =>
@@ -240,7 +251,11 @@ async function read(uri: string): Promise<void> {
 /** Shown formatted when it's a JSON object, else as Markdown text. */
 const readShown = computed(() => (readResult.value ? (formatToolResult(readResult.value.text) ?? readResult.value.text) : ""));
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  // Each one's status comes from a live probe, so look again whenever the page opens.
+  if (auth.hasPermission("chat.use")) void userExt.refresh();
+});
 </script>
 
 <template>
@@ -287,8 +302,8 @@ onMounted(load);
       <p v-if="loading || accountLoading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
       <p v-else-if="!account.ready" class="error">error: {{ account.error }}</p>
-      <p v-if="actionError || switchError || (account.ready && account.error)" class="error">
-        {{ actionError || switchError || account.error }}
+      <p v-if="actionError || switchError || (account.ready && account.error) || userExt.error" class="error">
+        {{ actionError || switchError || account.error || userExt.error }}
       </p>
 
       <template v-if="!loading && !loadError && account.ready">
@@ -349,7 +364,7 @@ onMounted(load);
         </template>
 
         <template v-if="showExtensions">
-          <h4 v-if="groupHeadings && grouped.extensionGroups.length" class="group-title">Extensions</h4>
+          <h4 v-if="groupHeadings && (grouped.extensionGroups.length || privateShown.length)" class="group-title">Extensions</h4>
           <CapabilitySection
             v-for="g in grouped.extensionGroups"
             :key="g.extension.id"
@@ -389,6 +404,30 @@ onMounted(load);
                 <span v-if="r.description" class="muted">{{ r.description }}</span>
               </li>
             </ul>
+          </CapabilitySection>
+          <CapabilitySection
+            v-for="i in privateShown"
+            :key="`private:${i.id}`"
+            :label="i.label"
+            :name="i.id"
+            icon="extension"
+            :open="isOpen(privateKey(i.id))"
+            :summary="userExtensionSummary(i)"
+            :status="i.status === 'connected' ? 'ok' : i.status === 'error' ? 'bad' : 'off'"
+            control="switch"
+            :checked="true"
+            scope="Private"
+            switch-title="Turn off. It stays in your Supermarket under My extensions."
+            @toggle="toggleSection(privateKey(i.id))"
+            @switch="userExt.setEnabled(i.id, false)"
+          >
+            <p v-if="i.description" class="muted">{{ i.description }}</p>
+            <p v-if="i.status === 'error'" class="error">Not connected{{ i.error ? `: ${i.error}` : "" }}</p>
+            <p v-else-if="i.status === 'unknown'" class="muted">{{ i.error ?? "Not checked yet" }}</p>
+            <ul v-if="i.tools.length" class="private-tools">
+              <li v-for="t in i.tools" :key="t"><code class="name">{{ t }}</code></li>
+            </ul>
+            <p class="muted">Its tools work in your chats and always ask first. They can't be run from this page.</p>
           </CapabilitySection>
         </template>
 
@@ -560,6 +599,14 @@ h3 {
 }
 .group-title .muted {
   font-weight: 400;
+}
+.private-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 .res-label {
   margin: 4px 0 0;

@@ -139,6 +139,13 @@ URL, token or key.
   filter chips, Enabled and Disabled, narrow the lists (clicking the active chip clears it; the choice is in the address as
   `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added; administrators
   see "Turn on for everyone" there. Accounts with `extensions.manage` also add and remove extensions in the Extensions section.
+- Private extensions (`chat.use`): the Supermarket's "My extensions" section adds an MCP server only this account can see, with an
+  optional set of headers (a token or key). Header values are write-only: they are stored encrypted by ember_api and never shown
+  again; editing offers "Replace headers", which replaces the whole set. Each row has Enable/Disable, Edit and Remove, and shows
+  its live status (a probe cached for a minute). Enabled ones also appear as "Private" cards on the Capabilities page, listing
+  their tools; those tools work in chats only (always asking first, and every later tool in that turn asks too) and cannot be run
+  from the page. When a private extension could not be used in an answer, a banner above the messages says which and why until
+  the next question. It is live only and not saved with the chat.
 - "Ask before tools" toggle (off by default, remembered per account): each
   tool the agent wants to run waits for you. A card shows the tool's name and
   arguments with Allow once, Allow for this chat and Deny; nothing runs until

@@ -57,6 +57,18 @@ export interface StoredAccount {
   roles: { id: number; name: string }[];
 }
 
+export interface StoredUserExtension {
+  id: string;
+  label: string;
+  description: string;
+  url: string;
+  header_names: string[];
+  enabled: boolean;
+  status: "connected" | "error" | "unknown";
+  error: string | null;
+  tools: string[];
+}
+
 export interface StoredCapability {
   name: string;
   enabled: boolean;
@@ -95,6 +107,9 @@ export interface StoredShare {
 export interface FakeApi {
   /** What the account has added (GET and PUT /api/account-capabilities). */
   accountCapabilities: { capabilities: Set<string>; extensions: Set<string> };
+
+  /** The account's private extensions (/api/user-extensions). Header values are never kept or returned. */
+  userExtensions: Map<string, StoredUserExtension>;
 
   /** The capabilities the Capabilities page lists and an administrator can switch (an administrator login only). */
   capabilities: Map<string, StoredCapability>;
@@ -181,6 +196,7 @@ export const ANSWER = ANSWER_PIECES.join("");
 export async function installFakeApi(page: Page, options: { admin?: boolean } = {}): Promise<FakeApi> {
   const api: FakeApi = {
     accountCapabilities: { capabilities: new Set(), extensions: new Set() },
+    userExtensions: new Map(),
     settings: { forceToolApproval: false },
     accounts: new Map(),
     capabilities: new Map(),
@@ -306,6 +322,48 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
       return json(route, accountView());
     }
     if (method === "GET" && path === "/api/extensions") return json(route, []);
+
+    // The account's private extensions: a saved one is reported connected with one tool.
+    if (method === "GET" && path === "/api/user-extensions") return json(route, [...api.userExtensions.values()]);
+    if (method === "POST" && path === "/api/user-extensions") {
+      const body = request.postDataJSON() as { label: string; url: string; description?: string; headers?: Record<string, string> };
+      const id = body.label.toLowerCase().replace(/[^a-z0-9]+/g, "") || "ext";
+      if (api.userExtensions.has(id)) return json(route, { detail: "You already have an extension with that name" }, 409);
+      const created: StoredUserExtension = {
+        id,
+        label: body.label,
+        description: body.description ?? "",
+        url: body.url,
+        header_names: Object.keys(body.headers ?? {}),
+        enabled: false,
+        status: "unknown",
+        error: null,
+        tools: [],
+      };
+      api.userExtensions.set(id, created);
+      return json(route, created, 201);
+    }
+    const userExtPath = /^\/api\/user-extensions\/([A-Za-z0-9_.-]+)$/.exec(path);
+    if (userExtPath) {
+      const found = api.userExtensions.get(userExtPath[1]!);
+      if (!found) return json(route, { detail: "Extension not found" }, 404);
+      if (method === "DELETE") {
+        api.userExtensions.delete(found.id);
+        return route.fulfill({ status: 204, body: "" });
+      }
+      if (method === "PATCH") {
+        const patch = request.postDataJSON() as Partial<StoredUserExtension> & { headers?: Record<string, string> };
+        if (patch.label !== undefined) found.label = patch.label;
+        if (patch.url !== undefined) found.url = patch.url;
+        if (patch.description !== undefined) found.description = patch.description;
+        if (patch.headers !== undefined) found.header_names = Object.keys(patch.headers);
+        if (patch.enabled !== undefined) found.enabled = patch.enabled;
+        // Once on, the probe finds its tool; off, nothing is checked.
+        found.status = found.enabled ? "connected" : "unknown";
+        found.tools = found.enabled ? ["search"] : [];
+        return json(route, found);
+      }
+    }
     if (method === "POST" && path === "/api/mcp/server") return mcpServer(route, api);
     if (method === "GET" && path === "/api/mcp/server") return route.fulfill({ status: 405, body: "" });
 

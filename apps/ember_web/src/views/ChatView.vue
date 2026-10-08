@@ -12,6 +12,7 @@ import FolderDialogs from "../components/FolderDialogs.vue";
 import MessageList from "../components/MessageList.vue";
 import ShareDialog from "../components/ShareDialog.vue";
 import TemplatesModal from "../components/TemplatesModal.vue";
+import TurnNotices from "../components/TurnNotices.vue";
 import { useEntryAgentStore } from "../stores/entryAgent";
 import { useChatStore } from "../stores/chat";
 import { useFoldersStore } from "../stores/folders";
@@ -46,6 +47,7 @@ const {
   loadError,
   saveError,
   sendError,
+  notices,
   working,
   contextUsage,
   commands,
@@ -364,6 +366,7 @@ useChatShortcuts({
         {{ sendError }}
         <button type="button" @click="sendError = ''">Dismiss</button>
       </div>
+      <TurnNotices :notices="notices" @dismiss="chat.dismissNotices()" />
       <p v-if="chatLoading" class="loading">Loading chat …</p>
       <MessageList
         v-else

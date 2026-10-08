@@ -3,14 +3,18 @@ import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
 import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
+import type { UserExtension } from "../api/UserExtensionsClient";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import AddExtensionModal from "../components/AddExtensionModal.vue";
 import SupermarketItem from "../components/SupermarketItem.vue";
+import UserExtensionModal from "../components/UserExtensionModal.vue";
 import { useEveryoneSwitch } from "../composables/useEveryoneSwitch";
 import { useAccountCapabilitiesStore } from "../stores/accountCapabilities";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
+import { useUserExtensionsStore } from "../stores/userExtensions";
 import { errorMessage } from "../utils/errors";
+import { userExtensionSummary } from "../utils/userExtensions";
 
 /** Everything the account can add: mcp_server's built-in capabilities and its
  * extensions, in two sections, with Add and Disable per row. A user can only
@@ -23,6 +27,7 @@ import { errorMessage } from "../utils/errors";
 const auth = useAuthStore();
 const account = useAccountCapabilitiesStore();
 const chat = useChatStore();
+const userExt = useUserExtensionsStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -34,6 +39,11 @@ const actionError = ref("");
 const addOpen = ref(false);
 const pendingRemove = ref<ExtensionInfo | null>(null);
 const removing = ref(false);
+const canUsePrivate = computed(() => auth.hasPermission("chat.use"));
+const modalOpen = ref(false);
+const editing = ref<UserExtension | null>(null);
+const pendingRemovePrivate = ref<UserExtension | null>(null);
+const removingPrivate = ref(false);
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 const canManageExtensions = computed(() => auth.hasPermission("extensions.manage"));
@@ -65,6 +75,33 @@ const builtIn = computed(() =>
 const extensionRows = computed(() =>
   [...extensions.value].sort(byLabel).filter((e) => shown(addedExtensions.value.has(e.id))),
 );
+
+const privateRows = computed(() => [...userExt.items].sort(byLabel).filter((i) => shown(i.enabled)));
+
+function openAdd(): void {
+  editing.value = null;
+  modalOpen.value = true;
+}
+
+function openEdit(item: UserExtension): void {
+  editing.value = item;
+  modalOpen.value = true;
+}
+
+async function confirmRemovePrivate(): Promise<void> {
+  const item = pendingRemovePrivate.value;
+  if (!item) return;
+  actionError.value = "";
+  removingPrivate.value = true;
+  try {
+    await userExt.remove(item.id);
+  } catch (err) {
+    actionError.value = errorMessage(err);
+  } finally {
+    removingPrivate.value = false;
+    pendingRemovePrivate.value = null;
+  }
+}
 
 const toolsText = (n: number): string => `${n} tool${n === 1 ? "" : "s"}`;
 const capabilitySummary = (c: CapabilityInfo): string => (c.enabled ? toolsText(c.tools.length) : "Off for everyone");
@@ -129,7 +166,11 @@ async function confirmRemove(): Promise<void> {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  // Each one's status comes from a live probe, so look again whenever the page opens.
+  if (canUsePrivate.value) void userExt.refresh();
+});
 </script>
 
 <template>
@@ -162,8 +203,8 @@ onMounted(load);
       <p v-if="loading || accountLoading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
       <p v-else-if="!account.ready" class="error">error: {{ account.error }}</p>
-      <p v-if="actionError || switchError || (account.ready && account.error)" class="error" role="alert">
-        {{ actionError || switchError || account.error }}
+      <p v-if="actionError || switchError || (account.ready && account.error) || userExt.error" class="error" role="alert">
+        {{ actionError || switchError || account.error || userExt.error }}
       </p>
 
       <template v-if="!loading && !loadError && account.ready">
@@ -209,6 +250,43 @@ onMounted(load);
           </template>
         </SupermarketItem>
         <p v-if="extensionRows.length === 0" class="muted">No extensions match this filter.</p>
+
+        <template v-if="canUsePrivate">
+          <div class="section-head">
+            <h4 class="group-title">My extensions</h4>
+            <button type="button" class="primary" @click="openAdd">Add your own extension</button>
+          </div>
+          <p class="muted hint">MCP servers only you can see. Their tools always ask before they run.</p>
+          <SupermarketItem
+            v-for="i in privateRows"
+            :key="i.id"
+            :label="i.label"
+            :name="i.id"
+            icon="extension"
+            :summary="userExtensionSummary(i)"
+            :detail="i.enabled && i.status !== 'connected' ? (i.error ?? '') : ''"
+            :failed="i.enabled && i.status === 'error'"
+            :added="i.enabled"
+            add-label="Enable"
+            added-label="Enabled"
+            @add="userExt.setEnabled(i.id, true)"
+            @disable="userExt.setEnabled(i.id, false)"
+          >
+            <template #actions>
+              <button type="button" class="edit" :aria-label="`Edit ${i.label}`" @click="openEdit(i)">Edit</button>
+              <button type="button" class="remove" :aria-label="`Remove ${i.label}`" @click="pendingRemovePrivate = i">
+                Remove
+              </button>
+            </template>
+          </SupermarketItem>
+          <p v-if="privateRows.length === 0" class="muted">
+            {{
+              userExt.items.length
+                ? "No private extensions match this filter."
+                : "You haven't added any private extensions."
+            }}
+          </p>
+        </template>
       </template>
     </div>
 
@@ -236,6 +314,26 @@ onMounted(load);
     />
 
     <AddExtensionModal v-if="canManageExtensions" :open="addOpen" @close="addOpen = false" @added="onAdded" />
+
+    <UserExtensionModal
+      v-if="canUsePrivate"
+      :open="modalOpen"
+      :extension="editing"
+      @close="modalOpen = false"
+      @saved="modalOpen = false"
+    />
+
+    <ConfirmModal
+      v-if="pendingRemovePrivate"
+      open
+      title="Remove private extension"
+      :message="`Remove &quot;${pendingRemovePrivate.label}&quot;? Its saved headers are deleted too.`"
+      confirm-label="Remove"
+      danger
+      :busy="removingPrivate"
+      @confirm="confirmRemovePrivate"
+      @close="pendingRemovePrivate = null"
+    />
   </section>
 </template>
 
@@ -324,6 +422,7 @@ h2 {
   background: var(--accent);
 }
 .everyone,
+.edit,
 .remove {
   padding: 4px 14px;
   border: 1px solid var(--border);
@@ -333,6 +432,7 @@ h2 {
   color: var(--muted);
   background: transparent;
 }
+.edit:hover,
 .everyone:hover {
   color: var(--text);
   border-color: var(--accent);
@@ -342,6 +442,7 @@ h2 {
   color: var(--danger);
 }
 .everyone:focus-visible,
+.edit:focus-visible,
 .remove:focus-visible,
 .primary:focus-visible {
   outline: 2px solid var(--accent);
@@ -349,6 +450,10 @@ h2 {
 }
 .muted {
   color: var(--muted);
+}
+.hint {
+  margin: 0 2px 8px;
+  font-size: 0.85em;
 }
 .error {
   color: var(--danger);

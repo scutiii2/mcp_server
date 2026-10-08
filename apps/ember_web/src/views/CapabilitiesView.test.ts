@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import type { CapabilityInfo } from "../api/CommandsClient";
+import type { UserExtension } from "../api/UserExtensionsClient";
 import type { ResourceInfo, ToolInfo } from "../api/types";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
@@ -20,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   extensions: vi.fn(),
   accountGet: vi.fn(),
   accountSet: vi.fn(),
+  userList: vi.fn(),
+  userUpdate: vi.fn(),
 }));
 
 vi.mock("../api/ExtensionsClient", async (importOriginal) => ({
@@ -42,6 +45,9 @@ vi.mock("../api/McpServerClient", () => ({
 vi.mock("../api/AccountCapabilitiesClient", () => ({
   accountCapabilitiesClient: { get: mocks.accountGet, set: mocks.accountSet },
 }));
+vi.mock("../api/UserExtensionsClient", () => ({
+  userExtensionsClient: { list: mocks.userList, create: vi.fn(), update: mocks.userUpdate, remove: vi.fn() },
+}));
 
 const tool = (name: string, title: string, description = ""): ToolInfo => ({
   name,
@@ -62,6 +68,17 @@ const TOOLS = [
   tool("ext__echo", "Echo"),
 ];
 const RESOURCES: ResourceInfo[] = [{ uri: "help://pdf", name: "pdf_help", description: "How to merge", template: false }];
+const MINE: UserExtension = {
+  id: "mynotes",
+  label: "My notes",
+  description: "Notes on my server",
+  url: "https://notes.example.com/mcp",
+  header_names: [],
+  enabled: true,
+  status: "connected",
+  error: null,
+  tools: ["search", "add"],
+};
 
 const ACCOUNT: Account = {
   id: 1,
@@ -72,7 +89,7 @@ const ACCOUNT: Account = {
   permissions: ["tools.use"],
 };
 
-async function show(options: { admin?: boolean; query?: string; permissions?: string[]; attach?: boolean; added?: { capabilities?: string[]; extensions?: string[] } } = {}) {
+async function show(options: { admin?: boolean; query?: string; permissions?: string[]; attach?: boolean; added?: { capabilities?: string[]; extensions?: string[] }; userExtensions?: UserExtension[] } = {}) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().account = {
@@ -85,6 +102,7 @@ async function show(options: { admin?: boolean; query?: string; permissions?: st
     extensions: options.added?.extensions ?? listedExtensions.map((e) => e.id),
     disabled_tools: [],
   });
+  mocks.userList.mockResolvedValue(options.userExtensions ?? []);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -122,6 +140,7 @@ beforeEach(() => {
   };
   vi.clearAllMocks();
   mocks.accountSet.mockImplementation(async (_kind, _key, _on) => ({ capabilities: [], extensions: [], disabled_tools: [] }));
+  mocks.userUpdate.mockImplementation(async (id: string, patch: Partial<UserExtension>) => ({ ...MINE, id, ...patch }));
   mocks.capabilities.mockResolvedValue(CAPS);
   mocks.listTools.mockResolvedValue(TOOLS);
   mocks.listResources.mockResolvedValue(RESOURCES);
@@ -611,5 +630,100 @@ describe("built-in switches for your own account", () => {
     await head(w, "PDF files").trigger("click");
 
     expect(w.get("button.everyone").text()).toBe("Turn off for everyone");
+  });
+});
+
+describe("private extensions on the page", () => {
+  const WITH_CHAT = ["tools.use", "chat.use"];
+
+  it("shows an enabled private extension as a card with its status and tools", async () => {
+    const w = await show({ permissions: WITH_CHAT, userExtensions: [MINE] });
+
+    expect(sectionNames(w)).toContain("My notes");
+    expect(head(w, "My notes").text()).toContain("2 tools");
+    expect(sections(w).find((s) => s.find("h3").text() === "My notes")!.find(".scope").text()).toBe("Private");
+    await head(w, "My notes").trigger("click");
+    expect(w.findAll("ul.private-tools code").map((c) => c.text())).toEqual(["search", "add"]);
+    expect(w.text()).toContain("Notes on my server");
+    expect(w.text()).toContain("always ask first");
+  });
+
+  it("gives it no run button, no Open button and no resources", async () => {
+    const w = await show({ permissions: WITH_CHAT, userExtensions: [MINE] });
+    await head(w, "My notes").trigger("click");
+    const card = sections(w).find((s) => s.find("h3").text() === "My notes")!;
+
+    expect(card.findAll("li.tool")).toHaveLength(0);
+    expect(card.findAll("a")).toHaveLength(0);
+    expect(card.find(".res-label").exists()).toBe(false);
+  });
+
+  it("does not show one that is not enabled", async () => {
+    const w = await show({ permissions: WITH_CHAT, userExtensions: [{ ...MINE, enabled: false }] });
+
+    expect(sectionNames(w)).not.toContain("My notes");
+  });
+
+  it("marks one that cannot be reached, with the reason", async () => {
+    const w = await show({
+      permissions: WITH_CHAT,
+      userExtensions: [{ ...MINE, status: "error", error: "That address is not allowed", tools: [] }],
+    });
+
+    expect(head(w, "My notes").text()).toContain("Not connected");
+    await head(w, "My notes").trigger("click");
+    expect(w.text()).toContain("Not connected: That address is not allowed");
+  });
+
+  it("turns it off from its switch: the card goes and the extension is disabled", async () => {
+    const w = await show({ permissions: WITH_CHAT, userExtensions: [MINE], attach: true });
+    const box = sections(w).find((s) => s.find("h3").text() === "My notes")!.get("input[type=checkbox]")
+      .element as HTMLInputElement;
+
+    box.click();
+    await flushPromises();
+
+    expect(mocks.userUpdate).toHaveBeenCalledWith("mynotes", { enabled: false });
+    expect(sectionNames(w)).not.toContain("My notes");
+    w.unmount();
+  });
+
+  it("follows the filter box and the kind toggle", async () => {
+    const w = await show({ permissions: WITH_CHAT, userExtensions: [MINE] });
+    const pick = (label: string) => w.findAll(".kinds button").find((b) => b.text() === label)!.trigger("click");
+
+    await w.get("input[type=search]").setValue("sear");
+    expect(sectionNames(w)).toContain("My notes");
+
+    await w.get("input[type=search]").setValue("zzz-nothing");
+    expect(sectionNames(w)).not.toContain("My notes");
+
+    await w.get("input[type=search]").setValue("");
+    await pick("Built-in");
+    expect(sectionNames(w)).not.toContain("My notes");
+    await pick("Extensions");
+    expect(sectionNames(w)).toContain("My notes");
+  });
+
+  it("counts as something added, so the empty invitation is not shown", async () => {
+    // ext__echo belongs to no capability, so it would add an "Other tools" card of its own.
+    mocks.listTools.mockResolvedValue(TOOLS.filter((t) => t.name !== "ext__echo"));
+    const w = await show({
+      permissions: WITH_CHAT,
+      added: { capabilities: [], extensions: [] },
+      userExtensions: [MINE],
+    });
+
+    expect(w.text()).not.toContain("Nothing added yet");
+    expect(sectionNames(w)).toEqual(["My notes"]);
+  });
+
+  it("refreshes the statuses when the page opens, for accounts that can have any", async () => {
+    await show({ permissions: WITH_CHAT, userExtensions: [MINE] });
+    expect(mocks.userList).toHaveBeenCalledTimes(2);
+
+    mocks.userList.mockClear();
+    await show({ permissions: ["tools.use"] });
+    expect(mocks.userList).not.toHaveBeenCalled();
   });
 });

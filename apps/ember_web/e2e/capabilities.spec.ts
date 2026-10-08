@@ -54,3 +54,56 @@ test("an extension is added from the Supermarket and then listed on Capabilities
   await expect(card(page, "Echo server").getByRole("switch")).toBeChecked();
   expect(api.unexpected).toEqual([]);
 });
+
+test("a private extension is added in the Supermarket, enabled, and listed on Capabilities", async ({ page }) => {
+  const api = await installFakeApi(page);
+  await logIn(page);
+  await page.goto("/capabilities/supermarket");
+
+  await page.getByRole("button", { name: "Add your own extension" }).click();
+  await page.getByLabel("Label").fill("My notes");
+  await page.getByLabel("Address").fill("https://notes.example.com/mcp");
+  await page.getByRole("button", { name: "Add header" }).click();
+  await page.locator(".header-name").fill("Authorization");
+  await page.locator(".header-value").fill("Bearer secret");
+  await page.getByRole("dialog").getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect(item(page, "My notes")).toBeVisible();
+  await expect(item(page, "My notes").getByText("Not enabled")).toBeVisible();
+  await item(page, "My notes").getByRole("button", { name: "Enable My notes" }).click();
+  await expect(item(page, "My notes").getByText("1 tool")).toBeVisible();
+
+  await page.getByRole("link", { name: "Back to capabilities" }).click();
+  await expect(card(page, "My notes")).toBeVisible();
+  await expect(card(page, "My notes").getByText("Private")).toBeVisible();
+  expect(api.userExtensions.get("mynotes")?.header_names).toEqual(["Authorization"]);
+  expect(api.unexpected).toEqual([]);
+});
+
+test("a private extension turned off on Capabilities stays in the Supermarket and can be removed", async ({ page }) => {
+  const api = await installFakeApi(page);
+  api.userExtensions.set("mynotes", {
+    id: "mynotes",
+    label: "My notes",
+    description: "",
+    url: "https://notes.example.com/mcp",
+    header_names: [],
+    enabled: true,
+    status: "connected",
+    error: null,
+    tools: ["search"],
+  });
+  await logIn(page);
+  await page.getByRole("link", { name: "Capabilities", exact: true }).click();
+
+  await card(page, "My notes").locator("label.toggle").click();
+  await expect(card(page, "My notes")).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Supermarket", exact: true }).click();
+  await expect(item(page, "My notes").getByText("Not enabled")).toBeVisible();
+  await item(page, "My notes").getByRole("button", { name: "Remove My notes" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(item(page, "My notes")).toHaveCount(0);
+  expect(api.userExtensions.size).toBe(0);
+  expect(api.unexpected).toEqual([]);
+});
