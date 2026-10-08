@@ -166,8 +166,9 @@ def test_ask_on_event_is_a_noop_without_ctx():
 
 def test_status_delegates_to_agent_config():
     fake_status = {"provider_id": "anthropic", "model": "claude-sonnet-5", "available": True, "reason": None, "cooldown_seconds_remaining": 0}
-    with patch("src.server.agent_config.status", return_value=fake_status):
-        assert server.status() == {**fake_status, "tool_approval": True, "tool_filter": True}
+    with patch("src.server.agent_config.status", return_value=fake_status), \
+         patch.object(server.agent_config, "PROVIDER_ID", "anthropic"):
+        assert server.status() == {**fake_status, "tool_approval": True, "tool_filter": True, "private_extensions": True}
 
 
 def test_cancel_delegates_to_agent_config():
