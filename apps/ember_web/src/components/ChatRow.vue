@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 import type { Conversation } from "../api/types";
+import { liftDragImage } from "../utils/dragImage";
 import type { MenuPoint } from "./menuPoint";
 
 // One row of the chat list. The sidebar owns which row is being renamed and
@@ -83,6 +84,7 @@ function onDragStart(event: DragEvent): void {
   }
   event.dataTransfer?.setData("text/plain", props.chat.id);
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  if (event.currentTarget instanceof HTMLElement) liftDragImage(event, event.currentTarget);
   dragging.value = true;
   emit("dragStart");
 }

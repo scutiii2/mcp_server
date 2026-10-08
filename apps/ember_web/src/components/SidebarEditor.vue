@@ -10,6 +10,7 @@ import ToggleSwitch from "./ToggleSwitch.vue";
 import { visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 import { useNavPrefsStore } from "../stores/navPrefs";
+import { liftDragImage } from "../utils/dragImage";
 import { arrange, dropPage, isDefault, setHidden, setPinned } from "../utils/navArrangement";
 
 const PIN_ICON = "M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z";
@@ -29,6 +30,33 @@ const modified = computed(() => !isDefault(navPrefs.prefs));
 
 const dragging = ref<string | null>(null);
 const over = ref<string | null>(null);
+// The dragged row's height, so the drop slot takes exactly the space the row will fill.
+const slotHeight = ref(0);
+
+/** Which side of the hovered row the dragged one will land on: after it when moving down, before it when moving up. */
+const slotSide = computed<"before" | "after" | null>(() => {
+  const from = rows.value.findIndex((r) => r.page.to === dragging.value);
+  const to = rows.value.findIndex((r) => r.page.to === over.value);
+  if (from < 0 || to < 0 || from === to) return null;
+  return from < to ? "after" : "before";
+});
+
+function hasSlot(id: string, side: "before" | "after"): boolean {
+  return over.value === id && slotSide.value === side;
+}
+
+function endDrag(): void {
+  dragging.value = over.value = null;
+}
+
+function onDragOver(id: string): void {
+  over.value = id === dragging.value ? null : id;
+}
+
+/** The list is left only when the pointer goes outside it; moving onto the slot must not drop the slot. */
+function onListDragLeave(event: DragEvent): void {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) over.value = null;
+}
 
 function checked(event: Event): boolean {
   return (event.target as HTMLInputElement).checked;
@@ -49,12 +77,15 @@ function move(index: number, delta: -1 | 1): void {
 
 function onDrop(target: string): void {
   const from = dragging.value;
-  dragging.value = over.value = null;
+  endDrag();
   if (from && from !== target) void navPrefs.update(dropPage(pages.value, navPrefs.prefs, from, target));
 }
 
 function onDragStart(event: DragEvent, id: string): void {
   dragging.value = id;
+  const row = event.currentTarget as HTMLElement | null;
+  slotHeight.value = row?.offsetHeight ?? 0;
+  if (row) liftDragImage(event, row);
   event.dataTransfer?.setData("text/plain", id); // Firefox starts no drag without data
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
 }
@@ -70,16 +101,22 @@ function onDragStart(event: DragEvent, id: string): void {
       @reset="navPrefs.reset()"
     />
     <p v-if="navPrefs.error" class="error" role="alert">{{ navPrefs.error }}</p>
-    <ul class="rows" aria-label="Sidebar pages">
+    <ul class="rows" aria-label="Sidebar pages" @dragleave="onListDragLeave">
+      <template v-for="(row, i) in rows" :key="row.page.to">
       <li
-        v-for="(row, i) in rows"
-        :key="row.page.to"
-        :class="['row', { off: hidden.has(row.page.to), dragging: dragging === row.page.to, over: over === row.page.to && dragging !== row.page.to }]"
+        v-if="hasSlot(row.page.to, 'before')"
+        class="slot"
+        aria-hidden="true"
+        :style="{ height: `${slotHeight}px` }"
+        @dragover.prevent
+        @drop.prevent="onDrop(row.page.to)"
+      ></li>
+      <li
+        :class="['row', { off: hidden.has(row.page.to), dragging: dragging === row.page.to }]"
         draggable="true"
         @dragstart="onDragStart($event, row.page.to)"
-        @dragend="dragging = over = null"
-        @dragover.prevent="over = row.page.to"
-        @dragleave="over === row.page.to && (over = null)"
+        @dragend="endDrag"
+        @dragover.prevent="onDragOver(row.page.to)"
         @drop.prevent="onDrop(row.page.to)"
       >
         <svg class="grip" viewBox="0 0 24 24" aria-hidden="true"><path :d="GRIP_ICON" /></svg>
@@ -125,6 +162,15 @@ function onDragStart(event: DragEvent, id: string): void {
           />
         </span>
       </li>
+      <li
+        v-if="hasSlot(row.page.to, 'after')"
+        class="slot"
+        aria-hidden="true"
+        :style="{ height: `${slotHeight}px` }"
+        @dragover.prevent
+        @drop.prevent="onDrop(row.page.to)"
+      ></li>
+      </template>
     </ul>
   </div>
 </template>
@@ -157,8 +203,12 @@ function onDragStart(event: DragEvent, id: string): void {
 .row.dragging {
   opacity: 0.4;
 }
-.row.over {
-  border-color: var(--accent);
+/* Where the dragged row will land: an empty slot as tall as the row itself, so the list reflows once, not on drop. */
+.slot {
+  box-sizing: border-box;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
 }
 svg {
   fill: none;

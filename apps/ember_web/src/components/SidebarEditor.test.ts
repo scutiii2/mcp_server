@@ -75,6 +75,44 @@ describe("SidebarEditor", () => {
     expect(names(wrapper)).toEqual(["Settings", "Chat", "Capabilities", "Agents", "Usage"]);
   });
 
+  it("shows a drop slot after the hovered row when moving down and before it when moving up", async () => {
+    const wrapper = await setup();
+    const order = () => wrapper.findAll(".rows > li").map((li) => (li.classes("slot") ? "slot" : li.find(".name").text()));
+
+    await row(wrapper, "Chat").trigger("dragstart");
+    await row(wrapper, "Agents").trigger("dragover");
+    expect(order()).toEqual(["Chat", "Capabilities", "Agents", "slot", "Usage", "Settings"]);
+
+    await row(wrapper, "Chat").trigger("dragend");
+    await row(wrapper, "Settings").trigger("dragstart");
+    await row(wrapper, "Capabilities").trigger("dragover");
+    expect(order()).toEqual(["Chat", "slot", "Capabilities", "Agents", "Usage", "Settings"]);
+  });
+
+  it("shows no slot over the dragged row, after a drop or after the drag ends", async () => {
+    const wrapper = await setup();
+
+    await row(wrapper, "Chat").trigger("dragstart");
+    await row(wrapper, "Chat").trigger("dragover");
+    expect(wrapper.find(".slot").exists()).toBe(false);
+
+    await row(wrapper, "Agents").trigger("dragover");
+    expect(wrapper.find(".slot").exists()).toBe(true);
+    await row(wrapper, "Agents").trigger("dragend");
+    expect(wrapper.find(".slot").exists()).toBe(false);
+  });
+
+  it("drops onto the slot as onto its row", async () => {
+    const wrapper = await setup();
+
+    await row(wrapper, "Chat").trigger("dragstart");
+    await row(wrapper, "Agents").trigger("dragover");
+    await wrapper.find(".slot").trigger("drop");
+    await flushPromises();
+
+    expect(names(wrapper)).toEqual(["Capabilities", "Agents", "Chat", "Usage", "Settings"]);
+  });
+
   it("pins and unpins a page", async () => {
     const wrapper = await setup();
 
