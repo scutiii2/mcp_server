@@ -46,15 +46,15 @@ URL checks in `ember_api` are syntax only: `http` or `https`, a host, at most 10
 
 - `EMBER_SECRETS_KEY` is a Fernet key (url-safe base64, 32 bytes) in `.env`. At startup, if it is missing, `ember_api` generates one and appends it to `.env`. New dependency: `cryptography`.
 - A small `SecretBox` class in `src/services/secret_box.py` wraps encrypt and decrypt. Decryption of a row that fails (the key changed) does not crash anything: that extension reports `status: "error"` with the message "Its headers can't be read (the secrets key changed). Edit it to set them again."
-- Add `EMBER_SECRETS_KEY` to the config-issues checks only as informational if it had to be generated; do not print it.
+- When the key had to be generated, one warning line (without the key) is logged saying where it was written and that it must be kept with backups of `.env`.
 
 ### Service
 
-`UserExtensionService(session, account_id, box)`: `list`, `get`, `create`, `update`, `delete`, `enabled_for_turn`. Every query filters by account. `enabled_for_turn()` returns `[{id: slug, label, url, headers: dict}]` for the enabled rows, with headers decrypted, and skips (and counts) any row whose headers cannot be decrypted.
+`UserExtensionService(session, account_id, box)`: `list`, `get`, `create`, `update`, `delete`, `enabled_for_turn`. Every query filters by account. `enabled_for_turn()` returns `[{id: slug, label, url, headers: dict}]` for the enabled rows, with headers decrypted, and skips (and counts) any row whose headers cannot be decrypted. `update` clears the saved headers when the URL's host changes and the request sends no `headers`, so a saved token is never silently sent to another host. `TurnOptions.private_extensions` is excluded from `repr`.
 
 ### Routes (`chat.use`, JSON bodies)
 
-- `GET /api/user-extensions` returns `[{id, label, description, url, header_names, enabled, status, error, tools}]`. `id` is the slug. `status` is `connected`, `error` or `unknown`. `tools` are the tool names the server listed. Status comes from a probe (below), cached in memory for 60 seconds per row; missing or expired entries are probed concurrently (at most 5 at once, 5 seconds each). `url` is returned; header values never are.
+- `GET /api/user-extensions` returns `[{id, label, description, url, header_names, enabled, status, error, tools}]`. `id` is the slug. `status` is `connected`, `error` or `unknown`. `tools` are the tool names the server listed. Status comes from a probe (below), cached in memory for 60 seconds per row; missing or expired entries of enabled extensions are probed concurrently (at most 5 at once); a disabled extension is not probed and reports `unknown`. `url` is returned; header values never are.
 - `POST /api/user-extensions` with `{label, url, description?, headers?}` returns 201 with the same shape. It probes once, saves the row either way (an unreachable server is saved with `status: "error"`, like server-listed extensions), and returns the probe result. 409 at the 20-extension limit, 422 for a bad URL or header.
 - `PATCH /api/user-extensions/{id}` with any of `{label, description, url, headers, enabled}`. `headers`, when present, replaces the whole set (so the browser sends it only when the user retyped them). Changing `url` or `headers` drops the cached probe and probes again.
 - `DELETE /api/user-extensions/{id}` returns 204.
@@ -68,8 +68,8 @@ URL checks in `ember_api` are syntax only: `http` or `https`, a host, at most 10
 
 - `AgentGateway.ask` gains `private_extensions: list[dict] | None`. When non-empty it first checks `status.private_extensions` (fail closed, like `tool_approval` and `tool_filter`): an `ai_agent` that predates this would ignore the argument and the user's private tools would silently be missing, so the turn is refused with a message saying the agent needs updating and restarting.
 - `TurnOptions` gets nothing from the browser. `routes/chats.py` loads `UserExtensionService.enabled_for_turn()` itself and passes the list in. The browser cannot name an extension URL for a turn.
-- A turn that has private extensions is approval-capable: the `approval_request` events and the `decide` route work for it even when `ask_before_tools` is off. Read `services/turns.py` and the `decide` route first; if they assume `ask_before_tools`, extend them so a request raised for a private tool is accepted.
-- `ai_agent`'s result may carry `private_extension_errors: [{id, label, error}]`. `ember_api` forwards them to the browser as a `notice` turn event. Check `services/turns.py` and ember_web's `turnStream` for the existing event types; add a `notice` type only if none fits.
+- Approvals already work for any turn: `TurnRegistry.decide` and the `approvals` route only need a pending `approval_request` event, not `ask_before_tools`. Nothing changes there.
+- `ai_agent`'s result may carry `private_extension_errors: [{id, label, error}]`. `TurnRegistry` publishes them as a live `notice` turn event `{type: "notice", notices: [...]}` just before the turn finishes; they are not saved in the chat. A private extension whose headers cannot be decrypted is left out of the turn and reported the same way, in a `notice` event at the start.
 - `MAX_DISABLED_TOOLS` and the existing tool-name pattern are unaffected. Private tool names follow `u_<slug>__<tool>`, which fits `_TOOL_NAME`.
 
 ### Docs
