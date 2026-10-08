@@ -337,3 +337,12 @@ def test_used_invite_cannot_be_revoked(client: TestClient, email: FakeEmailSende
     as_admin(client)
 
     assert client.delete(f"/api/admin/invites/{invite_id}").status_code == 409
+
+
+def test_extensions_permission_bootstrap_and_descriptions(client: TestClient) -> None:
+    as_admin(client)
+    assert "extensions.manage" in role_by_name(client, "Administrator")["permissions"]
+    assert role_by_name(client, "Member")["permissions"] == ["chat.use", "tools.use"]
+    permissions = {p["name"]: p["description"] for p in client.get("/api/admin/permissions").json()}
+    assert permissions["extensions.manage"] == "Add and remove mcp_server extensions (other MCP servers offered to every client)"
+    assert permissions["admin.manage"] == "Manage accounts, roles, invites and settings everyone is held to"

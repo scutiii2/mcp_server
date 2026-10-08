@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from src.models import LoginAttempt
+from src.models import LoginAttempt, Permission
 from src.services.permissions import ALL_PERMISSIONS
 from tests.conftest import ADMIN_PASSWORD, ADMIN_USERNAME
 
@@ -118,3 +118,29 @@ def test_async_hashing_helpers_round_trip() -> None:
         return await password_matches(hashed, "s3cret"), await password_matches(hashed, "wrong")
 
     assert asyncio.run(run()) == (True, False)
+
+
+def test_restart_updates_known_permission_descriptions_and_creates_missing_rows(client_factory) -> None:
+    client = client_factory()
+
+    async def seed_old_permissions() -> None:
+        async with client.app.state.database.sessions() as session:
+            permission = await session.scalar(select(Permission).where(Permission.name == "admin.manage"))
+            permission.description = "Manage accounts, roles, invites and mcp_server extensions"
+            await session.execute(delete(Permission).where(Permission.name == "extensions.manage"))
+            session.add(Permission(name="retired.permission", description="Leave this description alone"))
+            await session.commit()
+
+    client.portal.call(seed_old_permissions)
+    restarted = client_factory()
+    assert login(restarted).status_code == 200
+    permissions = {p["name"]: p["description"] for p in restarted.get("/api/admin/permissions").json()}
+    assert permissions["admin.manage"] == "Manage accounts, roles, invites and settings everyone is held to"
+    assert permissions["extensions.manage"] == "Add and remove mcp_server extensions (other MCP servers offered to every client)"
+
+    async def retired_description() -> str:
+        async with restarted.app.state.database.sessions() as session:
+            permission = await session.scalar(select(Permission).where(Permission.name == "retired.permission"))
+            return permission.description
+
+    assert restarted.portal.call(retired_description) == "Leave this description alone"

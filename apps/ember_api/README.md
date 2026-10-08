@@ -190,8 +190,8 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/capabilities/{name}/gui` | `tools.use` | The capability's page layout (`{version, title, description, sections}`) as mcp_server validated it; `404` when it has no page. |
 | `PATCH` | `/api/capabilities/{name}` | `admin.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
 | `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools, web_url}]`. `web_url` is the extension's own web app (an http(s) address from mcp_server's config, or `null`); ember_web links to it. |
-| `POST` | `/api/extensions` | `admin.manage` | `{label, url, description?}` (http/https URL) -> `201` the extension; mcp_server connects to it and saves it (an unreachable one is still added, `status: "error"`). |
-| `DELETE` | `/api/extensions/{id}` | `admin.manage` | `204`; `404` unknown id. |
+| `POST` | `/api/extensions` | `extensions.manage` | `{label, url, description?}` (http/https URL) -> `201` the extension; mcp_server connects to it and saves it (an unreachable one is still added, `status: "error"`). |
+| `DELETE` | `/api/extensions/{id}` | `extensions.manage` | `204`; `404` unknown id. |
 | `GET` | `/api/watchers` | `watchers.view` | `{watchers, errors}`: every capability's background watchers (from each `tool_<alias>_listWatchers` tool), each row tagged with `capability`; `errors` names capabilities that didn't answer. `502` if mcp_server is unreachable or none answered. |
 | `GET` | `/api/logs` | any `logs.*` | `{kinds, accounts}`: the log kinds this account may read and every account to filter by. |
 | `GET` | `/api/logs/analytics?range=24h\|7d\|30d\|90d` | any `logs.*` | Counts for the Analytics page, only for the kinds this account may read (default `7d`): `{period, bucket (hour\|day), kinds, totals {kind: {current, previous}}, series [{bucket, counts}] (zero-filled), top_sources {kind: [{source, count}]}, accounts {kind: [{account_id, username, count}]}, heatmap [{weekday, hour, count}]}`. Top lists hold 10; `account_id` null is the server, `username` null a deleted account; heatmap is UTC, weekday 0 = Sunday. `422` bad range. |
@@ -219,7 +219,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
   changes, every admin action and capability/extension changes; errors and
   one line per answered chat turn go there too. Entries older than 90 days
   are deleted on startup; a deleted account's entries stay.
-- **Permissions:** `chat.use`, `tools.use`, `admin.manage`, `watchers.view`,
+- **Permissions:** `chat.use`, `tools.use`, `admin.manage`, `extensions.manage`, `watchers.view`,
   `logs.view`, `logs.errors.view`, `logs.chat.view`, `config.issues.view`,
   `traffic.view` (`src/services/permissions.py`). The Administrator role always holds all
   of them (new ones are added to it on startup). New registrations get `default_role` (config, default `Member`:

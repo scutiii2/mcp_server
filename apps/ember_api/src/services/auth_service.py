@@ -145,6 +145,8 @@ class AuthService:
             if name not in existing:
                 existing[name] = Permission(name=name, description=description)
                 self._session.add(existing[name])
+            elif existing[name].description != description:
+                existing[name].description = description
         return existing
 
     async def _ensure_admin_role(self) -> Role:

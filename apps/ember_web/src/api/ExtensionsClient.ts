@@ -23,7 +23,7 @@ export interface ExtensionCreate {
 export const EXTENSION_SEPARATOR = "__";
 
 /** ember_api's pass-through to mcp_server's extensions: listing needs
- * chat.use or tools.use, adding/removing admin.manage. */
+ * chat.use or tools.use, adding/removing extensions.manage. */
 export const extensionsClient = {
   list: () => apiRequest<ExtensionInfo[]>("GET", "/api/extensions"),
   add: (extension: ExtensionCreate) => apiRequest<ExtensionInfo>("POST", "/api/extensions", extension),

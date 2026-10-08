@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import type { CapabilityInfo } from "../api/CommandsClient";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
+import AddExtensionModal from "../components/AddExtensionModal.vue";
 import { useAuthStore } from "../stores/auth";
 import SupermarketView from "./SupermarketView.vue";
 
@@ -189,23 +190,43 @@ describe("SupermarketView", () => {
     expect(names(w)).toEqual(["Notes", "Wiki"]);
   });
 
-  describe("administrators", () => {
+  describe("management permissions", () => {
     const ADMIN = ["tools.use", "chat.use", "admin.manage"];
+    const EXTENSION_MANAGER = ["tools.use", "chat.use", "extensions.manage"];
+
+    it("admin.manage alone permits turning on for everyone but hides extension management", async () => {
+      const { w } = await show({ permissions: ADMIN });
+
+      expect(w.text()).not.toContain("Add extension");
+      expect(w.find("button.remove").exists()).toBe(false);
+      expect(w.findComponent(AddExtensionModal).exists()).toBe(false);
+      expect(row(w, "Legacy").get("button.everyone").text()).toBe("Turn on for everyone");
+    });
+
+    it("extensions.manage alone permits extension management but hides turning on for everyone", async () => {
+      const { w } = await show({ permissions: EXTENSION_MANAGER });
+
+      expect(w.text()).toContain("Add extension");
+      expect(row(w, "Notes").get("button.remove").text()).toBe("Remove");
+      expect(row(w, "Legacy").find("button.everyone").exists()).toBe(false);
+      await w.get("button.primary").trigger("click");
+      expect(w.getComponent(AddExtensionModal).props("open")).toBe(true);
+    });
 
     it("add and remove extensions; others see neither", async () => {
       const user = await show();
       expect(user.w.text()).not.toContain("Add extension");
       expect(user.w.find("button.remove").exists()).toBe(false);
 
-      const admin = await show({ permissions: ADMIN });
-      expect(admin.w.text()).toContain("Add extension");
-      await row(admin.w, "Notes").get("button.remove").trigger("click");
-      expect(admin.w.getComponent(ConfirmModal).props("message")).toContain('Remove "Notes"');
+      const manager = await show({ permissions: EXTENSION_MANAGER });
+      expect(manager.w.text()).toContain("Add extension");
+      await row(manager.w, "Notes").get("button.remove").trigger("click");
+      expect(manager.w.getComponent(ConfirmModal).props("message")).toContain('Remove "Notes"');
     });
 
     it("removing an extension asks the server and reloads the account's choices", async () => {
       mocks.removeExtension.mockResolvedValue(undefined);
-      const { w } = await show({ permissions: ADMIN, added: { extensions: ["notes"] } });
+      const { w } = await show({ permissions: EXTENSION_MANAGER, added: { extensions: ["notes"] } });
       await row(w, "Notes").get("button.remove").trigger("click");
 
       await w.getComponent(ConfirmModal).get(".confirm").trigger("click");
