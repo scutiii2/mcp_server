@@ -6,6 +6,7 @@ import { adminClient } from "../api/AdminClient";
 import { useAuthStore } from "../stores/auth";
 import AdminView from "./AdminView.vue";
 import AdminOverviewView from "./AdminOverviewView.vue";
+import AdminNav from "../components/AdminNav.vue";
 
 vi.mock("../api/AdminClient", () => ({ adminClient: { summary: vi.fn() } }));
 const client = vi.mocked(adminClient);
@@ -16,7 +17,7 @@ beforeEach(() => {
   client.summary.mockResolvedValue({ accounts: 24, unverified: 3, disabled: 1, open_invites: 5, roles: 2 });
 });
 async function view(path = '/admin') {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/admin", component: AdminView, children: [
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', redirect: '/admin' }, { path: "/admin", component: AdminView, children: [
     { path: '', component: AdminOverviewView },
     { path: 'roles', component: { template: '<div>roles page</div>' } },
     { path: 'accounts', component: { template: '<div>accounts page</div>' } },
@@ -24,17 +25,18 @@ async function view(path = '/admin') {
     { path: 'settings', component: { template: '<div>settings page</div>' } },
   ] }] });
   await router.push(path);
-  const wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router] } });
+  const wrapper = mount({ components: { AdminNav }, template: '<div><AdminNav /><RouterView /></div>' }, { global: { plugins: [router] } });
   await flushPromises();
   return { wrapper, router };
 }
 it('shows separate destinations and marks the active child page', async () => {
   const { wrapper, router } = await view('/admin/roles');
-  expect(wrapper.get('nav[aria-label="Administration pages"] a[aria-current="page"]').text()).toBe('Roles & permissions');
+  expect(wrapper.get('nav[aria-label="Admin sections"] a[aria-current="page"]').attributes('aria-label')).toBe('Roles & permissions');
+  expect(wrapper.find('.admin-sidebar').exists()).toBe(false);
   expect(wrapper.text()).toContain('roles page');
   expect(client.summary).not.toHaveBeenCalled();
   await router.push('/admin/accounts');
-  expect(wrapper.get('nav[aria-label="Administration pages"] a[aria-current="page"]').text()).toBe('Accounts');
+  expect(wrapper.get('nav[aria-label="Admin sections"] a[aria-current="page"]').attributes('aria-label')).toBe('Accounts');
 });
 it('shows counts only on the overview and refreshes when returning', async () => {
   const { wrapper, router } = await view();
@@ -55,7 +57,7 @@ it('keeps navigation and destination links usable when summary fails', async () 
 it('offers only overview and roles to a role viewer and hides unrelated counts', async () => {
   useAuthStore().account!.permissions = ['roles.view'];
   const { wrapper } = await view();
-  expect(wrapper.findAll('nav[aria-label="Administration pages"] a').map(a => a.text())).toEqual(['Overview', 'Roles & permissions']);
+  expect(wrapper.findAll('nav[aria-label="Admin sections"] a').map(a => a.attributes('aria-label'))).toEqual(['Overview', 'Roles & permissions']);
   expect(wrapper.findAll('.destination')).toHaveLength(1);
   expect(wrapper.find('.stats').exists()).toBe(false);
   expect(wrapper.find('.admin-page-head .primary').exists()).toBe(false);

@@ -18,7 +18,7 @@ function allowed(needed: string | string[], has: (p: string) => boolean): boolea
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/capabilities" },
+    { path: "/", redirect: "/admin" },
     { path: "/capabilities", name: "capabilities", component: () => import("../views/CapabilitiesAdminView.vue"), meta: { permission: "capabilities.manage" } },
     { path: "/extensions", name: "extensions", component: () => import("../views/ExtensionsAdminView.vue"), meta: { permission: "extensions.manage" } },
     { path: "/analytics", name: "analytics", component: () => import("../views/AnalyticsView.vue"), meta: { permission: ANALYTICS_PERMISSIONS } },
@@ -54,13 +54,9 @@ router.beforeEach(async (to): Promise<true | RouteLocationRaw> => {
     }
   }
   const home = ADMIN_PAGES.find((p) => allowed(p.permission, auth.hasPermission));
-  if (to.meta.guestOnly) return { name: home ? routeName(home.to) : "no-access" };
+  if (to.meta.guestOnly) return { path: home?.to ?? "/no-access" };
   const needed = to.meta.permission;
-  if (needed && !allowed(needed, auth.hasPermission)) return { name: home ? routeName(home.to) : "no-access" };
-  if (to.name === "no-access" && home) return { name: routeName(home.to) };
+  if (needed && !allowed(needed, auth.hasPermission)) return { path: home?.to ?? "/no-access" };
+  if (to.name === "no-access" && home) return { path: home.to };
   return true;
 });
-
-function routeName(path: string): string {
-  return path.slice(1);
-}

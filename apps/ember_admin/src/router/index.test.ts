@@ -11,12 +11,20 @@ beforeEach(() => {
 });
 
 it("allows a role viewer directly into the roles page, but redirects accounts and settings", async () => {
+  await router.push("/");
+  expect(router.currentRoute.value.name).toBe("admin");
   await router.push("/admin/roles");
   expect(router.currentRoute.value.name).toBe("admin-roles");
   await router.push("/admin/accounts");
   expect(router.currentRoute.value.name).toBe("admin");
   await router.push("/admin/settings");
   expect(router.currentRoute.value.name).toBe("admin");
+});
+
+it("opens the first permitted main page for an extension-only account", async () => {
+  vi.mocked(authClient.me).mockResolvedValue({ id: 3, username: "extensions", email: "e@example.com", email_verified: true, roles: [], permissions: ["extensions.manage"] });
+  await router.replace({ path: "/", force: true });
+  expect(router.currentRoute.value.name).toBe("extensions");
 });
 
 it("preserves query options while redirecting old tab links", async () => {

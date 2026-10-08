@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import EmberLogo from "./EmberLogo.vue";
 import { useTheme } from "../composables/useTheme";
@@ -8,19 +8,24 @@ import { ADMIN_PAGES } from "../router/pages";
 
 const auth = useAuthStore();
 const route = useRoute();
+const navigation = ref<HTMLElement | null>(null);
 const { theme, next, cycle } = useTheme();
 const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" } as const;
 const pages = computed(() => ADMIN_PAGES.filter((p) =>
   Array.isArray(p.permission) ? p.permission.some(auth.hasPermission) : auth.hasPermission(p.permission),
 ));
+watch([() => route.path, pages], async () => {
+  await nextTick();
+  navigation.value?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+}, { immediate: true });
 </script>
 
 <template>
   <aside class="rail" aria-label="Ember Admin">
     <RouterLink v-if="pages.length" to="/" class="wordmark" data-label="Ember Admin" aria-label="Ember Admin home"><EmberLogo /></RouterLink>
     <span v-else class="wordmark" role="img" aria-label="Ember Admin"><EmberLogo /></span>
-    <nav v-if="pages.length" class="pages" aria-label="Admin sections">
-      <RouterLink v-for="page in pages" :key="page.to" :to="page.to" :data-label="page.label" :aria-label="page.label" :aria-current="route.path === page.to || route.path.startsWith(page.to + '/') ? 'page' : undefined">
+    <nav v-if="pages.length" ref="navigation" class="pages" aria-label="Admin sections">
+      <RouterLink v-for="page in pages" :key="page.to" :to="page.to" :data-label="page.label" :aria-label="page.label" :aria-current="route.path === page.to ? 'page' : undefined">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path v-for="d in page.icon" :key="d" :d="d" /></svg>
       </RouterLink>
     </nav>
@@ -122,14 +127,15 @@ svg {
     border-top: 1px solid var(--border);
   }
   .wordmark { width: 28px; height: 28px; flex-shrink: 0; }
-  .pages { flex: 1; min-width: 0; margin: 0; flex-direction: row; justify-content: space-evenly; gap: 0; }
-  .bottom { flex-direction: row; margin: 0; gap: 0; }
-  .pages a, button { width: 36px; height: 40px; }
+  .pages { flex: 1; min-width: 0; margin: 0; flex-direction: row; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; gap: 0; }
+  .bottom { flex-direction: row; flex-shrink: 0; margin: 0; gap: 0; }
+  .pages a, button { width: 36px; height: 40px; flex-shrink: 0; }
   .pages a[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--accent); }
   [data-label]:hover::after, [data-label]:focus-visible::after {
     left: 50%; top: auto; bottom: calc(100% + 8px); transform: translateX(-50%);
   }
   .wordmark[data-label]::after { left: 0; transform: none; }
   .bottom [data-label]::after { left: auto; right: 0; transform: none; }
+  .pages [data-label]::after { display: none; }
 }
 </style>

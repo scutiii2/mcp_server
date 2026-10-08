@@ -82,11 +82,14 @@ and bottom navigation below 768px. Theme cycles through System, Light, and Dark
 and persists in this browser, including on the login page. Page content scrolls
 independently of navigation; controls use the same theme and radius tokens.
 
-Administration has a labeled sidebar beside the icon rail and separate pages,
-rather than tabs. Below 768px its section links form a horizontally scrollable
-menu above the content. The icon rail continues to mark Admin while a child
-page is open. Each page checks its own permissions; restricted administrators
-see only the destinations and actions they can access.
+Overview, Accounts, Roles & permissions, Invites, and Workspace settings sit
+directly in the main icon rail, alongside Capabilities, Extensions, and Analytics.
+There is one navigation sidebar, with the current page marked individually.
+The app opens the workspace overview by default, or the first permitted page
+for accounts with only capability, extension, or analytics access. Below 768px
+the page links scroll horizontally in the bottom rail while theme and sign-out
+controls remain visible. Each page checks its own permissions; restricted
+administrators see only the destinations and actions they can access.
 
 The overview shows permitted account and invite counts, links to filtered
 account lists, and shortcuts to the administration pages. Accounts keep search
