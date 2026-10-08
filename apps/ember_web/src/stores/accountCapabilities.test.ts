@@ -132,6 +132,35 @@ describe("accountCapabilities store", () => {
     expect(store.disabledTools).toEqual([]);
   });
 
+  it("never saves a queued change for the previous account after switching accounts", async () => {
+    const { auth, store } = setup();
+    await flushPromises();
+    expect(store.capabilities).toEqual(["pdf"]);
+    let finish!: (value: AccountCapabilities) => void;
+    client.set.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+
+    const firstSave = store.setCapability("a", true);
+    await flushPromises();
+    expect(client.set).toHaveBeenCalledWith("capability", "a", true);
+    const queuedSave = store.setCapability("b", true);
+
+    const nextAccountState: AccountCapabilities = {
+      capabilities: ["account-two"], extensions: ["wiki"], disabled_tools: ["tool_other"],
+    };
+    client.get.mockResolvedValue(nextAccountState);
+    auth.account = { ...ACCOUNT, id: 2 };
+    await flushPromises();
+    finish({ capabilities: ["a", "pdf"], extensions: [], disabled_tools: [] });
+    await Promise.all([firstSave, queuedSave]);
+
+    expect(client.set).toHaveBeenCalledTimes(1);
+    expect(client.set).not.toHaveBeenCalledWith("capability", "b", true);
+    expect(store.capabilities).toEqual(nextAccountState.capabilities);
+    expect(store.extensions).toEqual(nextAccountState.extensions);
+    expect(store.disabledTools).toEqual(nextAccountState.disabled_tools);
+    expect(store.ready).toBe(true);
+  });
+
   it("refresh() reads the server again", async () => {
     const { store } = setup();
     await flushPromises();

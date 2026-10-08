@@ -80,6 +80,7 @@ export const useAccountCapabilitiesStore = defineStore("accountCapabilities", ()
     list.value = toggled(list.value, key, on);
     error.value = "";
     chain = chain.then(async () => {
+      if (started !== generation) return;
       try {
         const saved = await accountCapabilitiesClient.set(kind, key, on);
         if (started === generation && mine === latest) {
