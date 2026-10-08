@@ -71,6 +71,12 @@ function onAddRole(event: Event): void {
   select.value = "";
   if (roleId) emit("addRole", roleId);
 }
+function requestActive(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const wanted = input.checked;
+  input.checked = props.account.is_active;
+  emit('setActive', wanted);
+}
 </script>
 
 <template>
@@ -135,7 +141,7 @@ function onAddRole(event: Event): void {
         small
         :checked="account.is_active"
         :disabled="busy"
-        @click.prevent="emit('setActive', !account.is_active)"
+        @change="requestActive($event)"
       >
         Active
       </ToggleSwitch>

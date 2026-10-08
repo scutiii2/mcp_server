@@ -49,11 +49,11 @@ onUnmounted(() => {
 
 <template>
   <section class="info-page">
-    <div class="column">
+    <div class="column page-column">
       <div class="top">
         <div>
-          <h2>Agents</h2>
-          <p class="muted intro">The AI agents behind ember. New chats go to the entry agent, which hands work to the others.</p>
+          <h2 class="page-title">Agents</h2>
+          <p class="muted intro page-description">The AI agents behind ember. New chats go to the entry agent, which hands work to the others.</p>
         </div>
         <div class="actions">
           <button type="button" class="chip" :disabled="refreshing" @click="refresh">Refresh</button>

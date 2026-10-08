@@ -66,7 +66,7 @@ beforeEach(() => {
 });
 
 describe("SettingsView", () => {
-  it("turns prompt suggestions off on the server and marks the setting as modified", async () => {
+  it("keeps prompt suggestions as a draft until Save, then persists them", async () => {
     const w = await mountView();
     const set = vi
       .spyOn(authClient, "setPreferences")
@@ -76,6 +76,10 @@ describe("SettingsView", () => {
     await row(w, "chat-suggestions").get("input").setValue(false);
     await flushPromises();
 
+    expect(set).not.toHaveBeenCalled();
+    expect(useAuthStore().promptSuggestions).toBe(true);
+    await w.get("button.save").trigger("click");
+    await flushPromises();
     expect(set).toHaveBeenCalledWith({ prompt_suggestions: false });
     expect(useAuthStore().promptSuggestions).toBe(false);
     expect(row(w, "chat-suggestions").find("button.reset").exists()).toBe(true);
@@ -92,6 +96,9 @@ describe("SettingsView", () => {
     await row(w, "chat-suggestions").get("button.reset").trigger("click");
     await flushPromises();
 
+    expect(set).not.toHaveBeenCalled();
+    await w.get("button.save").trigger("click");
+    await flushPromises();
     expect(set).toHaveBeenCalledWith({ prompt_suggestions: true });
     expect(useAuthStore().promptSuggestions).toBe(true);
   });
@@ -104,7 +111,11 @@ describe("SettingsView", () => {
     await row(w, "chat-suggestions").get("input").setValue(false);
     await flushPromises();
 
+    await w.get("button.save").trigger("click");
+    await flushPromises();
     expect(useAuthStore().promptSuggestions).toBe(true);
+    expect(w.get('[role="alert"]').text()).toContain("down");
+    expect((row(w, "chat-suggestions").get("input").element as HTMLInputElement).checked).toBe(false);
   });
 
   it("lists the chat and appearance settings, grouped, and no administration for a member", async () => {
@@ -129,13 +140,13 @@ describe("SettingsView", () => {
 
     await row(w, "chat-terse").get("input").setValue(true);
 
-    expect(chat.setCaveman).toHaveBeenCalledWith(true);
+    expect(chat.setCaveman).not.toHaveBeenCalled();
     expect(row(w, "chat-terse").find(".dot").exists()).toBe(true);
     expect(w.get(".badge").text()).toBe("1 modified");
 
     await row(w, "chat-terse").get("button.reset").trigger("click");
 
-    expect(chat.setCaveman).toHaveBeenLastCalledWith(false);
+    expect(chat.setCaveman).not.toHaveBeenCalled();
     expect(row(w, "chat-terse").find(".dot").exists()).toBe(false);
     expect(w.find(".badge").exists()).toBe(false);
   });
@@ -147,7 +158,7 @@ describe("SettingsView", () => {
 
     await row(w, "chat-chime").get("button.reset").trigger("click");
 
-    expect(chat.setChime).toHaveBeenCalledWith(true);
+    expect(chat.setChime).not.toHaveBeenCalled();
     expect(w.find(".badge").exists()).toBe(false);
   });
 
@@ -159,12 +170,12 @@ describe("SettingsView", () => {
 
     await light.trigger("click");
 
-    expect(document.documentElement.style.colorScheme).toBe("light");
+    expect(document.documentElement.style.colorScheme).not.toBe("light");
     expect(row(w, "appearance-theme").find(".dot").exists()).toBe(true);
 
     await row(w, "appearance-theme").get("button.reset").trigger("click");
 
-    expect(document.documentElement.style.colorScheme).toBe("light dark");
+    expect(document.documentElement.style.colorScheme).not.toBe("light");
     expect(row(w, "appearance-theme").find(".dot").exists()).toBe(false);
   });
 
@@ -194,9 +205,9 @@ describe("group headers", () => {
 
     const scopes = w.findAll(".scope");
     expect(scopes.map((c) => c.text())).toEqual(["This device", "This device", "Your account"]);
-    expect(scopes[0]!.attributes("title")).toBe("Applies instantly. Saved on this device.");
-    expect(scopes[2]!.attributes("title")).toBe("Applies instantly. Saved to your account.");
-    expect(w.text()).not.toContain("Applies instantly. Saved on this device.");
+    expect(scopes[0]!.attributes("title")).toBe("Applied when you save. Stored on this device.");
+    expect(scopes[2]!.attributes("title")).toBe("Applied when you save. Stored on your account.");
+    expect(w.text()).not.toContain("Applied when you save. Stored on this device.");
   });
 });
 
@@ -278,4 +289,46 @@ it("keeps workspace tool approval in Ember Admin", async () => {
   expect(w.text()).not.toContain("Tool approval");
   expect(w.text()).not.toContain("Applies to all accounts");
   expect(rowIds(w)).toHaveLength(6);
+});
+
+it("reverts chat, theme and sidebar drafts without persisting anything", async () => {
+  const w = await mountView();
+  await row(w, "chat-terse").get("input").setValue(true);
+  await row(w, "appearance-theme").findAll("button").find(b => b.text() === "Dark")!.trigger("click");
+  await w.get('button[aria-label="Pin Chat to the top"]').trigger("click");
+  expect(vi.mocked(navPreferencesClient.save)).not.toHaveBeenCalled();
+  expect(chat.caveman).toBe(false);
+  await w.get("button.revert").trigger("click");
+  expect(w.find(".settings-save-bar").exists()).toBe(false);
+  expect((row(w, "chat-terse").get("input").element as HTMLInputElement).checked).toBe(false);
+  expect(w.find(".tag").exists()).toBe(false);
+});
+
+it("saves local preferences and sidebar edits together", async () => {
+  const w = await mountView();
+  vi.mocked(navPreferencesClient.save).mockImplementation(async prefs => prefs);
+  await row(w, "chat-terse").get("input").setValue(true);
+  await row(w, "appearance-theme").findAll("button").find(b => b.text() === "Dark")!.trigger("click");
+  await w.get('button[aria-label="Pin Chat to the top"]').trigger("click");
+  await w.get("button.save").trigger("click");
+  await flushPromises();
+  expect(chat.setCaveman).toHaveBeenCalledWith(true);
+  expect(document.documentElement.style.colorScheme).toBe("dark");
+  expect(navPreferencesClient.save).toHaveBeenCalledWith(expect.objectContaining({ pinned: ["/"] }));
+  expect(w.find(".settings-save-bar").exists()).toBe(false);
+});
+
+it("keeps unsaved settings after a sidebar save fails, and supports retry", async () => {
+  const w = await mountView();
+  vi.mocked(navPreferencesClient.save).mockRejectedValueOnce(new Error("Sidebar unavailable")).mockImplementation(async prefs => prefs);
+  await w.get('button[aria-label="Pin Chat to the top"]').trigger("click");
+  await row(w, "chat-terse").get("input").setValue(true);
+  await w.get("button.save").trigger("click");
+  await flushPromises();
+  expect(w.get('[role="alert"]').text()).toBe("Sidebar unavailable");
+  expect(chat.setCaveman).not.toHaveBeenCalled();
+  await w.get("button.save").trigger("click");
+  await flushPromises();
+  expect(w.find(".settings-save-bar").exists()).toBe(false);
+  expect(chat.setCaveman).toHaveBeenCalledWith(true);
 });

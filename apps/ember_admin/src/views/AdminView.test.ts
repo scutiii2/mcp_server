@@ -57,7 +57,7 @@ it('keeps navigation and destination links usable when summary fails', async () 
 it('offers only overview and roles to a role viewer and hides unrelated counts', async () => {
   useAuthStore().account!.permissions = ['roles.view'];
   const { wrapper } = await view();
-  expect(wrapper.findAll('nav[aria-label="Admin sections"] a').map(a => a.attributes('aria-label'))).toEqual(['Overview', 'Roles & permissions']);
+  expect(wrapper.findAll('nav[aria-label="Admin sections"] a').map(a => a.attributes('aria-label'))).toEqual(['Roles & permissions']);
   expect(wrapper.findAll('.destination')).toHaveLength(1);
   expect(wrapper.find('.stats').exists()).toBe(false);
   expect(wrapper.find('.admin-page-head .primary').exists()).toBe(false);
@@ -65,4 +65,22 @@ it('offers only overview and roles to a role viewer and hides unrelated counts',
 it('opens invite creation from the overview header', async () => {
   const { wrapper } = await view();
   expect(wrapper.get('.admin-page-head a').attributes('href')).toBe('/admin/invites?create=1');
+});
+
+it('keeps overview destinations in sync with available sidebar pages', async () => {
+  useAuthStore().account!.permissions = ['accounts.view', 'roles.view', 'invites.manage', 'settings.manage', 'capabilities.manage', 'extensions.manage', 'logs.errors.view'];
+  const { wrapper } = await view();
+  const links = wrapper.findAll('.destination').map(a => a.attributes('href'));
+  expect(links).toEqual(wrapper.findAll('nav[aria-label="Admin sections"] a').map(a => a.attributes('href')));
+  expect(links).toContain('/capabilities');
+  expect(links).toContain('/extensions');
+  expect(links).toContain('/analytics');
+  expect(wrapper.findAll('.destination p').every(p => p.text().length > 0)).toBe(true);
+});
+
+it('shows integration destinations without requesting unrelated account statistics', async () => {
+  useAuthStore().account!.permissions = ['capabilities.manage'];
+  const { wrapper } = await view();
+  expect(wrapper.findAll('.destination').map(a => a.attributes('href'))).toEqual(['/capabilities']);
+  expect(client.summary).not.toHaveBeenCalled();
 });

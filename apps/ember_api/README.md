@@ -141,7 +141,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/admin/accounts/{id}/send-verification` | `accounts.manage` | `{sent: true}`; `409` already verified, `503` SMTP failed. |
 | `GET` | `/api/admin/roles` | `roles.view (also roles.manage/roles.assign)` | `[{id, name, description, is_protected, permissions, account_count}]` |
 | `POST` | `/api/admin/roles` | `roles.manage` | `{name, description?}` -> `201` role. `409` name taken (case-insensitive). |
-| `PATCH` | `/api/admin/roles/{id}` | `roles.manage` | Any of `{name, description}` (`""` clears it) -> the role. Administrator can't be renamed. |
+| `PATCH` | `/api/admin/roles/{id}` | `roles.manage` | Any of `{name, description, permissions}` (`""` clears the description) -> the role. `permissions` replaces the full permission set; omitted leaves it unchanged. Details and permissions save atomically. Administrator can't be renamed or lose permissions; delegated authority and own admin access remain enforced. |
 | `DELETE` | `/api/admin/roles/{id}` | `roles.manage` | `204`. `409` for Administrator, or if it's your only source of role management/assignment access. |
 | `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `roles.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last role management/assignment access. |
 | `GET` | `/api/admin/permissions` | `roles.view (also roles.manage/roles.assign)` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |

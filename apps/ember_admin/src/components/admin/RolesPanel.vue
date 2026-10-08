@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import { adminClient, type PermissionInfo, type Role, type RoleChanges } from "../../api/AdminClient";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { adminClient, type AdminAccount, type PermissionInfo, type Role, type RoleChanges } from "../../api/AdminClient";
 import { useAuthStore } from "../../stores/auth";
 import { errorMessage } from "../../utils/errors";
 import BaseModal from "../BaseModal.vue";
@@ -19,6 +19,41 @@ const actionError = ref("");
 const busy = ref(false);
 // The last change to the open role went through; shown as a "Saved" chip.
 const saved = ref(false);
+const roleEditor = ref<InstanceType<typeof RoleEditor> | null>(null);
+const dirty = ref(false);
+const discardOpen = ref(false);
+let discardAnswer: ((value: boolean) => void) | null = null;
+function confirmDiscard(): Promise<boolean> {
+  if (busy.value) return Promise.resolve(false);
+  if (!dirty.value) return Promise.resolve(true);
+  if (discardAnswer) return Promise.resolve(false);
+  discardOpen.value = true;
+  return new Promise((resolve) => { discardAnswer = resolve; });
+}
+function answerDiscard(discard: boolean): void {
+  if (discard) { roleEditor.value?.revert(); dirty.value = false; }
+  discardOpen.value = false;
+  discardAnswer?.(discard);
+  discardAnswer = null;
+}
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (dirty.value) { event.preventDefault(); event.returnValue = ""; }
+}
+const affectedRole = ref<Role | null>(null);
+const affectedAccounts = ref<AdminAccount[]>([]);
+const accountsLoading = ref(false);
+const accountsError = ref("");
+async function showAccounts(role: Role): Promise<void> {
+  affectedRole.value = role;
+  accountsLoading.value = true;
+  accountsError.value = "";
+  affectedAccounts.value = [];
+  try {
+    const accounts = await adminClient.listAccounts();
+    if (affectedRole.value?.id === role.id) affectedAccounts.value = accounts.filter((a) => a.roles.some((r) => r.id === role.id));
+  } catch (err) { accountsError.value = errorMessage(err); }
+  finally { accountsLoading.value = false; }
+}
 const pendingDelete = ref<Role | null>(null);
 
 const creating = ref(false);
@@ -40,7 +75,9 @@ function replace(updated: Role): void {
   roles.value = roles.value.map((r) => (r.id === updated.id ? updated : r));
 }
 
-function select(role: Role): void {
+async function select(role: Role): Promise<void> {
+  if (role.id === selectedId.value) return;
+  if (dirty.value || busy.value) { if (!await confirmDiscard()) return; }
   selectedId.value = role.id;
   actionError.value = "";
   saved.value = false;
@@ -64,13 +101,14 @@ async function act(role: Role, call: () => Promise<void>): Promise<void> {
   }
 }
 
-function openCreate(): void {
+async function openCreate(): Promise<void> {
+  if (dirty.value || busy.value) { if (!await confirmDiscard()) return; }
   newRole.name = "";
   newRole.description = "";
   newRole.error = "";
   creating.value = true;
 }
-defineExpose({ openCreate });
+defineExpose({ openCreate, confirmDiscard });
 
 async function createRole(): Promise<void> {
   newRole.error = "";
@@ -86,12 +124,6 @@ async function createRole(): Promise<void> {
   } finally {
     newRole.saving = false;
   }
-}
-
-function togglePermission(role: Role, name: string, granted: boolean): Promise<void> {
-  return act(role, async () => {
-    replace(granted ? await adminClient.grantPermission(role.id, name) : await adminClient.revokePermission(role.id, name));
-  });
 }
 
 function saveDetails(role: Role, changes: RoleChanges): Promise<void> {
@@ -117,7 +149,8 @@ async function confirmDelete(): Promise<void> {
   pendingDelete.value = null;
 }
 
-onMounted(load);
+onMounted(() => { void load(); window.addEventListener("beforeunload", beforeUnload); });
+onUnmounted(() => { window.removeEventListener("beforeunload", beforeUnload); answerDiscard(false); });
 </script>
 
 <template>
@@ -132,7 +165,7 @@ onMounted(load);
       <nav class="list" aria-label="Roles">
         <ul>
           <li v-for="r in roles" :key="r.id">
-            <button type="button" :class="['role', { selected: r.id === selectedId }]" :aria-pressed="r.id === selectedId" @click="select(r)">
+            <button type="button" :class="['role', { selected: r.id === selectedId }]" :disabled="busy" :aria-pressed="r.id === selectedId" @click="select(r)">
               <span class="role-name">{{ r.name }}</span>
               <span v-if="r.is_protected" class="badge">protected</span>
               <span class="muted count">{{ r.account_count }} {{ r.account_count === 1 ? "account" : "accounts" }}</span>
@@ -142,6 +175,7 @@ onMounted(load);
       </nav>
 
       <RoleEditor
+        ref="roleEditor"
         v-if="selected"
         :role="selected"
         :permissions="permissions"
@@ -149,7 +183,8 @@ onMounted(load);
         :error="actionError"
         :saved="saved"
         @save="(changes) => saveDetails(selected!, changes)"
-        @toggle-permission="(name, granted) => togglePermission(selected!, name, granted)"
+        @dirty="dirty = $event; if ($event) saved = false"
+        @show-accounts="showAccounts(selected!)"
         @remove="pendingDelete = selected"
       />
       <p v-else-if="!loadError" class="muted">No roles yet. Create one to get started.</p>
@@ -178,10 +213,21 @@ onMounted(load);
       @confirm="confirmDelete"
       @close="pendingDelete = null"
     />
+    <ConfirmModal :open="discardOpen" title="Discard unsaved changes?" message="Your role changes have not been saved." confirm-label="Discard changes" @confirm="answerDiscard(true)" @close="answerDiscard(false)" />
+    <BaseModal :open="affectedRole !== null" :title="`Accounts with ${affectedRole?.name ?? ''}`" @close="affectedRole = null">
+      <p v-if="accountsLoading" role="status">Loading accounts…</p>
+      <template v-else-if="accountsError"><p class="error" role="alert">{{ accountsError }}</p><button type="button" @click="showAccounts(affectedRole!)">Retry</button></template>
+      <template v-else><p class="muted">{{ affectedAccounts.length }} {{ affectedAccounts.length === 1 ? 'account holds' : 'accounts hold' }} this role.</p>
+        <ul class="affected-accounts"><li v-for="account in affectedAccounts" :key="account.id"><strong>{{ account.username }}</strong><span>{{ account.email }}</span><small>{{ account.is_active ? 'Active' : 'Disabled' }} · {{ account.email_verified ? 'Verified' : 'Unverified' }}</small></li></ul>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
 <style scoped>
+.affected-accounts { list-style: none; padding: 0; }
+.affected-accounts li { display: flex; flex-direction: column; padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.affected-accounts span, .affected-accounts small { color: var(--muted); }
 .layout {
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
@@ -189,7 +235,10 @@ onMounted(load);
   align-items: start;
 }
 @media (max-width: 767px) {
-  .layout {
+  .affected-accounts { list-style: none; padding: 0; }
+.affected-accounts li { display: flex; flex-direction: column; padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.affected-accounts span, .affected-accounts small { color: var(--muted); }
+.layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -86,7 +86,7 @@ describe("AccountDrawer", () => {
   it("asks to disable an active account when the switch is clicked", async () => {
     const wrapper = drawer();
 
-    await wrapper.get('input[role="switch"]').trigger("click");
+    await wrapper.get('input[role="switch"]').setValue(!(wrapper.get('input[role="switch"]').element as HTMLInputElement).checked);
 
     expect(wrapper.emitted("setActive")).toEqual([[false]]);
   });
@@ -94,7 +94,7 @@ describe("AccountDrawer", () => {
   it("asks to enable a disabled account", async () => {
     const wrapper = drawer({ is_active: false });
 
-    await wrapper.get('input[role="switch"]').trigger("click");
+    await wrapper.get('input[role="switch"]').setValue(!(wrapper.get('input[role="switch"]').element as HTMLInputElement).checked);
 
     expect(wrapper.emitted("setActive")).toEqual([[true]]);
   });

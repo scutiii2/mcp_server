@@ -125,8 +125,8 @@ const sections = (w: Wrapper) => w.findAll("article.card");
 const sectionNames = (w: Wrapper) => sections(w).map((s) => s.find("h3").text());
 const head = (w: Wrapper, name: string) =>
   w.findAll("article.card .head-button").find((b) => b.find("h3").text() === name)!;
-const toolTitles = (w: Wrapper) => w.findAll("li.tool .title").map((t) => t.text());
-const toolRows = (w: Wrapper) => w.findAll("li.tool .row");
+const toolTitles = (w: Wrapper) => w.findAll(".tool-list .tool-label strong").map((t) => t.text());
+const toolRows = (w: Wrapper) => w.findAll(".tool-list button");
 const modal = (w: Wrapper) => w.get("dialog.modal");
 
 beforeEach(() => {
@@ -159,7 +159,7 @@ describe("CapabilitiesView", () => {
     expect(links[0].attributes("href")).toBe("/capabilities/pdf");
   });
 
-  it("lists every capability collapsed, with what it brings", async () => {
+  it("lists compact capability cards with what they bring", async () => {
     const w = await show();
 
     expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "Other tools"]);
@@ -170,14 +170,16 @@ describe("CapabilitiesView", () => {
     expect(head(w, "Legacy").text()).toContain("off");
   });
 
-  it("opens and closes a capability from its header", async () => {
+  it("opens a capability workspace from its card and closes it from the dialog", async () => {
     const w = await show();
 
     await head(w, "PDF files").trigger("click");
     expect(toolTitles(w)).toEqual(["Merge", "Split"]);
     expect(head(w, "PDF files").attributes("aria-expanded")).toBe("true");
 
-    await head(w, "PDF files").trigger("click");
+    await modal(w).get("button.close").trigger("click");
+    await flushPromises();
+    expect(w.find("dialog").exists()).toBe(false);
     expect(toolTitles(w)).toEqual([]);
   });
 
@@ -256,13 +258,16 @@ describe("CapabilitiesView", () => {
     expect(w.text()).toContain("Turned off");
   });
 
-  it("opens the matching capabilities while a filter is typed, and shows only matching tools", async () => {
+  it("filters cards by tool name without opening dialogs", async () => {
     const w = await show();
 
     await w.get("input[type=search]").setValue("split");
 
     expect(sectionNames(w)).toEqual(["PDF files"]);
+    expect(w.find("dialog").exists()).toBe(false);
+    await head(w, "PDF files").trigger("click");
     expect(toolTitles(w)).toEqual(["Split"]);
+    await modal(w).get("button.close").trigger("click");
 
     await w.get("input[type=search]").setValue("");
     expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "Other tools"]);
@@ -273,6 +278,8 @@ describe("CapabilitiesView", () => {
     const w = await show({ query: "restart" });
 
     expect((w.get("input[type=search]").element as HTMLInputElement).value).toBe("restart");
+    expect(sectionNames(w)).toEqual(["services"]);
+    await head(w, "services").trigger("click");
     expect(toolTitles(w)).toEqual(["Restart Service"]);
   });
 
@@ -285,15 +292,15 @@ describe("CapabilitiesView", () => {
     expect(w.text()).toContain('Nothing matches "zzz"');
   });
 
-  it("shows a tool as just its label and name", async () => {
+  it("shows a tool preview with its label, name and description", async () => {
     const w = await show();
     await head(w, "PDF files").trigger("click");
 
     const row = toolRows(w)[0]!;
     expect(row.text()).toContain("Merge");
     expect(row.text()).toContain("tool_pdf_merge");
-    expect(row.text()).not.toContain("Join PDFs");
-    expect(modal(w).attributes("open")).toBeUndefined();
+    expect(row.text()).toContain("Join PDFs");
+    expect(modal(w).attributes("open")).toBeDefined();
   });
 
   it("opens a modal with the tool's description and parameters when its row is pressed", async () => {
@@ -332,11 +339,31 @@ describe("CapabilitiesView", () => {
 
     await modal(w).get("button.close").trigger("click");
     await flushPromises();
-    expect(modal(w).attributes("open")).toBeUndefined();
+    expect(w.find("dialog").exists()).toBe(false);
 
+    await head(w, "PDF files").trigger("click");
     await toolRows(w)[0]!.trigger("click");
     await flushPromises();
     expect(modal(w).text()).not.toContain("merged ok");
+  });
+
+  it("searches tools within the workspace and switches the detail panel", async () => {
+    const w = await show();
+    await head(w, "PDF files").trigger("click");
+    await modal(w).get('input[aria-label="Find a tool"]').setValue("split");
+    expect(toolTitles(w)).toEqual(["Split"]);
+    await toolRows(w)[0]!.trigger("click");
+    expect(modal(w).get(".tool-heading h4").text()).toBe("Split");
+    expect(mocks.runTool).not.toHaveBeenCalled();
+  });
+
+  it("allows browsing but hides execution without tools.execute", async () => {
+    const w = await show({ permissions: ["tools.view"] });
+    await head(w, "PDF files").trigger("click");
+    await toolRows(w)[0]!.trigger("click");
+    expect(modal(w).text()).toContain("Read-only");
+    expect(modal(w).find("form.tool-form").exists()).toBe(false);
+    expect(mocks.runTool).not.toHaveBeenCalled();
   });
 
   it("reads a resource of an open capability", async () => {
@@ -540,19 +567,19 @@ describe("the page layout", () => {
     expect(w.find(".group-title").exists()).toBe(false);
   });
 
-  it("gives each card a tile picture by kind, with its status on the corner", async () => {
+  it("shows readable online and disconnected statuses on cards", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
     const w = await show({ permissions: WITH_CHAT });
 
-    expect(sections(w).every((s) => s.find(".tile svg").exists())).toBe(true);
-    expect(sections(w)[0]!.find(".tile .dot").exists()).toBe(true);
+    expect(sections(w)[0]!.get(".state").text()).toContain("Online");
+    expect(head(w, "PDF2").get(".state").text()).toContain("Connected");
   });
 
-  it("lists a capability's tools in one bordered list and labels its resources", async () => {
+  it("lists tools in the modal sidebar and keeps resources in its main panel", async () => {
     const w = await show();
     await head(w, "PDF files").trigger("click");
 
-    expect(w.findAll("ul.cards")).toHaveLength(1);
+    expect(modal(w).findAll(".tool-list button")).toHaveLength(2);
     expect(w.get(".res-label").text()).toBe("Resources");
     expect(w.find(".resources .res-icon").exists()).toBe(true);
   });

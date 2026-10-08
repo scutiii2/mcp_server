@@ -1,7 +1,7 @@
 /* Page hierarchy for the administration workspace; controls share admin.css. */
 .admin-workspace .admin-page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 26px; }
-.admin-workspace .admin-page-head h2 { margin: 0 0 5px; font-size: 1.45em; font-weight: 600; letter-spacing: -0.025em; }
-.admin-workspace .admin-page-head p { margin: 0; color: var(--muted); font-size: 0.9em; }
+
+
 .admin-workspace .admin-page-head .primary { flex-shrink: 0; padding: 8px 16px; text-decoration: none; white-space: nowrap; }
 .admin-workspace .admin-page-head button:disabled { opacity: 0.5; cursor: default; }
 .admin-workspace .admin-info { display: flex; gap: 12px; align-items: center; padding: 15px 18px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
@@ -11,7 +11,7 @@
 .admin-workspace .admin-info > a { margin-left: auto; white-space: nowrap; text-decoration: none; }
 @media (max-width: 767px) {
   .admin-workspace .admin-page-head { align-items: flex-start; gap: 10px; margin-bottom: 20px; }
-  .admin-workspace .admin-page-head h2 { font-size: 1.3em; }
+
   .admin-workspace .admin-page-head .primary { font-size: 0.8em; padding: 7px 11px; }
   .admin-workspace .admin-info { flex-wrap: wrap; }
   .admin-workspace .admin-info > a { margin-left: 32px; }

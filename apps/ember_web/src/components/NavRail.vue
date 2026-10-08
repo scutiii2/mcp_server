@@ -11,6 +11,7 @@ import { CONFIG_ISSUES_ICON, OVERVIEW_ICON, PROFILE_ICON, visiblePages } from ".
 import { useAuthStore } from "../stores/auth";
 import { useConfigIssuesStore } from "../stores/configIssues";
 import { useNavPrefsStore } from "../stores/navPrefs";
+import { ADMIN_ACCESS_PERMISSIONS, emberAdminUrl } from "../utils/adminLink";
 import { railPages } from "../utils/navArrangement";
 
 const { theme, next, cycle } = useTheme();
@@ -20,6 +21,8 @@ const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 
+const adminUrl = emberAdminUrl();
+const canAdmin = computed(() => ADMIN_ACCESS_PERMISSIONS.some(auth.hasPermission));
 const canBrowse = computed(() => auth.account !== null && !auth.needsVerification);
 const navPrefs = useNavPrefsStore();
 // Nothing is drawn until the arrangement has loaded, so the icons don't jump.
@@ -153,6 +156,9 @@ async function logout(): Promise<void> {
     </RouterLink>
 
     <div class="bottom">
+      <a v-if="canAdmin" :href="adminUrl" class="admin-link" data-label="Ember Admin" aria-label="Open Ember Admin">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3 3 7v5c0 5 5 8 9 10 4-2 9-5 9-10V7zM8 12l3 3 5-6" /></svg>
+      </a>
       <button
         type="button"
         class="theme"
@@ -243,6 +249,7 @@ nav {
 nav a,
 .alert,
 .theme,
+.admin-link,
 .account,
 .logout {
   position: relative;
@@ -288,6 +295,7 @@ nav a,
   background: var(--tone);
 }
 nav a:hover,
+.admin-link:hover,
 .theme:hover,
 .account:hover,
 .logout:hover {

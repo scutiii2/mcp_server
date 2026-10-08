@@ -155,11 +155,11 @@ onUnmounted(stopTimers);
 
 <template>
   <section class="info-page">
-    <div class="column">
+    <div class="column page-column">
       <div class="top">
         <div>
-          <h2>Watchers</h2>
-          <p class="muted intro">Background jobs mcp_server's capabilities are watching. Recipients are set on the mcp_server side.</p>
+          <h2 class="page-title">Watchers</h2>
+          <p class="muted intro page-description">Background jobs mcp_server's capabilities are watching. Recipients are set on the mcp_server side.</p>
         </div>
         <span v-if="updatedText" :class="['live', { stale: !!error }]">
           <span class="pulse" aria-hidden="true" />

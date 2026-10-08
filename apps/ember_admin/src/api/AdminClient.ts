@@ -72,6 +72,8 @@ export interface AccountChanges {
 }
 
 export interface RoleChanges {
+  /** Complete desired permission set; omitted leaves it unchanged. */
+  permissions?: string[];
   name?: string;
   /** "" clears it. */
   description?: string;

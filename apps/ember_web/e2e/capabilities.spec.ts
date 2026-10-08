@@ -107,3 +107,31 @@ test("a private extension turned off on Capabilities stays in the Supermarket an
   expect(api.userExtensions.size).toBe(0);
   expect(api.unexpected).toEqual([]);
 });
+
+for (const width of [1280, 768, 375]) {
+  test(`capability card opens a tool workspace at ${width}px`, async ({ page }) => {
+    const api = await installFakeApi(page, { admin: true });
+    await page.setViewportSize({ width, height: 850 });
+    await logIn(page);
+    await page.goto("/capabilities");
+    const pdf = card(page, "PDF files");
+    await pdf.locator(".head-button").click();
+    const dialog = page.getByRole("dialog", { name: "PDF files", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(".tool-list button").first()).toBeVisible();
+    const before = await dialog.boundingBox();
+    await dialog.locator(".tool-list button").first().click();
+    await expect(dialog.getByRole("button", { name: "Run tool", exact: true })).toBeVisible();
+    await page.screenshot({ path: `C:/Users/User/.codex/visualizations/2026/10/08/01a11ae9-61e7-7880-a756-0bfaebed99a6/ember-web-capability-${width}.png` });
+    const after = await dialog.boundingBox();
+    expect(after?.height).toBe(before?.height);
+    const scroll = await page.evaluate(`(() => { const el = document.querySelector('dialog.integration-modal'); return { outer: getComputedStyle(el).overflowY, list: getComputedStyle(el.querySelector(".tool-list")).overflowY, main: getComputedStyle(el.querySelector(".tester")).overflowY }; })()`);
+    expect(scroll).toEqual({ outer: "hidden", list: "auto", main: "auto" });
+    await dialog.getByLabel("Find a tool").fill("nothing-matches");
+    await expect(dialog.getByText("No tools match your search.")).toBeVisible();
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(pdf.getByRole("switch")).toBeChecked();
+    expect(api.unexpected).toEqual([]);
+  });
+}

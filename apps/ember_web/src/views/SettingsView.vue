@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, useTemplateRef, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
+import { getCurrentInstance } from "vue";
+import { onBeforeRouteLeave, routerKey } from "vue-router";
+import { navPreferencesClient } from "../api/NavPreferencesClient";
+import ConfirmModal from "../components/ConfirmModal.vue";
+import { errorMessage } from "../utils/errors";
 import SettingRow from "../components/SettingRow.vue";
 import SidebarEditor from "../components/SidebarEditor.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
@@ -23,7 +28,7 @@ interface SettingDef extends SearchableSetting {
 
 // Icon paths are on a 16px grid, stroke only. The scope chip says where a group's
 // settings live.
-const SCOPE_NOTE = "Applies instantly. Saved on this device.";
+const SCOPE_NOTE = "Applied when you save. Stored on this device.";
 const GROUPS = [
   { id: "chat", title: "Chat", icon: "M2 3h12v8H7l-3 3v-3H2z", scope: "This device" },
   {
@@ -37,7 +42,7 @@ const GROUPS = [
     title: "Sidebar",
     icon: "M2 2.5h12v11H2zM6 2.5v11",
     scope: "Your account",
-    note: "Applies instantly. Saved to your account.",
+    note: "Applied when you save. Stored on your account.",
   },
 ] as const;
 const SEARCH_ICON = "M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M11 11l3.5 3.5";
@@ -118,15 +123,76 @@ const groups = computed(() =>
 );
 const noMatches = computed(() => shown.value.size === 0);
 
-const themeModel = computed<Theme>({ get: () => theme.value, set: (value) => setTheme(value) });
+const saved = computed(() => ({
+  caveman: chat.caveman, askBeforeTools: chat.askBeforeTools, chime: chat.chime,
+  suggestions: auth.promptSuggestions, theme: theme.value,
+  sidebar: { order: [...navPrefs.prefs.order], pinned: [...navPrefs.prefs.pinned], hidden: [...navPrefs.prefs.hidden] },
+}));
+const draft = ref(structuredClone(saved.value));
+const saving = ref(false);
+const saveError = ref("");
+const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(saved.value));
+watch(saved, (next, previous) => {
+  if (saving.value) return;
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    if (JSON.stringify(draft.value[key]) === JSON.stringify(previous[key])) {
+      Object.assign(draft.value, { [key]: structuredClone(next[key]) });
+    }
+  }
+});
+watch(() => auth.account?.id, () => { draft.value = structuredClone(saved.value); saveError.value = ""; });
+function revert(): void { draft.value = structuredClone(saved.value); saveError.value = ""; }
+async function save(): Promise<void> {
+  if (saving.value || !dirty.value) return;
+  saving.value = true;
+  saveError.value = "";
+  const accountId = auth.account?.id;
+  const next: typeof saved.value = JSON.parse(JSON.stringify(draft.value));
+  try {
+    if (next.suggestions !== auth.promptSuggestions) await auth.setPromptSuggestions(next.suggestions);
+    if (accountId !== auth.account?.id) return;
+    if (JSON.stringify(next.sidebar) !== JSON.stringify(navPrefs.prefs)) {
+      const result = await navPreferencesClient.save(next.sidebar);
+      if (accountId !== auth.account?.id) return;
+      navPrefs.prefs = result;
+      draft.value.sidebar = structuredClone(result);
+    }
+    chat.setCaveman(next.caveman);
+    if (!chat.forceToolApproval) chat.setAskBeforeTools(next.askBeforeTools);
+    else draft.value.askBeforeTools = chat.askBeforeTools;
+    chat.setChime(next.chime);
+    setTheme(next.theme);
+  } catch (err) { if (accountId === auth.account?.id) saveError.value = errorMessage(err); }
+  finally { saving.value = false; }
+}
+const discardOpen = ref(false);
+let discardAnswer: ((value: boolean) => void) | null = null;
+function answerDiscard(discard: boolean): void {
+  if (discard) revert();
+  discardOpen.value = false;
+  discardAnswer?.(discard);
+  discardAnswer = null;
+}
+// Unit mounts without a router still exercise draft/save behavior.
+if (getCurrentInstance()?.appContext.provides[routerKey as symbol]) onBeforeRouteLeave(() => {
+  if (saving.value) return false;
+  if (!dirty.value) return true;
+  discardOpen.value = true;
+  return new Promise<boolean>(resolve => { discardAnswer = resolve; });
+});
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (dirty.value || saving.value) { event.preventDefault(); event.returnValue = ""; }
+}
+onMounted(() => window.addEventListener("beforeunload", beforeUnload));
+onUnmounted(() => { window.removeEventListener("beforeunload", beforeUnload); answerDiscard(false); });
 
 const modified = computed(() => ({
-  "chat-terse": chat.caveman !== false,
-  "chat-ask-tools": chat.askBeforeTools !== false,
-  "chat-chime": chat.chime !== true,
-  "chat-suggestions": !auth.promptSuggestions,
-  "appearance-theme": theme.value !== DEFAULT_THEME,
-  "sidebar-pages": !isDefault(navPrefs.prefs),
+  "chat-terse": draft.value.caveman !== false,
+  "chat-ask-tools": draft.value.askBeforeTools !== false,
+  "chat-chime": draft.value.chime !== true,
+  "chat-suggestions": !draft.value.suggestions,
+  "appearance-theme": draft.value.theme !== DEFAULT_THEME,
+  "sidebar-pages": !isDefault(draft.value.sidebar),
 }));
 const modifiedCount = computed(() => Object.values(modified.value).filter(Boolean).length);
 
@@ -137,11 +203,6 @@ watch(modifiedCount, (count) => {
 
 function checked(event: Event): boolean {
   return (event.target as HTMLInputElement).checked;
-}
-
-/** Saved on the server; the switch only moves once it has said yes. */
-function setSuggestions(on: boolean): void {
-  auth.setPromptSuggestions(on).catch((err: unknown) => console.warn("ember_web: saving the preference failed", err));
 }
 
 /** Enter in the search box moves to the first setting that is left. */
@@ -159,10 +220,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="settings-view">
-    <div ref="root" class="column">
+  <section class="settings-view" :class="{ dirty }">
+    <div ref="root" class="column page-column">
       <header class="head">
-        <h2>Settings</h2>
+        <div><h2 class="page-title">Settings</h2><p class="page-description">Adjust chat, appearance, and navigation preferences.</p></div>
       </header>
 
       <div class="top">
@@ -196,7 +257,7 @@ onMounted(() => {
         <button type="button" class="link" @click="query = ''">Clear search</button>
       </p>
 
-      <section v-for="g in groups" :key="g.id" class="group" :aria-label="g.title">
+      <section v-for="g in groups" :key="g.id" class="group" :aria-label="g.title"><fieldset :disabled="saving" class="settings-controls">
         <div class="group-head">
           <span class="group-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16"><path :d="g.icon" /></svg>
@@ -212,9 +273,9 @@ onMounted(() => {
             label="Terse replies"
             description="Ask the agent for short, terse answers."
             :modified="modified['chat-terse']"
-            @reset="chat.setCaveman(false)"
+            @reset="draft.caveman = false"
           >
-            <ToggleSwitch small aria-label="Terse replies" :checked="chat.caveman" @change="chat.setCaveman(checked($event))" />
+            <ToggleSwitch small aria-label="Terse replies" :checked="draft.caveman" @change="draft.caveman = checked($event)" />
           </SettingRow>
           <SettingRow
             v-if="shown.has('chat-ask-tools')"
@@ -226,14 +287,14 @@ onMounted(() => {
                 : 'Ask you before the agent runs each tool.'
             "
             :modified="modified['chat-ask-tools']"
-            @reset="chat.setAskBeforeTools(false)"
+            @reset="draft.askBeforeTools = false"
           >
             <ToggleSwitch
               small
               aria-label="Ask before tools"
-              :checked="chat.askBeforeTools || chat.forceToolApproval"
+              :checked="draft.askBeforeTools || chat.forceToolApproval"
               :disabled="chat.forceToolApproval"
-              @change="chat.setAskBeforeTools(checked($event))"
+              @change="draft.askBeforeTools = checked($event)"
             />
           </SettingRow>
           <SettingRow
@@ -242,9 +303,9 @@ onMounted(() => {
             label="Chime when done"
             description="Play a short chime when an answer arrives while this tab is in the background."
             :modified="modified['chat-chime']"
-            @reset="chat.setChime(true)"
+            @reset="draft.chime = true"
           >
-            <ToggleSwitch small aria-label="Chime when done" :checked="chat.chime" @change="chat.setChime(checked($event))" />
+            <ToggleSwitch small aria-label="Chime when done" :checked="draft.chime" @change="draft.chime = checked($event)" />
           </SettingRow>
           <SettingRow
             v-if="shown.has('chat-suggestions')"
@@ -252,13 +313,13 @@ onMounted(() => {
             label="Suggest next prompt"
             description="Show a predicted next message in the chat box; press Tab to use it. Uses a small model call per answer. Saved to your account."
             :modified="modified['chat-suggestions']"
-            @reset="setSuggestions(true)"
+            @reset="draft.suggestions = true"
           >
             <ToggleSwitch
               small
               aria-label="Suggest next prompt"
-              :checked="auth.promptSuggestions"
-              @change="setSuggestions(checked($event))"
+              :checked="draft.suggestions"
+              @change="draft.suggestions = checked($event)"
             />
           </SettingRow>
         </div>
@@ -270,22 +331,38 @@ onMounted(() => {
             label="Theme"
             description="Light, dark, or follow your system."
             :modified="modified['appearance-theme']"
-            @reset="setTheme(DEFAULT_THEME)"
+            @reset="draft.theme = DEFAULT_THEME"
           >
-            <SegmentedControl v-model="themeModel" :options="THEME_OPTIONS" aria-label="Theme" />
+            <SegmentedControl v-model="draft.theme" :options="THEME_OPTIONS" aria-label="Theme" />
           </SettingRow>
         </div>
 
         <div v-else-if="g.id === 'sidebar'" class="card">
-          <SidebarEditor v-if="shown.has('sidebar-pages')" />
+          <SidebarEditor v-if="shown.has('sidebar-pages')" v-model="draft.sidebar" />
         </div>
-      </section>
+      </fieldset></section>
 
     </div>
+    <div v-if="dirty || saving" class="settings-save-bar" role="group" aria-label="Unsaved settings" :aria-busy="saving">
+      <div><span>Unsaved changes</span><p v-if="saveError" class="save-error" role="alert">{{ saveError }}</p></div>
+      <button type="button" class="revert" :disabled="saving" @click="revert">Revert</button>
+      <button type="button" class="save" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+    </div>
+    <ConfirmModal v-if="discardOpen" :open="discardOpen" title="Discard unsaved settings?" message="Your settings changes have not been saved." confirm-label="Discard changes" @confirm="answerDiscard(true)" @close="answerDiscard(false)" />
   </section>
 </template>
 
 <style scoped>
+.settings-controls:disabled { pointer-events: none; }
+.settings-controls { padding: 0; margin: 0; min-width: 0; border: none; }
+.settings-view.dirty .column { padding-bottom: 110px; }
+.settings-save-bar { position: fixed; bottom: 0; left: 52px; right: 0; z-index: 25; display: flex; align-items: center; gap: 12px; padding: 14px 32px; border-top: 1px solid var(--border); background: var(--surface); }
+.settings-save-bar > div { flex: 1; min-width: 0; font-size: .9em; }
+.settings-save-bar button { padding: 8px 20px; border: 1px solid var(--border); border-radius: var(--radius-full); color: var(--text); background: transparent; cursor: pointer; font: inherit; }
+.settings-save-bar button.save { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+.save-error { margin: 4px 0 0; color: var(--danger); }
+@media (max-width: 767px) { .settings-save-bar { left: 0; bottom: var(--rail-height); padding: 12px 16px; gap: 8px; } }
+
 .settings-view {
   flex: 1;
   min-height: 0;
@@ -295,19 +372,16 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 24px 16px;
+
+
+
 }
 .head {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-h2 {
-  margin: 0;
-  font-size: 1.2em;
-}
+
 .top {
   display: flex;
   flex-wrap: wrap;

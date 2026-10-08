@@ -1,0 +1,31 @@
+/* Shared page geometry and typography for Ember Web and Ember Admin. */
+.page-column {
+  width: 100%;
+  max-width: 1060px;
+  margin-inline: auto;
+  padding: 24px 32px 40px;
+}
+.page-title {
+  margin: 0 0 6px;
+  font: 600 1.2rem/1.35 var(--sans);
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.page-description {
+  margin: 0 0 16px;
+  font: 400 0.9rem/1.55 var(--sans);
+  letter-spacing: normal;
+  color: var(--muted);
+}
+.page-search {
+  display: flex; align-items: center; gap: 10px;
+  margin: 16px 0; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg);
+}
+.page-search svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
+.info-page .page-search input[type="search"] { width: 100%; min-width: 0; padding: 0; border: none; border-radius: 0; background: transparent; font: 400 0.9rem/1.55 var(--sans); }
+.search-count { color: var(--muted); font-size: 0.85em; margin: 0 0 12px; }
+@media (max-width: 767px) { .page-column { padding: 24px 16px 32px; } }
+
+.page-search:focus-within { border-color: var(--accent); }
+.info-page .page-search input[type="search"]:focus-visible { outline: none; }

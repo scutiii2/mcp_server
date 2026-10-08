@@ -67,13 +67,13 @@ watch(name, load);
 
 <template>
   <div class="scroll">
-    <div class="page">
+    <div class="page page-column">
       <p><RouterLink to="/capabilities">← Capabilities</RouterLink></p>
       <p v-if="loading" class="muted">Loading…</p>
       <p v-else-if="problem" class="error" role="alert">{{ problem }}</p>
       <template v-else-if="page">
-        <h2>{{ page.title }}</h2>
-        <p v-if="page.description" class="muted">{{ page.description }}</p>
+        <h2 class="page-title">{{ page.title }}</h2>
+        <p v-if="page.description" class="muted page-description">{{ page.description }}</p>
         <template v-for="s in page.sections" :key="s.id">
           <section v-if="s.type === 'text'" class="note">
             <h3 v-if="s.title">{{ s.title }}</h3>
@@ -95,11 +95,7 @@ watch(name, load);
   min-height: 0;
   overflow-y: auto;
 }
-.page {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 16px;
-}
+
 .muted {
   color: var(--muted);
 }

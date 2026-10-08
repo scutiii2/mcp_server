@@ -7,23 +7,13 @@
   min-height: 0;
   overflow-y: auto;
 }
-.info-page .column {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 24px 16px;
-}
-.info-page h2 {
-  margin: 0 0 6px;
-  font-size: 1.2em;
-}
+
+
 .info-page h3 {
   margin: 0;
   font-size: 1em;
 }
-.info-page .intro {
-  margin: 0 0 16px;
-  font-size: 0.9em;
-}
+
 .info-page .card {
   margin-bottom: 12px;
   padding: 12px 14px;

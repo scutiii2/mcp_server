@@ -3,13 +3,14 @@
 // the order the rail shows them (pinned first). Drag a row, or use the arrows,
 // to reorder; pin keeps a page at the top; the switch shows or hides it in the
 // rail (a hidden page stays reachable from the Overview page). Every change
-// applies at once and is saved to the account.
+// is emitted as a draft when v-model is supplied; other consumers save immediately.
 import { computed, ref } from "vue";
 import SettingRow from "./SettingRow.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
 import { visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 import { useNavPrefsStore } from "../stores/navPrefs";
+import type { NavPrefs } from "../api/NavPreferencesClient";
 import { liftDragImage } from "../utils/dragImage";
 import { arrange, dropPage, isDefault, setHidden, setPinned } from "../utils/navArrangement";
 
@@ -19,14 +20,25 @@ const GRIP_ICON = "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01";
 const auth = useAuthStore();
 const navPrefs = useNavPrefsStore();
 
+const props = defineProps<{ modelValue?: NavPrefs }>();
+const emit = defineEmits<{ 'update:modelValue': [value: NavPrefs] }>();
+const prefs = computed(() => props.modelValue ?? navPrefs.prefs);
+function update(value: NavPrefs): void {
+  if (props.modelValue) emit('update:modelValue', value);
+  else void navPrefs.update(value);
+}
+function reset(): void {
+  if (props.modelValue) emit('update:modelValue', { order: [], pinned: [], hidden: [] });
+  else void navPrefs.reset();
+}
 const pages = computed(() => visiblePages((p) => auth.hasPermission(p)));
-const groups = computed(() => arrange(pages.value, navPrefs.prefs));
+const groups = computed(() => arrange(pages.value, prefs.value));
 const rows = computed(() => [
   ...groups.value.pinned.map((page) => ({ page, pinned: true })),
   ...groups.value.rest.map((page) => ({ page, pinned: false })),
 ]);
-const hidden = computed(() => new Set(navPrefs.prefs.hidden));
-const modified = computed(() => !isDefault(navPrefs.prefs));
+const hidden = computed(() => new Set(prefs.value.hidden));
+const modified = computed(() => !isDefault(prefs.value));
 
 const dragging = ref<string | null>(null);
 const over = ref<string | null>(null);
@@ -72,13 +84,13 @@ function neighbour(index: number, delta: -1 | 1): string | null {
 function move(index: number, delta: -1 | 1): void {
   const row = rows.value[index];
   const target = neighbour(index, delta);
-  if (row && target) void navPrefs.update(dropPage(pages.value, navPrefs.prefs, row.page.to, target));
+  if (row && target) update(dropPage(pages.value, prefs.value, row.page.to, target));
 }
 
 function onDrop(target: string): void {
   const from = dragging.value;
   endDrag();
-  if (from && from !== target) void navPrefs.update(dropPage(pages.value, navPrefs.prefs, from, target));
+  if (from && from !== target) update(dropPage(pages.value, prefs.value, from, target));
 }
 
 function onDragStart(event: DragEvent, id: string): void {
@@ -98,7 +110,7 @@ function onDragStart(event: DragEvent, id: string): void {
       label="Pages"
       description="Order, pin or hide the pages in the sidebar. Hidden pages stay on the Overview page."
       :modified="modified"
-      @reset="navPrefs.reset()"
+      @reset="reset"
     />
     <p v-if="navPrefs.error" class="error" role="alert">{{ navPrefs.error }}</p>
     <ul class="rows" aria-label="Sidebar pages" @dragleave="onListDragLeave">
@@ -150,7 +162,7 @@ function onDragStart(event: DragEvent, id: string): void {
             :aria-pressed="row.pinned"
             :aria-label="`Pin ${row.page.label} to the top`"
             :title="row.pinned ? 'Unpin' : 'Pin to the top'"
-            @click="navPrefs.update(setPinned(pages, navPrefs.prefs, row.page.to, !row.pinned))"
+            @click="update(setPinned(pages, prefs, row.page.to, !row.pinned))"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="PIN_ICON" /></svg>
           </button>
@@ -158,7 +170,7 @@ function onDragStart(event: DragEvent, id: string): void {
             small
             :aria-label="`Show ${row.page.label} in the sidebar`"
             :checked="!hidden.has(row.page.to)"
-            @change="navPrefs.update(setHidden(pages, navPrefs.prefs, row.page.to, !checked($event)))"
+            @change="update(setHidden(pages, prefs, row.page.to, !checked($event)))"
           />
         </span>
       </li>

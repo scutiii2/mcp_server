@@ -161,7 +161,7 @@ test('a role viewer sees only the permitted pages and cannot change permissions'
   const api = await installFakeApi(page, ['roles.view']);
   await logInAdmin(page);
   const nav = page.getByRole('navigation', { name: 'Admin sections' });
-  await expect(nav.getByRole('link')).toHaveCount(2);
+  await expect(nav.getByRole('link')).toHaveCount(1);
   await expect(page.locator('.stats')).toHaveCount(0);
   await nav.getByRole('link', { name: 'Roles & permissions', exact: true }).click();
   await expect(page.getByRole('button', { name: '＋ New role', exact: true })).toHaveCount(0);
@@ -199,7 +199,7 @@ test('admin pages fit desktop, tablet, and mobile in both themes', async ({ page
         await page.goto(route);
         await expect(page.getByRole('navigation', { name: 'Admin sections' })).toBeVisible();
         await expect(page.locator('.admin-sidebar')).toHaveCount(0);
-        await expect(page.getByRole('navigation', { name: 'Admin sections' }).locator('a[aria-current="page"]')).toHaveCount(1);
+        await expect(page.locator('.rail a[aria-current="page"]')).toHaveCount(1);
         expect(await page.evaluate<string>('document.documentElement.style.colorScheme')).toBe(color);
         expect(await page.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
       }
@@ -208,3 +208,61 @@ test('admin pages fit desktop, tablet, and mobile in both themes', async ({ page
   expect(api.unexpected).toEqual([]);
 });
 
+
+test("role drafts save and revert with a bottom bar, and affected accounts open on demand", async ({ page }) => {
+  const api = await installFakeApi(page);
+  await logInAdmin(page);
+  await page.getByRole('navigation', { name: 'Admin sections' }).getByRole('link', { name: 'Roles & permissions', exact: true }).click();
+  await page.locator('button.role').filter({ hasText: 'Member' }).click();
+  const bar = page.getByRole('group', { name: 'Unsaved role changes' });
+  await flipSwitch(page, 'chat.use');
+  expect(api.roles.get(2)!.permissions).toContain('chat.use');
+  await expect(bar).toBeVisible();
+  await bar.getByRole('button', { name: 'Revert' }).click();
+  await expect(bar).toHaveCount(0);
+  await flipSwitch(page, 'chat.use');
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    const box = await bar.boundingBox();
+    expect(box!.y + box!.height).toBe(width < 768 ? 748 : 800);
+  }
+  await bar.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(bar).toHaveCount(0);
+  expect(api.roles.get(2)!.permissions).not.toContain('chat.use');
+  await page.getByRole('button', { name: 'View affected accounts' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Accounts with Member' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.affected-accounts')).toContainText('maria');
+  await expect(dialog.locator('.affected-accounts')).not.toContainText('ada');
+  expect(api.unexpected).toEqual([]);
+});
+
+test('permission switch appearance follows repeated pointer and keyboard changes', async ({ page }) => {
+  const api = await installFakeApi(page);
+  await logInAdmin(page);
+  await page.getByRole('navigation', { name: 'Admin sections' }).getByRole('link', { name: 'Roles & permissions', exact: true }).click();
+  await page.locator('button.role').filter({ hasText: 'Member' }).click();
+  const control = page.getByRole('switch', { name: 'chat.use', exact: true });
+  await expect(control).toBeChecked();
+  const on = await page.evaluate("getComputedStyle(document.querySelector('input[aria-label=\"chat.use\"] + .track')).backgroundColor");
+  await flipSwitch(page, 'chat.use');
+  await expect(control).not.toBeChecked();
+  await page.waitForTimeout(200);
+  const off = await page.evaluate("getComputedStyle(document.querySelector('input[aria-label=\"chat.use\"] + .track')).backgroundColor");
+  expect(off).not.toEqual(on);
+  await control.focus();
+  await page.keyboard.press('Space');
+  await expect(control).toBeChecked();
+  await expect(page.getByRole('group', { name: 'Unsaved role changes' })).toHaveCount(0);
+  expect(api.roles.get(2)!.permissions).toContain('chat.use');
+  expect(api.unexpected).toEqual([]);
+});
+
+test('a capabilities administrator can use the overview and sees only available destinations', async ({ page }) => {
+  const api = await installFakeApi(page, ['capabilities.manage']);
+  await logInAdmin(page);
+  await expect(page.locator('.destination')).toHaveCount(1);
+  await expect(page.locator('.destination')).toHaveAttribute('href', '/capabilities');
+  await expect(page.locator('.destination p')).not.toBeEmpty();
+  expect(api.unexpected).toEqual([]);
+});

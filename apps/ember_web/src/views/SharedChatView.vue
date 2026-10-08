@@ -53,28 +53,28 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="shared">
-    <div class="column">
+    <div class="column page-column">
       <p v-if="loading" class="status">Loading …</p>
 
       <div v-else-if="problem === 'gone'" class="status" role="alert">
-        <h2>This link doesn't work</h2>
+        <h2 class="page-title">This link doesn't work</h2>
         <p>It never existed, or it was turned off, or it has expired. Ask whoever sent it for a new one.</p>
       </div>
       <div v-else-if="problem === 'busy'" class="status" role="alert">
-        <h2>Too many requests</h2>
+        <h2 class="page-title">Too many requests</h2>
         <p>Wait a minute and reload this page.</p>
         <button type="button" @click="load">Try again</button>
       </div>
       <div v-else-if="problem === 'error'" class="status" role="alert">
-        <h2>Couldn't load this chat</h2>
+        <h2 class="page-title">Couldn't load this chat</h2>
         <p>{{ problemText }}</p>
         <button type="button" @click="load">Try again</button>
       </div>
 
       <template v-else-if="shared">
         <header>
-          <h2>{{ shared.title }}</h2>
-          <p class="note">
+          <h2 class="page-title">{{ shared.title }}</h2>
+          <p class="note page-description">
             A read-only copy, shared {{ formatUtc(shared.created_at) }}.
             <template v-if="shared.expires_at">This link stops working {{ formatUtc(shared.expires_at) }}.</template>
             Tool output and attached files are not included.
@@ -98,18 +98,18 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 .column {
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 24px 16px 48px;
+
+
+
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 header h2 {
-  margin: 0 0 4px;
+
   overflow-wrap: anywhere;
 }
-.note {
+.note:not(.page-description) {
   margin: 0;
   font-size: 0.85em;
   color: var(--muted);

@@ -102,8 +102,8 @@ watch(range, load);
 
 <template>
   <section class="info-page">
-    <div class="column">
-      <h2>Analytics</h2>
+    <div class="column page-column">
+      <h2 class="page-title">Analytics</h2><p class="page-description">Review workspace activity, errors, and network traffic.</p>
       <div class="toolbar">
         <SegmentedControl :model-value="tab" :options="TAB_OPTIONS" label="View" aria-label="View" @update:model-value="showTab" />
         <template v-if="tab !== 'entries'">

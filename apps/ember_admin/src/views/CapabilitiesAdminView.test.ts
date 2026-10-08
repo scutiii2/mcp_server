@@ -1,13 +1,20 @@
+import { createPinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { capabilitiesAdminClient, type CapabilityStatus } from "../api/CapabilitiesAdminClient";
+import { commandsClient } from "../api/CommandsClient";
 import CapabilitiesAdminView from "./CapabilitiesAdminView.vue";
 
 function cap(over: Partial<CapabilityStatus>): CapabilityStatus {
   return { name: "vault", enabled: true, label: "Vault", tools: ["tool_vault_search"], resources: [], has_gui: false, load_error: null, missing: false, loaded: true, ...over };
 }
 
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal ??= function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close ??= function () { this.removeAttribute("open"); };
+});
 beforeEach(() => {
+  vi.spyOn(commandsClient, "helpIndex").mockResolvedValue({ capabilities: [{ capability: "/vault", summary: "Search and manage notes in your vault." }] });
   vi.spyOn(capabilitiesAdminClient, "list").mockResolvedValue([
     cap({}),
     cap({ name: "fresh", label: "Fresh", enabled: false, loaded: false, tools: [] }),
@@ -18,7 +25,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 async function mounted() {
-  const wrapper = mount(CapabilitiesAdminView);
+  const wrapper = mount(CapabilitiesAdminView, { global: { plugins: [createPinia()] } });
   await flushPromises();
   return wrapper;
 }
@@ -93,4 +100,29 @@ describe("CapabilitiesAdminView", () => {
 
     expect(set).toHaveBeenCalledWith("gone", false);
   });
+});
+
+it("shows the capability summary beneath its metadata, with a fallback if help is unavailable", async () => {
+  const wrapper = await mounted();
+  await wrapper.get('button[aria-label="Open Vault"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".summary-description").text()).toContain("Search and manage notes in your vault.");
+  vi.mocked(commandsClient.helpIndex).mockRejectedValue(new Error("Unavailable"));
+  await wrapper.get('button[aria-label="Open Fresh"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".summary-description").text()).toContain("Workspace tools provided by Fresh.");
+});
+
+it("searches capability labels and tool names without changing their state", async () => {
+  const wrapper = await mounted();
+  const search = wrapper.get('input[aria-label="Search capabilities"]');
+  await search.setValue("  VAULT_SEARCH  ");
+  expect(wrapper.findAll("[data-test=capability]")).toHaveLength(3);
+  await search.setValue("Fresh");
+  expect(wrapper.findAll("[data-test=capability]")).toHaveLength(1);
+  expect(wrapper.get("[data-test=capability]").attributes("data-name")).toBe("fresh");
+  await search.setValue("no match");
+  expect(wrapper.text()).toContain("No capabilities match your search.");
+  await search.setValue("");
+  expect(wrapper.findAll("[data-test=capability]")).toHaveLength(4);
 });

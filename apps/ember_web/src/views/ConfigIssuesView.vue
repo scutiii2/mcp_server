@@ -52,12 +52,12 @@ async function check(): Promise<void> {
 
 <template>
   <section class="info-page">
-    <div class="column">
+    <div class="column page-column">
       <div class="head">
-        <h2>Config issues</h2>
+        <h2 class="page-title">Config issues</h2>
         <button type="button" class="chip" :disabled="store.loading" @click="check">Check again</button>
       </div>
-      <p class="muted intro">
+      <p class="muted intro page-description">
         Problems in <code>ember_api/configs</code> and <code>ember_api/secrets</code>. Secret files are re-read on
         every check; changes to <code>config_app.json</code> take effect once ember_api restarts.
       </p>

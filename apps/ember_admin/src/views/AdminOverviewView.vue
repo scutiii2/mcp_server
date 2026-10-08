@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { adminClient, type AdminSummary } from "../api/AdminClient";
-import { ADMIN_SECTIONS } from "../router/pages";
+import { ADMIN_PAGES } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage } from "../utils/errors";
 import StatTile from "../components/admin/StatTile.vue";
@@ -11,14 +11,18 @@ import "../components/admin/admin.css";
 const auth = useAuthStore();
 const summary = ref<AdminSummary | null>(null);
 const error = ref("");
-const destinations = computed(() => ADMIN_SECTIONS.slice(1).filter((s) => Array.isArray(s.permission) ? s.permission.some(auth.hasPermission) : auth.hasPermission(s.permission)));
+const destinations = computed(() => ADMIN_PAGES.filter(s => s.to !== "/admin").filter((s) => Array.isArray(s.permission) ? s.permission.some(auth.hasPermission) : auth.hasPermission(s.permission)));
 const descriptions: Record<string, string> = {
   "/admin/accounts": "Manage profiles, account status, and assigned roles.",
   "/admin/roles": "Define exactly what each role can view and change.",
   "/admin/invites": "Create an invite, check expiry, or revoke access.",
+  "/capabilities": "Browse capabilities, manage availability, and test their tools.",
+  "/extensions": "Manage shared extensions and explore their tools.",
+  "/analytics": "Review logs, errors, chat activity, and traffic.",
   "/admin/settings": "Control approval requirements for every account.",
 };
 onMounted(async () => {
+  if (!auth.hasPermission("accounts.view") && !auth.hasPermission("invites.manage")) return;
   try { summary.value = await adminClient.summary(); }
   catch (err) { error.value = errorMessage(err); }
 });
@@ -26,7 +30,7 @@ onMounted(async () => {
 
 <template>
   <div class="admin-overview admin-panel">
-    <header class="admin-page-head"><div><h2>Workspace overview</h2><p>A clear view of people and access.</p></div><RouterLink v-if="auth.hasPermission('invites.manage')" class="primary" to="/admin/invites?create=1">＋ Create invite</RouterLink></header>
+    <header class="admin-page-head"><div><h2 class="page-title">Workspace overview</h2><p class="page-description">Manage people, access, integrations, and activity.</p></div><RouterLink v-if="auth.hasPermission('invites.manage')" class="primary" to="/admin/invites?create=1">＋ Create invite</RouterLink></header>
     <p v-if="error" class="error" role="alert">Couldn't load the overview: {{ error }}</p>
     <div v-if="auth.hasPermission('accounts.view') || auth.hasPermission('invites.manage')" class="stats">
       <RouterLink v-if="auth.hasPermission('accounts.view')" to="/admin/accounts"><StatTile label="Accounts" :value="summary?.accounts ?? null" /><span class="stat-link">Browse accounts →</span></RouterLink>

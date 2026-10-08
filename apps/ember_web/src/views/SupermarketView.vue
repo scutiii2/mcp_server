@@ -122,10 +122,10 @@ onMounted(() => {
 
 <template>
   <section class="shop-view">
-    <div class="column">
+    <div class="column page-column">
       <RouterLink to="/capabilities" class="back">&larr; Back to capabilities</RouterLink>
       <div class="head">
-        <h2>Supermarket</h2>
+        <h2 class="page-title">Supermarket</h2>
         <div class="chips" role="group" aria-label="Filter by state">
           <button
             type="button"
@@ -145,7 +145,7 @@ onMounted(() => {
           </button>
         </div>
       </div>
-      <p class="muted intro">Add the capabilities and extensions you want. They appear on your Capabilities page and become available to the agent in your chats.</p>
+      <p class="muted intro page-description">Add the capabilities and extensions you want. They appear on your Capabilities page and become available to the agent in your chats.</p>
 
       <p v-if="loading || accountLoading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
@@ -256,11 +256,7 @@ onMounted(() => {
   min-height: 0;
   overflow-y: auto;
 }
-.column {
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 24px 16px;
-}
+
 .back {
   display: inline-block;
   margin-bottom: 8px;
@@ -280,10 +276,7 @@ onMounted(() => {
   gap: 12px;
   margin-bottom: 6px;
 }
-h2 {
-  margin: 0;
-  font-size: 1.2em;
-}
+
 .chips {
   display: flex;
   gap: 8px;
@@ -310,10 +303,7 @@ h2 {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.intro {
-  margin: 0 0 12px;
-  font-size: 0.9em;
-}
+
 .section-head {
   display: flex;
   align-items: center;

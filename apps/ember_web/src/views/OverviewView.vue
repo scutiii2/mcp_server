@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
+import { ADMIN_ACCESS_PERMISSIONS, emberAdminUrl } from "../utils/adminLink";
 import { visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 
@@ -8,6 +9,8 @@ import { useAuthStore } from "../stores/auth";
 const ACCOUNT_ICON = ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"];
 
 const auth = useAuthStore();
+const adminUrl = emberAdminUrl();
+const canAdmin = computed(() => ADMIN_ACCESS_PERMISSIONS.some(auth.hasPermission));
 const pages = computed(() => visiblePages((p) => auth.hasPermission(p)));
 const chat = computed(() => pages.value.find((p) => p.to === "/"));
 const initial = computed(() => auth.account?.username.charAt(0).toUpperCase() ?? "");
@@ -43,9 +46,9 @@ const groups = computed(() => {
 
 <template>
   <section class="overview">
-    <div class="column">
+    <div class="column page-column">
       <div class="heading">
-        <div><h2>Overview</h2><p>A place to start. Everything you need, close by.</p></div>
+        <div><h2 class="page-title">Overview</h2><p class="page-description">A place to start. Everything you need, close by.</p></div>
         <RouterLink v-if="auth.account" to="/account" class="identity">
           <span class="user" aria-hidden="true">{{ initial }}</span><span>Signed in as <b>{{ auth.account.username }}</b></span>
         </RouterLink>
@@ -73,6 +76,11 @@ const groups = computed(() => {
           </RouterLink>
         </div>
       </section>
+      <a v-if="canAdmin" :href="adminUrl" class="card admin-shortcut" aria-label="Open Ember Admin">
+        <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 3 7v5c0 5 5 8 9 10 4-2 9-5 9-10V7zM8 12l3 3 5-6" /></svg></span>
+        <div class="copy"><h4>Ember Admin</h4><p>Manage your workspace, access, capabilities, and extensions.</p></div>
+        <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M10 14 21 3M21 14v7H3V3h7" /></svg>
+      </a>
       <footer class="footer"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z" /><path d="m8 12 3 3 5-6" /></svg>Your access determines what appears here.</span><span>ember · Your AI workspace</span></footer>
     </div>
   </section>
@@ -83,10 +91,10 @@ const groups = computed(() => {
 a { color: inherit; text-decoration: none; }
 svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.column { max-width: 980px; padding: 32px 16px 26px; margin: auto; }
+
 .heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
-h2 { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; }
-.heading p { color: var(--muted); margin: 0; font-size: 0.9em; }
+
+.heading p { color: var(--muted);   }
 .identity { display: flex; gap: 9px; align-items: center; font-size: 0.85em; color: var(--muted); min-width: 0; max-width: 40%; overflow-wrap: anywhere; }
 .identity b { color: var(--text); font-weight: 500; }
 .user { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--surface); }
@@ -130,12 +138,13 @@ h3 { font-size: 1em; font-weight: 600; margin: 0; }
 .card p { font-size: 0.85em; color: var(--muted); margin: 0; line-height: 1.55; }
 .arrow { width: 15px; height: 15px; color: var(--muted); margin-left: auto; margin-top: 8px; }
 .copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.admin-shortcut { margin-bottom: 23px; }
 .empty { color: var(--muted); margin: 0 0 24px; }
 .footer { border-top: 1px solid var(--border); padding-top: 15px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 0.75em; }
 .footer span:first-child { display: flex; align-items: center; gap: 6px; }
 .footer svg { width: 13px; height: 13px; }
 @media (max-width: 767px) {
-  .column { padding: 24px 16px; }
+
   .identity, .hero-art { display: none; }
   .hero { padding: 22px; }
   .hero h3 { font-size: 1.4em; }

@@ -177,8 +177,34 @@ class AdminService:
         await self._session.refresh(role, ["accounts", "permissions"])
         return role
 
-    async def update_role(self, role: Role, *, actor: Account, name: str | None = None, description: str | None = None) -> Role:
+    async def update_role(self, role: Role, *, actor: Account, name: str | None = None, description: str | None = None, permissions: list[str] | None = None) -> Role:
         self.ensure_can_delegate(actor, role)
+        desired_permissions: list[Permission] | None = None
+        if permissions is not None:
+            desired = set(permissions)
+            unknown = desired - ALL_PERMISSIONS.keys()
+            if unknown:
+                raise NotFoundError(f"Unknown permission: {sorted(unknown)[0]}")
+            if not desired <= actor.permission_names:
+                raise DelegationError("You cannot grant a permission you do not hold")
+            current = {p.name for p in role.permissions if p.name in ALL_PERMISSIONS}
+            if role.name == ADMIN_ROLE and desired != current:
+                raise AdminError(f"Role '{ADMIN_ROLE}' always holds every permission")
+            if any(r.id == role.id for r in actor.roles):
+                others = [r for r in actor.roles if r.id != role.id]
+                for permission_name in (ROLES_MANAGE, ROLES_ASSIGN):
+                    if permission_name in current - desired and not any(permission_name in {p.name for p in r.permissions} for r in others):
+                        raise AdminError("That would remove your own admin access")
+            existing = {p.name: p for p in await self.permissions()}
+            desired_permissions = []
+            for permission_name in sorted(desired):
+                permission = existing.get(permission_name)
+                if permission is None:
+                    permission = Permission(name=permission_name, description=ALL_PERMISSIONS[permission_name])
+                    self._session.add(permission)
+                desired_permissions.append(permission)
+            # Retired associations remain available for migration rollback.
+            desired_permissions.extend(p for p in role.permissions if p.name not in ALL_PERMISSIONS)
         if name is not None and name != role.name:
             if role.name == ADMIN_ROLE:
                 raise AdminError(f"Role '{ADMIN_ROLE}' cannot be renamed")
@@ -186,6 +212,8 @@ class AdminService:
             role.name = name
         if description is not None:
             role.description = description or None
+        if desired_permissions is not None:
+            role.permissions = desired_permissions
         await self._session.commit()
         return role
 

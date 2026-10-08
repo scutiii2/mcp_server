@@ -48,7 +48,7 @@ describe("OverviewView", () => {
     auth.account = { ...auth.account!, permissions: ["traffic.view", "roles.manage"] };
     await wrapper.vm.$nextTick();
     expect(wrapper.findAll(".card").map((link) => link.attributes("href"))).toEqual([
-      "/account",
+      "/account", "http://localhost:5175/",
     ]);
     expect(wrapper.find(".hero").exists()).toBe(false);
   });

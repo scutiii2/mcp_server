@@ -206,7 +206,7 @@ describe("AccountsPanel", () => {
     const wrapper = await panel();
     await rowFor(wrapper, "maria").trigger("click");
 
-    await drawer(wrapper).get('input[role="switch"]').trigger("click");
+    await drawer(wrapper).get('input[role="switch"]').setValue(!(drawer(wrapper).get('input[role="switch"]').element as HTMLInputElement).checked);
     expect(confirmDialog(wrapper).props("message")).toContain("Disable 'maria'?");
 
     await confirmDialog(wrapper).get(".cancel").trigger("click");
@@ -220,7 +220,7 @@ describe("AccountsPanel", () => {
     const wrapper = await panel();
     await rowFor(wrapper, "maria").trigger("click");
 
-    await drawer(wrapper).get('input[role="switch"]').trigger("click");
+    await drawer(wrapper).get('input[role="switch"]').setValue(!(drawer(wrapper).get('input[role="switch"]').element as HTMLInputElement).checked);
     await confirmDialog(wrapper).get(".confirm").trigger("click");
     await flushPromises();
 
@@ -233,7 +233,7 @@ describe("AccountsPanel", () => {
     const wrapper = await panel();
     await rowFor(wrapper, "li").trigger("click");
 
-    await drawer(wrapper).get('input[role="switch"]').trigger("click");
+    await drawer(wrapper).get('input[role="switch"]').setValue(!(drawer(wrapper).get('input[role="switch"]').element as HTMLInputElement).checked);
     await flushPromises();
 
     expect(confirmDialog(wrapper).props("open")).toBe(false);

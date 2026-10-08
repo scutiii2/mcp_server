@@ -346,3 +346,36 @@ def test_extensions_permission_bootstrap_and_descriptions(client: TestClient) ->
     permissions = {p["name"]: p["description"] for p in client.get("/api/admin/permissions").json()}
     assert permissions["extensions.manage"] == "Add and remove mcp_server extensions (other MCP servers offered to every client)"
     assert permissions["roles.manage"] == "Create, edit and delete roles and change their permissions"
+
+
+def test_role_save_updates_details_and_permissions_atomically(client: TestClient) -> None:
+    as_admin(client)
+    role = client.post("/api/admin/roles", json={"name": "Draft"}).json()
+    path = f"/api/admin/roles/{role['id']}"
+    result = client.patch(path, json={"name": "Saved", "description": "Together", "permissions": ["tools.view", "chat.use"]})
+    assert result.status_code == 200
+    assert result.json()["permissions"] == ["chat.use", "tools.view"]
+    assert result.json()["name"] == "Saved"
+    assert client.patch(path, json={"name": "Should not save", "permissions": ["unknown.permission"]}).status_code == 404
+    saved = role_by_name(client, "Saved")
+    assert saved["permissions"] == ["chat.use", "tools.view"]
+    assert saved["description"] == "Together"
+    assert client.patch(path, json={"permissions": []}).json()["permissions"] == []
+
+
+def test_bulk_permission_save_keeps_protected_and_delegation_rules(client: TestClient, email: FakeEmailSender) -> None:
+    carol = make_member(client, email, "carol")
+    as_admin(client)
+    admin_role = role_by_name(client, "Administrator")
+    assert client.patch(f"/api/admin/roles/{admin_role['id']}", json={"permissions": []}).status_code == 409
+    ops = client.post("/api/admin/roles", json={"name": "Ops"}).json()
+    path = f"/api/admin/roles/{ops['id']}"
+    assert client.patch(path, json={"permissions": ["roles.manage"]}).status_code == 200
+    client.put(f"/api/admin/accounts/{carol}/roles/{ops['id']}")
+    client.post("/api/auth/logout", json={})
+    login(client, "carol")
+    assert client.patch(path, json={"description": "Not saved", "permissions": []}).status_code == 409
+    assert client.patch(path, json={"permissions": ["roles.manage", "accounts.delete"]}).status_code == 403
+    saved = role_by_name(client, "Ops")
+    assert saved["description"] is None
+    assert saved["permissions"] == ["roles.manage"]

@@ -149,9 +149,9 @@ onMounted(() => {
 
 <template>
   <section class="usage-view">
-    <div class="column">
+    <div class="column page-column">
       <div class="head">
-        <h2>Usage</h2>
+        <div><h2 class="page-title">Usage</h2><p class="page-description">Review your token usage and account limits.</p></div>
         <div class="ranges" role="group" aria-label="Period">
           <SegmentedControl v-model="range" :options="RANGE_OPTIONS" label="Period" aria-label="Period" />
           <ActionButton icon="export" class="export" :disabled="!usage" title="Download this period as a Markdown file" @click="exportReport">
@@ -283,11 +283,7 @@ onMounted(() => {
   min-height: 0;
   overflow-y: auto;
 }
-.column {
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 24px 16px;
-}
+
 .head {
   align-items: last baseline;
   display: flex;
@@ -296,10 +292,7 @@ onMounted(() => {
   gap: 12px;
   margin-bottom: 16px;
 }
-h2 {
-  margin: 0;
-  font-size: 1.2em;
-}
+
 h3 {
   margin: 0;
   font-size: 1em;

@@ -120,6 +120,12 @@ export async function installFakeApi(page: Page, permissions?: string[]) {
     }
     if (method === "GET" && path === "/api/admin/roles") return json(route, [...api.roles.values()]);
     const rolePath = /^\/api\/admin\/roles\/(\d+)$/.exec(path);
+    if (method === "PATCH" && rolePath) {
+      const role = api.roles.get(Number(rolePath[1]));
+      if (!role) return json(route, { detail: "Role not found" }, 404);
+      Object.assign(role, request.postDataJSON());
+      return json(route, role);
+    }
     if (method === "DELETE" && rolePath) {
       if (!api.roles.delete(Number(rolePath[1]))) return json(route, { detail: "Role not found" }, 404);
       return route.fulfill({ status: 204, body: "" });

@@ -10,6 +10,7 @@ import RolesPanel from "./RolesPanel.vue";
 
 vi.mock("../../api/AdminClient", () => ({
   adminClient: {
+    listAccounts: vi.fn(),
     listRoles: vi.fn(),
     listPermissions: vi.fn(),
     createRole: vi.fn(),
@@ -109,25 +110,29 @@ describe("RolesPanel", () => {
   });
 
   it("grants a permission and shows the switch on", async () => {
-    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
+    client.updateRole.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
 
-    await editor(wrapper).get('input[aria-label="roles.manage"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="roles.manage"]').setValue(true);
+    expect(client.updateRole).not.toHaveBeenCalled();
+    await clickIn(editor(wrapper), "Save");
     await flushPromises();
 
-    expect(client.grantPermission).toHaveBeenCalledWith(2, "roles.manage");
+    expect(client.updateRole).toHaveBeenCalledWith(2, { permissions: ["chat.use", "roles.manage"] });
     const box = editor(wrapper).get('input[aria-label="roles.manage"]').element as HTMLInputElement;
     expect(box.checked).toBe(true);
   });
 
   it("shows Saved after a permission change, and clears it on another role", async () => {
-    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
+    client.updateRole.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
     expect(editor(wrapper).find(".chip.saved").exists()).toBe(false);
 
-    await editor(wrapper).get('input[aria-label="roles.manage"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="roles.manage"]').setValue(true);
+    expect(client.updateRole).not.toHaveBeenCalled();
+    await clickIn(editor(wrapper), "Save");
     await flushPromises();
     expect(editor(wrapper).get(".chip.saved").text()).toBe("Saved");
 
@@ -136,25 +141,29 @@ describe("RolesPanel", () => {
   });
 
   it("revokes a permission", async () => {
-    client.revokePermission.mockResolvedValue({ ...MEMBER, permissions: [] });
+    client.updateRole.mockResolvedValue({ ...MEMBER, permissions: [] });
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
 
-    await editor(wrapper).get('input[aria-label="chat.use"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="chat.use"]').setValue(false);
+    await clickIn(editor(wrapper), "Save");
     await flushPromises();
 
-    expect(client.revokePermission).toHaveBeenCalledWith(2, "chat.use");
+    expect(client.updateRole).toHaveBeenCalledWith(2, { permissions: [] });
   });
 
-  it("shows the server's refusal and leaves the switch as it was", async () => {
-    client.revokePermission.mockRejectedValue(new ApiError(409, "That would remove your own admin access"));
+  it("shows the server's refusal and keeps the draft available to revert", async () => {
+    client.updateRole.mockRejectedValue(new ApiError(409, "That would remove your own admin access"));
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
 
-    await editor(wrapper).get('input[aria-label="chat.use"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="chat.use"]').setValue(false);
+    await clickIn(editor(wrapper), "Save");
     await flushPromises();
 
     expect(editor(wrapper).get(".error").text()).toContain("own admin access");
+    expect((editor(wrapper).get('input[aria-label="chat.use"]').element as HTMLInputElement).checked).toBe(false);
+    await clickIn(editor(wrapper), "Revert");
     expect((editor(wrapper).get('input[aria-label="chat.use"]').element as HTMLInputElement).checked).toBe(true);
   });
 
@@ -175,11 +184,13 @@ describe("RolesPanel", () => {
   it("does not re-read the account for a role it does not hold", async () => {
     const auth = useAuthStore();
     const refresh = vi.spyOn(auth, "refresh").mockResolvedValue();
-    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
+    client.updateRole.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
 
-    await editor(wrapper).get('input[aria-label="roles.manage"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="roles.manage"]').setValue(true);
+    expect(client.updateRole).not.toHaveBeenCalled();
+    await clickIn(editor(wrapper), "Save");
     await flushPromises();
 
     expect(refresh).not.toHaveBeenCalled();
@@ -302,4 +313,38 @@ describe("RolesPanel", () => {
     expect(editor(wrapper).get(".error").text()).toContain("own admin access");
     expect(wrapper.findAll("nav button.role")).toHaveLength(3);
   });
+});
+
+it("asks before switching away from a role draft", async () => {
+  const wrapper = await panel();
+  await listItem(wrapper, "Member").trigger("click");
+  await editor(wrapper).get('input[aria-label="chat.use"]').setValue(false);
+  await listItem(wrapper, "Ops").trigger("click");
+  const discard = wrapper.findAllComponents(ConfirmModal).find((m) => m.props("title") === "Discard unsaved changes?")!;
+  expect(discard.props("open")).toBe(true);
+  expect(editor(wrapper).attributes("aria-label")).toBe("Role Member");
+  await discard.vm.$emit("close");
+  await flushPromises();
+  expect(editor(wrapper).find(".save-bar").exists()).toBe(true);
+  await listItem(wrapper, "Ops").trigger("click");
+  await discard.vm.$emit("confirm");
+  await flushPromises();
+  expect(editor(wrapper).attributes("aria-label")).toBe("Role Ops");
+  expect(client.updateRole).not.toHaveBeenCalled();
+});
+
+it("loads only the affected accounts on demand", async () => {
+  useAuthStore().account!.permissions.push("accounts.view");
+  client.listAccounts.mockResolvedValue([
+    { id: 2, username: "member", email: "m@example.com", is_active: true, email_verified: true, is_protected: false, created_at: "", roles: [{ id: 2, name: "Member" }] },
+    { id: 3, username: "other", email: "o@example.com", is_active: true, email_verified: true, is_protected: false, created_at: "", roles: [] },
+  ]);
+  const wrapper = await panel();
+  expect(client.listAccounts).not.toHaveBeenCalled();
+  await listItem(wrapper, "Member").trigger("click");
+  await clickIn(editor(wrapper), "View affected accounts");
+  await flushPromises();
+  expect(wrapper.findAll(".affected-accounts li")).toHaveLength(1);
+  expect(wrapper.find(".affected-accounts").text()).toContain("m@example.com");
+  expect(wrapper.find(".affected-accounts").text()).not.toContain("o@example.com");
 });

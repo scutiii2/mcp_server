@@ -12,7 +12,7 @@ const navigation = ref<HTMLElement | null>(null);
 const { theme, next, cycle } = useTheme();
 const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" } as const;
 const pages = computed(() => ADMIN_PAGES.filter((p) =>
-  Array.isArray(p.permission) ? p.permission.some(auth.hasPermission) : auth.hasPermission(p.permission),
+  p.to !== "/admin" && (Array.isArray(p.permission) ? p.permission.some(auth.hasPermission) : auth.hasPermission(p.permission)),
 ));
 watch([() => route.path, pages], async () => {
   await nextTick();
@@ -22,7 +22,7 @@ watch([() => route.path, pages], async () => {
 
 <template>
   <aside class="rail" aria-label="Ember Admin">
-    <RouterLink v-if="pages.length" to="/" class="wordmark" data-label="Ember Admin" aria-label="Ember Admin home"><EmberLogo /></RouterLink>
+    <RouterLink v-if="pages.length" to="/" class="wordmark" data-label="Overview" aria-label="Overview" :aria-current="route.path === '/admin' ? 'page' : undefined"><EmberLogo /></RouterLink>
     <span v-else class="wordmark" role="img" aria-label="Ember Admin"><EmberLogo /></span>
     <nav v-if="pages.length" ref="navigation" class="pages" aria-label="Admin sections">
       <RouterLink v-for="page in pages" :key="page.to" :to="page.to" :data-label="page.label" :aria-label="page.label" :aria-current="route.path === page.to ? 'page' : undefined">

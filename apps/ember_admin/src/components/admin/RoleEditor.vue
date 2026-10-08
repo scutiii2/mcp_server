@@ -20,7 +20,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   save: [changes: RoleChanges];
-  togglePermission: [name: string, granted: boolean];
+  showAccounts: [];
+  dirty: [value: boolean];
   remove: [];
 }>();
 
@@ -29,6 +30,31 @@ const canManage = computed(() => auth.hasPermission("roles.manage") && props.rol
 const editing = ref(false);
 const form = reactive({ name: "", description: "" });
 const search = ref("");
+const draftPermissions = ref<string[]>([]);
+const canViewAccounts = computed(() => ["accounts.view", "accounts.manage", "accounts.delete", "roles.assign"].some(auth.hasPermission));
+const changes = computed<RoleChanges>(() => {
+  const result: RoleChanges = {};
+  if (!props.role.is_protected && form.name.trim() !== props.role.name) result.name = form.name.trim();
+  if (form.description.trim() !== (props.role.description ?? "")) result.description = form.description.trim();
+  if ([...draftPermissions.value].sort().join("\n") !== [...props.role.permissions].sort().join("\n")) result.permissions = [...draftPermissions.value].sort();
+  return result;
+});
+const dirty = computed(() => Object.keys(changes.value).length > 0);
+function revert(): void {
+  form.name = props.role.name;
+  form.description = props.role.description ?? "";
+  draftPermissions.value = [...props.role.permissions];
+  editing.value = false;
+}
+watch(() => props.role, revert, { immediate: true });
+watch(dirty, (value) => emit("dirty", value));
+defineExpose({ dirty, revert });
+function toggle(name: string): void {
+  if (props.busy || props.role.is_protected || !canManage.value || !auth.hasPermission(name)) return;
+  draftPermissions.value = draftPermissions.value.includes(name)
+    ? draftPermissions.value.filter((p) => p !== name) : [...draftPermissions.value, name];
+}
+
 const labels: Record<string, string> = {
   "chat.use": "Use chat", "chat.share": "Share chats publicly", "files.upload": "Upload files", "files.download": "Download files",
   "tools.view": "Browse tools", "tools.execute": "Run tools", "extensions.personal.manage": "Manage personal extensions",
@@ -53,7 +79,7 @@ const groups = computed(() => {
     return {
       label: group.label,
       total: all.length,
-      enabled: all.filter((p) => props.role.permissions.includes(p.name)).length,
+      enabled: all.filter((p) => draftPermissions.value.includes(p.name)).length,
       permissions: all.filter((p) => `${labels[p.name] ?? ''} ${p.name} ${p.description ?? ''}`.toLowerCase().includes(query)),
     };
   }).filter((g) => g.permissions.length);
@@ -65,28 +91,19 @@ watch(
   () => { editing.value = false; search.value = ""; },
 );
 
-function startEdit(): void {
-  form.name = props.role.name;
-  form.description = props.role.description ?? "";
-  editing.value = true;
-}
-
+function startEdit(): void { editing.value = true; }
 function save(): void {
-  const changes: RoleChanges = {};
-  if (!props.role.is_protected && form.name.trim() !== props.role.name) changes.name = form.name.trim();
-  if (form.description.trim() !== (props.role.description ?? "")) changes.description = form.description.trim();
-  if (Object.keys(changes).length) emit("save", changes);
-  editing.value = false;
+  if (!dirty.value || props.busy || !canManage.value || !form.name.trim()) return;
+  emit("save", changes.value);
 }
 </script>
 
 <template>
-  <section class="editor admin-panel" :aria-label="`Role ${role.name}`">
+  <section :class="['editor admin-panel', { dirty }]" :aria-label="`Role ${role.name}`">
     <form v-if="editing" class="row-form" @submit.prevent="save">
-      <input v-model="form.name" type="text" aria-label="Role name" maxlength="80" required :disabled="role.is_protected" />
-      <input v-model="form.description" type="text" aria-label="Description" maxlength="255" />
-      <button class="primary" :disabled="busy">Save</button>
-      <button type="button" class="small" @click="editing = false">Cancel</button>
+      <input v-model="form.name" type="text" aria-label="Role name" maxlength="80" required :disabled="busy || role.is_protected" />
+      <input v-model="form.description" type="text" aria-label="Description" maxlength="255" :disabled="busy" />
+
     </form>
     <header v-else>
       <b class="name">{{ role.name }}</b>
@@ -94,6 +111,7 @@ function save(): void {
       <span class="muted count">{{ role.account_count }} {{ role.account_count === 1 ? "account" : "accounts" }}</span>
       <button v-if="canManage" type="button" class="small" :disabled="busy" @click="startEdit">{{ role.is_protected ? "Edit description" : "Edit details" }}</button>
     </header>
+    <button v-if="canViewAccounts" type="button" class="small affected" :disabled="busy" @click="emit('showAccounts')">View affected accounts</button>
     <p v-if="!editing && role.description" class="muted description">{{ role.description }}</p>
 
     <p v-if="error" class="error">{{ error }}</p>
@@ -102,12 +120,12 @@ function save(): void {
 
     <p v-if="!role.is_protected" class="impact">Changes apply to {{ role.account_count }} {{ role.account_count === 1 ? 'account' : 'accounts' }}.</p>
     <p class="apply muted" role="status">
-      <span>Permission switches apply instantly.</span>
+      <span>Changes are a draft until you save.</span>
       <span v-if="busy">Saving…</span>
-      <span v-if="saved && !error" class="chip saved" role="status">Saved</span>
+      <span v-if="saved && !error && !dirty" class="chip saved" role="status">Saved</span>
     </p>
 
-    <p class="muted description">Each switch saves after the server confirms the change.</p>
+    <p class="muted description">Save applies all changes together to the accounts holding this role.</p>
     <label class="permission-search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0" /></svg><input v-model="search" type="search" placeholder="Find a permission" aria-label="Find a permission" /></label>
     <section v-for="group in groups" :key="group.label" class="permission-group" :aria-label="group.label">
       <div class="group-head"><h4>{{ group.label }}</h4><span>{{ group.enabled }} of {{ group.total }} enabled</span></div>
@@ -115,10 +133,10 @@ function save(): void {
       <li v-for="p in group.permissions" :key="p.name">
         <ToggleSwitch
           small
-          :checked="role.permissions.includes(p.name)"
+          :checked="draftPermissions.includes(p.name)"
           :disabled="role.is_protected || busy || !canManage || !auth.hasPermission(p.name)"
           :aria-label="p.name"
-          @click.prevent="emit('togglePermission', p.name, !role.permissions.includes(p.name))"
+          @change="toggle(p.name)"
         />
         <div>
           <strong class="permission-label">{{ labels[p.name] ?? p.name }}</strong>
@@ -130,6 +148,12 @@ function save(): void {
     </section>
     <p v-if="!groups.length" class="muted">No permissions match your search.</p>
 
+    <div v-if="dirty" class="save-bar" role="group" aria-label="Unsaved role changes" :aria-busy="busy">
+      <div class="save-bar-content"><span>Unsaved changes · {{ role.account_count }} {{ role.account_count === 1 ? 'account' : 'accounts' }} affected</span>
+        <button type="button" class="small" :disabled="busy" @click="revert">Revert</button>
+        <button type="button" class="primary" :disabled="busy || !form.name.trim() || !canManage" @click="save">{{ busy ? 'Saving…' : 'Save' }}</button>
+      </div>
+    </div>
     <section v-if="!role.is_protected && canManage" class="danger-zone">
       <h4>Danger zone</h4>
       <p class="muted description">Accounts holding this role lose its permissions. This can't be undone.</p>
@@ -139,6 +163,12 @@ function save(): void {
 </template>
 
 <style scoped>
+.editor.dirty { margin-bottom: 90px; }
+.affected { margin-top: 10px; }
+.save-bar { position: fixed; left: 52px; right: 0; bottom: 0; z-index: 20; padding: 14px 24px; border-top: 1px solid var(--border); background: var(--surface); }
+.save-bar-content { display: flex; align-items: center; gap: 10px; max-width: 996px; margin: auto; }
+.save-bar-content span { flex: 1; font-size: 0.85em; }
+@media (max-width: 767px) { .save-bar { left: 0; bottom: var(--rail-height); padding: 12px 16px; } }
 .editor {
   min-width: 0;
   padding: 20px;

@@ -244,3 +244,14 @@ describe("NavRail", () => {
     expect(router.currentRoute.value.name).toBe("login");
   });
 });
+
+it("offers Ember Admin to delegated admins and hides it for members and unverified accounts", async () => {
+  const { wrapper, auth } = await setup(ACCOUNT);
+  expect(wrapper.find(".admin-link").exists()).toBe(false);
+  auth.account = { ...ACCOUNT, permissions: ["roles.view"] };
+  await flushPromises();
+  expect(wrapper.get(".admin-link").attributes("href")).toBe("http://localhost:5175/");
+  auth.account = { ...auth.account, email_verified: false };
+  await flushPromises();
+  expect(wrapper.find(".admin-link").exists()).toBe(false);
+});

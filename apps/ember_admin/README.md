@@ -82,8 +82,10 @@ and bottom navigation below 768px. Theme cycles through System, Light, and Dark
 and persists in this browser, including on the login page. Page content scrolls
 independently of navigation; controls use the same theme and radius tokens.
 
-Overview, Accounts, Roles & permissions, Invites, and Workspace settings sit
-directly in the main icon rail, alongside Capabilities, Extensions, and Analytics.
+The Ember logo opens the workspace overview. Accounts, Roles & permissions,
+Invites, and Workspace settings sit directly in the main icon rail, alongside
+Capabilities, Extensions, and Analytics. There is no separate Overview icon
+or breadcrumb trail.
 There is one navigation sidebar, with the current page marked individually.
 The app opens the workspace overview by default, or the first permitted page
 for accounts with only capability, extension, or analytics access. Below 768px
@@ -137,3 +139,15 @@ extension management remains `extensions.manage`. The all-account usage report
 uses `usage.all.view`. Navigation and controls follow these permissions, and the
 API enforces every action. Delegated administrators can only grant or change
 roles within their own permissions.
+
+Role details and permissions are drafts. A fixed bottom Save/Revert bar appears while changes are pending; Save applies them together in one request. Leaving or switching roles asks before discarding a draft. Accounts with account-list access can open View affected accounts to see who holds the role.
+
+Capabilities and extensions appear as cards. Open a card to see its tools, then select a tool to use its parameter form and run it. Tool details require `tools.view` or `tools.execute`; running requires `tools.execute`. Offline or disconnected tools cannot be tested. Tests execute the real tool through the existing MCP proxy.
+
+The integration modal uses a searchable tool browser beside the parameter form and output on desktop, stacked on mobile. Its header shows the integration identity and availability; tool output is formatted as JSON when possible.
+
+Content pages share heading typography, description typography, and horizontal spacing through `ember_web/src/components/pageLayout.css` (also imported by Ember Admin).
+
+Capabilities and extensions can be searched by their names and contributed tool names. Extension descriptions are also searchable; filtering does not change enabled state.
+
+Overview uses the same permission-filtered page list as the main sidebar. Permission and account-state switches use native change events so their appearance follows the draft or confirmed server state.

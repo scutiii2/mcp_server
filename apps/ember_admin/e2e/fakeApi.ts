@@ -56,6 +56,7 @@ export async function installFakeApi(page: Page, state: FakeState): Promise<void
     const { pathname } = new URL(request.url());
     const method = request.method();
 
+    if (pathname === "/api/commands/help" && method === "GET") return json(route, { capabilities: state.capabilities.map((c) => ({ capability: `/${c.name}`, summary: `Explore the tools provided by ${c.label}.` })) });
     if (pathname === "/api/auth/me") return json(route, ADMIN_ACCOUNT);
     if (pathname === "/api/capabilities" && method === "GET") return json(route, state.capabilities);
     if (pathname === "/api/capabilities/refresh" && method === "POST") {

@@ -21,10 +21,10 @@ it("allows a role viewer directly into the roles page, but redirects accounts an
   expect(router.currentRoute.value.name).toBe("admin");
 });
 
-it("opens the first permitted main page for an extension-only account", async () => {
+it("opens the overview for an extension-only account", async () => {
   vi.mocked(authClient.me).mockResolvedValue({ id: 3, username: "extensions", email: "e@example.com", email_verified: true, roles: [], permissions: ["extensions.manage"] });
   await router.replace({ path: "/", force: true });
-  expect(router.currentRoute.value.name).toBe("extensions");
+  expect(router.currentRoute.value.name).toBe("admin");
 });
 
 it("preserves query options while redirecting old tab links", async () => {

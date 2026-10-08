@@ -25,16 +25,17 @@ async function show(permissions: string[] | null, path = "/admin") {
 it("names icon-only links and marks the current page", async () => {
   const w = await show(["capabilities.manage", "extensions.manage", "accounts.view"]);
   const links = w.findAll("nav[aria-label='Admin sections'] a");
-  expect(links.map(a => a.attributes("aria-label"))).toEqual(["Overview", "Accounts", "Capabilities", "Extensions"]);
+  expect(links.map(a => a.attributes("aria-label"))).toEqual(["Accounts", "Capabilities", "Extensions"]);
   expect(links.every(a => a.text() === "" && a.find("svg").exists())).toBe(true);
-  expect(w.get("a[aria-label='Overview']").attributes("aria-current")).toBe("page");
+  expect(w.get("a.wordmark[aria-label='Overview']").attributes("aria-current")).toBe("page");
+  expect(w.find("nav a[aria-label='Overview']").exists()).toBe(false);
 });
 
 it("marks only the current administration page in the main rail", async () => {
   const w = await show(["accounts.view", "roles.view", "invites.manage", "settings.manage"], "/admin/roles");
   expect(w.findAll('nav a[aria-current="page"]').map(a => a.attributes('aria-label'))).toEqual(['Roles & permissions']);
   expect(w.get("a[aria-label='Overview']").attributes('aria-current')).toBeUndefined();
-  expect(w.findAll('nav a').map(a => a.attributes('aria-label'))).toEqual(['Overview', 'Accounts', 'Roles & permissions', 'Invites', 'Workspace settings']);
+  expect(w.findAll('nav a').map(a => a.attributes('aria-label'))).toEqual(['Accounts', 'Roles & permissions', 'Invites', 'Workspace settings']);
 });
 
 it("lets an extension manager reach Extensions without offering other pages", async () => {

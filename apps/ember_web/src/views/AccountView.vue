@@ -119,11 +119,11 @@ async function changePassword(): Promise<void> {
 <template>
   <!-- Logging out clears the account a moment before the router leaves this page. -->
   <section v-if="auth.account" class="account-view">
-    <div class="column">
+    <div class="column page-column">
       <header class="page-head">
         <p class="eyebrow">Your workspace, your account</p>
-        <h2>Account</h2>
-        <p class="subtitle">Manage your identity, security, and devices.</p>
+        <h2 class="page-title">Account</h2>
+        <p class="subtitle page-description">Manage your identity, security, and devices.</p>
       </header>
 
       <div v-if="!account.email_verified" class="banner" role="status">
@@ -288,16 +288,12 @@ async function changePassword(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 22px;
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 40px 32px 32px;
+
+
+
 }
 
-.page-head h2  {
-  margin: 6px 0;
-  font-size: 1.2em;
-  font-weight: 600;
-}
+
 
 p, h3  {
   margin: 0;
@@ -317,7 +313,7 @@ h3  {
 }
 
 .subtitle  {
-  font-size: .9em;
+
   color: var(--muted);
 }
 
@@ -869,7 +865,7 @@ button.forget  {
     display: block;
   }
   .column  {
-    padding: 24px 16px;
+
     gap: 16px;
   }
   .page-head  {

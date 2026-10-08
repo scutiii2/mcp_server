@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
+import IntegrationToolsModal from "../components/IntegrationToolsModal.vue";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { errorMessage } from "../utils/errors";
 import "../components/infoPage.css";
 
 const extensions = ref<ExtensionInfo[]>([]);
+const query = ref("");
+const filteredExtensions = computed(() => {
+  const search = query.value.trim().toLowerCase();
+  return extensions.value.filter((e) => `${e.id} ${e.label} ${e.description} ${e.tools.join(' ')}`.toLowerCase().includes(search));
+});
+const selectedId = ref<string | null>(null);
+const selected = computed(() => extensions.value.find((e) => e.id === selectedId.value) ?? null);
 const loading = ref(true);
 const error = ref("");
 
@@ -65,19 +73,23 @@ onMounted(load);
 
 <template>
   <section class="info-page extensions-admin">
-    <div class="column">
-      <h2>Extensions</h2>
-      <p class="intro">Other MCP servers mcp_server re-exposes. An extension that is unreachable is still added; it shows its error here.</p>
+    <div class="column page-column">
+      <h2 class="page-title">Extensions</h2>
+      <p class="intro page-description">Other MCP servers mcp_server re-exposes. An extension that is unreachable is still added; it shows its error here.</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <p v-if="loading" class="muted">Loading…</p>
-      <ul v-else class="list">
-        <li v-for="e in extensions" :key="e.id" class="card ext" data-test="extension" :data-id="e.id">
+      <template v-else>
+      <label class="page-search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0" /></svg><input v-model="query" type="search" aria-label="Search extensions" placeholder="Search extensions or tools" /></label>
+      <p class="search-count" role="status">{{ filteredExtensions.length }} of {{ extensions.length }} extensions</p>
+      <p v-if="!filteredExtensions.length" class="muted">{{ extensions.length ? 'No extensions match your search.' : 'No extensions are available.' }}</p>
+      <ul class="list">
+        <li v-for="e in filteredExtensions" :key="e.id" class="card ext" data-test="extension" :data-id="e.id">
           <div class="top">
-            <div class="who">
+            <button type="button" class="who open-card" aria-haspopup="dialog" :aria-label="`Open ${e.label}`" @click="selectedId = e.id">
               <strong>{{ e.label }}</strong>
               <code>{{ e.id }}</code>
-              <span class="state" :class="e.status">{{ e.status === "connected" ? "Connected" : "Error" }}</span>
-            </div>
+              <span class="state" :class="e.status"><span aria-hidden="true">{{ e.status === "connected" ? "●" : "○" }}</span> {{ e.status === "connected" ? "Connected" : "Error" }}</span>
+            </button>
             <button type="button" class="remove" data-test="remove" @click="removing = e; removeError = ''">Remove</button>
           </div>
           <p v-if="e.description" class="muted">{{ e.description }}</p>
@@ -85,6 +97,7 @@ onMounted(load);
           <p v-if="e.error" class="error">{{ e.error }}</p>
         </li>
       </ul>
+      </template>
 
       <h3>Add an extension</h3>
       <form class="add" @submit.prevent="add">
@@ -96,6 +109,9 @@ onMounted(load);
       <p v-if="addError" class="error" role="alert" data-test="add-error">{{ addError }}</p>
     </div>
 
+    <IntegrationToolsModal kind="extension" :status="selected?.status === 'connected' ? 'Connected' : 'Disconnected'" :open="selected !== null" :title="selected?.label ?? ''" :identity="selected?.id ?? ''" :names="selected?.tools ?? []" :available="selected?.status === 'connected'" @close="selectedId = null">
+      <template v-if="selected"><p v-if="selected.description">{{ selected.description }}</p><p v-if="selected.error" class="error" role="alert">{{ selected.error }}</p></template>
+    </IntegrationToolsModal>
     <ConfirmModal
       :open="removing !== null"
       title="Remove extension"
@@ -111,13 +127,22 @@ onMounted(load);
 
 <style scoped>
 .list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: 10px;
   margin: 0 0 20px;
   padding: 0;
   list-style: none;
 }
+.card.ext { position: relative; transition: border-color 0.15s ease; }
+.card.ext:hover { border-color: var(--accent); }
+.open-card { border: none; padding: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.open-card::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-lg); }
+.remove { position: relative; z-index: 1; }
+button.open-card:focus-visible { outline: none; }
+.open-card:focus-visible::after { box-shadow: inset 0 0 0 2px var(--accent); }
+.who strong { flex-basis: 100%; }
+@media (prefers-reduced-motion: reduce) { .card.ext { transition: none; } }
 .top {
   display: flex;
   align-items: center;

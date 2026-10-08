@@ -176,6 +176,8 @@ class CreateRoleRequest(BaseModel):
 
 
 class UpdateRoleRequest(BaseModel):
+    # Omitted leaves permissions alone; [] removes every permission.
+    permissions: list[str] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=80)
     # "" clears the description; omitted leaves it alone.
     description: str | None = Field(default=None, max_length=255)
@@ -382,6 +384,7 @@ async def update_role(
             actor=admin,
             name=name,
             description=body.description.strip() if body.description is not None else None,
+            permissions=body.permissions,
         )
     except AdminError as error:
         raise _http_error(error) from error

@@ -14,7 +14,7 @@ export interface AdminPage {
   permission: string | string[];
 }
 
-export const ADMIN_PERMISSIONS = ["accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "invites.manage", "settings.manage"];
+export const ADMIN_PERMISSIONS = ["accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "invites.manage", "settings.manage", "capabilities.manage", "extensions.manage", ...ANALYTICS_PERMISSIONS];
 
 /** Administration destinations share their permission rules with nested routes. */
 export const ADMIN_SECTIONS: AdminPage[] = [

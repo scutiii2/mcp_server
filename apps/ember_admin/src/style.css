@@ -1,3 +1,5 @@
+@import "../../ember_web/src/components/pageLayout.css";
+
 /* ember_admin theme (same tokens as ember_web): tokens first, then a full-height app shell. Each token is
    light-dark(light, dark), resolved by the page's `color-scheme`: "light dark"
    follows the system; useTheme.ts forces one by setting it on <html>. */

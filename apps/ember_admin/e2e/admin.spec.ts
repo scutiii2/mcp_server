@@ -7,7 +7,7 @@ test("the Ember rail moves to the bottom on mobile and remembers the theme", asy
   await page.goto("/capabilities");
   const rail = page.getByRole("complementary", { name: "Ember Admin" });
   const nav = page.getByRole("navigation", { name: "Admin sections" });
-  await expect(nav.getByRole("link")).toHaveCount(8);
+  await expect(nav.getByRole("link")).toHaveCount(7);
   await expect(nav.getByRole("link", { name: "Capabilities", exact: true })).toHaveAttribute("aria-current", "page");
   for (const width of [1280, 768, 375]) {
     await page.setViewportSize({ width, height: 800 });
@@ -59,5 +59,61 @@ test("an admin refreshes, sees a failed load, then brings a fixed capability onl
   await page.locator("[data-name=vault] .toggle").click();
   await expect(page.locator("[data-name=vault]")).toHaveAttribute("data-state", "offline");
 
+  expect(state.unexpected).toEqual([]);
+});
+
+test("capability and extension cards open their tools and run a schema form", async ({ page }) => {
+  const state = newState();
+  await installFakeApi(page, state);
+  await page.route('**/api/extensions', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ id: 'notes', label: 'Notes', description: 'Shared notes', status: 'connected', error: null, tools: ['notes__add'] }]) }));
+  const calls: unknown[] = [];
+  await page.route('**/api/mcp/server', async (route) => {
+    if (route.request().method() !== 'POST') return route.fulfill({ status: 405 });
+    const body = route.request().postDataJSON();
+    if (!('id' in body)) return route.fulfill({ status: 202 });
+    let result: unknown = {};
+    if (body.method === 'initialize') result = { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'test', version: '1' } };
+    if (body.method === 'tools/list') result = { tools: ['tool_vault_run', 'notes__add'].map((name) => ({ name, title: name === 'notes__add' ? 'Add note' : 'Search vault', description: 'A test tool', inputSchema: { type: 'object', properties: { text: { type: 'string', title: 'Text' } }, required: ['text'] } })) };
+    if (body.method === 'tools/call') { calls.push(body.params); result = { content: [{ type: 'text', text: 'Completed successfully' }] }; }
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: body.id, result }) });
+  });
+  await page.goto('/capabilities');
+  await page.getByRole('searchbox', { name: 'Search capabilities', exact: true }).fill('vault_run');
+  await expect(page.locator('[data-test=capability]')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Open Vault', exact: true }).click();
+  const capability = page.getByRole('dialog', { name: 'Vault', exact: true });
+  await expect(capability).toBeVisible();
+  await expect(capability.locator(".summary-description")).toContainText("Explore the tools provided by Vault.");
+  const scrollAreas = await page.evaluate<{ outer: string; list: string }>(`(() => {
+    const dialog = document.querySelector('.integration-modal');
+    const style = (selector) => getComputedStyle(dialog.querySelector(selector));
+    return { outer: style('.tools-modal').overflowY, list: style('.tool-list').overflowY };
+  })()`);
+  expect(scrollAreas).toEqual({ outer: 'hidden', list: 'auto' });
+  const initialHeight = (await capability.boundingBox())!.height;
+  await capability.getByRole('button', { name: /Search vault/ }).click();
+  await capability.getByRole('textbox', { name: /^Text/ }).fill('hello');
+  await capability.getByRole('button', { name: 'Run tool', exact: true }).click();
+  await expect(capability.locator('.result')).toContainText('Completed successfully');
+  await expect(capability.locator('.tester')).toHaveCSS('overflow-y', 'auto');
+  expect((await capability.boundingBox())!.height).toBe(initialHeight);
+  await expect(capability.getByRole('searchbox', { name: 'Find a tool' })).toBeVisible();
+  await page.screenshot({ path: 'C:/Users/User/.codex/visualizations/2026/10/08/01a11ae9-61e7-7880-a756-0bfaebed99a6/ember-tool-modal-desktop.png', animations: 'disabled' });
+  expect(calls[0]).toEqual({ name: 'tool_vault_run', arguments: { text: 'hello' } });
+  await capability.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('link', { name: 'Extensions', exact: true }).click();
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.getByRole('searchbox', { name: 'Search extensions', exact: true }).fill('notes__add');
+  await expect(page.locator('[data-test=extension]')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Open Notes', exact: true }).click();
+  const extension = page.getByRole('dialog', { name: 'Notes', exact: true });
+  await expect(extension).toContainText('Shared notes');
+  await extension.getByRole('button', { name: /Add note/ }).click();
+  await extension.getByRole('textbox', { name: /^Text/ }).fill('note');
+  await extension.getByRole('button', { name: 'Run tool', exact: true }).click();
+  await expect(extension.locator('.result')).toContainText('Completed successfully');
+  await page.screenshot({ path: 'C:/Users/User/.codex/visualizations/2026/10/08/01a11ae9-61e7-7880-a756-0bfaebed99a6/ember-tool-modal-mobile.png', animations: 'disabled' });
+  expect(calls[1]).toEqual({ name: 'notes__add', arguments: { text: 'note' } });
+  expect(await page.evaluate<boolean>("document.documentElement.scrollWidth <= window.innerWidth")).toBe(true);
   expect(state.unexpected).toEqual([]);
 });

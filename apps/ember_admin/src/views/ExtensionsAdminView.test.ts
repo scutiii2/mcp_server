@@ -1,3 +1,4 @@
+import { createPinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
@@ -22,7 +23,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 async function mounted() {
-  const wrapper = mount(ExtensionsAdminView, { attachTo: document.body });
+  const wrapper = mount(ExtensionsAdminView, { attachTo: document.body, global: { plugins: [createPinia()] } });
   await flushPromises();
   return wrapper;
 }
@@ -118,4 +119,18 @@ describe("ExtensionsAdminView", () => {
     expect(wrapper.findAll("[data-test=extension]")).toHaveLength(0);
     expect(wrapper.find("form").exists()).toBe(true);
   });
+});
+
+it("searches extension names and their tool names", async () => {
+  const wrapper = await mounted();
+  const search = wrapper.get('input[aria-label="Search extensions"]');
+  await search.setValue(" NOTES__ADD ");
+  expect(wrapper.findAll("[data-test=extension]")).toHaveLength(1);
+  expect(wrapper.get("[data-test=extension]").attributes("data-id")).toBe("notes");
+  await search.setValue("wiki");
+  expect(wrapper.get("[data-test=extension]").attributes("data-id")).toBe("wiki");
+  await search.setValue("no match");
+  expect(wrapper.text()).toContain("No extensions match your search.");
+  await search.setValue("");
+  expect(wrapper.findAll("[data-test=extension]")).toHaveLength(2);
 });

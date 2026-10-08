@@ -38,8 +38,8 @@ const click = (wrapper: ReturnType<typeof editor>, label: string) =>
   wrapper.findAll("button").find((b) => b.text() === label)!.trigger("click");
 
 describe("RoleEditor", () => {
-  it("says the permission switches apply instantly", () => {
-    expect(editor().text()).toContain("Permission switches apply instantly.");
+  it("says changes stay in a draft until saved", () => {
+    expect(editor().text()).toContain("Changes are a draft until you save.");
   });
 
   it("shows a Saved chip once a change went through, but not beside an error", () => {
@@ -69,13 +69,12 @@ describe("RoleEditor", () => {
   it("asks to grant a permission the role lacks, and to revoke one it holds", async () => {
     const wrapper = editor();
 
-    await switchFor(wrapper, "roles.manage").trigger("click");
-    await switchFor(wrapper, "chat.use").trigger("click");
+    await switchFor(wrapper, "roles.manage").setValue(!(switchFor(wrapper, "roles.manage").element as HTMLInputElement).checked);
+    await switchFor(wrapper, "chat.use").setValue(!(switchFor(wrapper, "chat.use").element as HTMLInputElement).checked);
 
-    expect(wrapper.emitted("togglePermission")).toEqual([
-      ["roles.manage", true],
-      ["chat.use", false],
-    ]);
+    expect(wrapper.emitted("save")).toBeUndefined();
+    await click(wrapper, "Save");
+    expect(wrapper.emitted("save")).toEqual([[{ permissions: ["roles.manage", "tools.view"] }]]);
   });
 
   it("saves only the fields that changed", async () => {
@@ -86,7 +85,7 @@ describe("RoleEditor", () => {
     await wrapper.get("form").trigger("submit");
 
     expect(wrapper.emitted("save")).toEqual([[{ description: "New text" }]]);
-    expect(wrapper.find("form").exists()).toBe(false);
+    expect(wrapper.find("form").exists()).toBe(true); // retained until the server confirms
   });
 
   it("closes the edit form without saving when nothing changed", async () => {
@@ -183,10 +182,11 @@ it("groups permissions and searches by label, key, or description", async () => 
   expect(wrapper.text()).toContain('No permissions match your search.');
 });
 
-it("keeps permission state unchanged until the server supplies an updated role", async () => {
+it("shows a local permission draft and resets it when the server supplies the saved role", async () => {
   const wrapper = editor();
-  await switchFor(wrapper, 'roles.manage').trigger('click');
-  expect((switchFor(wrapper, 'roles.manage').element as HTMLInputElement).checked).toBe(false);
+  await switchFor(wrapper, 'roles.manage').setValue(!(switchFor(wrapper, 'roles.manage').element as HTMLInputElement).checked);
+  expect((switchFor(wrapper, 'roles.manage').element as HTMLInputElement).checked).toBe(true);
+  expect(wrapper.find('.save-bar').exists()).toBe(true);
   await wrapper.setProps({ role: { ...MEMBER, permissions: [...MEMBER.permissions, 'roles.manage'] } });
   expect((switchFor(wrapper, 'roles.manage').element as HTMLInputElement).checked).toBe(true);
 });
@@ -196,4 +196,15 @@ it("shows permissions added by the server even when their group is not yet known
   await wrapper.setProps({ permissions: [...PERMISSIONS, { name: 'new.permission', description: 'Future feature' }] });
   expect(wrapper.get('section[aria-label="Other permissions"]').text()).toContain('new.permission');
   expect(switchFor(wrapper, 'new.permission').attributes('disabled')).toBeDefined();
+});
+
+it("reverts role details and permissions together", async () => {
+  const wrapper = editor();
+  await click(wrapper, "Edit details");
+  await wrapper.get('input[aria-label="Description"]').setValue("Changed");
+  await switchFor(wrapper, "chat.use").setValue(!(switchFor(wrapper, "chat.use").element as HTMLInputElement).checked);
+  await click(wrapper, "Revert");
+  expect(wrapper.find(".save-bar").exists()).toBe(false);
+  expect((switchFor(wrapper, "chat.use").element as HTMLInputElement).checked).toBe(true);
+  expect(wrapper.emitted("save")).toBeUndefined();
 });
