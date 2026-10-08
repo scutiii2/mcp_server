@@ -266,6 +266,25 @@ def test_an_import_error_in_a_new_folder_does_not_stop_the_scan(loader_for, pack
     assert loader.record_for("wid").load_error is None
 
 
+def test_set_online_returns_the_final_id_when_a_failed_folder_is_fixed_under_another_id(loader_for, package, mcp):
+    _, root = package
+    (root / "widgets").mkdir()
+    (root / "widgets" / "__init__.py").write_text("raise RuntimeError('bad init')\n")
+    loader = loader_for()
+    loader.scan()
+    record = loader.record_for("widgets")
+    assert record.id == "widgets" and "bad init" in record.load_error
+
+    write_capability(root, "widgets", "wid", "tool_wid_run")
+    final_id = run(loader.set_online("widgets", True))
+
+    assert final_id == "wid"
+    assert loader.record_for("wid").loaded is True
+    assert loader.record_for("widgets") is None
+    assert capability_registry.is_enabled("wid") is True
+    assert tool_names(mcp) == {"tool_wid_run"}
+
+
 def test_set_online_of_an_unknown_name_is_unknown(loader_for):
     with pytest.raises(UnknownCapability):
         run(loader_for().set_online("nope", True))

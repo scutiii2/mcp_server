@@ -197,3 +197,51 @@ def test_get_lists_a_discovered_but_unloaded_capability(test_mcp, config_path):
 
     assert entry == {"name": "fresh", "enabled": False, "label": "Fresh", "tools": [], "resources": [], "has_gui": False,
                      "load_error": None, "missing": False, "loaded": False}
+
+
+def test_patch_by_the_old_folder_name_replies_under_the_new_id(tmp_path, monkeypatch):
+    """A folder that failed discovery and is fixed under a different id: PATCH by the folder name works."""
+    import sys
+    import uuid
+
+    from src import commands
+    from src.services import capability_meta
+
+    monkeypatch.setattr(capability_meta, "_BY_FOLDER", {})
+    monkeypatch.setattr(commands, "_COMMANDS", {})
+    monkeypatch.setattr(capability_registry, "_REGISTRY", {})
+    pkg = f"fxr_{uuid.uuid4().hex[:8]}"
+    root = tmp_path / pkg / "capabilities"
+    root.mkdir(parents=True)
+    (tmp_path / pkg / "__init__.py").write_text("")
+    (root / "__init__.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    folder = root / "widgets"
+    folder.mkdir()
+    (folder / "__init__.py").write_text("raise RuntimeError('bad init')\n")
+    server = FastMCP(name="hermetic")
+    monkeypatch.setattr("src.server.mcp", server)
+    try:
+        loader = CapabilityLoader(server, f"{pkg}.capabilities", tmp_path / "config_capabilities.json")
+        loader.scan()
+        app = Starlette()
+        install_capability_routes(app, loader)
+        with TestClient(app) as test_client:
+            (folder / "__init__.py").write_text(
+                "from src.services import capability_meta\n"
+                'META = capability_meta.register(folder="widgets", id="wid", label="Widgets")\n'
+            )
+            (folder / "tool.py").write_text(
+                "from src.server import mcp\n\n@mcp.tool()\ndef tool_wid_run() -> str:\n    return 'v1'\n"
+            )
+
+            response = test_client.patch("/capabilities/widgets", json={"enabled": True})
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["name"] == "wid" and body["enabled"] is True and body["tools"] == ["tool_wid_run"]
+            listed = {item["name"]: item for item in test_client.get("/capabilities").json()}
+            assert "wid" in listed and "widgets" not in listed
+    finally:
+        for key in [key for key in sys.modules if key == pkg or key.startswith(pkg + ".")]:
+            del sys.modules[key]

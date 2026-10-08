@@ -163,10 +163,12 @@ class CapabilityLoader:
 
     # --- switching -----------------------------------------------------------
 
-    async def set_online(self, name: str, online: bool) -> None:
+    async def set_online(self, name: str, online: bool) -> str:
         """Online: fresh import, then persist (a failed import changes nothing
         on disk). Offline: persist, then hide the tools. A capability that was
-        registered outside the scanner is only toggled, not reloaded."""
+        registered outside the scanner is only toggled, not reloaded. Returns
+        the id the capability is registered under afterwards (going online can
+        rename a record from its folder name to its META id)."""
         async with self._lock:
             record = self.record_for(name)
             if record is None:
@@ -174,12 +176,12 @@ class CapabilityLoader:
                     raise UnknownCapability(f"Unknown capability {name!r}")
                 save_capabilities_config(self._config_path, name, online)
                 capability_registry.set_enabled(self._mcp, name, online)
-                return
+                return name
             if not online:
                 save_capabilities_config(self._config_path, record.id, False)
                 if record.loaded:
                     capability_registry.set_enabled(self._mcp, record.id, False)
-                return
+                return record.id
             if record.missing:
                 raise CapabilityLoadError(f"The folder of capability {name!r} no longer exists")
             self._load(record)
@@ -188,6 +190,7 @@ class CapabilityLoader:
             except Exception:
                 capability_registry.set_enabled(self._mcp, record.id, False)
                 raise
+            return record.id
 
     # --- loading -------------------------------------------------------------
 

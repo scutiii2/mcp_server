@@ -69,7 +69,7 @@ def _status_json(loader: CapabilityLoader, name: str) -> dict[str, object]:
     return {
         "name": name,
         "enabled": known and capability_registry.is_enabled(name),
-        "label": capability_registry.label(name) if known else record.label,
+        "label": capability_registry.label(name) if known else (record.label if record else name),
         "tools": capability_registry.tool_names(name) if known else [],
         "resources": capability_registry.resource_names(name) if known else [],
         # True only when a valid page exists and the capability is on, so a link never leads to a 404.
@@ -118,10 +118,10 @@ def install_capability_routes(app: Starlette, loader: CapabilityLoader) -> None:
         if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
             return JSONResponse({"error": "'enabled' (a boolean) is required"}, status_code=400)
         try:
-            await loader.set_online(name, body["enabled"])
+            final_id = await loader.set_online(name, body["enabled"])
         except CapabilityError as error:
             return JSONResponse({"error": str(error)}, status_code=error.status)
-        return JSONResponse(_status_json(loader, name))
+        return JSONResponse(_status_json(loader, final_id))
 
     app.add_route("/capabilities", list_capabilities, methods=["GET"])
     app.add_route("/capabilities/refresh", refresh_capabilities, methods=["POST"])
