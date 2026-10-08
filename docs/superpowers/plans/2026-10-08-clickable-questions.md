@@ -27,7 +27,8 @@
 1. `POST /api/chats/{id}/questions` answers like `/approvals`: 404 when no answer is running, 409 when nothing is waiting, 422 for an invalid answer, `{"answered": true}` on success. (The spec said `answered: false`; the 404/409 route already has client handling in the approvals flow.)
 2. ember_api does not require ai_agent to be deployed first. When `can_ask` is true the gateway calls `status` and sends `ask_user` only if it reports `user_questions: true`; an older agent just never gets the tool.
 3. The text given to the model lists each question's full text, not its header: `- <question>: <answer>`.
-4. No Playwright flow for a held question: the e2e fake streams a finished body in one response and cannot hold a stream open. e2e only gets the new route so its "unknown call" guard stays quiet. The flow is covered by store and component tests.
+4. The gateway method that sends the answers is `answer_question(...)` (Protocol, `McpAgentGateway`, `FakeAgent`), not `answer(...)`: `FakeAgent.answer` already exists as the canned response text. `TurnRegistry.answer(...)` keeps its name.
+5. No Playwright flow for a held question: the e2e fake streams a finished body in one response and cannot hold a stream open. e2e only gets the new route so its "unknown call" guard stays quiet. The flow is covered by store and component tests.
 
 ## File Structure
 
@@ -1244,7 +1245,7 @@ git commit -m "feat(ai_agent): offer ask_user to top-level turns and answer it t
 - Consumes (Task 2): MCP `ask(..., ask_user)`, `answer_question`, `status.user_questions`.
 - Produces (used by Task 4):
   - `question_answers.clamp_questions(raw: Any) -> list[dict]`; `question_answers.check_answers(questions: list[dict], answers: list[dict]) -> str | None` (an error message or None).
-  - `AgentGateway.ask(..., ask_user: bool = False)`; `AgentGateway.answer(url, caller, request_id, step_id, answers: list[dict], skipped: bool) -> bool`.
+  - `AgentGateway.ask(..., ask_user: bool = False)`; `AgentGateway.answer_question(url, caller, request_id, step_id, answers: list[dict], skipped: bool) -> bool`.
   - `TurnOptions.can_ask: bool = False`; `Turn.pending_questions: dict[str, dict]` (step id -> `{"id", "questions"}`); snapshot key `"questions"`; `TurnRegistry.pending_question(account_id, chat_id, step_id) -> dict | None`; `async TurnRegistry.answer(account_id, chat_id, step_id, answers, skipped) -> bool`.
   - `FakeAgent`: attrs `questions: list[dict]`, `answers: list[tuple]`, `answer_result`, `answer_error`; `asks[...]["ask_user"]`.
 
@@ -1469,8 +1470,8 @@ def test_answer_reports_whether_the_question_was_waiting(agent_url: str) -> None
     gateway = McpAgentGateway(None)
     answers = [{"selected": ["CSV"], "other": None}]
 
-    assert asyncio.run(gateway.answer(agent_url, CALLER, "r1", "s1", answers, False)) is True
-    assert asyncio.run(gateway.answer(agent_url, CALLER, "r1", "nope", [], True)) is False
+    assert asyncio.run(gateway.answer_question(agent_url, CALLER, "r1", "s1", answers, False)) is True
+    assert asyncio.run(gateway.answer_question(agent_url, CALLER, "r1", "nope", [], True)) is False
 ```
 
 Run: `.venv_ember_api\Scripts\python -m pytest tests/test_agent_gateway.py -q`
@@ -1483,7 +1484,7 @@ In `apps/ember_api/src/services/agent_gateway.py`:
 Protocol `ask`: add `ask_user: bool = False,` after `disabled_tools`; add after `decide` in the Protocol:
 
 ```python
-    async def answer(
+    async def answer_question(
         self, url: str, caller: Caller, request_id: str, step_id: str, answers: list[dict[str, Any]], skipped: bool
     ) -> bool: ...
 ```
@@ -1502,7 +1503,7 @@ In `McpAgentGateway.ask` add `ask_user=False,` to the signature and, before `ret
 After `decide` add:
 
 ```python
-    async def answer(self, url, caller, request_id, step_id, answers, skipped):
+    async def answer_question(self, url, caller, request_id, step_id, answers, skipped):
         """Sends the user's answers to a question the agent raised for this turn.
         False when nothing was waiting (already answered, or the turn ended)."""
         result = await self._call(
@@ -1526,7 +1527,7 @@ Add fields after `decide_error`:
     # A question this fake "asks" during a turn (the questions list of an ask_user call).
     questions: list[dict] = field(default_factory=list)
     answers: list[tuple] = field(default_factory=list)  # (request_id, step_id, answers, skipped)
-    answer_result: bool | None = None  # force answer()'s result
+    answer_result: bool | None = None  # force answer_question()'s result
     answer_error: str | None = None
     _asking: dict = field(default_factory=dict)
 ```
@@ -1553,7 +1554,7 @@ Add methods:
         await on_event({"type": "question_resolved", "id": step_id, "outcome": outcome})
         await on_event({"type": "step_end", "id": step_id, "ok": outcome != "cancelled", "result": f"outcome: {outcome}"})
 
-    async def answer(self, url, caller, request_id, step_id, answers, skipped):
+    async def answer_question(self, url, caller, request_id, step_id, answers, skipped):
         if self.answer_error:
             raise AgentCallError(self.answer_error)
         self.answers.append((request_id, step_id, answers, skipped))
@@ -1701,7 +1702,7 @@ Add method after `record_approval`:
         turn = self.get(account_id, chat_id)
         if turn is None or turn.status != "running" or step_id not in turn.pending_questions:
             return False
-        return await self._gateway.answer(turn.agent.url, turn.caller, turn.request_id, step_id, answers, skipped)
+        return await self._gateway.answer_question(turn.agent.url, turn.caller, turn.request_id, step_id, answers, skipped)
 ```
 
 `_publish`: in the `step_end` branch add `turn.pending_questions.pop(str(event.get("id") or ""), None)` after the approvals pop; add two branches after `approval_resolved`:
@@ -3016,6 +3017,6 @@ git commit -m "feat(ember_web): clickable question cards for the agent's questio
 
 **Placeholder scan:** no TBD/TODO. Steps that depend on facts not visible while planning say exactly what to look up and how (the `TurnRegistry` attribute name in Task 3 Step 8, `ApiError`'s constructor in Task 5 Step 2, the cancellation helpers in Task 1 Step 8, the toolTitles mapping in Task 6 Step 11).
 
-**Type consistency:** `questions.ask/handle/BROKER/Answer/QuestionPolicy`, `ask_user.validate/TOOL_NAME` (Tasks 1-2); `answer(url, caller, request_id, step_id, answers, skipped)` (Tasks 3-4); `pending_question`/`answer` on the registry (Tasks 3-4); `PendingQuestion`, `QuestionAnswer`, `answerQuestion`/`skipQuestion`/`pendingQuestions`/`answeringQuestions` (Tasks 5-6); MessageList's `questions`/`answeringQuestions` props and `answer-question`/`skip-question` events (Task 6, wired in ChatView).
+**Type consistency:** `questions.ask/handle/BROKER/Answer/QuestionPolicy`, `ask_user.validate/TOOL_NAME` (Tasks 1-2); `answer_question(url, caller, request_id, step_id, answers, skipped)` (Tasks 3-4); `pending_question`/`answer` on the registry (Tasks 3-4); `PendingQuestion`, `QuestionAnswer`, `answerQuestion`/`skipQuestion`/`pendingQuestions`/`answeringQuestions` (Tasks 5-6); MessageList's `questions`/`answeringQuestions` props and `answer-question`/`skip-question` events (Task 6, wired in ChatView).
 
 **Known soft spots to watch while executing:** (1) `askUserStep.describeAskUser` reads the model-facing answer text back by position, so a user's own typed answer containing `?: ` can confuse it; acceptable for a display-only summary. (2) The held-question flow has no end-to-end test (the e2e fake cannot hold a stream); the manual check list in Task 6 Step 15 covers it.
