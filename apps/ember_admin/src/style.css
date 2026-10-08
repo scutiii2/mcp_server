@@ -1,0 +1,94 @@
+/* ember_admin theme (same tokens as ember_web): tokens first, then a full-height app shell. Each token is
+   light-dark(light, dark), resolved by the page's `color-scheme`: "light dark"
+   follows the system; useTheme.ts forces one by setting it on <html>. */
+:root {
+  --bg: light-dark(#ffffff, #17171a);
+  --surface: light-dark(#f6f6f7, #1f1f23);
+  --text: light-dark(#1c1c1f, #e8e8ea);
+  --muted: light-dark(#6b6b73, #9a9aa3);
+  --border: light-dark(#e3e3e6, #2f2f35);
+  --accent: light-dark(#e8590c, #ff7a33); /* ember orange */
+  --accent-contrast: light-dark(#ffffff, #17171a);
+  --user-bubble: light-dark(#f1efe9, #2a2a30);
+  --code-bg: light-dark(#f3f3f4, #232328);
+  --danger: light-dark(#d9480f, #ff8a4c);
+  --success: light-dark(#1baf7a, #199e70);
+  /* Config issues: errors use --status-failed (red); warnings amber, apart from the orange accent. */
+  --warning: light-dark(#a86a00, #f0b429);
+  /* Analytics series, one per log kind: categorical slots 1-3 of the dataviz
+     palette, validated together (all-pairs) on this page's light and dark surfaces. */
+  --kind-action: light-dark(#2a78d6, #3987e5);
+  --kind-error: light-dark(#eb6834, #d95926);
+  --kind-chat: light-dark(#1baf7a, #199e70);
+  /* Traffic tab: requests by status class (stacked, bottom to top) and the two latency lines.
+     Not run through the dataviz palette validator; every series is also named in a legend,
+     tooltip and table, so colour is never the only cue. */
+  --http-2xx: light-dark(#1baf7a, #199e70);
+  --http-3xx: light-dark(#8a8fa3, #7a8094);
+  --http-4xx: var(--warning);
+  --http-5xx: var(--status-failed);
+  --latency-p50: light-dark(#2a78d6, #3987e5);
+  --latency-p95: light-dark(#8e5bd6, #a174e0);
+  /* Watcher run states: only the events stand out (failed red, running blue);
+     a finished run is the quiet default. Blue and red validated together; each
+     state also carries an icon and a label, so colour is never the only cue. */
+  --status-running: light-dark(#2a78d6, #3987e5);
+  --status-failed: #d03b3b;
+  --status-ok: color-mix(in srgb, var(--muted) 70%, var(--bg));
+
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  /* Corner radius scale: radius follows element size. Nested corner = outer radius
+     minus the padding between (calc(var(--radius-lg) - 8px)); a ring = inner radius
+     plus its gap; an element flush to an edge is square on that side. */
+  --radius-sm: 4px; /* chip, badge, small tag */
+  --radius-md: 8px; /* button, input, row */
+  --radius-lg: 12px; /* card, panel */
+  --radius-xl: 16px; /* modal, sheet */
+  --radius-full: 9999px; /* single-line pill, avatar, toggle only */
+
+  /* Height of the bottom nav bar on narrow screens; sheets pinned to the
+     bottom of the page sit above it, not under it. */
+  --rail-height: 52px;
+
+  color-scheme: light dark;
+  font: 15px/1.55 var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+/* The page itself never scrolls; each view scrolls its own content area. */
+body {
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--accent);
+}
+
+button,
+textarea,
+input {
+  font: inherit;
+  color: inherit;
+}

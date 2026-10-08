@@ -1,0 +1,198 @@
+/* The frame the time charts share (ActivityChart, LineChart): legend, axes,
+   gridlines, tooltip and the table twin. Pulled in with <style scoped src>, so
+   the class names stay local to each chart. What differs (stacked columns,
+   lines) lives in the chart itself. */
+.chart {
+  margin: 0;
+  transition: opacity 0.15s;
+}
+.chart.dim {
+  opacity: 0.5;
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.frame {
+  display: grid;
+  grid-template-columns: 2.6em minmax(0, 1fr);
+  gap: 6px;
+}
+/* Only the plot has a fixed height; the axis rows below it add their own. */
+.yaxis {
+  position: relative;
+  height: 160px;
+}
+.ytick {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  font-size: 0.72em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.area {
+  position: relative;
+  padding: 0 18px; /* room for the first and last x label to stick out */
+  margin: 0 -18px;
+}
+.gridlines {
+  position: absolute;
+  inset: 0 18px auto;
+  height: 160px;
+}
+.gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+.gridline:last-child {
+  background: color-mix(in srgb, var(--muted) 45%, var(--border));
+}
+.plot {
+  position: relative;
+  height: 160px;
+  border-radius: var(--radius-sm);
+}
+.plot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.none {
+  position: absolute;
+  top: 0;
+  left: 18px;
+  right: 18px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85em;
+  pointer-events: none;
+}
+.tooltip {
+  position: absolute;
+  top: 4px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
+  font-size: 0.8em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.when {
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.line {
+  display: block; /* inline children keep real spaces between value and name */
+}
+.key {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.name {
+  color: var(--muted);
+}
+.xaxis {
+  display: flex;
+  margin-top: 6px;
+  padding: 0 18px;
+}
+.xcell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 1.2em;
+}
+.xtick {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.table-wrap {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8em;
+}
+th,
+td {
+  padding: 5px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+th[scope="row"],
+thead th:first-child {
+  text-align: left;
+}
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 500;
+}
+tbody th {
+  font-weight: 400;
+}
+td {
+  font-variant-numeric: tabular-nums;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
