@@ -198,9 +198,13 @@ class CapabilityLoader:
         templates_before = set(self._mcp._resource_manager._templates)
         watcher = _DuplicateToolWatcher()
         tool_manager.logger.addHandler(watcher)
-        capability_id, label = record.id, record.label
+        capability_id, label = record.id, record.label  # what this record owned before the attempt
         try:
             meta = importlib.import_module(f"{self._package}.{record.folder}").META
+            other = next((r for r in self._records.values() if r.folder != record.folder and r.id == meta.id), None)
+            if other is not None:
+                capability_meta.unregister(record.folder)
+                raise CapabilityLoadError(f"Capability id {meta.id!r} is already used by folder {other.folder!r}")
             capability_id, label = meta.id, meta.label
             with capability_registry.capturing(self._mcp, meta.id, label=meta.label):
                 importlib.import_module(f"{self._package}.{record.folder}.tool")

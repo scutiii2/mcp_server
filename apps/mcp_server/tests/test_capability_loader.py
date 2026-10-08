@@ -202,6 +202,28 @@ def test_a_duplicate_tool_name_is_refused_and_leaves_the_other_capability_alone(
     assert loader.record_for("gad").loaded is False
 
 
+def test_a_failed_load_under_a_clashing_id_leaves_the_other_capability_alone(loader_for, package, mcp):
+    _, root = package
+    write_capability(root, "gadgets", "wid", "tool_b")
+    write_capability(root, "widgets", "wid", "tool_a")  # same id as gadgets
+    loader = loader_for()
+    loader.scan()
+    assert loader.record_for("wid").folder == "gadgets"  # first folder wins the id
+    assert "wid" in loader.record_for("widgets").load_error
+    run(loader.set_online("wid", True))
+    assert tool_names(mcp) == {"tool_b"}
+
+    with pytest.raises(CapabilityLoadError, match="wid"):
+        run(loader.set_online("widgets", True))
+
+    assert tool_names(mcp) == {"tool_b"}
+    assert [spec.tool_name for spec in commands.all_commands()] == ["tool_b"]
+    assert capability_registry.is_enabled("wid") is True
+    assert loader.record_for("wid").loaded is True
+    assert loader.record_for("widgets").loaded is False
+    assert "wid" in loader.record_for("widgets").load_error
+
+
 def test_a_removed_folder_is_marked_missing_and_cannot_go_online(loader_for, package):
     import shutil
 
