@@ -22,6 +22,7 @@ from src.services.app_config import (
     load_email_config,
     load_extension_config,
     load_extensions_config,
+    migrate_capabilities_config,
     resolve_section,
     save_capabilities_config,
     save_extension_config,
@@ -856,3 +857,27 @@ def test_web_url_survives_a_save(tmp_path: Path):
     save_extension_config(path, config)
 
     assert load_extensions_config(path)["remote"].web_url == "http://x:5174"
+
+
+def test_migrate_capabilities_writes_missing_entries_once(tmp_path: Path):
+    path = tmp_path / "config_capabilities.json"
+    path.write_text(json.dumps({"vault": {"enabled": False}}), encoding="utf-8")
+
+    migrate_capabilities_config(path, ["vault", "watch"])
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["vault"] == {"enabled": False}  # an explicit entry is kept
+    assert saved["watch"] == {"enabled": True}  # a missing one stays on
+    assert saved["_scanner"] == {"migrated": True}
+
+    migrate_capabilities_config(path, ["vault", "watch", "newcomer"])
+
+    assert "newcomer" not in json.loads(path.read_text(encoding="utf-8"))  # after the marker: offline by default
+
+
+def test_migrate_capabilities_creates_a_missing_file(tmp_path: Path):
+    path = tmp_path / "config_capabilities.json"
+
+    migrate_capabilities_config(path, ["vault"])
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"vault": {"enabled": True}, "_scanner": {"migrated": True}}

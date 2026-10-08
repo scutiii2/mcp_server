@@ -601,3 +601,25 @@ def save_capabilities_config(config_path: Path, name: str, enabled: bool) -> Non
     data = load_config(config_path) if config_path.exists() else {}
     data.setdefault(name, {})["enabled"] = enabled
     _write_config(config_path, data)
+
+
+_SCANNER_MARKER = "_scanner"
+
+
+def migrate_capabilities_config(config_path: Path, ids: list[str]) -> None:
+    """Once, when the folder scanner first runs: write ``enabled: true`` for
+    every capability that has no entry, then set a marker.
+
+    Before the scanner, "no entry" meant enabled, and ``watchers`` relies on
+    that. After it, a folder that appears later with no entry is offline until
+    an admin brings it online. The marker is what tells the two apart, so
+    nothing that is on today goes dark on the next restart. Does nothing once
+    the marker is there.
+    """
+    data = load_config(config_path) if config_path.exists() else {}
+    if _SCANNER_MARKER in data:
+        return
+    for capability_id in ids:
+        data.setdefault(capability_id, {"enabled": True})
+    data[_SCANNER_MARKER] = {"migrated": True}
+    _write_config(config_path, data)
