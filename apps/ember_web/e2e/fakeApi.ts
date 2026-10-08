@@ -93,6 +93,9 @@ export interface StoredShare {
 }
 
 export interface FakeApi {
+  /** What the account has added (GET and PUT /api/account-capabilities). */
+  accountCapabilities: { capabilities: Set<string>; extensions: Set<string> };
+
   /** The capabilities the Capabilities page lists and an administrator can switch (an administrator login only). */
   capabilities: Map<string, StoredCapability>;
   /** The roles the Admin page lists (an administrator login only). */
@@ -176,6 +179,7 @@ export const ANSWER = ANSWER_PIECES.join("");
 
 export async function installFakeApi(page: Page, options: { admin?: boolean } = {}): Promise<FakeApi> {
   const api: FakeApi = {
+    accountCapabilities: { capabilities: new Set(), extensions: new Set() },
     settings: { forceToolApproval: false },
     accounts: new Map(),
     capabilities: new Map(),
@@ -192,6 +196,7 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
     for (const a of ADMIN_ACCOUNTS) api.accounts.set(a.id, { ...a });
     for (const r of ADMIN_ROLES) api.roles.set(r.id, { ...r });
     for (const c of ADMIN_CAPABILITIES) api.capabilities.set(c.name, { ...c });
+    for (const c of ADMIN_CAPABILITIES) api.accountCapabilities.capabilities.add(c.name);
   }
   let loggedIn = false;
 
@@ -271,6 +276,23 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
       if (!found) return json(route, { detail: "Capability not found" }, 404);
       found.enabled = (request.postDataJSON() as { enabled: boolean }).enabled;
       return json(route, found);
+    }
+    // What the account has added, and the tools of the capabilities it has not.
+    const accountView = () => ({
+      capabilities: [...api.accountCapabilities.capabilities].sort(),
+      extensions: [...api.accountCapabilities.extensions].sort(),
+      disabled_tools: [...api.capabilities.values()]
+        .filter((c) => !api.accountCapabilities.capabilities.has(c.name))
+        .flatMap((c) => c.tools)
+        .sort(),
+    });
+    if (method === "GET" && path === "/api/account-capabilities") return json(route, accountView());
+    const accountItem = /^\/api\/account-capabilities\/(capability|extension)\/([A-Za-z0-9_.-]+)$/.exec(path);
+    if (method === "PUT" && accountItem) {
+      const set = accountItem[1] === "capability" ? api.accountCapabilities.capabilities : api.accountCapabilities.extensions;
+      if ((request.postDataJSON() as { enabled: boolean }).enabled) set.add(accountItem[2]!);
+      else set.delete(accountItem[2]!);
+      return json(route, accountView());
     }
     if (method === "GET" && path === "/api/extensions") return json(route, []);
     if (method === "POST" && path === "/api/mcp/server") return mcpServer(route, api);

@@ -42,6 +42,14 @@ export const router = createRouter({
       // tools.use for the capabilities and tools, chat.use for switching extensions.
       meta: { permission: ["tools.use", "chat.use"] },
     },
+    // Declared before /capabilities/:name so a capability named "supermarket" can never shadow it.
+    {
+      path: "/capabilities/supermarket",
+      name: "supermarket",
+      component: () => import("../views/SupermarketView.vue"),
+      // tools.use for the built-in capabilities, chat.use for the extensions.
+      meta: { permission: ["tools.use", "chat.use"] },
+    },
     {
       path: "/capabilities/:name",
       name: "capability-page",

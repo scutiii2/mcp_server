@@ -1,37 +1,35 @@
 <script setup lang="ts">
-import { storeToRefs } from "pinia";
 import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue";
-import { useRoute } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
 import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
-import AddExtensionModal from "../components/AddExtensionModal.vue";
 import CapabilitySection, { type SectionPage } from "../components/CapabilitySection.vue";
 import MarkdownContent from "../components/MarkdownContent.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
 import ToolCard from "../components/ToolCard.vue";
 import ToolRunModal from "../components/ToolRunModal.vue";
+import { useEveryoneSwitch } from "../composables/useEveryoneSwitch";
+import { useAccountCapabilitiesStore } from "../stores/accountCapabilities";
 import { useAuthStore } from "../stores/auth";
-import { useChatStore } from "../stores/chat";
-import { groupTools, inExtensionNamespace } from "../utils/capabilityGroups";
+import { addedOnly, groupTools, inExtensionNamespace } from "../utils/capabilityGroups";
 import { errorMessage } from "../utils/errors";
 import { formatToolResult } from "../utils/toolResultFormat";
 import { safeWebUrl } from "../utils/webUrl";
 
-/** What mcp_server offers, as one list of identical cards: its built-in
- * capabilities and the extensions (other MCP servers) it passes on. Each card
+/** What the account has added from the Supermarket, as one list of identical
+ * cards: built-in capabilities and extensions (other MCP servers). Each card
  * brings tools (run them in place) and resources to read, may have an Open
- * button, and has a switch: a capability's is for every mcp_server client
- * (admins only, asked first), an extension's is for your own chats. Admins
- * also add and remove extensions. Collapsed by default, opened while a filter
- * is typed. A tool is a row (label and name); a click opens its description
- * and run form in a modal. */
+ * button, and has a switch: turning it off removes the card (the item goes back
+ * to the Supermarket). Admins can also turn a built-in capability off for
+ * everyone, from inside its card. Collapsed by default, opened while a filter is
+ * typed. A tool is a row (label and name); a click opens its description and
+ * run form in a modal. */
 
 const auth = useAuthStore();
-const chat = useChatStore();
-const { enabledExtensions, disabledCapabilities } = storeToRefs(chat);
+const account = useAccountCapabilitiesStore();
 const server = new McpServerClient();
 
 const capabilities = ref<CapabilityInfo[]>([]);
@@ -41,14 +39,9 @@ const extensions = ref<ExtensionInfo[]>([]);
 const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
-const switching = ref<string | null>(null);
 // Which kind of card is listed.
 type Kind = "all" | "builtin" | "extensions";
 const kind = ref<Kind>("all");
-// The extension the confirm dialog asks about, and the id of the one being removed.
-const pendingRemove = ref<ExtensionInfo | null>(null);
-const removing = ref<string | null>(null);
-const addOpen = ref(false);
 
 // ?q= prefills the filter (links to a single tool use it).
 const initialQuery = useRoute().query.q;
@@ -80,21 +73,21 @@ const readError = ref("");
 const reader = useTemplateRef<HTMLElement>("reader");
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
-const canChat = computed(() => auth.hasPermission("chat.use"));
-// Capabilities, tools and resources need tools.use; an extension's switch needs only chat.use.
+// Capabilities, tools and resources need tools.use; extensions need only chat.use.
 const canTools = computed(() => auth.hasPermission("tools.use"));
-const switchedOn = computed(() => new Set(enabledExtensions.value));
-const switchedOffByMe = computed(() => new Set(disabledCapabilities.value));
-/** A built-in capability this account switched off for its own chats (it may still be on for others). */
-const offForMe = (capability: CapabilityInfo): boolean => capability.enabled && switchedOffByMe.value.has(capability.name);
 const showBuiltin = computed(() => canTools.value && kind.value !== "extensions");
 const showExtensions = computed(() => kind.value !== "builtin");
-// Headings tell the groups apart, and the two kinds of switch; only when both can show.
+// Headings tell the groups apart; only when both can show.
 const groupHeadings = computed(() => canTools.value && kind.value === "all");
-const grouped = computed(() => groupTools(capabilities.value, tools.value, query.value, extensions.value));
+const added = computed(() =>
+  addedOnly(capabilities.value, extensions.value, tools.value, account.capabilities, account.extensions),
+);
+const grouped = computed(() => groupTools(added.value.capabilities, added.value.tools, query.value, added.value.extensions));
 const selectedTool = computed(() => tools.value.find((t) => t.name === openTool.value) ?? null);
+// The account's choices load beside the page's own data.
+const accountLoading = computed(() => !account.ready && account.error === "");
 
-/** Resources no capability claims. */
+/** Resources no capability claims (of every capability, added or not). */
 const unclaimedResources = computed(() => {
   const claimed = new Set(capabilities.value.flatMap((c) => c.resources));
   return resources.value.filter((r) => !claimed.has(r.name) && !claimed.has(r.uri));
@@ -128,20 +121,16 @@ const nothingShown = computed(
     (!showBuiltin.value || (grouped.value.groups.length === 0 && !showOther.value)) &&
     (!showExtensions.value || grouped.value.extensionGroups.length === 0),
 );
+// Nothing at all is added (not just filtered away): invite the user to the Supermarket.
+const nothingAdded = computed(
+  () => added.value.capabilities.length === 0 && added.value.extensions.length === 0 && added.value.tools.length === 0,
+);
 
 const countText = (tools: number, resources: number): string =>
   `${tools} tool${tools === 1 ? "" : "s"}${resources ? ` · ${resources} resource${resources === 1 ? "" : "s"}` : ""}`;
 
 function capabilitySummary(capability: CapabilityInfo, tools: number): string {
-  if (!capability.enabled) return "off";
-  if (offForMe(capability)) return "Off for you";
-  return countText(tools, resourcesOf(capability).length);
-}
-
-function capabilitySwitchTitle(capability: CapabilityInfo): string {
-  return capability.enabled
-    ? "Let the agent and slash commands use its tools in your chats"
-    : "Turned off for everyone by an administrator";
+  return capability.enabled ? countText(tools, resourcesOf(capability).length) : "off";
 }
 
 /** Where a capability's Open button leads: its own page, while it is on. */
@@ -167,7 +156,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    // Without tools.use only the extensions are listed (to switch them on or off).
+    // Without tools.use only the extensions are listed.
     const [caps, toolList, res, exts] = await Promise.all([
       canTools.value ? commandsClient.capabilities() : [],
       canTools.value ? server.listTools() : [],
@@ -186,78 +175,26 @@ async function load(): Promise<void> {
   }
 }
 
-// Switching a capability reaches every mcp_server client, so it asks first, in
-// the confirmation dialog (turning one off is the riskier way round).
-const pendingSwitch = ref<CapabilityInfo | null>(null);
-
-const switchCopy = computed(() => {
-  const capability = pendingSwitch.value;
-  if (!capability) return { title: "", message: "", label: "" };
-  const verb = capability.enabled ? "Turn off" : "Turn on";
-  return {
-    title: `${verb} capability`,
-    message: `${verb} "${capability.label ?? capability.name}" for every mcp_server client (chat_app, agents, ember)?`,
-    label: verb,
-  };
+// Switching a capability for everyone reaches every mcp_server client, so it
+// asks first, in the confirmation dialog (turning one off is the riskier way round).
+const {
+  pending: pendingSwitch,
+  switching,
+  error: switchError,
+  copy: switchCopy,
+  ask: askSwitch,
+  cancel: cancelSwitch,
+  confirm: confirmSwitch,
+} = useEveryoneSwitch(async (updated) => {
+  capabilities.value = capabilities.value.map((c) => (c.name === updated.name ? updated : c));
+  // Switching changes which tools and resources the server offers.
+  const [toolList, res] = await Promise.all([
+    server.listTools().catch(() => tools.value),
+    server.listResources().catch(() => resources.value),
+  ]);
+  tools.value = [...toolList].sort((a, b) => a.title.localeCompare(b.title));
+  resources.value = res;
 });
-
-function toggleCapability(capability: CapabilityInfo): void {
-  pendingSwitch.value = capability;
-}
-
-async function runSwitch(): Promise<void> {
-  const capability = pendingSwitch.value;
-  pendingSwitch.value = null;
-  if (!capability) return;
-  const next = !capability.enabled;
-  actionError.value = "";
-  switching.value = capability.name;
-  try {
-    const updated = await commandsClient.setCapability(capability.name, next);
-    capabilities.value = capabilities.value.map((c) => (c.name === updated.name ? updated : c));
-    // Switching changes which tools and resources the server offers.
-    const [toolList, res] = await Promise.all([
-      server.listTools().catch(() => tools.value),
-      server.listResources().catch(() => resources.value),
-    ]);
-    tools.value = [...toolList].sort((a, b) => a.title.localeCompare(b.title));
-    resources.value = res;
-  } catch (err) {
-    actionError.value = errorMessage(err);
-  } finally {
-    switching.value = null;
-  }
-}
-
-function onAdded(created: ExtensionInfo): void {
-  extensions.value = [...extensions.value.filter((e) => e.id !== created.id), created];
-  addOpen.value = false;
-  chat.refreshCommands();
-}
-
-const removeMessage = computed(() =>
-  pendingRemove.value
-    ? `Remove "${pendingRemove.value.label}"? Its tools stop being offered to every mcp_server client.`
-    : "",
-);
-
-async function confirmRemove(): Promise<void> {
-  const extension = pendingRemove.value;
-  if (!extension) return;
-  actionError.value = "";
-  removing.value = extension.id;
-  try {
-    await extensionsClient.remove(extension.id);
-    extensions.value = extensions.value.filter((e) => e.id !== extension.id);
-    chat.setExtensionEnabled(extension.id, false);
-    chat.refreshCommands();
-  } catch (err) {
-    actionError.value = errorMessage(err);
-  } finally {
-    removing.value = null;
-    pendingRemove.value = null;
-  }
-}
 
 function openToolModal(name: string): void {
   openTool.value = name;
@@ -311,20 +248,20 @@ onMounted(load);
     <div class="column">
       <div class="head">
         <h2>
-          Capabilities <span v-if="tools.length" class="count">{{ tools.length }} tools</span>
+          Capabilities <span v-if="added.tools.length" class="count">{{ added.tools.length }} tools</span>
         </h2>
         <div class="head-actions">
-          <button v-if="isAdmin" type="button" class="primary" @click="addOpen = true">Add extension</button>
+          <RouterLink to="/capabilities/supermarket" class="shop">Supermarket</RouterLink>
         </div>
       </div>
-      <p class="muted intro">What mcp_server can do: its built-in capabilities and the extensions it passes on. Open one to run its tools.</p>
+      <p class="muted intro">What you've added: built-in capabilities and extensions. Open one to run its tools, or add more in the Supermarket.</p>
       <details class="how muted">
         <summary>How switches work</summary>
         <p>
-          Each switch decides what the agent and the <code>/</code> commands may use in your own chats, and is
-          remembered on this device. Built-in capabilities start on; an extension (another MCP server) starts off.
-          Switching one off here does not stop you running its tools on this page. Admins can also turn a built-in
-          capability off for everyone, from inside its card.
+          Each switch decides whether the agent and the <code>/</code> commands may use that capability or extension in
+          your chats. What you've added follows your account to other devices. Turning one off here takes it off this
+          page and puts it back in the Supermarket. Nothing is deleted. Admins can also turn a built-in capability off for
+          everyone, from inside its card.
         </p>
       </details>
       <div v-if="!loading && !loadError" class="toolbar">
@@ -347,18 +284,23 @@ onMounted(load);
         />
       </div>
 
-      <p v-if="loading" class="muted">loading ...</p>
+      <p v-if="loading || accountLoading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
-      <p v-if="actionError" class="error">{{ actionError }}</p>
+      <p v-else-if="!account.ready" class="error">error: {{ account.error }}</p>
+      <p v-if="actionError || switchError || (account.ready && account.error)" class="error">
+        {{ actionError || switchError || account.error }}
+      </p>
 
-      <template v-if="!loading && !loadError">
+      <template v-if="!loading && !loadError && account.ready">
         <p v-if="nothingShown && filtering" class="muted">Nothing matches "{{ query.trim() }}".</p>
-        <p v-else-if="nothingShown" class="muted">No capabilities, extensions or tools exposed.</p>
+        <div v-else-if="nothingShown && nothingAdded" class="empty">
+          <p class="muted">Nothing added yet. Open the Supermarket to add capabilities and extensions.</p>
+          <RouterLink to="/capabilities/supermarket" class="shop">Open the Supermarket</RouterLink>
+        </div>
+        <p v-else-if="nothingShown" class="muted">No capabilities, extensions or tools in this view.</p>
 
         <template v-if="showBuiltin">
-          <h4 v-if="groupHeadings && grouped.groups.length" class="group-title">
-            Built-in <span v-if="canChat" class="muted">· switches apply to your chats</span>
-          </h4>
+          <h4 v-if="groupHeadings && grouped.groups.length" class="group-title">Built-in</h4>
           <CapabilitySection
             v-for="g in grouped.groups"
             :key="g.capability.name"
@@ -367,22 +309,18 @@ onMounted(load);
             icon="builtin"
             :open="isOpen(g.capability.name)"
             :summary="capabilitySummary(g.capability, g.tools.length)"
-            :status="g.capability.enabled && !offForMe(g.capability) ? 'ok' : 'off'"
-            :dimmed="!g.capability.enabled || offForMe(g.capability)"
+            :status="g.capability.enabled ? 'ok' : 'off'"
+            :dimmed="!g.capability.enabled"
             :page="capabilityPage(g.capability)"
-            :control="canChat ? 'switch' : 'badge'"
-            :checked="g.capability.enabled && !offForMe(g.capability)"
-            scope="You"
-            :switch-title="capabilitySwitchTitle(g.capability)"
-            :locked="!g.capability.enabled"
+            control="switch"
+            :checked="true"
+            scope="Account"
+            switch-title="Turn off for your account. It moves back to the Supermarket."
             @toggle="toggleSection(g.capability.name)"
-            @switch="chat.setCapabilityEnabled(g.capability.name, offForMe(g.capability))"
+            @switch="account.setCapability(g.capability.name, false)"
           >
             <p v-if="!g.capability.enabled" class="muted">Turned off for everyone: its tools and resources aren't offered to anyone.</p>
             <template v-else>
-              <p v-if="offForMe(g.capability)" class="muted">
-                Switched off in your chats: the agent and <code>/</code> commands don't use its tools. You can still run them here.
-              </p>
               <p v-if="g.tools.length === 0 && resourcesOf(g.capability).length === 0" class="muted">Nothing registered.</p>
               <ul v-if="g.tools.length" class="cards">
                 <ToolCard v-for="t in g.tools" :key="t.name" :tool="t" @open="openToolModal(t.name)" />
@@ -402,7 +340,7 @@ onMounted(load);
                 type="button"
                 class="everyone"
                 :disabled="switching === g.capability.name"
-                @click="toggleCapability(g.capability)"
+                @click="askSwitch(g.capability)"
               >
                 {{ g.capability.enabled ? "Turn off for everyone" : "Turn on for everyone" }}
               </button>
@@ -411,9 +349,7 @@ onMounted(load);
         </template>
 
         <template v-if="showExtensions">
-          <h4 v-if="groupHeadings && grouped.extensionGroups.length" class="group-title">
-            Extensions <span v-if="canChat" class="muted">· switches apply to your chats</span>
-          </h4>
+          <h4 v-if="groupHeadings && grouped.extensionGroups.length" class="group-title">Extensions</h4>
           <CapabilitySection
             v-for="g in grouped.extensionGroups"
             :key="g.extension.id"
@@ -423,14 +359,13 @@ onMounted(load);
             :open="isOpen(extensionKey(g.extension.id))"
             :summary="extensionSummary(g)"
             :status="g.extension.status === 'connected' ? 'ok' : 'bad'"
-            :dimmed="canChat && !switchedOn.has(g.extension.id)"
             :page="extensionPage(g.extension)"
-            :control="canChat ? 'switch' : 'none'"
-            :checked="switchedOn.has(g.extension.id)"
-            scope="You"
-            switch-title="Let the agent and slash commands use its tools in your chats"
+            control="switch"
+            :checked="true"
+            scope="Account"
+            switch-title="Turn off for your account. It moves back to the Supermarket."
             @toggle="toggleSection(extensionKey(g.extension.id))"
-            @switch="chat.setExtensionEnabled(g.extension.id, !switchedOn.has(g.extension.id))"
+            @switch="account.setExtension(g.extension.id, false)"
           >
             <p v-if="g.extension.description" class="muted">{{ g.extension.description }}</p>
             <p v-if="g.extension.status !== 'connected'" class="error">
@@ -454,9 +389,6 @@ onMounted(load);
                 <span v-if="r.description" class="muted">{{ r.description }}</span>
               </li>
             </ul>
-            <div v-if="isAdmin" class="card-foot">
-              <button type="button" class="danger" @click="pendingRemove = g.extension">Remove</button>
-            </div>
           </CapabilitySection>
         </template>
 
@@ -507,23 +439,9 @@ onMounted(load);
       :message="switchCopy.message"
       :confirm-label="switchCopy.label"
       :danger="pendingSwitch.enabled"
-      @confirm="runSwitch"
-      @close="pendingSwitch = null"
+      @confirm="confirmSwitch"
+      @close="cancelSwitch"
     />
-
-    <ConfirmModal
-      v-if="pendingRemove"
-      open
-      title="Remove extension"
-      :message="removeMessage"
-      confirm-label="Remove"
-      danger
-      :busy="removing !== null"
-      @confirm="confirmRemove"
-      @close="pendingRemove = null"
-    />
-
-    <AddExtensionModal v-if="isAdmin" :open="addOpen" @close="addOpen = false" @added="onAdded" />
 
     <ToolRunModal
       :tool="selectedTool"
@@ -579,6 +497,27 @@ h3 {
   align-items: center;
   gap: 8px;
 }
+.shop {
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 0.9em;
+  color: var(--text);
+  text-decoration: none;
+}
+.shop:hover {
+  border-color: var(--accent);
+}
+.shop:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.empty {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
 .toolbar {
   align-items: last baseline;
   display: flex;

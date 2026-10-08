@@ -7,7 +7,7 @@ import type { CapabilityInfo } from "../api/CommandsClient";
 import type { ResourceInfo, ToolInfo } from "../api/types";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
-import { useChatStore } from "../stores/chat";
+import { useAccountCapabilitiesStore } from "../stores/accountCapabilities";
 import CapabilitiesView from "./CapabilitiesView.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   readResource: vi.fn(),
   runTool: vi.fn(),
   extensions: vi.fn(),
+  accountGet: vi.fn(),
+  accountSet: vi.fn(),
 }));
 
 vi.mock("../api/ExtensionsClient", async (importOriginal) => ({
@@ -35,6 +37,10 @@ vi.mock("../api/McpServerClient", () => ({
     readResource = mocks.readResource;
     runTool = mocks.runTool;
   },
+}));
+
+vi.mock("../api/AccountCapabilitiesClient", () => ({
+  accountCapabilitiesClient: { get: mocks.accountGet, set: mocks.accountSet },
 }));
 
 const tool = (name: string, title: string, description = ""): ToolInfo => ({
@@ -66,17 +72,24 @@ const ACCOUNT: Account = {
   permissions: ["tools.use"],
 };
 
-async function show(options: { admin?: boolean; query?: string; permissions?: string[]; attach?: boolean } = {}) {
+async function show(options: { admin?: boolean; query?: string; permissions?: string[]; attach?: boolean; added?: { capabilities?: string[]; extensions?: string[] } } = {}) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().account = {
     ...ACCOUNT,
     permissions: options.permissions ?? (options.admin ? ["tools.use", "admin.manage"] : ["tools.use"]),
   };
+  const listedExtensions = (await Promise.resolve(mocks.extensions()).catch(() => [])) as { id: string }[];
+  mocks.accountGet.mockResolvedValue({
+    capabilities: options.added?.capabilities ?? CAPS.map((c) => c.name),
+    extensions: options.added?.extensions ?? listedExtensions.map((e) => e.id),
+    disabled_tools: [],
+  });
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: "/capabilities", component: CapabilitiesView },
+      { path: "/capabilities/supermarket", component: { template: "<div />" } },
       { path: "/capabilities/:name", component: { template: "<div />" } },
     ],
   });
@@ -108,6 +121,7 @@ beforeEach(() => {
     this.dispatchEvent(new Event("close"));
   };
   vi.clearAllMocks();
+  mocks.accountSet.mockImplementation(async (_kind, _key, _on) => ({ capabilities: [], extensions: [], disabled_tools: [] }));
   mocks.capabilities.mockResolvedValue(CAPS);
   mocks.listTools.mockResolvedValue(TOOLS);
   mocks.listResources.mockResolvedValue(RESOURCES);
@@ -365,11 +379,43 @@ describe("CapabilitiesView", () => {
     expect(w.find("button.everyone").exists()).toBe(false);
   });
 
-  it("shows other users a plain On/Off badge and no switch", async () => {
+  it("gives every card a switch that is on, whatever the permissions", async () => {
     const w = await show();
 
-    expect(w.findAll("input[type=checkbox]")).toHaveLength(0);
-    expect(w.findAll(".badge").map((b) => b.text())).toEqual(["On", "On", "Off"]);
+    const boxes = w.findAll("input[type=checkbox]");
+    expect(boxes).toHaveLength(3);
+    expect(boxes.every((b) => (b.element as HTMLInputElement).checked)).toBe(true);
+    expect(w.findAll(".badge")).toHaveLength(0);
+  });
+
+  it("lists only what the account added", async () => {
+    mocks.listTools.mockResolvedValue(TOOLS.filter((t) => t.name !== "ext__echo"));
+    const w = await show({ added: { capabilities: ["pdf"] } });
+
+    expect(sectionNames(w)).toEqual(["PDF files"]);
+  });
+
+  it("keeps the tools of what is not added out of 'Other tools'", async () => {
+    mocks.listTools.mockResolvedValue(TOOLS.filter((t) => t.name !== "ext__echo"));
+    const w = await show({ added: { capabilities: ["pdf"] } });
+
+    expect(sectionNames(w)).not.toContain("Other tools");
+  });
+
+  it("links to the Supermarket, and offers no Add extension button", async () => {
+    const w = await show({ admin: true });
+
+    expect(w.get("a.shop").attributes("href")).toBe("/capabilities/supermarket");
+    expect(w.text()).not.toContain("Add extension");
+  });
+
+  it("says so, and points to the Supermarket, when nothing is added", async () => {
+    mocks.listTools.mockResolvedValue(TOOLS.filter((t) => t.name !== "ext__echo"));
+    const w = await show({ added: { capabilities: [], extensions: [] } });
+
+    expect(sections(w)).toHaveLength(0);
+    expect(w.text()).toContain("Nothing added yet");
+    expect(w.findAll("a").some((a) => a.attributes("href") === "/capabilities/supermarket")).toBe(true);
   });
 
   it("reports a load failure", async () => {
@@ -422,35 +468,24 @@ describe("CapabilitiesView extension cards", () => {
     expect(head(w, "PDF2").text()).toContain("Not connected");
   });
 
-  it("gives each extension a switch for your chats that applies at once", async () => {
+  it("turns an extension off for the account at once, and its card goes", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
     const w = await show({ permissions: WITH_CHAT, attach: true });
-    const chat = useChatStore();
-    const box = () => w.findAll("input[type=checkbox]").at(-1)!.element as HTMLInputElement;
+    const box = w.findAll("input[type=checkbox]").at(-1)!.element as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(w.findAll(".scope").map((s) => s.text())).toContain("Account");
 
-    expect(box().checked).toBe(false);
-    box().click();
+    box.click();
     await flushPromises();
 
-    expect(chat.enabledExtensions).toEqual(["pdf2"]);
-    expect(box().checked).toBe(true);
+    expect(mocks.accountSet).toHaveBeenCalledWith("extension", "pdf2", false);
+    expect(useAccountCapabilitiesStore().extensions).not.toContain("pdf2");
+    expect(sectionNames(w)).not.toContain("PDF2");
     expect(w.findComponent(ConfirmModal).exists()).toBe(false);
-    expect(w.findAll(".scope").map((s) => s.text())).toContain("You");
-
-    box().click();
-    await flushPromises();
-
-    expect(chat.enabledExtensions).toEqual([]);
-    expect(box().checked).toBe(false);
     w.unmount();
   });
 
-  it("does not give an extension a switch without chat.use", async () => {
-    mocks.extensions.mockResolvedValue([ext("pdf2")]);
-    const w = await show();
 
-    expect(w.findAll("input[type=checkbox]")).toHaveLength(0);
-  });
 
   it("lists only the extensions when the account lacks tools.use", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
@@ -478,16 +513,12 @@ describe("CapabilitiesView extension cards", () => {
     expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "PDF2", "Other tools"]);
   });
 
-  it("lets only admins add and remove extensions", async () => {
+  it("has no Remove button on an extension card, even for admins (Remove lives in the Supermarket)", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
-    const user = await show({ permissions: WITH_CHAT });
-    expect(user.text()).not.toContain("Add extension");
-
     const admin = await show({ permissions: [...WITH_CHAT, "admin.manage"] });
-    expect(admin.text()).toContain("Add extension");
     await head(admin, "PDF2").trigger("click");
-    await admin.get("button.danger").trigger("click");
-    expect(admin.getComponent(ConfirmModal).props("message")).toContain('Remove "PDF2"');
+
+    expect(admin.find("button.danger").exists()).toBe(false);
   });
 });
 
@@ -508,7 +539,7 @@ describe("the page layout", () => {
 
     expect(w.get("details.how summary").text()).toBe("How switches work");
     expect(w.get(".intro").text()).not.toContain("slash");
-    expect(w.get("details.how p").text()).toContain("remembered on this device");
+    expect(w.get("details.how p").text()).toContain("follows your account");
   });
 
   it("puts the filter and the kind toggle on one row", async () => {
@@ -524,7 +555,7 @@ describe("the page layout", () => {
     const w = await show({ permissions: WITH_CHAT });
 
     const titles = w.findAll(".group-title").map((h) => h.text());
-    expect(titles).toEqual(["Built-in · switches apply to your chats", "Extensions · switches apply to your chats", "Other"]);
+    expect(titles).toEqual(["Built-in", "Extensions", "Other"]);
 
     await w.findAll(".kinds button").find((b) => b.text() === "Built-in")!.trigger("click");
     expect(w.find(".group-title").exists()).toBe(false);
@@ -548,49 +579,30 @@ describe("the page layout", () => {
   });
 });
 
-describe("built-in switches for your own chats", () => {
+describe("built-in switches for your own account", () => {
   const WITH_CHAT = ["tools.use", "chat.use"];
   const boxes = (w: Wrapper) => w.findAll("input[type=checkbox]");
 
-  it("gives each built-in card a switch for you, on to begin with", async () => {
-    const w = await show({ permissions: WITH_CHAT });
-
-    expect(boxes(w)).toHaveLength(3);
-    expect(boxes(w).map((b) => (b.element as HTMLInputElement).checked)).toEqual([true, true, false]);
-    expect(w.findAll(".scope").map((s) => s.text())).toEqual(["You", "You", "You"]);
-  });
-
-  it("switches one off for you at once, without asking, and says so", async () => {
+  it("turns one off for the account at once, without asking, and the card goes", async () => {
     const w = await show({ permissions: WITH_CHAT, attach: true });
-    const chat = useChatStore();
 
     // Native activation includes checkbox changes and canceled-click rollback.
     (boxes(w)[0]!.element as HTMLInputElement).click();
     await flushPromises();
 
-    expect(chat.disabledCapabilities).toEqual(["pdf"]);
+    expect(mocks.accountSet).toHaveBeenCalledWith("capability", "pdf", false);
     expect(mocks.setCapability).not.toHaveBeenCalled();
     expect(w.findComponent(ConfirmModal).exists()).toBe(false);
-    expect(head(w, "PDF files").text()).toContain("Off for you");
-    expect((boxes(w)[0]!.element as HTMLInputElement).checked).toBe(false);
-
-    await head(w, "PDF files").trigger("click");
-    expect(w.text()).toContain("Switched off in your chats");
-
-    (boxes(w)[0]!.element as HTMLInputElement).click();
-    await flushPromises();
-    expect(chat.disabledCapabilities).toEqual([]);
-    expect(head(w, "PDF files").text()).toContain("2 tools");
-    expect((boxes(w)[0]!.element as HTMLInputElement).checked).toBe(true);
+    expect(sectionNames(w)).not.toContain("PDF files");
     w.unmount();
   });
 
-  it("keeps the switch of a capability that is off for everyone off, and locked", async () => {
+  it("lets the switch of a capability that is off for everyone be turned off too", async () => {
     const w = await show({ permissions: WITH_CHAT });
 
     const legacy = boxes(w)[2]!.element as HTMLInputElement;
-    expect(legacy.checked).toBe(false);
-    expect(legacy.disabled).toBe(true);
+    expect(legacy.checked).toBe(true);
+    expect(legacy.disabled).toBe(false);
     expect(head(w, "Legacy").text()).toContain("off");
   });
 

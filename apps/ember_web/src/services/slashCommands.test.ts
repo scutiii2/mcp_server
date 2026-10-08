@@ -73,25 +73,26 @@ describe("a command that offers a file", () => {
   });
 });
 
-describe("capabilities the account switched off", () => {
+describe("capabilities the account has not added", () => {
   it("leaves their commands out of the list", async () => {
     const runner = new SlashCommandRunner();
 
-    expect((await runner.list([], [])).map((c) => c.capability)).toEqual(["files"]);
-    expect(await runner.list([], ["files"])).toEqual([]);
-    expect((await runner.list([], ["other"])).map((c) => c.capability)).toEqual(["files"]);
+    expect((await runner.list([], null)).map((c) => c.capability)).toEqual(["files"]);
+    expect((await runner.list([], ["files"])).map((c) => c.capability)).toEqual(["files"]);
+    expect(await runner.list([], [])).toEqual([]);
+    expect(await runner.list([], ["other"])).toEqual([]);
   });
 
-  it("refuses to run one, and says how to switch it back on", async () => {
-    const out = await new SlashCommandRunner().run("/files export", [], ["files"]);
+  it("refuses to run one, and says where to add it", async () => {
+    const out = await new SlashCommandRunner().run("/files export", [], []);
 
-    expect(out).toBe('❌ "files" is switched off in your chats. Switch it on on the Capabilities page.');
+    expect(out).toBe('❌ "files" isn\'t added to your account. Add it in the Supermarket.');
     expect(runTool).not.toHaveBeenCalled();
   });
 
-  it("still runs the ones that are on", async () => {
+  it("still runs the ones that are added", async () => {
     runTool.mockResolvedValue({ text: "done", isError: false });
 
-    expect(await new SlashCommandRunner().run("/files export", [], ["other"])).toBe("done");
+    expect(await new SlashCommandRunner().run("/files export", [], ["files"])).toBe("done");
   });
 });

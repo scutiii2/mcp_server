@@ -177,15 +177,15 @@ export class SlashCommandRunner {
     }
   }
 
-  /** Built-in commands (without those of `disabledCapabilities`, which the
-   * account switched off for itself) plus the tools of `enabledExtensions`;
-   * extensions are left out (not failed) when the tool list can't be read. */
+  /** Built-in commands of the capabilities in `enabledCapabilities` (null: all
+   * of them) plus the tools of `enabledExtensions`; extensions are left out
+   * (not failed) when the tool list can't be read. */
   async list(
     enabledExtensions: readonly string[] = [],
-    disabledCapabilities: readonly string[] = [],
+    enabledCapabilities: readonly string[] | null = null,
   ): Promise<CommandInfo[]> {
     const all = await this.builtIns();
-    const builtIns = disabledCapabilities.length ? all.filter((c) => !disabledCapabilities.includes(c.capability)) : all;
+    const builtIns = enabledCapabilities ? all.filter((c) => enabledCapabilities.includes(c.capability)) : all;
     if (!enabledExtensions.length) return builtIns;
     const taken = new Set(builtIns.map((c) => c.capability));
     const enabled = new Set(enabledExtensions);
@@ -211,15 +211,16 @@ export class SlashCommandRunner {
   async run(
     text: string,
     enabledExtensions: readonly string[] = [],
-    disabledCapabilities: readonly string[] = [],
+    enabledCapabilities: readonly string[] | null = null,
   ): Promise<string> {
     try {
       if (text.replace(/^\//, "").trim() === "help") return asMarkdown(await commandsClient.helpIndex());
       const parsed = parseCommand(text);
-      if (disabledCapabilities.includes(parsed.capability)) {
-        throw new CommandError(`"${parsed.capability}" is switched off in your chats. Switch it on on the Capabilities page.`);
+      const builtIn = (await this.builtIns()).some((c) => c.capability === parsed.capability);
+      if (enabledCapabilities && builtIn && !enabledCapabilities.includes(parsed.capability)) {
+        throw new CommandError(`"${parsed.capability}" isn't added to your account. Add it in the Supermarket.`);
       }
-      const commands = await this.list(enabledExtensions, disabledCapabilities);
+      const commands = await this.list(enabledExtensions, enabledCapabilities);
       const ofCapability = commands.filter((c) => c.capability === parsed.capability);
       if (parsed.command === "help") {
         // mcp_server only has help for its own capabilities.

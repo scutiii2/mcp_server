@@ -125,10 +125,17 @@ URL, token or key.
   The sidebar search (2+ characters) looks through titles and message text
   (not attached files) and highlights the match; opening a result scrolls to
   the first matching message and flashes it.
-- Capabilities page (the old Tools and Capabilities pages in one; `/tools` redirects here): each capability is a
+- Capabilities page (the old Tools and Capabilities pages in one; `/tools` redirects here): only what the account has added is listed. Each capability is a
   collapsed card, opened by clicking it or while a filter is typed. Its tools run in place from forms generated from their
   JSON Schema (the same form as the command form). Tools show readable titles (`tool_srv_startApp` -> "Start App")
-  and JSON results render as fields and tables, with the raw JSON a click away.
+  and JSON results render as fields and tables, with the raw JSON a click away. The card switch turns the item off for the
+  account and its card leaves the page. An account that has added nothing sees "Nothing added yet" with a link to the Supermarket.
+- Supermarket (`/capabilities/supermarket`, `tools.use` or `chat.use`; opened from a button on the Capabilities page): every built-in
+  capability and extension in two sections, with Add and Disable per row. What an account has added is kept in ember_api
+  (`/api/account-capabilities`), so it follows the account across devices; a new account starts with nothing added. Two exclusive
+  filter chips, Enabled and Disabled, narrow the lists (clicking the active chip clears it; the choice is in the address as
+  `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added; administrators
+  see "Turn on for everyone" there. Administrators also add and remove extensions in the Extensions section (`admin.manage`).
 - "Ask before tools" toggle (off by default, remembered per account): each
   tool the agent wants to run waits for you. A card shows the tool's name and
   arguments with Allow once, Allow for this chat and Deny; nothing runs until
@@ -164,20 +171,26 @@ URL, token or key.
   current offset rounded to a whole hour, so a half-hour zone can be off by an
   hour and a daylight-saving change inside the period is ignored.
   The page also reads each capability's resources and lets admins switch capabilities on/off.
-- Capabilities page (`tools.use` or `chat.use`): mcp_server's built-in capabilities and its extensions
+- Capabilities page (`tools.use` or `chat.use`): only mcp_server's built-in capabilities and extensions the account has added
   (other MCP servers) as one list of identical collapsible cards (All / Built-in / Extensions filter,
   and a tool filter). A card shows a status dot, name and id, what it brings, an Open button and an
-  on/off switch with who it is for. Every card's switch is for "You": it picks what the agent and `/` commands may use in your
-  own chats, remembered per account on this device. Built-in capabilities start on, extensions start
-  off (shown in the chat settings). A built-in capability switched off for you sends its tool names
-  as `disabled_tools` with each question; admins turn one off for everyone with a button inside its
-  card (a dialog asks first), which also locks the switch. Admins add extensions (button on top) and remove
-  them (in the card; a dialog asks first). An extension's Open button leads to its `web_url` (for
+  on/off switch with who it is for. Every card's switch is for "Account": turning it off removes the item from the account
+  and its card leaves the page. What the account has added follows it across devices; a new account starts with nothing added.
+  An account that has added nothing sees "Nothing added yet" with a link to the Supermarket. The tools of capabilities not
+  added are sent as `disabled_tools` with each question; admins turn one off for everyone with a button inside its
+  card (a dialog asks first). A capability off for everyone stays dimmed and its account switch can still be turned off.
+  An extension's Open button leads to its `web_url` (for
   example `pdf_merger` and its web app) in a new tab, labelled "Open app"; only http(s) addresses
   count, and it works without `tools.use` and when the extension is not connected. An extension with no
   web app has no Open button: its card lists its tools as rows that open the run form (a failed
   extension shows its error and no tools). `/extensions` and `/extensions/<id>` redirect to this page. Without `tools.use` only the extensions are listed. Tools that
   no capability or extension lists go under "Other tools".
+- Supermarket (`/capabilities/supermarket`, `tools.use` or `chat.use`; opened from a button on the Capabilities page): every built-in
+  capability and extension in two sections, with Add and Disable per row. What an account has added is kept in ember_api
+  (`/api/account-capabilities`), so it follows the account across devices; a new account starts with nothing added. Two exclusive
+  filter chips, Enabled and Disabled, narrow the lists (clicking the active chip clears it; the choice is in the address as
+  `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added; administrators
+  see "Turn on for everyone" there. Administrators also add and remove extensions in the Extensions section (`admin.manage`).
 - Agents page (`chat.use`): a card per agent from `GET /api/agents` - name, id,
   Entry / Orchestrator badges, what it is for, its provider / gateway / model
   (a value the agent file does not set is left out), and a status (running,
@@ -371,7 +384,7 @@ src/
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
-  stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, configIssues
+  stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, accountCapabilities, configIssues
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
