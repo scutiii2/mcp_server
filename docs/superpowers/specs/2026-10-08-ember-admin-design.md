@@ -1,7 +1,7 @@
 # ember_admin: admin web app and live capability management
 
 Date: 2026-10-08
-Status: design approved in chat, awaiting written-spec review
+Status: design approved; implemented on branch worktree-ember-admin
 
 ## Goal
 
@@ -49,8 +49,9 @@ browser --> ember_admin (:5175) --/api proxy--> ember_api (:8030) --> mcp_server
 
 - New admin-only proxy routes (permission `admin.manage`):
   - `POST /api/capabilities/refresh` runs the mcp_server scan.
-  - The capability status list gains `load_error`, `missing` and `discovered`
-    fields.
+  - The capability status list gains `load_error`, `missing` and `loaded`
+    fields. `loaded` is true once `tool.py` was imported, even while the
+    capability is switched off.
 - Each action (toggle, refresh, extension add or remove) writes an entry to the
   activity log, which the Analytics page already reads.
 - No new database tables.
@@ -64,11 +65,14 @@ import blocks in `src/run.py:55-93`.
 `__init__.py`. Importing the package runs `capability_meta.register(...)`,
 which gives the folder's `id` and `label`.
 
-- Startup: each folder whose `config_capabilities.json` entry is online is
-  loaded and registered live. A folder with no entry is registered offline.
+- Startup: a folder with an explicit `config_capabilities.json` entry is
+  imported, and then switched off if its entry is offline. Its tools stay
+  listed in the admin and in `ember_web`, as before. A folder with no entry is
+  only discovered: its `META` is read, `tool.py` is not imported, and it lists
+  no tools until its first Online.
 - `POST /capabilities/refresh` runs the same scan on the running server and
-  returns the new status list. New folders are added. A folder that vanished is
-  marked `missing`, not deleted.
+  returns the new status list. New folders are added offline. A folder that
+  vanished is marked `missing`, not deleted.
 
 **Going online (load and reload).**
 
@@ -77,11 +81,21 @@ which gives the folder's `id` and `label`.
    (a new `capability_meta.unregister(folder)` is needed, because `register`
    raises on a duplicate folder).
 2. Purge `src.capabilities.<folder>` and every submodule from `sys.modules`,
-   then import again inside `capability_registry.capturing(...)`. A fresh
-   import is used, not `importlib.reload`, because reload misses submodules
-   such as `domain.py` and `contract.py`.
+   and delete the folder's `__pycache__` directories. Then import again inside
+   `capability_registry.capturing(...)`. A fresh import is used, not
+   `importlib.reload`, because reload misses submodules such as `domain.py` and
+   `contract.py`. The `__pycache__` purge stops a same-second, same-size edit
+   from loading stale bytecode.
 3. If the import raises, roll back to offline and store the error text as
-   `load_error`.
+   `load_error`. The persisted config is left unchanged.
+
+The import runs on the event-loop thread under the single `asyncio.Lock`, not
+in `asyncio.to_thread`. The `@mcp.tool()` decorators mutate `mcp`'s tool dict,
+and a worker thread would race the loop that lists tools. An import takes
+milliseconds.
+
+An id declared by two folders is refused with a message naming the clash. The
+capability that owns the id is not disturbed.
 
 **Going offline.** Same as the existing `capability_registry.set_enabled`
 behavior (tools and templates removed from the live server). The module stays
@@ -97,24 +111,23 @@ the loader writes an explicit `enabled: true` entry for every capability that
 is already registered and has no entry, so nothing changes for existing
 installs.
 
-**Agent tool lists.** `ai_agent` may cache the tool list, so a toggle or reload
-might not reach a running agent until it refreshes. This is unverified.
-Before the implementation plan, read how `ai_agent` refreshes its tool list
-(`apps/ai_agent/src/mcp_client/`). If it needs a nudge, Refresh and toggles
-also notify the agents.
+**Agent tool lists.** `ai_agent` lists tools live from every upstream on each
+call (`apps/ai_agent/src/mcp_client/registry.py`, `list_tools` calls
+`_live_tools_for`). A toggle or reload reaches running agents on their next
+turn. No notification is needed.
 
 ## Error handling
 
 - Import error on online or reload: roll back to offline, keep the last 20
   lines of the traceback (no secrets) as `load_error`, show it on the row in
-  ember_admin. Other capabilities are unaffected.
+  ember_admin. The persisted config is unchanged. Other capabilities are
+  unaffected.
 - Import error at startup or Refresh: the server still boots. The capability is
   listed offline with `load_error`.
 - Duplicate tool name with another capability: the online step is refused with
   HTTP 409 naming the clash, and the old state is restored.
 - Config write fails: nothing live changes (persist-then-apply).
-- Concurrency: one `asyncio.Lock` serializes load, unload and scan. The blocking
-  import runs in `asyncio.to_thread` so the event loop is not stalled.
+- Concurrency: one `asyncio.Lock` serializes load, unload and scan.
 - ember_admin shows a failed call as an inline error on that row. A toggle
   stays pending until the server answers and never shows an unconfirmed state.
   Offline and Refresh need no type-to-confirm because they are reversible.
