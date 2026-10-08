@@ -53,6 +53,16 @@ class AgentEntry:
 
 
 @dataclass(frozen=True)
+class ModelTier:
+    """One model an agent may run on: its strength tier, model id, and what
+    that tier is meant for."""
+
+    tier: str
+    id: str
+    use_for: str
+
+
+@dataclass(frozen=True)
 class AgentDefinition:
     """An agent ai_agent's supervisor knows from agents/<id>.json, running or
     not (the registry lists only the running ones)."""
@@ -68,6 +78,7 @@ class AgentDefinition:
     provider: str | None = None
     gateway: str | None = None
     model: str | None = None
+    tiers: tuple[ModelTier, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -83,10 +94,23 @@ class AgentListing:
     provider: str | None = None
     gateway: str | None = None
     model: str | None = None
+    tiers: tuple[ModelTier, ...] = ()
 
 
 def _text_or_none(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _parse_tiers(raw: Any) -> tuple[ModelTier, ...]:
+    """The tiers an agent's `llm.tiers` lists, weakest first as published;
+    entries that are not complete are left out."""
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        ModelTier(item["tier"], item["id"], item["use_for"])
+        for item in raw
+        if isinstance(item, dict) and all(isinstance(item.get(k), str) and item[k] for k in ("tier", "id", "use_for"))
+    )
 
 
 def parse_definitions(raw: Any) -> list[AgentDefinition]:
@@ -107,6 +131,7 @@ def parse_definitions(raw: Any) -> list[AgentDefinition]:
                     provider=_text_or_none(llm.get("provider")),
                     gateway=_text_or_none(llm.get("gateway")),
                     model=_text_or_none(llm.get("model")),
+                    tiers=_parse_tiers(llm.get("tiers")),
                 )
             )
     return found
@@ -240,12 +265,13 @@ class AgentDirectory:
             rows[a.id] = AgentListing(
                 a.id, a.label, entry is not None and a.id == entry.id, a.orchestrator, a.focus, "running",
                 d.provider if d else None, d.gateway if d else None, d.model if d else None,
+                d.tiers if d else (),
             )
         for d in defined:
             if d.id not in rows:
                 status = "offline" if d.enabled else "disabled"
                 rows[d.id] = AgentListing(
-                    d.id, d.label, d.entry, d.orchestrator, d.focus, status, d.provider, d.gateway, d.model
+                    d.id, d.label, d.entry, d.orchestrator, d.focus, status, d.provider, d.gateway, d.model, d.tiers
                 )
         order = {"running": 0, "offline": 1, "disabled": 2}
         return sorted(rows.values(), key=lambda r: (order[r.status], not r.entry))

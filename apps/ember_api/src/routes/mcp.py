@@ -54,6 +54,12 @@ async def entry_agent(
     return AgentOut(id=agent.id, label=agent.label)
 
 
+class ModelTierOut(BaseModel):
+    tier: str
+    id: str
+    use_for: str
+
+
 class AgentListItem(AgentOut):
     entry: bool
     orchestrator: bool
@@ -62,6 +68,7 @@ class AgentListItem(AgentOut):
     provider: str | None
     gateway: str | None
     model: str | None
+    tiers: list[ModelTierOut]
 
 
 @router.get("/agents")
@@ -76,6 +83,7 @@ async def list_agents(
         AgentListItem(
             id=a.id, label=a.label, entry=a.entry, orchestrator=a.orchestrator, focus=a.focus, status=a.status,
             provider=a.provider, gateway=a.gateway, model=a.model,
+            tiers=[ModelTierOut(tier=t.tier, id=t.id, use_for=t.use_for) for t in a.tiers],
         )
         for a in await directory.listing()
     ]

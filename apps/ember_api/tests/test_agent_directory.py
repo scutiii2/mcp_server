@@ -239,6 +239,28 @@ def test_listing_carries_provider_gateway_and_model_for_running_and_stopped_agen
     assert (rows["bare"].provider, rows["bare"].gateway, rows["bare"].model) == (None, None, None)
 
 
+def test_listing_carries_model_tiers_and_skips_malformed_ones(tmp_path: Path) -> None:
+    tiers = [
+        {"tier": "light", "id": "haiku", "use_for": "quick"},
+        {"tier": "heavy", "id": "opus"},
+        "junk",
+        {"tier": "standard", "id": "sonnet", "use_for": "most work"},
+    ]
+    d = with_definitions(
+        tmp_path,
+        [agent("main")],
+        [defn("main", llm={"provider": "anthropic", "tiers": tiers}), defn("down", llm={"tiers": "nope"}), defn("bare")],
+    )
+
+    rows = {r.id: r for r in asyncio.run(d.listing())}
+
+    assert [(t.tier, t.id, t.use_for) for t in rows["main"].tiers] == [
+        ("light", "haiku", "quick"),
+        ("standard", "sonnet", "most work"),
+    ]
+    assert rows["down"].tiers == () and rows["bare"].tiers == ()
+
+
 def test_listing_skips_incomplete_or_broken_definitions(tmp_path: Path) -> None:
     d = with_definitions(tmp_path, [], [{"id": "no-label"}, "junk", defn("ok", focus=5)])
 

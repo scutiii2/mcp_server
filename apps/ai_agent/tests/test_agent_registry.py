@@ -272,25 +272,44 @@ def test_roster_and_specialists_survive_a_corrupt_registry_file(monkeypatch, tmp
     assert [r.id for r in asyncio.run(agent_routing.roster_for("q"))] == ["calc"]
 
 
-def test_definitions_round_trip_and_include_disabled_agents():
+def test_definitions_round_trip_and_include_disabled_agents(monkeypatch):
+    from src.agents.agent_spec import TierInfo
+    from src.llm import model_tiers
+
+    seen = []
+
+    def fake_effective_tiers(provider, gateway, min_tier, max_tier):
+        seen.append((provider, gateway, min_tier, max_tier))
+        return [TierInfo("light", "haiku", "quick")] if gateway == "openrouter" else []
+
+    monkeypatch.setattr(model_tiers, "effective_tiers", fake_effective_tiers)
     specs = [
         AgentSpec(
             id="ember", label="Ember", port=9100, entry=True, orchestrator=True, focus="General.",
-            llm=LlmSpec(provider="anthropic", gateway="openrouter", model="claude-sonnet-5-5"),
+            llm=LlmSpec(provider="anthropic", gateway="openrouter", model="claude-sonnet-5-5", max_tier="standard"),
         ),
         AgentSpec(id="off", label="Off", port=9101, llm=LlmSpec(provider="anthropic"), enabled=False),
+        AgentSpec(id="laya", label="Laya", port=9102, llm=LlmSpec(provider="laya")),
     ]
 
     agent_registry.write_definitions(specs)
 
+    assert seen[0] == ("anthropic", "openrouter", None, "standard")
     assert agent_registry.read_definitions() == [
         {
             "id": "ember", "label": "Ember", "focus": "General.", "entry": True, "orchestrator": True, "enabled": True,
-            "llm": {"provider": "anthropic", "gateway": "openrouter", "model": "claude-sonnet-5-5"},
+            "llm": {
+                "provider": "anthropic", "gateway": "openrouter", "model": "claude-sonnet-5-5",
+                "tiers": [{"tier": "light", "id": "haiku", "use_for": "quick"}],
+            },
         },
         {
             "id": "off", "label": "Off", "focus": "", "entry": False, "orchestrator": False, "enabled": False,
-            "llm": {"provider": "anthropic", "gateway": None, "model": None},
+            "llm": {"provider": "anthropic", "gateway": None, "model": None, "tiers": []},
+        },
+        {
+            "id": "laya", "label": "Laya", "focus": "", "entry": False, "orchestrator": False, "enabled": True,
+            "llm": {"provider": "laya", "gateway": None, "model": None, "tiers": []},
         },
     ]
     # The registry itself is untouched: definitions live in their own file.

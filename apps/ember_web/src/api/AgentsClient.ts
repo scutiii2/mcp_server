@@ -4,6 +4,14 @@ import { apiRequest } from "./http";
  * running; disabled: switched off in its agent file. */
 export type AgentStatus = "running" | "offline" | "disabled";
 
+/** One model an agent may run on: its strength tier, model id, and what that
+ * tier is meant for. */
+export interface ModelTier {
+  tier: string;
+  id: string;
+  use_for: string;
+}
+
 /** One agent as ember_api's GET /api/agents returns it. No URL: where the
  * agents live stays server-side. */
 export interface AgentListing {
@@ -17,6 +25,8 @@ export interface AgentListing {
   provider: string | null;
   gateway: string | null;
   model: string | null;
+  /** The models its min_tier/max_tier range allows, weakest first; empty when none. */
+  tiers: ModelTier[];
 }
 
 export const agentsClient = {

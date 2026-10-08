@@ -17,6 +17,7 @@ const agent = (id: string, extra: Partial<AgentListing> = {}): AgentListing => (
   provider: null,
   gateway: null,
   model: null,
+  tiers: [],
   ...extra,
 });
 
@@ -91,6 +92,29 @@ describe("AgentsView", () => {
     expect(found[0].findAll("dd").map((t) => t.text())).toEqual(["anthropic", "openrouter", "claude-sonnet-5-5"]);
     expect(found[1].findAll("dt").map((t) => t.text())).toEqual(["Provider"]);
     expect(found[2].find(".llm").exists()).toBe(false);
+  });
+
+  it("lists each tier with its model, keeps what the tier is for in a title, and hides an empty list", async () => {
+    list.mockResolvedValue([
+      agent("ember", {
+        tiers: [
+          { tier: "light", id: "haiku", use_for: "quick lookups" },
+          { tier: "heavy", id: "opus", use_for: "hard reasoning" },
+        ],
+      }),
+      agent("bare"),
+    ]);
+    const wrapper = await mountView();
+
+    const found = cards(wrapper);
+    const items = found[0].findAll(".tiers li");
+    expect(items.map((li) => li.findAll("span").map((span) => span.text()))).toEqual([
+      ["light", "haiku"],
+      ["heavy", "opus"],
+    ]);
+    expect(items[0].find(".tier-model").attributes("title")).toBe("quick lookups");
+    expect(found[0].findAll("dt")).toHaveLength(0);
+    expect(found[1].find(".tiers").exists()).toBe(false);
   });
 
   it("summarises the statuses and leaves out the empty ones", async () => {

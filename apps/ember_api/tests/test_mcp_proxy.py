@@ -59,7 +59,7 @@ def test_agent_list_has_no_urls_and_flags_the_entry_agent(client: TestClient) ->
 
     assert [a["id"] for a in agents] == [a["id"] for a in AGENTS]
     assert all(
-        set(a) == {"id", "label", "entry", "orchestrator", "focus", "status", "provider", "gateway", "model"}
+        set(a) == {"id", "label", "entry", "orchestrator", "focus", "status", "provider", "gateway", "model", "tiers"}
         for a in agents
     )
     assert {a["status"] for a in agents} == {"running"}
@@ -70,7 +70,10 @@ def test_agent_list_adds_defined_agents_that_are_not_running(client: TestClient,
     as_admin(client)
     defined = [
         {"id": AGENTS[0]["id"], "label": AGENTS[0]["label"], "enabled": True},
-        {"id": "stopped", "label": "Stopped", "focus": "Idle.", "enabled": True},
+        {
+            "id": "stopped", "label": "Stopped", "focus": "Idle.", "enabled": True,
+            "llm": {"tiers": [{"tier": "light", "id": "haiku", "use_for": "quick"}]},
+        },
         {"id": "switched-off", "label": "Switched off", "enabled": False},
     ]
     (tmp_path / "agent_definitions.json").write_text(json.dumps({"defined": defined}), encoding="utf-8")
@@ -78,7 +81,10 @@ def test_agent_list_adds_defined_agents_that_are_not_running(client: TestClient,
     agents = client.get("/api/agents").json()
 
     assert [(a["id"], a["status"]) for a in agents][-2:] == [("stopped", "offline"), ("switched-off", "disabled")]
-    assert next(a for a in agents if a["id"] == "stopped")["focus"] == "Idle."
+    stopped = next(a for a in agents if a["id"] == "stopped")
+    assert stopped["focus"] == "Idle."
+    assert stopped["tiers"] == [{"tier": "light", "id": "haiku", "use_for": "quick"}]
+    assert next(a for a in agents if a["id"] == "switched-off")["tiers"] == []
 
 
 def test_agent_list_requires_login(client: TestClient) -> None:

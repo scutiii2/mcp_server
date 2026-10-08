@@ -19,6 +19,9 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
+from src.agents import agent_spec
+from src.llm import model_tiers
+
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "agent_registry.json"
 
 # "claude"/"openai" rather than this instance's own AI_AGENT_PROVIDER
@@ -217,6 +220,23 @@ def _definitions_path() -> Path:
     return _CONFIG_PATH.with_name("agent_definitions.json")
 
 
+def _tiers_of(spec: Any) -> list[dict[str, str]]:
+    """The model tiers an agent offers, weakest first, for its definition
+    record. Empty for laya (no tiers), a provider without a default gateway,
+    or a gateways file that cannot be read - publishing must not fail on it."""
+    provider = spec.llm.provider
+    gateway = spec.llm.gateway or agent_spec.default_gateway(provider)
+    if provider == "laya" or not gateway:
+        return []
+    try:
+        return model_tiers.as_records(
+            model_tiers.effective_tiers(provider, gateway, spec.llm.min_tier, spec.llm.max_tier)
+        )
+    except (ValueError, OSError):
+        _log.warning("could not read model tiers for agent %s", spec.id, exc_info=True)
+        return []
+
+
 def write_definitions(specs: Iterable[Any]) -> None:
     """Publishes every agent the supervisor knows (from agents/*.json) next
     to the registry, enabled or not. The registry lists only agents that are
@@ -224,12 +244,16 @@ def write_definitions(specs: Iterable[Any]) -> None:
     that is stopped or switched off from one that does not exist. Written
     once at supervisor start - an agent's file is read only then. Silently
     gives up on any OSError, like register(). `llm` (provider, gateway,
-    model; the last two may be null) is what the Agents page shows."""
+    model; the last two may be null) is what the Agents page shows, with
+    `tiers` (the models its min_tier/max_tier range allows; see _tiers_of)."""
     records = [
         {
             "id": spec.id, "label": spec.label, "focus": spec.focus,
             "entry": spec.entry, "orchestrator": spec.orchestrator, "enabled": spec.enabled,
-            "llm": {"provider": spec.llm.provider, "gateway": spec.llm.gateway, "model": spec.llm.model},
+            "llm": {
+                "provider": spec.llm.provider, "gateway": spec.llm.gateway, "model": spec.llm.model,
+                "tiers": _tiers_of(spec),
+            },
         }
         for spec in specs
     ]
