@@ -554,18 +554,35 @@ describe("saved prompts", () => {
   });
 
   it("keeps the highlighted suggestion in view when the arrows move it", async () => {
-    const wrapper = mountInput({
-      templates: TEMPLATES,
-      commands: [{ capability: "apps", name: "start", description: "Start an app", tool_name: "t" }],
-    });
-    const scroll = vi.fn();
-    Element.prototype.scrollIntoView = scroll;
+    const commands = ["a", "b", "c", "d"].map((name) => ({
+      capability: "apps",
+      name,
+      description: name,
+      tool_name: name,
+    }));
+    const wrapper = mountInput({ commands });
+    // jsdom has no layout: rows are 30px tall in a 60px box, so row 2+ overflow.
+    const props = {
+      offsetTop: { get: function (this: HTMLElement) { return [...this.parentElement!.children].indexOf(this) * 30; } },
+      offsetHeight: { get: () => 30 },
+      clientHeight: { get: () => 60 },
+    };
+    for (const [key, desc] of Object.entries(props)) Object.defineProperty(HTMLElement.prototype, key, { ...desc, configurable: true });
 
-    await wrapper.find("textarea").setValue("/apps");
-    await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" });
-    await flushPromises();
+    try {
+      await wrapper.find("textarea").setValue("/apps");
+      const box = wrapper.find<HTMLElement>(".suggestions").element;
+      for (let i = 0; i < 3; i++) await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" });
+      await flushPromises();
+      expect(box.scrollTop).toBe(64); // row 3 ends at 120: 120 - 60 + 4 padding
 
-    expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+      const rows = wrapper.findAll(".suggestions li[role=option]").length;
+      for (let i = 3; i < rows; i++) await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" }); // wraps to row 0
+      await flushPromises();
+      expect(box.scrollTop).toBeLessThanOrEqual(0);
+    } finally {
+      for (const key of Object.keys(props)) delete (HTMLElement.prototype as unknown as Record<string, unknown>)[key];
+    }
   });
 
   it("sits above the chat settings menu", () => {

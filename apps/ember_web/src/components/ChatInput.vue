@@ -240,8 +240,17 @@ const highlighted = ref(0);
 const list = ref<HTMLUListElement | null>(null);
 watch(suggestions, () => (highlighted.value = 0));
 // Keep the highlighted row visible when the arrows move it past the list's edge.
+// The list is its own scroll box, so move its scrollTop directly instead of
+// scrollIntoView, which also scrolls ancestors and is a no-op in some layouts.
 watch(highlighted, () => {
-  void nextTick(() => list.value?.querySelector<HTMLElement>("li.active")?.scrollIntoView?.({ block: "nearest" }));
+  void nextTick(() => {
+    const box = list.value;
+    const row = box?.querySelector<HTMLElement>("li.active");
+    if (!box || !row) return;
+    const pad = row.offsetTop - box.scrollTop;
+    if (pad < 0) box.scrollTop = row.offsetTop - 4;
+    else if (pad + row.offsetHeight > box.clientHeight) box.scrollTop = row.offsetTop + row.offsetHeight - box.clientHeight + 4;
+  });
 });
 
 function complete(suggestion: Suggestion): void {
