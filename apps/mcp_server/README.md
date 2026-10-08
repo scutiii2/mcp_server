@@ -62,13 +62,21 @@ shape every capability follows and how to add a new one:
 - [`capabilities/server_manager`](src/capabilities/server_manager) - start/stop/restart/list managed apps (`/server ...`)
 
 Every capability can be turned off without touching code, live - no
-restart needed. `GET /capabilities` lists each one's current state;
+restart needed. `GET /capabilities` lists each one's current state
+(`name`, `enabled`, `label`, `tools`, `resources`, `has_gui`, and
+`loaded`, `missing`, `load_error`: `loaded` is false for a folder that was
+found but never brought online, `missing` means its folder is gone from
+disk, `load_error` is the text of the last failed import);
 `PATCH /capabilities/{name}` (body `{"enabled": bool}`) toggles it,
 persists the change to `config_capabilities.json`, and adds/removes its
-tools and resources from the running server, all in one request - see
-`src/capability_routes.py` and `src/infra/README.md`'s
-`capability_registry.py` entry. This is what chat_app's Capabilities
-page's per-capability switch calls.
+tools and resources from the running server, all in one request. Going
+online re-imports the capability from disk, and answers `409` with
+`{"error": ...}` if that fails. `POST /capabilities/refresh` rescans
+`src/capabilities/` so a folder added while the server runs shows up
+(offline) and returns the same list. A new folder is never loaded until it
+is switched online. See `src/capability_routes.py`,
+`src/services/capability_loader.py` and `src/infra/README.md`'s
+`capability_registry.py` entry. ember_admin's Capabilities page calls these.
 
 Client-readable URI resources follow the same pattern one level over -
 see [`src/resources/README.md`](src/resources/README.md).

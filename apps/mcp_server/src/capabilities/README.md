@@ -283,15 +283,13 @@ through `Field(json_schema_extra={...})`:
     human-only step) uses the literal string `"(manual - no tool)"` for
     `tool`, matching how the README tables already write it.
 
-6. Add a toggle entry to `../../configs/config_capabilities.json` and
-   `config_capabilities.json.example`:
-
-   ```json
-   { "<id>": { "enabled": true } }
-   ```
-
-   (`<id>` is the short id from step 7 below, e.g. `server` - not
-   necessarily the folder name.)
+6. The toggle entry in `../../configs/config_capabilities.json` is written
+   by the loader the first time the capability is switched online or
+   offline, so there is nothing to add by hand. A folder with no entry
+   starts offline. Add `{ "<id>": { "enabled": true } }` to
+   `config_capabilities.json.example` only if it should be on in a fresh
+   install (`<id>` is the short id from step 7 below, not necessarily the
+   folder name).
 
 7. In `capabilities/<name>/__init__.py`, register this capability's
    chat-facing slash id and display label - **once, here, and nowhere
@@ -308,31 +306,27 @@ through `Field(json_schema_extra={...})`:
    folder name if the folder name is unwieldy (e.g. `id="server"` for
    `server_manager`), or equal to it if not. See
    `services/capability_meta.py`'s docstring for exactly who reads `META`
-   next: `run.py` (step 8), every `@command` in this capability's
+   next: the loader (`services/capability_loader.py`), every `@command` in this capability's
    `tool.py` (no `capability=` argument needed on any of them - they
    infer it from here automatically), and chat_app's Capabilities page,
    via `GET /capabilities`'s `label`/`tools` fields.
 
-8. In `run.py`, import the package first (cheap - only runs its
-   `__init__.py`, not `tool.py`, so no tools are registered yet) to get
-   `META`, then wrap the real import in `capability_registry.capturing()`
-   using it, following the existing capabilities there:
+8. Create the folder with its `__init__.py` (`META`) and `tool.py`. Press
+   Refresh on the Capabilities page of ember_admin (or
+   `POST /capabilities/refresh`): the capability appears offline. Switch it
+   online to load it. After editing its code, switch it offline and online
+   again to reload it. Shared modules outside the capability's folder
+   (`src/services/...`) are not reloaded: restart for those. A capability
+   that keeps background state (watchers) should not be reloaded while that
+   state is in use.
 
-   ```python
-   from src.capabilities import <name>
-
-   with capability_registry.capturing(mcp, <name>.META.id, label=<name>.META.label):
-       from src.capabilities.<name> import tool as <name>_tool
-   ```
-
-   Importing `tool` is what runs its `@mcp.tool()` decorators and
-   registers them; `capturing()` records exactly what got registered so
-   the capability can be disabled - and, unlike the old "skip the
-   import" mechanism, re-enabled live - later. See
-   `services/README.md`'s `capability_registry.py` entry for how toggling
-   actually works, and `capability_routes.py` for the
-   `PATCH /capabilities/{name}` route chat_app's Capabilities page
-   calls to do it.
+   `services/capability_loader.py` does the work: it lists the folders,
+   imports `tool.py` inside `capability_registry.capturing()` so the
+   capability can be switched off later, and on every online it removes the
+   old tools, `@command` entries and `META`, deletes the folder's cached
+   bytecode and imports it fresh. An import that raises leaves the
+   capability offline and keeps the error as `load_error`. See
+   `capability_routes.py` for the HTTP side.
 
 If the new capability wraps a resource (a client-readable URI, not just
 a model-callable tool - see `src/resources/README.md`), have the

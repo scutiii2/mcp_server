@@ -46,18 +46,24 @@ mechanics); paths come from `Settings.email_config_path` /
   or add an extension live through that route, both end up here.
 - **`config_capabilities.json`** - which built-in capabilities
   (`server` - the toggle
-  id, shorter than its folder name `server_manager` on purpose) are enabled. A capability absent
-  from this file is enabled; only an explicit `{"enabled": false}` turns
-  one off:
+  id, shorter than its folder name `server_manager` on purpose) are enabled.
+  `{"enabled": false}` turns one off:
 
   ```json
   { "server": { "enabled": true } }
   ```
 
-  Applied at startup by `run.py`, and also written to at runtime by
+  Applied at startup by the capability loader, and also written to at runtime by
   `PATCH /capabilities/{name}` (see `capability_routes.py`) - toggling
   a capability through that route takes effect immediately, no restart
   needed, the same as `POST`/`DELETE /extensions` above for extensions.
+
+  `_scanner` is a marker the loader writes on first run. Before it, a
+  capability with no entry is on; after it, a folder with no entry starts
+  offline. That first run also writes `enabled: true` for every capability
+  that exists then, so nothing that was on goes dark. The file is
+  gitignored (`config_*.json`); `config_capabilities.json.example` is the
+  tracked copy.
 
 Each file's top-level JSON *is* its content - there's no wrapper key.
 Anything sensitive is a `${VAR}` placeholder resolved from
@@ -68,5 +74,5 @@ Every file has a committed `.example` twin with the same shape.
 `config_email.json` is gitignored by exact path even though this
 folder is otherwise committed - it carries this deployment's real
 recipient addresses.
-`config_extensions.json` and `config_capabilities.json` are ordinary
-committed files.
+`config_extensions.json` and `config_capabilities.json` are gitignored by
+the `config_*.json` rule; each has a tracked `.example` twin.
