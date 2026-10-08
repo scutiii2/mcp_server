@@ -28,7 +28,7 @@ from src.deps import (
 from src.models import Account, Chat
 from src.routes.mcp import get_agent_directory
 from src.routes.server_info import EXTENSION_ID_PATTERN
-from src.services import summarization
+from src.services import suggestions, summarization
 from src.services.agent_directory import NO_AGENT_RUNNING, AgentDirectory
 from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
 from src.services.log_service import LogWriter
@@ -360,6 +360,11 @@ class TurnOut(BaseModel):
     sequence: int
 
 
+class SuggestionOut(BaseModel):
+    # The message the user will probably type next; null for "none".
+    text: str | None = None
+
+
 def _messages(items: list[MessageIn]) -> list[ChatMessage]:
     return [m.model_dump(exclude_none=True) for m in items]
 
@@ -471,6 +476,51 @@ async def get_chat(
         return ChatOut.of(await chats.get(chat_id), turns.is_running(account.id, chat_id))
     except ChatNotFound as error:
         raise _not_found() from error
+
+
+@router.get("/{chat_id}/suggestion")
+async def chat_suggestion(
+    chat_id: str = ChatId,
+    account: Account = Depends(require_chat),
+    chats: ChatService = Depends(get_chat_service),
+    session: AsyncSession = Depends(get_db_session),
+    turns: TurnRegistry = Depends(get_turns),
+    directory: AgentDirectory = Depends(get_agent_directory),
+    gateway: AgentGateway = Depends(get_agent_gateway),
+    settings: Settings = Depends(get_settings),
+) -> SuggestionOut:
+    """The message the user will probably type next, for the chat box's
+    placeholder. Never an error: anything that stops it (switched off, an
+    answer still running, nothing to follow up, no agent, usage limit, agent
+    failure) is `{text: null}`. One small model call, counted in the usage
+    like a chat turn, remembered per answer."""
+    try:
+        chat = await chats.get(chat_id)
+    except ChatNotFound as error:
+        raise _not_found() from error
+    if not account.prompt_suggestions or turns.is_running(account.id, chat_id):
+        return SuggestionOut()
+    messages = decode_messages(chat)
+    exchange = suggestions.last_exchange(messages)
+    if exchange is None:
+        return SuggestionOut()
+    question, answer = exchange
+    key = suggestions.cache_key(account.id, chat_id, len(messages), answer)
+    known, cached = suggestions.CACHE.lookup(key)
+    if known:
+        return SuggestionOut(text=cached)
+    agent = await directory.entry()
+    if agent is None:
+        return SuggestionOut()
+    usage = UsageService(session, settings.usage)
+    if await usage.check(account.id) is not None:
+        return SuggestionOut()
+    outcome = await suggestions.suggest(gateway, agent.url, _caller(account), question, answer)
+    if outcome is None:
+        return SuggestionOut()
+    await usage.record(account.id, uuid.uuid4().hex, "suggestion", chat_id, outcome.result)
+    suggestions.CACHE.put(key, outcome.text)
+    return SuggestionOut(text=outcome.text)
 
 
 @router.put("/{chat_id}")
