@@ -58,6 +58,7 @@ class AgentGateway(Protocol):
         approval_mode: str = "off",
         allowed_tools: list[str] | None = None,
         disabled_tools: list[str] | None = None,
+        ask_user: bool = False,
     ) -> dict[str, Any]: ...
 
     async def interpret(self, url: str, caller: Caller, text: str) -> dict[str, Any]: ...
@@ -65,6 +66,10 @@ class AgentGateway(Protocol):
     async def cancel(self, url: str, caller: Caller, request_id: str) -> bool: ...
 
     async def decide(self, url: str, caller: Caller, request_id: str, step_id: str, decision: str) -> bool: ...
+
+    async def answer_question(
+        self, url: str, caller: Caller, request_id: str, step_id: str, answers: list[dict[str, Any]], skipped: bool
+    ) -> bool: ...
 
 
 class McpAgentGateway:
@@ -125,6 +130,7 @@ class McpAgentGateway:
         approval_mode="off",
         allowed_tools=None,
         disabled_tools=None,
+        ask_user=False,
     ):
         arguments = {
             "question": question,
@@ -156,6 +162,12 @@ class McpAgentGateway:
                     "Switch those capabilities back on or restart the agent."
                 )
             arguments["disabled_tools"] = disabled_tools
+        if ask_user:
+            # Not fail-closed like approvals: an agent from before this existed
+            # simply does not get the question tool, and the turn still runs.
+            status = await self._call(url, caller, "status", {})
+            if status.get("user_questions"):
+                arguments["ask_user"] = True
         return await self._call(url, caller, "ask", arguments, on_event)
 
     async def interpret(self, url, caller, text):
@@ -171,3 +183,13 @@ class McpAgentGateway:
         result = await self._call(url, caller, "decide", {"request_id": request_id, "step_id": step_id, "decision": decision})
         return bool(result.get("decided"))
 
+    async def answer_question(self, url, caller, request_id, step_id, answers, skipped):
+        """Sends the user's answers to a question the agent raised for this turn.
+        False when nothing was waiting (already answered, or the turn ended)."""
+        result = await self._call(
+            url,
+            caller,
+            "answer_question",
+            {"request_id": request_id, "step_id": step_id, "answers": answers, "skipped": skipped},
+        )
+        return bool(result.get("answered"))

@@ -44,6 +44,7 @@ def _build_agent(approvals: bool = True) -> FastMCP:
         approval_mode: str = "off",
         allowed_tools: list[str] | None = None,
         disabled_tools: list[str] | None = None,
+        ask_user: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         headers = ctx.request_context.request.headers
@@ -59,15 +60,22 @@ def _build_agent(approvals: bool = True) -> FastMCP:
             "seen": dict(seen),
             "approval": {"mode": approval_mode, "allowed": allowed_tools},
             "disabled": disabled_tools,
+            "ask_user": ask_user,
         }
 
     @mcp.tool()
     def status() -> dict[str, Any]:
-        return {"available": True, **({"tool_approval": True, "tool_filter": True} if approvals else {})}
+        return {"available": True, **({"tool_approval": True, "tool_filter": True, "user_questions": True} if approvals else {})}
 
     @mcp.tool()
     def decide(request_id: str, step_id: str, decision: str) -> dict[str, Any]:
         return {"decided": (request_id, step_id) == ("r1", "s1") and decision in ("allow", "always", "deny")}
+
+    @mcp.tool()
+    def answer_question(
+        request_id: str, step_id: str, answers: list[dict] | None = None, skipped: bool = False
+    ) -> dict[str, Any]:
+        return {"answered": (request_id, step_id) == ("r1", "s1"), "echo": {"answers": answers, "skipped": skipped}}
 
     @mcp.tool()
     def ask_count() -> dict[str, Any]:
@@ -235,3 +243,30 @@ def test_switched_off_tools_refuse_an_agent_that_would_offer_them_anyway(old_age
         _ask(gateway, old_agent_url, disabled_tools=["tool_pdf_merge"])
 
     assert _asks_made(gateway, old_agent_url) == before  # ask() never ran
+
+
+# --- clickable questions -----------------------------------------------------------------
+
+
+def test_ask_sends_ask_user_when_the_agent_understands_it(agent_url: str) -> None:
+    result = _ask(McpAgentGateway(None), agent_url, ask_user=True)
+
+    assert result["ask_user"] is True
+
+
+def test_ask_leaves_ask_user_out_by_default(agent_url: str) -> None:
+    assert _ask(McpAgentGateway(None), agent_url)["ask_user"] is False
+
+
+def test_an_agent_that_does_not_know_ask_user_just_does_not_get_it(old_agent_url: str) -> None:
+    result = _ask(McpAgentGateway(None), old_agent_url, ask_user=True)
+
+    assert result["ask_user"] is False  # the question tool is simply not offered; the turn still runs
+
+
+def test_answer_reports_whether_the_question_was_waiting(agent_url: str) -> None:
+    gateway = McpAgentGateway(None)
+    answers = [{"selected": ["CSV"], "other": None}]
+
+    assert asyncio.run(gateway.answer_question(agent_url, CALLER, "r1", "s1", answers, False)) is True
+    assert asyncio.run(gateway.answer_question(agent_url, CALLER, "r1", "nope", [], True)) is False

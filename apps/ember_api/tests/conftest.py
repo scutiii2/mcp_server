@@ -101,6 +101,12 @@ class FakeAgent:
     decisions: list[tuple[str, str, str]] = field(default_factory=list)
     decide_result: bool | None = None  # force decide()'s answer
     decide_error: str | None = None
+    # A question this fake "asks" during a turn (the questions list of an ask_user call).
+    questions: list[dict] = field(default_factory=list)
+    answers: list[tuple] = field(default_factory=list)  # (request_id, step_id, answers, skipped)
+    answer_result: bool | None = None  # force answer_question()'s result
+    answer_error: str | None = None
+    _asking: dict = field(default_factory=dict)
     ran: list[str] = field(default_factory=list)  # tools that actually ran
     _waiting: dict = field(default_factory=dict)
 
@@ -125,6 +131,7 @@ class FakeAgent:
         approval_mode="off",
         allowed_tools=None,
         disabled_tools=None,
+        ask_user=False,
     ):
         self.asks.append(
             {
@@ -138,12 +145,15 @@ class FakeAgent:
                 "approval_mode": approval_mode,
                 "allowed_tools": allowed_tools,
                 "disabled_tools": disabled_tools,
+                "ask_user": ask_user,
             }
         )
         for event in self.events:
             await on_event(event)
         for index, tool in enumerate(self.tool_calls):
             await self._run_tool(f"step{index}", tool, request_id, approval_mode, allowed_tools or [], on_event)
+        if self.questions:
+            await self._ask_user("q1", request_id, on_event)
         if self.hold:
             self.loop = asyncio.get_running_loop()
             self.gate = asyncio.Event()
@@ -199,6 +209,31 @@ class FakeAgent:
             waiting.set_result(decision)
         return answered
 
+    async def _ask_user(self, step_id, request_id, on_event):
+        self.loop = asyncio.get_running_loop()
+        await on_event(
+            {"type": "step_start", "id": step_id, "tool": "ask_user", "label": None, "arguments": {"questions": self.questions}}
+        )
+        waiting = asyncio.get_running_loop().create_future()
+        self._asking[(request_id, step_id)] = waiting
+        await on_event({"type": "question_request", "id": step_id, "questions": self.questions})
+        outcome = await waiting
+        del self._asking[(request_id, step_id)]
+        await on_event({"type": "question_resolved", "id": step_id, "outcome": outcome})
+        await on_event({"type": "step_end", "id": step_id, "ok": outcome != "cancelled", "result": f"outcome: {outcome}"})
+
+    async def answer_question(self, url, caller, request_id, step_id, answers, skipped):
+        if self.answer_error:
+            raise AgentCallError(self.answer_error)
+        self.answers.append((request_id, step_id, answers, skipped))
+        waiting = self._asking.get((request_id, step_id))
+        known = waiting is not None and not waiting.done()
+        if self.answer_result is not None:
+            known = self.answer_result
+        if known and waiting is not None and not waiting.done():
+            waiting.set_result("skipped" if skipped else "answered")
+        return known
+
     async def interpret(self, url, caller, text):
         self.interprets.append(text)
         if self.fail:
@@ -210,6 +245,9 @@ class FakeAgent:
         self.release()
         # A tool waiting for the user's answer ends as it does in the real agent.
         for (waiting_request, _step), waiting in list(self._waiting.items()):
+            if waiting_request == request_id and not waiting.done():
+                waiting.set_result("cancelled")
+        for (waiting_request, _step), waiting in list(self._asking.items()):
             if waiting_request == request_id and not waiting.done():
                 waiting.set_result("cancelled")
         return True
