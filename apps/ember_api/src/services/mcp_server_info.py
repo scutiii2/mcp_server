@@ -117,6 +117,11 @@ class McpServerInfo:
     async def set_capability(self, account: Account, name: str, enabled: bool) -> dict[str, Any]:
         return await self._request("PATCH", f"/capabilities/{quote(name, safe='')}", account, json={"enabled": enabled})
 
+    async def refresh_capabilities(self, account: Account) -> list[dict[str, Any]]:
+        """mcp_server scans its capabilities folder again; returns the new list."""
+        body = await self._request("POST", "/capabilities/refresh", account)
+        return body if isinstance(body, list) else []
+
     async def extensions(self, account: Account) -> list[dict[str, Any]]:
         """Extensions (other MCP servers mcp_server re-exposes, their tools
         named "<id>__<tool>"): [{id, label, description, status, error, tools}]."""

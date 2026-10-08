@@ -2,9 +2,12 @@
 capability's page layout) and /api/extensions: mcp_server's command
 registry, capability help, capability switchboard and extensions, passed
 through. Reading needs tools.use (extensions: chat.use or tools.use, since
-the chat picks which ones the agent may use). Switching a capability needs
-admin.manage; adding/removing an extension needs extensions.manage. Both
-change mcp_server for everyone and are written to the activity log.
+the chat picks which ones the agent may use). Switching a capability (going
+online reloads its code from disk) and refreshing the capability list
+(POST /api/capabilities/refresh, which finds folders added while mcp_server
+runs) need admin.manage; adding/removing an extension needs
+extensions.manage. All change mcp_server for everyone and are written to the
+activity log.
 
 The command form (tools.use) also gets a select's options from a path a
 tool's schema declares (`options_url`, with {placeholders} filled from
@@ -87,6 +90,12 @@ class CapabilityOut(BaseModel):
     resources: list[str] = []
     # Whether the capability ships a page ember_web can draw.
     has_gui: bool = False
+    # Why the capability could not be brought online (a trimmed traceback), else null.
+    load_error: str | None = None
+    # Its folder is gone from mcp_server's disk.
+    missing: bool = False
+    # Its tools were imported (true even while switched off); false for a folder only discovered.
+    loaded: bool = True
 
 
 class CapabilitySwitch(BaseModel):
@@ -298,6 +307,19 @@ async def switch_capability(
     capability = CapabilityOut(**await _call(info.set_capability(account, name, body.enabled)))
     await logs.action(account, "mcp.capability", f"Turned capability '{name}' {'on' if body.enabled else 'off'}")
     return capability
+
+
+@router.post("/capabilities/refresh")
+async def refresh_capabilities(
+    account: Account = Depends(require_admin),
+    info: McpServerInfo = Depends(get_server_info),
+    logs: LogWriter = Depends(get_log_writer),
+) -> list[CapabilityOut]:
+    """mcp_server looks for capability folders added while it runs; a new one
+    is listed offline. Admins only, like switching."""
+    capabilities = [CapabilityOut(**r) for r in await _call(info.refresh_capabilities(account)) if isinstance(r, dict)]
+    await logs.action(account, "mcp.capability_refresh", "Refreshed capabilities")
+    return capabilities
 
 
 @router.get("/extensions")

@@ -13,7 +13,7 @@ from tests.test_registration import as_admin
 COMMANDS = [{"capability": "srv", "name": "list", "description": "List apps", "tool_name": "tool_srv_listApps"}]
 CAPABILITIES = [
     {"name": "server_manager", "enabled": True, "label": "Server Manager", "tools": ["tool_srv_listApps"], "resources": [],
-     "has_gui": True}
+     "has_gui": True, "load_error": None, "missing": False, "loaded": True}
 ]
 GUI_PAGE = {"version": 1, "title": "Server", "description": "", "sections": [{"id": "list", "title": "Apps", "tool": "tool_srv_listApps"}]}
 EXTENSIONS = [
@@ -35,6 +35,12 @@ def mcp_server(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"error": "Unknown capability 'nope'"})
     if path == "/capabilities":
         return httpx.Response(200, json=CAPABILITIES)
+    if path == "/capabilities/refresh" and request.method == "POST":
+        return httpx.Response(200, json=[
+            *CAPABILITIES,
+            {"name": "fresh", "enabled": False, "label": "Fresh", "tools": [], "resources": [], "has_gui": False,
+             "load_error": None, "missing": False, "loaded": False},
+        ])
     if path == "/capabilities/server_manager/gui":
         return httpx.Response(200, json=GUI_PAGE)
     if path.startswith("/capabilities/") and path.endswith("/gui"):
@@ -218,3 +224,37 @@ def test_admin_manage_without_extensions_manage_cannot_add_or_remove(
     assert member.post("/api/extensions", json={"label": "Wiki", "url": "http://wiki.internal/mcp"}).status_code == 403
     assert member.delete("/api/extensions/notes").status_code == 403
     assert upstream.requests == []
+
+
+def test_capabilities_refresh_is_admin_only_and_logged(client_factory, email: FakeEmailSender, upstream: FakeUpstream) -> None:
+    upstream.handler = mcp_server
+    admin = as_admin(client_factory())
+
+    refreshed = admin.post("/api/capabilities/refresh", json={})
+
+    assert refreshed.status_code == 200, refreshed.text
+    assert [c["name"] for c in refreshed.json()] == ["server_manager", "fresh"]
+    assert refreshed.json()[1]["loaded"] is False
+    assert upstream.requests[-1].method == "POST" and upstream.requests[-1].url.path == "/capabilities/refresh"
+    root = admin.get("/api/auth/me").json()["id"]
+    messages = [entry["message"] for entry in admin.get("/api/logs/action", params={"actor": root}).json()]
+    assert "Refreshed capabilities" in messages
+
+    member = client_factory()
+    make_member(member, email)
+    login(member, "alice")
+    assert member.post("/api/capabilities/refresh", json={}).status_code == 403
+
+
+def test_capability_status_carries_the_load_error(client_factory, upstream: FakeUpstream) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/capabilities":
+            return httpx.Response(200, json=[{**CAPABILITIES[0], "enabled": False, "load_error": "boom", "loaded": False}])
+        return mcp_server(request)
+
+    upstream.handler = handler
+    admin = as_admin(client_factory())
+
+    entry = admin.get("/api/capabilities").json()[0]
+
+    assert (entry["load_error"], entry["loaded"], entry["missing"]) == ("boom", False, False)
