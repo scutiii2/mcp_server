@@ -17,7 +17,7 @@ load_env_file()
 
 from src.config import settings  # noqa: E402
 from src.services import capability_registry  # noqa: E402
-from src.services.app_config import capability_enabled, load_capabilities_config  # noqa: E402
+from src.services.capability_loader import CapabilityLoader  # noqa: E402
 from src.services.identity_context import IdentityContextMiddleware  # noqa: E402
 from src.services.internal_token import InternalTokenMiddleware  # noqa: E402
 from src.utils.logging_setup import configure_logging  # noqa: E402
@@ -28,78 +28,12 @@ from src.server import mcp  # noqa: E402
 # not just log lines written after some later point in startup.
 configure_logging(settings.log_dir)
 
-_capabilities_config = load_capabilities_config(settings.capabilities_config_path)
-
-# Import order = the order tools/resources appear in their respective
-# list calls. Add each new capability's tool/resource module here as it's
-# built, following the pattern in capabilities/<name>/ (contract.py /
-# domain.py / tool.py) described in the README's "Adding a new tool"
-# section - and add a toggle entry to config_capabilities.json /
-# config_capabilities.json.example.
-#
-# Every capability imports unconditionally now, even a disabled one -
-# capability_registry.capturing() needs the import to actually happen so
-# it can capture what got registered, which is what makes toggling a
-# capability back on later possible without re-importing (Python caches
-# modules, so a second import wouldn't re-run the @mcp.tool() decorators
-# anyway). Disabled state is applied immediately below, via the same
-# registry a live PATCH /capabilities/{name} request uses later - see
-# capability_routes.py and services/capability_registry.py.
-
-# Each `import src.capabilities.<name>` below runs only that package's
-# __init__.py (its META = capability_meta.register(...) declaration) -
-# not its tool.py, so this is safe to do before opening the capturing()
-# block that actually registers tools. See capability_meta.py's
-# docstring for why the id/label live there instead of being typed again
-# here.
-from src.capabilities import server_manager  # noqa: E402
-
-with capability_registry.capturing(mcp, server_manager.META.id, label=server_manager.META.label):
-    from src.capabilities.server_manager import tool as server_manager_tool  # noqa: E402,F401
-
-from src.capabilities import generator  # noqa: E402
-
-with capability_registry.capturing(mcp, generator.META.id, label=generator.META.label):
-    from src.capabilities.generator import tool as generator_tool  # noqa: E402,F401
-
-from src.capabilities import web_research  # noqa: E402
-
-with capability_registry.capturing(mcp, web_research.META.id, label=web_research.META.label):
-    from src.capabilities.web_research import tool as web_research_tool  # noqa: E402,F401
-
-from src.capabilities import firecrawl  # noqa: E402
-
-with capability_registry.capturing(mcp, firecrawl.META.id, label=firecrawl.META.label):
-    from src.capabilities.firecrawl import tool as firecrawl_tool  # noqa: E402,F401
-
-from src.capabilities import usage_report  # noqa: E402
-
-with capability_registry.capturing(mcp, usage_report.META.id, label=usage_report.META.label):
-    from src.capabilities.usage_report import tool as usage_report_tool  # noqa: E402,F401
-
-from src.capabilities import vault  # noqa: E402
-
-with capability_registry.capturing(mcp, vault.META.id, label=vault.META.label):
-    from src.capabilities.vault import tool as vault_tool  # noqa: E402,F401
-
-from src.capabilities import repo_reader  # noqa: E402
-
-with capability_registry.capturing(mcp, repo_reader.META.id, label=repo_reader.META.label):
-    from src.capabilities.repo_reader import tool as repo_reader_tool  # noqa: E402,F401
-
-from src.capabilities import tables  # noqa: E402
-
-with capability_registry.capturing(mcp, tables.META.id, label=tables.META.label):
-    from src.capabilities.tables import tool as tables_tool  # noqa: E402,F401
-
-from src.capabilities import watchers  # noqa: E402
-
-with capability_registry.capturing(mcp, watchers.META.id, label=watchers.META.label):
-    from src.capabilities.watchers import tool as watchers_tool  # noqa: E402,F401
-
-for _name in capability_registry.names():
-    if not capability_enabled(_capabilities_config, _name):
-        capability_registry.set_enabled(mcp, _name, False)
+# Capabilities are found by scanning src/capabilities/ (services/capability_loader.py),
+# not imported by hand here: a folder added later appears on POST /capabilities/refresh
+# with no restart. Each folder's __init__.py declares its id and label (META); one
+# with a config entry is loaded now, one without stays offline until an admin brings it online.
+capability_loader = CapabilityLoader(mcp, "src.capabilities", settings.capabilities_config_path)
+capability_loader.startup()
 
 
 async def _serve() -> None:
@@ -198,7 +132,7 @@ async def _serve() -> None:
         print("\n".join(banner), flush=True)
 
         # Restart the watchers that were running when the server last stopped.
-        if capability_registry.is_enabled(watchers.META.id):
+        if "watch" in capability_registry.names() and capability_registry.is_enabled("watch"):
             from src.capabilities.watchers.utils.user_watcher import UserWatcher
 
             UserWatcher.resume_all(settings.watchers_dir)
@@ -233,8 +167,10 @@ async def _serve() -> None:
         # capability on/off live - also a plain HTTP route, same
         # reasoning as install_command_routes: this changes what
         # every caller of this server can do, not something a model
-        # should be able to do to itself. See capability_routes.py.
-        install_capability_routes(app)
+        # should be able to do to itself. It also rescans src/capabilities/
+        # (POST /capabilities/refresh) and reloads a capability's code when it
+        # goes online. See capability_routes.py.
+        install_capability_routes(app, capability_loader)
         # Where chat_app proxies a file a user dropped into a command-form
         # modal, so a tool param that expects a real server-side path can
         # be filled with one - also a plain HTTP route, checked against
