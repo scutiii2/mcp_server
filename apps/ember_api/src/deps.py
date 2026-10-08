@@ -20,6 +20,7 @@ from src.services.session_service import SessionService
 from src.services.settings_service import SettingsService
 from src.services.traffic import TrafficRecorder
 from src.services.turns import TurnRegistry
+from src.services.secret_box import SecretBox
 
 
 def get_settings(request: Request) -> Settings:
@@ -57,6 +58,10 @@ def get_agent_gateway(request: Request) -> AgentGateway:
 
 def get_turns(request: Request) -> TurnRegistry:
     return request.app.state.turns
+
+
+def get_secret_box(request: Request) -> SecretBox:
+    return request.app.state.secret_box
 
 
 def get_server_tools(request: Request) -> ServerTools:

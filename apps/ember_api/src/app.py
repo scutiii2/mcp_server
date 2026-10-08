@@ -47,6 +47,7 @@ from src.services.email_service import EmailSender, SmtpEmailSender
 from src.services.log_service import LogWriter
 from src.services.mcp_proxy import McpProxy
 from src.services.otp_service import OtpService
+from src.services.secret_box import SecretBox, ensure_secrets_key
 from src.services.public_rate_limiter import PublicReadLimiter
 from src.services.share_service import purge_expired_shares
 from src.services.server_tools import McpServerTools, ServerTools
@@ -106,6 +107,8 @@ def create_app(
             print(f"Bootstrap admin created with password: {generated} (save it now, it won't be shown again)")
 
         internal_token = load_env_secrets(settings.env_path).get("INTERNAL_API_TOKEN")
+        # Raises SecretBoxError (a clear one-line message) when .env holds a key that is not valid.
+        secret_box = SecretBox(ensure_secrets_key(settings.env_path))
         upstream = httpx.AsyncClient(transport=upstream_transport, timeout=_UPSTREAM_TIMEOUT)
 
         app.state.settings = settings
@@ -113,6 +116,7 @@ def create_app(
         app.state.email_sender = email_sender or SmtpEmailSender(settings.env_path)
         app.state.upstream = upstream
         app.state.internal_token = internal_token or None
+        app.state.secret_box = secret_box
         app.state.agent_directory = AgentDirectory(
             HttpRegistrySource(settings.agents_registry_url, upstream, internal_token or None)
             if settings.agents_registry_url
