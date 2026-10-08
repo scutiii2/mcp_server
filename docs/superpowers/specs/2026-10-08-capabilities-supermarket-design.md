@@ -27,7 +27,7 @@ Split "what exists" from "what I use". Today the Capabilities page lists every b
 | Supermarket filter | Two toggle chips, Enabled and Disabled, mutually exclusive. Clicking the active chip clears it. No chip means show both. |
 | Status dot | Kept on every Capabilities card with today's meaning (green: on and running, grey: off for everyone, red: extension not connected). It later takes a real per-capability status (see "Status dot"). |
 
-Out of scope: private extensions, the `extensions.manage` permission, a name filter in the Supermarket, tool reload without restart, and moving the check of "which tools the agent may use" from the browser to `ember_api`.
+Out of scope: private extensions, the `extensions.manage` permission, a name filter in the Supermarket, tool reload without restart.
 
 ## ember_api
 
@@ -57,9 +57,10 @@ One Alembic migration. Its revision id is the next free one when the work starts
 
 ### Routes (`/api/account-capabilities`, any logged-in account, private to it)
 
-- `GET /api/account-capabilities` returns `{"capabilities": [...], "extensions": [...]}`.
-- `PUT /api/account-capabilities/{kind}/{key}` with body `{"enabled": bool}` returns the full set. `kind` outside `capability` or `extension` is 422. This is one call per item, not "replace the whole set", so two devices changing different items never overwrite each other.
+- `GET /api/account-capabilities` returns `{"capabilities": [...], "extensions": [...], "disabled_tools": [...]}`. `disabled_tools` is the sorted list of tool names of every mcp_server capability the account has not added, worked out by ember_api from mcp_server's `/capabilities`. If mcp_server is unreachable the call answers 502 and nothing is guessed.
+- `PUT /api/account-capabilities/{kind}/{key}` with body `{"enabled": bool}` returns the same shape. `kind` outside `capability` or `extension` is 422. The capability list is read first, so a 502 leaves the stored set unchanged. This is one call per item, not "replace the whole set", so two devices changing different items never overwrite each other.
 - Existing `DELETE /api/extensions/{extension_id}` also calls `forget_extension`.
+- `MAX_DISABLED_TOOLS` in `routes/chats.py` rises from 500 to 2000, because with nothing added a question carries every capability's tools.
 - Each change is audited with `logs.action` (`account.capability_enable` and `account.capability_disable`, same for extensions).
 
 ## ember_web
@@ -68,7 +69,7 @@ One Alembic migration. Its revision id is the next free one when the work starts
 
 New `stores/accountCapabilities.ts` (Pinia), modelled on `stores/navPrefs.ts`:
 
-- State: `capabilities: string[]`, `extensions: string[]`, `loaded: boolean`, `error: string`.
+- State: `capabilities: string[]`, `extensions: string[]`, `disabled_tools: string[]`, `ready: boolean`, `error: string`.
 - `load()` runs when the account signs in. `setCapability(name, on)` and `setExtension(id, on)` apply the change optimistically, call the PUT, replace the state with the server's reply, and roll back and set `error` on failure.
 - `reset()` on sign-out, like the other per-account stores.
 
@@ -77,7 +78,7 @@ New `api/AccountCapabilitiesClient.ts` wraps the two routes.
 `stores/chat.ts` changes:
 
 - `enabledExtensions` is no longer its own `localStorage`-backed ref. It reads the account store. `setExtensionEnabled` and `setCapabilityEnabled` call into the account store.
-- `disabledCapabilities` is replaced by the inverse rule: the tools handed to `disabled_tools` are the tools of every capability that is not in the account's enabled set. Tools that no capability lists are left alone, as today.
+- The tools handed to `disabled_tools` come straight from the account store (`disabled_tools` in the server's reply). The browser no longer reads `/api/capabilities` for this, so accounts with only `chat.use` are covered.
 - The `readExtensions` and `disabledCapabilitiesKey` readers and their keys are removed.
 - A question is not sent until the account store has loaded. If the load failed, sending shows the error and sends nothing. The store never falls back to "everything on", because an unloaded set would otherwise offer every tool.
 
