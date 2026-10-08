@@ -177,6 +177,7 @@ async def ask(
     allowed_tools: list[str] | None = None,
     delegated_by: str | None = None,
     disabled_tools: list[str] | None = None,
+    private_extensions: list[dict[str, Any]] | None = None,
     model_tier: str | None = None,
     reasoning_effort: str | None = None,
     ctx: Context | None = None,
@@ -196,6 +197,8 @@ async def ask(
     this question (see delegation.py); recorded in usage rows.
     disabled_tools: mcp_server tool names the asking user switched off for
     their own chats; this turn neither offers nor runs them (core/tool_filter.py).
+    private_extensions: the user's own MCP servers for this turn,
+    `[{id, label, url, headers}]`; see src/private_extensions/.
     model_tier: the strength of model to run this turn on ("light",
     "standard" or "heavy"), set by a delegating orchestrator. This agent
     resolves it against its own gateway tiers and min_tier/max_tier, so a
@@ -228,10 +231,11 @@ async def ask(
         tier_args = {"model_tier": model_tier} if model_tier else {}
         if reasoning_effort:
             tier_args["reasoning_effort"] = reasoning_effort
+        private_args = {"private_extensions": private_extensions} if private_extensions else {}
         result = await agent_config.run_chat(
             question, history or [], enabled_extensions or [], request_id, depth,
             on_event=on_event, caveman=caveman, approval_mode=approval_mode, allowed_tools=allowed_tools,
-            disabled_tools=disabled_tools, **tier_args,
+            disabled_tools=disabled_tools, **tier_args, **private_args,
         )
     except ChatCancelled:
         return _cancelled_result()
@@ -271,6 +275,9 @@ async def ask(
         reply["reasoning_effort"] = result.reasoning_effort
     if result.effort_note:
         reply["effort_note"] = result.effort_note
+    errors = getattr(result, "private_extension_errors", None)
+    if errors:
+        reply["private_extension_errors"] = errors
     return reply
 
 
@@ -307,8 +314,24 @@ def status() -> dict[str, Any]:
     """Live availability of this agent's pinned provider. `tool_approval`
     says ask() understands approval_mode, so a caller that needs tools asked
     about can refuse an agent that would ignore it; `tool_filter` says the same
-    of disabled_tools."""
-    return {**agent_config.status(), "tool_approval": True, "tool_filter": True}
+    of disabled_tools. `private_extensions` says ask() understands
+    private_extensions."""
+    return {
+        **agent_config.status(),
+        "tool_approval": True,
+        "tool_filter": True,
+        # laya keeps its own tool shortlist and never lists tools through mcp_upstream.
+        "private_extensions": agent_config.PROVIDER_ID != "laya",
+    }
+
+
+@mcp.tool()
+async def probe_extension(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """Connect once to the MCP server at `url` (with `headers`, which may carry
+    a secret) and report `{status, error, tools}`. Used by ember_api when a user
+    adds or edits a private extension. Never raises; the error is short and
+    never contains a header value."""
+    return await mcp_upstream.probe_private(url, headers)
 
 
 @mcp.tool()
