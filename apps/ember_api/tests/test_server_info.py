@@ -258,3 +258,25 @@ def test_capability_status_carries_the_load_error(client_factory, upstream: Fake
     entry = admin.get("/api/capabilities").json()[0]
 
     assert (entry["load_error"], entry["loaded"], entry["missing"]) == ("boom", False, False)
+
+
+def test_load_error_is_shown_only_to_admins(client_factory, email: FakeEmailSender, upstream: FakeUpstream) -> None:
+    broken = {**CAPABILITIES[0], "enabled": False, "load_error": "boom", "loaded": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/capabilities":
+            return httpx.Response(200, json=[broken])
+        return mcp_server(request)
+
+    upstream.handler = handler
+    admin = as_admin(client_factory())
+    member = client_factory()
+    make_member(member, email)
+    login(member, "alice")
+
+    admin_entry = admin.get("/api/capabilities").json()[0]
+    member_entry = member.get("/api/capabilities").json()[0]
+
+    assert admin_entry["load_error"] == "boom"
+    assert member_entry["load_error"] is None
+    assert {k: v for k, v in admin_entry.items() if k != "load_error"} == {k: v for k, v in member_entry.items() if k != "load_error"}

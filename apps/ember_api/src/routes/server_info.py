@@ -281,7 +281,13 @@ async def download_file(
 async def list_capabilities(
     account: Account = Depends(require_tools), info: McpServerInfo = Depends(get_server_info)
 ) -> list[CapabilityOut]:
-    return [CapabilityOut(**r) for r in await _call(info.capabilities(account)) if isinstance(r, dict)]
+    # A load error is a traceback with server paths and maybe config values: admins only.
+    is_admin = ADMIN_MANAGE in account.permission_names
+    rows = [CapabilityOut(**r) for r in await _call(info.capabilities(account)) if isinstance(r, dict)]
+    if not is_admin:
+        for row in rows:
+            row.load_error = None
+    return rows
 
 
 @router.get("/capabilities/{name}/gui")
