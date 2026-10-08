@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { reactive } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { authClient } from "../api/AuthClient";
 import { navPreferencesClient } from "../api/NavPreferencesClient";
 import { settingsClient } from "../api/SettingsClient";
 import { useAuthStore } from "../stores/auth";
@@ -65,11 +66,52 @@ beforeEach(() => {
 });
 
 describe("SettingsView", () => {
+  it("turns prompt suggestions off on the server and marks the setting as modified", async () => {
+    const w = await mountView();
+    const set = vi
+      .spyOn(authClient, "setPreferences")
+      .mockResolvedValue({ ...useAuthStore().account!, prompt_suggestions: false });
+    expect(row(w, "chat-suggestions").find("button.reset").exists()).toBe(false);
+
+    await row(w, "chat-suggestions").get("input").setValue(false);
+    await flushPromises();
+
+    expect(set).toHaveBeenCalledWith({ prompt_suggestions: false });
+    expect(useAuthStore().promptSuggestions).toBe(false);
+    expect(row(w, "chat-suggestions").find("button.reset").exists()).toBe(true);
+  });
+
+  it("resets prompt suggestions to on, which is their default", async () => {
+    const w = await mountView();
+    useAuthStore().account = { ...useAuthStore().account!, prompt_suggestions: false };
+    const set = vi
+      .spyOn(authClient, "setPreferences")
+      .mockResolvedValue({ ...useAuthStore().account!, prompt_suggestions: true });
+    await flushPromises();
+
+    await row(w, "chat-suggestions").get("button.reset").trigger("click");
+    await flushPromises();
+
+    expect(set).toHaveBeenCalledWith({ prompt_suggestions: true });
+    expect(useAuthStore().promptSuggestions).toBe(true);
+  });
+
+  it("keeps the old value when the server refuses the change", async () => {
+    const w = await mountView();
+    vi.spyOn(authClient, "setPreferences").mockRejectedValue(new Error("down"));
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await row(w, "chat-suggestions").get("input").setValue(false);
+    await flushPromises();
+
+    expect(useAuthStore().promptSuggestions).toBe(true);
+  });
+
   it("lists the chat and appearance settings, grouped, and no administration for a member", async () => {
     const w = await mountView();
 
     expect(w.findAll("h3").map((h) => h.text())).toEqual(["Chat", "Appearance", "Sidebar"]);
-    expect(rowIds(w)).toEqual(["chat-terse", "chat-ask-tools", "chat-chime", "appearance-theme", "sidebar-pages"]);
+    expect(rowIds(w)).toEqual(["chat-terse", "chat-ask-tools", "chat-chime", "chat-suggestions", "appearance-theme", "sidebar-pages"]);
     expect(w.text()).not.toContain("Tool approval");
   });
 
@@ -173,7 +215,7 @@ describe("modified filter", () => {
   it("is a pill that shows only the changed settings, and toggles back", async () => {
     chat.caveman = true;
     const w = await mountView();
-    expect(rowIds(w)).toHaveLength(5);
+    expect(rowIds(w)).toHaveLength(6);
     expect(w.get(".badge").attributes("aria-pressed")).toBe("false");
 
     await w.get(".badge").trigger("click");
@@ -183,7 +225,7 @@ describe("modified filter", () => {
     expect(w.get(".badge").attributes("aria-pressed")).toBe("true");
 
     await w.get(".badge").trigger("click");
-    expect(rowIds(w)).toHaveLength(5);
+    expect(rowIds(w)).toHaveLength(6);
   });
 
   it("drops the filter once nothing is modified any more", async () => {
@@ -194,7 +236,7 @@ describe("modified filter", () => {
     await row(w, "chat-terse").get("button.reset").trigger("click");
 
     expect(w.find(".badge").exists()).toBe(false);
-    expect(rowIds(w)).toHaveLength(5);
+    expect(rowIds(w)).toHaveLength(6);
   });
 });
 
@@ -235,7 +277,7 @@ describe("search", () => {
     expect(w.text()).toContain('No settings match "zzz"');
     expect(rowIds(w)).toEqual([]);
     await w.get("button.link").trigger("click");
-    expect(rowIds(w)).toHaveLength(5);
+    expect(rowIds(w)).toHaveLength(6);
     expect((search(w).element as HTMLInputElement).value).toBe("");
   });
 
@@ -248,6 +290,6 @@ describe("search", () => {
 
     await search(w).trigger("keydown", { key: "Escape" });
     expect((search(w).element as HTMLInputElement).value).toBe("");
-    expect(rowIds(w)).toHaveLength(5);
+    expect(rowIds(w)).toHaveLength(6);
   });
 });

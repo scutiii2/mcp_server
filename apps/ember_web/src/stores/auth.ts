@@ -27,6 +27,9 @@ export const useAuthStore = defineStore("auth", () => {
     () => account.value !== null && !account.value.email_verified && account.value.email_verification_required !== false,
   );
 
+  /** The chat suggests the next prompt (an account switch kept on the server). */
+  const promptSuggestions = computed(() => account.value?.prompt_suggestions !== false);
+
   function hasPermission(name: string): boolean {
     // Mirrors ember_api: an unverified email holds no permissions, unless
     // verification is switched off there.
@@ -83,6 +86,11 @@ export const useAuthStore = defineStore("auth", () => {
     account.value = await authClient.changePassword(currentPassword, newPassword);
   }
 
+  /** The server makes the model call only while this is on. */
+  async function setPromptSuggestions(on: boolean): Promise<void> {
+    account.value = await authClient.setPreferences({ prompt_suggestions: on });
+  }
+
   async function logout(): Promise<void> {
     try {
       await authClient.logout();
@@ -91,5 +99,5 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  return { account, needsVerification, hasPermission, ensureLoaded, refresh, login, register, verifyEmail, resendVerification, changeEmail, changePassword, logout };
+  return { account, needsVerification, promptSuggestions, hasPermission, ensureLoaded, refresh, login, register, verifyEmail, resendVerification, changeEmail, changePassword, setPromptSuggestions, logout };
 });

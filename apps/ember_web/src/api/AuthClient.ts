@@ -8,6 +8,8 @@ export interface Account {
   email_verified: boolean;
   /** False when ember_api lets unverified accounts work. Absent counts as true. */
   email_verification_required?: boolean;
+  /** The chat suggests the next prompt after each answer. Absent counts as true. */
+  prompt_suggestions?: boolean;
   roles: string[];
   permissions: string[];
 }
@@ -60,6 +62,8 @@ export const authClient = {
     apiRequest<EmailChangeResult>("POST", "/api/account/email", { current_password, email }),
   changePassword: (current_password: string, new_password: string) =>
     apiRequest<Account>("POST", "/api/account/password", { current_password, new_password }),
+  setPreferences: (prefs: { prompt_suggestions: boolean }) =>
+    apiRequest<Account>("PATCH", "/api/account/preferences", prefs),
   devices: () => apiRequest<KnownDevice[]>("GET", "/api/account/devices"),
   forgetDevice: (id: number) => apiRequest<void>("DELETE", `/api/account/devices/${id}`),
 };
