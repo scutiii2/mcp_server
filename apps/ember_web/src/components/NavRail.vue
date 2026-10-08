@@ -1,13 +1,16 @@
 <script setup lang="ts">
 // The app's left rail: one icon per page the account may open (the name shows
 // on hover or keyboard focus), then theme, account and log out. Visitors on
-// the login pages get just the wordmark and the theme button.
+// the login pages get just the wordmark and the theme button. The account's own
+// arrangement applies: pinned pages first, a divider, the rest, hidden ones left out.
 import { computed } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { useTheme } from "../composables/useTheme";
 import { CONFIG_ISSUES_ICON, visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
 import { useConfigIssuesStore } from "../stores/configIssues";
+import { useNavPrefsStore } from "../stores/navPrefs";
+import { railPages } from "../utils/navArrangement";
 
 const { theme, next, cycle } = useTheme();
 const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" } as const;
@@ -17,7 +20,14 @@ const route = useRoute();
 const router = useRouter();
 
 const canBrowse = computed(() => auth.account !== null && !auth.needsVerification);
-const pages = computed(() => (canBrowse.value ? visiblePages((p) => auth.hasPermission(p)) : []));
+const navPrefs = useNavPrefsStore();
+// Nothing is drawn until the arrangement has loaded, so the icons don't jump.
+const pages = computed(() =>
+  canBrowse.value && navPrefs.ready
+    ? railPages(visiblePages((p) => auth.hasPermission(p)), navPrefs.prefs)
+    : { pinned: [], rest: [] },
+);
+const hasPages = computed(() => pages.value.pinned.length + pages.value.rest.length > 0);
 
 const configIssues = useConfigIssuesStore();
 const showConfigAlert = computed(() => canBrowse.value && configIssues.issues.length > 0);
@@ -51,19 +61,22 @@ async function logout(): Promise<void> {
     <RouterLink v-if="canBrowse" to="/overview" class="wordmark" data-label="Overview" aria-label="Ember - overview of every page">E</RouterLink>
     <span v-else class="wordmark" aria-label="Ember">E</span>
 
-    <nav v-if="pages.length" aria-label="Pages">
-      <RouterLink
-        v-for="p in pages"
-        :key="p.to"
-        :to="p.to"
-        :data-label="p.label"
-        :aria-label="p.label"
-        :class="{ current: isOpenedFromHere(p.to) }"
-      >
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <path v-for="d in p.icon" :key="d" :d="d" />
-        </svg>
-      </RouterLink>
+    <nav v-if="hasPages" aria-label="Pages">
+      <template v-for="(group, i) in [pages.pinned, pages.rest]" :key="i">
+        <span v-if="i === 1 && pages.pinned.length && pages.rest.length" class="divider" aria-hidden="true" />
+        <RouterLink
+          v-for="p in group"
+          :key="p.to"
+          :to="p.to"
+          :data-label="p.label"
+          :aria-label="p.label"
+          :class="{ current: isOpenedFromHere(p.to) }"
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path v-for="d in p.icon" :key="d" :d="d" />
+          </svg>
+        </RouterLink>
+      </template>
     </nav>
 
     <RouterLink
@@ -140,6 +153,13 @@ nav {
   align-items: center;
   gap: 4px;
   margin-top: 8px;
+}
+/* Between the pinned pages and the rest. */
+.divider {
+  width: 20px;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--border);
 }
 .bottom {
   display: flex;
@@ -270,6 +290,12 @@ svg {
     min-width: 0;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+  .divider {
+    flex: none;
+    width: 1px;
+    height: 20px;
+    margin: 0 2px;
   }
   .bottom {
     flex-direction: row;

@@ -138,12 +138,19 @@ URL, token or key.
 - "Terse replies" toggle in the chat header (ai_agent's `caveman`
   option), remembered per account.
 - Settings page (`/settings`, `chat.use`): your preferences in one place, grouped by task: Chat (terse
-  replies, ask before tools, chime), Appearance (theme) and, for admins, Administration (tool approval).
+  replies, ask before tools, chime), Appearance (theme), Sidebar (see below) and, for admins, Administration
+  (tool approval).
   A search box filters them as you type (label, description and extra keywords; Enter focuses the first
   match, Esc clears it). A setting that differs from its default shows an accent dot and a reset
   button ("Back to default"), and the header counts how many are changed. Chat and theme apply instantly and
   are saved in this browser; tool approval applies to every account, so a flip (or its reset) waits for
   Save in an unsaved bar. The chat gear menu keeps its quick switches and links here.
+- Sidebar arrangement, per account (Settings, Sidebar card; saved through `/api/nav-preferences`): one row per
+  page you may open. Drag a row or use its arrows to reorder, pin it to a group at the top of the rail (a divider
+  separates the groups), or switch it off to hide it from the rail (hidden pages stay on the Overview page).
+  Changes apply at once; a failed save reloads the server's copy and shows the error. Reset puts back the default.
+  The rail draws nothing until the arrangement has loaded, so the icons don't jump. The rules are pure functions
+  in `src/utils/navArrangement.ts`.
 - Usage page: your 6-hour and weekly token limits, totals, tokens per day and
   per agent; admins also see every account. A "By" selector regroups the
   totals by agent, provider, gateway or model, and a "Recent calls" table lists
@@ -360,18 +367,18 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 src/
   api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
                 ExtensionsClient / AgentsClient / WatchersClient / LogsClient / TrafficClient / AttachmentsClient /
-                ConfigIssuesClient / TemplatesClient / SharesClient / SettingsClient (ember_api REST),
+                ConfigIssuesClient / TemplatesClient / NavPreferencesClient / SharesClient / SettingsClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
-  stores/       Pinia: auth, entryAgent, chat, templates, configIssues
+  stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, configIssues
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
   views/        pages: Overview, Chat, Capabilities, Agents, Watchers, Usage, Settings, Analytics, ConfigIssues,
                 Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, ChatSettingsMenu, SettingRow, AuthCard
+                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
     admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
     analytics/  the Analytics Overview and Traffic tabs: ActivityChart (stacked columns), LineChart, StatTile / KindStatTile, Sparkline, BarList, HourHeatmap, TrafficPanel
                 (hand-drawn SVG/CSS; shared hover/keyboard state in useBucketCursor, shared frame in chart.css; series colours `--kind-*`, `--http-*`, `--latency-*`)

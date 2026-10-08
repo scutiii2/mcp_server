@@ -279,6 +279,9 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
     // An account with tools.use also asks for the slash commands; none are offered here.
     if (method === "GET" && path === "/api/commands") return json(route, []);
 
+    // The nav rail arrangement: the default one (nothing saved).
+    if (method === "GET" && path === "/api/nav-preferences") return json(route, { order: [], pinned: [], hidden: [] });
+
     // The member's saved prompts: none unless a test adds them.
     if (method === "GET" && path === "/api/templates") return json(route, [...api.templates.values()]);
     const templatePath = /^\/api\/templates\/(\d+)$/.exec(path);

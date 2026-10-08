@@ -2,11 +2,14 @@
 import { computed, onMounted, ref, useTemplateRef, watch } from "vue";
 import SettingRow from "../components/SettingRow.vue";
 import SettingsPanel from "../components/admin/SettingsPanel.vue";
+import SidebarEditor from "../components/SidebarEditor.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { DEFAULT_THEME, useTheme, type Theme } from "../composables/useTheme";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
+import { useNavPrefsStore } from "../stores/navPrefs";
+import { isDefault } from "../utils/navArrangement";
 import { filterSettings, type SearchableSetting } from "../utils/settingsSearch";
 
 /** Every setting in one place, grouped by what it is for. A search box filters
@@ -16,7 +19,7 @@ import { filterSettings, type SearchableSetting } from "../utils/settingsSearch"
 
 interface SettingDef extends SearchableSetting {
   id: string;
-  group: "chat" | "appearance" | "admin";
+  group: "chat" | "appearance" | "sidebar" | "admin";
 }
 
 // Icon paths are on a 16px grid, stroke only. The scope chip says where a group's
@@ -29,6 +32,13 @@ const GROUPS = [
     title: "Appearance",
     icon: "M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M3 13l1.4-1.4M11.6 4.4L13 3",
     scope: "This device",
+  },
+  {
+    id: "sidebar",
+    title: "Sidebar",
+    icon: "M2 2.5h12v11H2zM6 2.5v11",
+    scope: "Your account",
+    note: "Applies instantly. Saved to your account.",
   },
   { id: "admin", title: "Administration", icon: "M8 1.5l5 2v4c0 3-2 5.5-5 7-3-1.5-5-4-5-7v-4z", scope: "" },
 ] as const;
@@ -64,6 +74,13 @@ const DEFS: SettingDef[] = [
     keywords: ["dark mode", "light mode", "color"],
   },
   {
+    id: "sidebar-pages",
+    group: "sidebar",
+    label: "Pages",
+    description: "Order, pin or hide the pages in the sidebar.",
+    keywords: ["rearrange", "reorder", "navigation", "menu", "rail", "icons", "pin", "hide", "drag"],
+  },
+  {
     id: "admin-tool-approval",
     group: "admin",
     label: "Tool approval",
@@ -81,6 +98,7 @@ const THEME_OPTIONS: { value: Theme; label: string }[] = [
 const auth = useAuthStore();
 const chat = useChatStore();
 const { theme, setTheme } = useTheme();
+const navPrefs = useNavPrefsStore();
 
 const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 const query = ref("");
@@ -114,6 +132,7 @@ const modified = computed(() => ({
   "chat-ask-tools": chat.askBeforeTools !== false,
   "chat-chime": chat.chime !== true,
   "appearance-theme": theme.value !== DEFAULT_THEME,
+  "sidebar-pages": !isDefault(navPrefs.prefs),
   "admin-tool-approval": isAdmin.value && toolApprovalModified.value,
 }));
 const modifiedCount = computed(() => Object.values(modified.value).filter(Boolean).length);
@@ -185,7 +204,7 @@ onMounted(() => {
             <svg viewBox="0 0 16 16"><path :d="g.icon" /></svg>
           </span>
           <h3>{{ g.title }}</h3>
-          <span v-if="g.scope" class="scope" :title="SCOPE_NOTE">{{ g.scope }}</span>
+          <span v-if="g.scope" class="scope" :title="'note' in g ? g.note : SCOPE_NOTE">{{ g.scope }}</span>
         </div>
 
         <div v-if="g.id === 'chat'" class="card">
@@ -242,6 +261,10 @@ onMounted(() => {
           >
             <SegmentedControl v-model="themeModel" :options="THEME_OPTIONS" aria-label="Theme" />
           </SettingRow>
+        </div>
+
+        <div v-else-if="g.id === 'sidebar'" class="card">
+          <SidebarEditor v-if="shown.has('sidebar-pages')" />
         </div>
       </section>
 

@@ -9,6 +9,7 @@ from src.models.chat_folder import ChatFolder
 from src.models.known_device import KnownDevice
 from src.models.log_entry import LogEntry
 from src.models.login_attempt import LoginAttempt
+from src.models.nav_preference import NavPreference
 from src.models.otp import EmailVerificationCode, InviteCode
 from src.models.prompt_template import PromptTemplate
 from src.models.role import Permission, Role
@@ -27,6 +28,7 @@ __all__ = [
     "KnownDevice",
     "LogEntry",
     "LoginAttempt",
+    "NavPreference",
     "Permission",
     "PromptTemplate",
     "Role",

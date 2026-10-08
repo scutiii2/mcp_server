@@ -2,11 +2,15 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { reactive } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { navPreferencesClient } from "../api/NavPreferencesClient";
 import { settingsClient } from "../api/SettingsClient";
 import { useAuthStore } from "../stores/auth";
 import SettingsView from "./SettingsView.vue";
 
 vi.mock("../api/SettingsClient", () => ({ settingsClient: { get: vi.fn(), set: vi.fn() } }));
+vi.mock("../api/NavPreferencesClient", () => ({
+  navPreferencesClient: { get: vi.fn(), save: vi.fn(), reset: vi.fn() },
+}));
 
 // The chat store is big and talks to ember_api; this page only reads and sets
 // four preferences on it, so a plain stand-in is enough.
@@ -38,6 +42,7 @@ async function mountView(permissions: string[] = MEMBER, forced = false) {
     permissions,
   };
   client.get.mockResolvedValue({ force_tool_approval: forced });
+  vi.mocked(navPreferencesClient.get).mockResolvedValue({ order: [], pinned: [], hidden: [] });
   const wrapper = mount(SettingsView, { attachTo: document.body });
   await flushPromises();
   return wrapper;
@@ -63,8 +68,8 @@ describe("SettingsView", () => {
   it("lists the chat and appearance settings, grouped, and no administration for a member", async () => {
     const w = await mountView();
 
-    expect(w.findAll("h3").map((h) => h.text())).toEqual(["Chat", "Appearance"]);
-    expect(rowIds(w)).toEqual(["chat-terse", "chat-ask-tools", "chat-chime", "appearance-theme"]);
+    expect(w.findAll("h3").map((h) => h.text())).toEqual(["Chat", "Appearance", "Sidebar"]);
+    expect(rowIds(w)).toEqual(["chat-terse", "chat-ask-tools", "chat-chime", "appearance-theme", "sidebar-pages"]);
     expect(w.text()).not.toContain("Tool approval");
   });
 
@@ -157,8 +162,9 @@ describe("group headers", () => {
     const w = await mountView();
 
     const scopes = w.findAll(".scope");
-    expect(scopes.map((c) => c.text())).toEqual(["This device", "This device"]);
+    expect(scopes.map((c) => c.text())).toEqual(["This device", "This device", "Your account"]);
     expect(scopes[0]!.attributes("title")).toBe("Applies instantly. Saved on this device.");
+    expect(scopes[2]!.attributes("title")).toBe("Applies instantly. Saved to your account.");
     expect(w.text()).not.toContain("Applies instantly. Saved on this device.");
   });
 });
@@ -167,7 +173,7 @@ describe("modified filter", () => {
   it("is a pill that shows only the changed settings, and toggles back", async () => {
     chat.caveman = true;
     const w = await mountView();
-    expect(rowIds(w)).toHaveLength(4);
+    expect(rowIds(w)).toHaveLength(5);
     expect(w.get(".badge").attributes("aria-pressed")).toBe("false");
 
     await w.get(".badge").trigger("click");
@@ -177,7 +183,7 @@ describe("modified filter", () => {
     expect(w.get(".badge").attributes("aria-pressed")).toBe("true");
 
     await w.get(".badge").trigger("click");
-    expect(rowIds(w)).toHaveLength(4);
+    expect(rowIds(w)).toHaveLength(5);
   });
 
   it("drops the filter once nothing is modified any more", async () => {
@@ -188,7 +194,7 @@ describe("modified filter", () => {
     await row(w, "chat-terse").get("button.reset").trigger("click");
 
     expect(w.find(".badge").exists()).toBe(false);
-    expect(rowIds(w)).toHaveLength(4);
+    expect(rowIds(w)).toHaveLength(5);
   });
 });
 
@@ -229,7 +235,7 @@ describe("search", () => {
     expect(w.text()).toContain('No settings match "zzz"');
     expect(rowIds(w)).toEqual([]);
     await w.get("button.link").trigger("click");
-    expect(rowIds(w)).toHaveLength(4);
+    expect(rowIds(w)).toHaveLength(5);
     expect((search(w).element as HTMLInputElement).value).toBe("");
   });
 
@@ -242,6 +248,6 @@ describe("search", () => {
 
     await search(w).trigger("keydown", { key: "Escape" });
     expect((search(w).element as HTMLInputElement).value).toBe("");
-    expect(rowIds(w)).toHaveLength(4);
+    expect(rowIds(w)).toHaveLength(5);
   });
 });
