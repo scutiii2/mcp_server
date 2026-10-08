@@ -4,6 +4,7 @@ holds all of them (see AuthService.ensure_bootstrap_admin)."""
 CHAT_USE = "chat.use"
 TOOLS_USE = "tools.use"
 ADMIN_MANAGE = "admin.manage"
+EXTENSIONS_MANAGE = "extensions.manage"
 WATCHERS_VIEW = "watchers.view"
 LOGS_VIEW = "logs.view"
 LOGS_ERRORS_VIEW = "logs.errors.view"
@@ -14,7 +15,8 @@ TRAFFIC_VIEW = "traffic.view"
 ALL_PERMISSIONS: dict[str, str] = {
     CHAT_USE: "Chat with ai_agent instances",
     TOOLS_USE: "List and run mcp_server tools",
-    ADMIN_MANAGE: "Manage accounts, roles, invites and mcp_server extensions",
+    ADMIN_MANAGE: "Manage accounts, roles, invites and settings everyone is held to",
+    EXTENSIONS_MANAGE: "Add and remove mcp_server extensions (other MCP servers offered to every client)",
     WATCHERS_VIEW: "See the status of mcp_server's background watchers",
     LOGS_VIEW: "Read the activity log (logins, account and admin changes)",
     LOGS_ERRORS_VIEW: "Read the error log",

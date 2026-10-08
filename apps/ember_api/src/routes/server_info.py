@@ -2,9 +2,9 @@
 capability's page layout) and /api/extensions: mcp_server's command
 registry, capability help, capability switchboard and extensions, passed
 through. Reading needs tools.use (extensions: chat.use or tools.use, since
-the chat picks which ones the agent may use); switching a capability or
-adding/removing an extension changes mcp_server for everyone, so it needs
-admin.manage and is written to the activity log.
+the chat picks which ones the agent may use). Switching a capability needs
+admin.manage; adding/removing an extension needs extensions.manage. Both
+change mcp_server for everyone and are written to the activity log.
 
 The command form (tools.use) also gets a select's options from a path a
 tool's schema declares (`options_url`, with {placeholders} filled from
@@ -32,13 +32,14 @@ from src.services.account_capability_service import forget_extension
 from src.services.agent_gateway import Caller
 from src.services.log_service import LogWriter
 from src.services.mcp_server_info import McpServerInfo, McpServerRefused, McpServerUnavailable, is_server_path
-from src.services.permissions import ADMIN_MANAGE, CHAT_USE, TOOLS_USE
+from src.services.permissions import ADMIN_MANAGE, CHAT_USE, EXTENSIONS_MANAGE, TOOLS_USE
 from src.services.server_tools import ServerTools, ServerUnavailable
 
 router = APIRouter(prefix="/api", tags=["server-info"])
 
 require_tools = require_permission(TOOLS_USE)
 require_admin = require_permission(ADMIN_MANAGE)
+require_extensions_manage = require_permission(EXTENSIONS_MANAGE)
 require_chat_or_tools = require_any_permission(CHAT_USE, TOOLS_USE)
 
 # Capability ids and command names as mcp_server defines them (one Path()
@@ -309,12 +310,12 @@ async def list_extensions(
 @router.post("/extensions", status_code=status.HTTP_201_CREATED)
 async def add_extension(
     body: ExtensionCreate,
-    account: Account = Depends(require_admin),
+    account: Account = Depends(require_extensions_manage),
     info: McpServerInfo = Depends(get_server_info),
     logs: LogWriter = Depends(get_log_writer),
 ) -> ExtensionOut:
     """mcp_server connects to the MCP server at `url` and offers its tools
-    to every client, so admins only. Added even if unreachable right now."""
+    to every client, requiring extensions.manage. Added even if unreachable right now."""
     extension = ExtensionOut(**await _call(info.add_extension(account, body.label, body.url, body.description)))
     await logs.action(account, "mcp.extension_add", f"Added extension '{extension.id}' ({body.url})")
     return extension
@@ -323,7 +324,7 @@ async def add_extension(
 @router.delete("/extensions/{extension_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_extension(
     extension_id: str = Path(pattern=EXTENSION_ID_PATTERN),
-    account: Account = Depends(require_admin),
+    account: Account = Depends(require_extensions_manage),
     info: McpServerInfo = Depends(get_server_info),
     logs: LogWriter = Depends(get_log_writer),
     session: AsyncSession = Depends(get_db_session),

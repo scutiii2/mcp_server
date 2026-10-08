@@ -179,3 +179,42 @@ def test_extensions_listed_for_chat_users_and_managed_by_admins(
     root = admin.get("/api/auth/me").json()["id"]
     logged = [e["message"] for e in admin.get("/api/logs/action", params={"actor": root}).json()]
     assert logged[:2] == ["Removed extension 'notes'", "Added extension 'wiki' (http://wiki.internal/mcp)"]
+
+
+def test_extension_manager_can_add_remove_and_log_without_admin_access(
+    client_factory, email: FakeEmailSender, upstream: FakeUpstream
+) -> None:
+    upstream.handler = mcp_server
+    member = client_factory()
+    member_id = make_member(member, email)
+    admin = as_admin(client_factory())
+    role = role_by_name(admin, "Member")
+    assert admin.delete(f"/api/admin/roles/{role['id']}/permissions/tools.use").status_code == 200
+    assert admin.put(f"/api/admin/roles/{role['id']}/permissions/extensions.manage").status_code == 200
+    login(member, "alice")
+    assert member.get("/api/auth/me").json()["permissions"] == ["chat.use", "extensions.manage"]
+
+    assert member.post("/api/extensions", json={"label": "Wiki", "url": "http://wiki.internal/mcp"}).status_code == 201
+    assert member.delete("/api/extensions/notes").status_code == 204
+    logged = admin.get("/api/logs/action", params={"actor": member_id}).json()
+    assert [entry["message"] for entry in logged[:2]] == [
+        "Removed extension 'notes'", "Added extension 'wiki' (http://wiki.internal/mcp)"
+    ]
+    assert member.patch("/api/capabilities/server_manager", json={"enabled": True}).status_code == 403
+    assert member.get("/api/admin/accounts").status_code == 403
+
+
+def test_admin_manage_without_extensions_manage_cannot_add_or_remove(
+    client_factory, email: FakeEmailSender, upstream: FakeUpstream
+) -> None:
+    upstream.handler = mcp_server
+    member = client_factory()
+    make_member(member, email)
+    admin = as_admin(client_factory())
+    role = role_by_name(admin, "Member")
+    assert admin.put(f"/api/admin/roles/{role['id']}/permissions/admin.manage").status_code == 200
+    login(member, "alice")
+
+    assert member.post("/api/extensions", json={"label": "Wiki", "url": "http://wiki.internal/mcp"}).status_code == 403
+    assert member.delete("/api/extensions/notes").status_code == 403
+    assert upstream.requests == []
