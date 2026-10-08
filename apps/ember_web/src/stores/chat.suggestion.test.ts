@@ -1,3 +1,4 @@
+import { accountCapabilitiesClient } from "../api/AccountCapabilitiesClient";
 import { flushPromises } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +8,9 @@ import { watchTurn, type WatchEnd } from "../services/turnStream";
 import { useAuthStore } from "./auth";
 import { useChatStore } from "./chat";
 
+vi.mock("../api/AccountCapabilitiesClient", () => ({
+  accountCapabilitiesClient: { get: vi.fn(), set: vi.fn() },
+}));
 vi.mock("../api/ChatsClient", () => ({
   chatsClient: {
     list: vi.fn(),
@@ -100,6 +104,7 @@ async function answered() {
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+  vi.mocked(accountCapabilitiesClient.get).mockResolvedValue({ capabilities: [], extensions: [], disabled_tools: [] });
   watch.mockImplementation(
     (_id, _after, onEvent) =>
       new Promise<WatchEnd>((resolve) => {
