@@ -111,7 +111,7 @@ onMounted(load);
             </div>
             <ToggleSwitch
               :checked="c.enabled"
-              :disabled="pending.has(c.name) || c.missing"
+              :disabled="pending.has(c.name) || (c.missing && !c.enabled)"
               :aria-label="`${c.label ?? c.name} online`"
               @change="onToggle(c, $event)"
             />

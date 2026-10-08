@@ -80,4 +80,17 @@ describe("CapabilitiesAdminView", () => {
     const wrapper = await mounted();
     expect((wrapper.find("[data-name=gone] input[type=checkbox]").element as HTMLInputElement).disabled).toBe(true);
   });
+
+  it("can switch off a missing capability that is still online", async () => {
+    vi.mocked(capabilitiesAdminClient.list).mockResolvedValue([cap({ name: "gone", label: "Gone", enabled: true, missing: true })]);
+    const set = vi.spyOn(capabilitiesAdminClient, "setOnline").mockResolvedValue(cap({ name: "gone", enabled: false, missing: true }));
+    const wrapper = await mounted();
+    const toggle = wrapper.find("[data-name=gone] input[type=checkbox]");
+
+    expect(wrapper.find("[data-name=gone]").attributes("data-state")).toBe("missing");
+    expect((toggle.element as HTMLInputElement).disabled).toBe(false);
+    await toggle.setValue(false);
+
+    expect(set).toHaveBeenCalledWith("gone", false);
+  });
 });
