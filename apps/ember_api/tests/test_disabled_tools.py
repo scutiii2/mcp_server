@@ -37,8 +37,8 @@ def test_a_tool_name_must_look_like_one(client: TestClient, agent: FakeAgent) ->
     assert start(client, new_id(), "hi", disabled_tools=["x" * 121]).status_code == 422
 
 
-def test_at_most_500_tools_can_be_switched_off(client: TestClient, agent: FakeAgent) -> None:
+def test_at_most_2000_tools_can_be_switched_off(client: TestClient, agent: FakeAgent) -> None:
     as_admin(client)
 
-    assert start(client, new_id(), "hi", disabled_tools=[f"t{i}" for i in range(501)]).status_code == 422
-    assert start(client, new_id(), "hi", disabled_tools=[f"t{i}" for i in range(500)]).status_code == 202
+    assert start(client, new_id(), "hi", disabled_tools=[f"t{i}" for i in range(2001)]).status_code == 422
+    assert start(client, new_id(), "hi", disabled_tools=[f"t{i}" for i in range(2000)]).status_code == 202
