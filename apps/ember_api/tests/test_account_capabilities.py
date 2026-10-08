@@ -164,3 +164,26 @@ def test_each_change_is_logged(client: TestClient) -> None:
         "Added extension 'notes'",
         "Added capability 'pdf'",
     ]
+
+
+def test_removing_an_extension_clears_it_for_every_account(
+    client_factory, email: FakeEmailSender, upstream: FakeUpstream
+) -> None:
+    def server(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE" and request.url.path == "/extensions/notes":
+            return httpx.Response(204)
+        return mcp_server(request)
+
+    upstream.handler = server
+    alice = client_factory()
+    make_member(alice, email)
+    login(alice, "alice")
+    put(alice, "extension", "notes")
+    put(alice, "extension", "wiki")
+
+    admin = as_admin(client_factory())
+    put(admin, "extension", "notes")
+    assert admin.delete("/api/extensions/notes").status_code == 204
+
+    assert alice.get(URL).json()["extensions"] == ["wiki"]
+    assert admin.get(URL).json()["extensions"] == []

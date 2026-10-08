@@ -23,10 +23,12 @@ from urllib.parse import quote, unquote, urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.deps import get_log_writer, get_server_tools, get_settings, require_any_permission, require_permission
+from src.deps import get_db_session, get_log_writer, get_server_tools, get_settings, require_any_permission, require_permission
 from src.models import Account
+from src.services.account_capability_service import forget_extension
 from src.services.agent_gateway import Caller
 from src.services.log_service import LogWriter
 from src.services.mcp_server_info import McpServerInfo, McpServerRefused, McpServerUnavailable, is_server_path
@@ -324,7 +326,10 @@ async def remove_extension(
     account: Account = Depends(require_admin),
     info: McpServerInfo = Depends(get_server_info),
     logs: LogWriter = Depends(get_log_writer),
+    session: AsyncSession = Depends(get_db_session),
 ) -> Response:
     await _call(info.remove_extension(account, extension_id))
+    # No account keeps an extension that no longer exists.
+    await forget_extension(session, extension_id)
     await logs.action(account, "mcp.extension_remove", f"Removed extension '{extension_id}'")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
