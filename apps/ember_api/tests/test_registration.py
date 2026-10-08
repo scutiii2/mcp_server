@@ -7,6 +7,7 @@ from sqlalchemy import update
 
 from src.db import utcnow
 from src.models import InviteCode
+from src.services.permissions import DEFAULT_ROLE_PERMISSIONS
 from tests.conftest import ADMIN_PASSWORD, ADMIN_USERNAME, FakeEmailSender
 
 
@@ -53,7 +54,7 @@ def test_register_logs_in_unverified_member_and_emails_code(client: TestClient, 
     assert body["verification_email_sent"] is True
     assert body["account"]["email_verified"] is False
     assert body["account"]["roles"] == ["Member"]
-    assert body["account"]["permissions"] == ["chat.use", "tools.use"]
+    assert body["account"]["permissions"] == sorted(DEFAULT_ROLE_PERMISSIONS)
     assert client.get("/api/auth/me").json()["username"] == "alice"  # session started
     assert email.sent[-1][:2] == ("verify", "alice@example.com")
 
@@ -131,7 +132,7 @@ def test_permissions_are_inactive_until_email_verified(client: TestClient, email
     assert verified.status_code == 200
     assert verified.json()["email_verified"] is True
     # Verified now, but a Member still lacks admin.manage.
-    assert client.get("/api/admin/invites").json()["detail"] == "Missing permission: admin.manage"
+    assert client.get("/api/admin/invites").json()["detail"] == "Missing permission: invites.manage"
 
 
 def test_wrong_verification_code_is_rejected(client: TestClient) -> None:

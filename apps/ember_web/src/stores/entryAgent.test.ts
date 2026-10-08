@@ -13,7 +13,7 @@ vi.mock("../api/AiAgentClient", () => ({ AiAgentClient: vi.fn(function () { retu
 beforeEach(() => {
   setActivePinia(createPinia());
   useAuthStore().account = {
-    id: 1, username: "root", email: "r@example.com", email_verified: true, roles: [], permissions: ["chat.use"],
+    id: 1, username: "root", email: "r@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
   };
   request.mockReset();
   status.mockReset();

@@ -33,7 +33,7 @@ vi.mock("../services/turnStream", () => ({ watchTurn: vi.fn() }));
 const client = vi.mocked(chatsClient);
 const watch = vi.mocked(watchTurn);
 
-const ACCOUNT = { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+const ACCOUNT = { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 const ASK_KEY = "ember_web.askBeforeTools.1";
 const ALLOWED_KEY = "ember_web.allowedTools.1";
 

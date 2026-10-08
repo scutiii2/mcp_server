@@ -24,7 +24,7 @@ const SAVED: UserExtension = {
   error: null,
   tools: ["search"],
 };
-const ACCOUNT: Account = { id: 1, username: "lex", email: "l@e.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+const ACCOUNT: Account = { id: 1, username: "lex", email: "l@e.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 
 function open(extension: UserExtension | null = null) {
   const pinia = createPinia();

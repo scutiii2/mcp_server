@@ -21,7 +21,7 @@ let wrapper: VueWrapper | null = null;
 
 function setup() {
   setActivePinia(createPinia());
-  useAuthStore().account = { id: 1, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+  useAuthStore().account = { id: 1, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
   wrapper = mount(FolderDialogs, { attachTo: document.body });
   return wrapper.vm as unknown as Exposed;
 }

@@ -1,5 +1,7 @@
+import { createPinia, setActivePinia } from "pinia";
+import { useAuthStore } from "../stores/auth";
 import { flushPromises, mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuiFormSectionSpec, GuiTabsSectionSpec } from "../api/CapabilityPagesClient";
 import type { ToolInfo, ToolRunResult } from "../api/types";
 import GuiTabsSection from "./GuiTabsSection.vue";
@@ -96,4 +98,10 @@ describe("GuiTabsSection", () => {
     await flushPromises();
     expect(w.text()).toContain("The tool tool_a is not available right now.");
   });
+});
+
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "alice", email: "a@example.com", email_verified: true, roles: [], permissions: ["tools.execute"] };
 });

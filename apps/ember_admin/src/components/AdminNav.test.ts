@@ -23,7 +23,7 @@ async function show(permissions: string[] | null) {
 }
 
 it("names icon-only links and marks the current page", async () => {
-  const w = await show(["admin.manage"]);
+  const w = await show(["capabilities.manage", "extensions.manage", "accounts.view"]);
   const links = w.findAll("nav[aria-label='Admin sections'] a");
   expect(links.map(a => a.attributes("aria-label"))).toEqual(["Capabilities", "Extensions", "Admin"]);
   expect(links.every(a => a.text() === "" && a.find("svg").exists())).toBe(true);

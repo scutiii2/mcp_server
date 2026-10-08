@@ -28,7 +28,7 @@ export type UserExtensionPatch = Partial<UserExtensionInput> & { enabled?: boole
 
 const enc = encodeURIComponent;
 
-/** ember_api's /api/user-extensions routes (chat.use, own rows only). */
+/** ember_api's /api/user-extensions routes (chat.use; mutations also need extensions.personal.manage, own rows only). */
 export const userExtensionsClient = {
   list: () => apiRequest<UserExtension[]>("GET", "/api/user-extensions"),
   create: (input: UserExtensionInput) => apiRequest<UserExtension>("POST", "/api/user-extensions", input),

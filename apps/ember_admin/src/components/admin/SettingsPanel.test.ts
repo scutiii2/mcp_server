@@ -95,13 +95,13 @@ describe("SettingsPanel", () => {
 
   it("shows the error and keeps the draft when saving fails", async () => {
     const wrapper = await panel(false);
-    client.set.mockRejectedValue(new ApiError(403, "Missing permission: admin.manage"));
+    client.set.mockRejectedValue(new ApiError(403, "Missing permission: roles.manage"));
     await box(wrapper).setValue(true);
 
     await wrapper.get(".save-bar .primary").trigger("click");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Missing permission: admin.manage");
+    expect(wrapper.text()).toContain("Missing permission: roles.manage");
     expect(wrapper.find(".save-bar").exists()).toBe(true);
     expect(wrapper.find(".chip.saved").exists()).toBe(false);
   });

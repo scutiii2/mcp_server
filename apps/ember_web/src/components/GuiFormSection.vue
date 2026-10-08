@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onScopeDispose, ref } from "vue";
 import type { GuiFormSectionSpec } from "../api/CapabilityPagesClient";
 import type { ToolInfo, ToolRunResult } from "../api/types";
+import { useAuthStore } from "../stores/auth";
 import { useCountdown } from "../composables/useCountdown";
 import { errorMessage } from "../utils/errors";
 import { applyFieldOverrides, resultValue } from "../utils/guiPage";
@@ -15,6 +16,7 @@ import ToolRunForm from "./ToolRunForm.vue";
  * opens and again (after a short wait) whenever a control changes. `embedded`
  * (inside tabs) drops the card, title and description and shows the result
  * above the controls. State is memory only. */
+const auth = useAuthStore();
 const props = defineProps<{
   section: GuiFormSectionSpec;
   tool: ToolInfo;
@@ -55,6 +57,10 @@ onScopeDispose(() => {
 const countdown = useCountdown(() => void run(lastArgs));
 
 async function run(args: Record<string, unknown>): Promise<void> {
+  if (!auth.hasPermission("tools.execute")) {
+    countdown.stop();
+    return;
+  }
   lastArgs = args;
   ran = true;
   clearDebounce();
@@ -126,7 +132,7 @@ onActivated(() => {
     <p v-if="tool.description && !embedded" class="muted">{{ tool.description }}</p>
     <ToolRunForm :schema="schema" :running="running" :submit-label="section.submit" :live="live" @run="onFormRun" />
     <p v-if="error" class="error">{{ error }}</p>
-    <GuiResult v-if="result" class="result" :spec="section.result" :result="result" :can-regenerate="live" :running="running" @again="again" />
+    <GuiResult v-if="result" class="result" :spec="section.result" :result="result" :can-regenerate="live && auth.hasPermission('tools.execute')" :running="running" @again="again" />
     <div v-if="countdown.running.value" class="refresh">
       <CountdownRing :remaining="countdown.remaining.value" :total="countdownTotal" />
       <span class="muted">New code in {{ countdown.remaining.value }} s</span>

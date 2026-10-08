@@ -18,12 +18,12 @@ from src.models import Account
 from src.routes.server_info import get_server_info
 from src.services.log_service import LogWriter
 from src.services.mcp_server_info import McpServerInfo, McpServerRefused, McpServerUnavailable
-from src.services.permissions import CHAT_USE
+from src.services.permissions import FILES_UPLOAD
 from src.services.text_extraction import MAX_FILE_BYTES, ExtractionError, extract_text_async
 
 router = APIRouter(prefix="/api/attachments", tags=["attachments"])
 
-require_chat = require_permission(CHAT_USE)
+require_chat = require_permission(FILES_UPLOAD)
 
 # base64 is 4 characters per 3 bytes.
 _MAX_BASE64 = (MAX_FILE_BYTES + 2) // 3 * 4

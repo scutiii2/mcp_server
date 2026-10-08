@@ -27,7 +27,7 @@ export interface SharedChatView {
 /** Days a link works for; null: forever. The server accepts only these. */
 export type ShareExpiry = 1 | 7 | 30 | null;
 
-/** ember_api's share-link routes. Making, listing and revoking need chat.use;
+/** ember_api's share-link routes. Making needs chat.use + chat.share; listing and revoking need chat.use;
  * `read` is public (no login), so it may be called by anyone. */
 export const sharesClient = {
   create: (chatId: string, expiresInDays: ShareExpiry) =>

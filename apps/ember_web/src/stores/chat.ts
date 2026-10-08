@@ -187,7 +187,7 @@ export const useChatStore = defineStore("chat", () => {
   const accountCaps = useAccountCapabilitiesStore();
   const enabledExtensions = computed(() => accountCaps.extensions);
   const enabledCapabilities = computed(() => accountCaps.capabilities);
-  // Slash commands (tools.use): the runner caches the command list and tool
+  // Slash commands (tools.view): the runner caches the command list and tool
   // schemas, so it's replaced per account.
   let commandRunner = new SlashCommandRunner();
   const commands = ref<CommandInfo[]>([]);
@@ -620,10 +620,10 @@ export const useChatStore = defineStore("chat", () => {
     return commandRunner.schemaFor(command);
   }
 
-  /** For the input's suggestions; quietly empty without tools.use or when
+  /** For the input's suggestions; quietly empty without tools.view or when
    * mcp_server is down (typing a command then shows the error). */
   async function loadCommands(): Promise<void> {
-    if (!auth.hasPermission("tools.use")) return;
+    if (!auth.hasPermission("tools.view")) return;
     const started = generation;
     try {
       const list = await commandRunner.list(enabledExtensions.value, enabledCapabilities.value);
@@ -642,8 +642,8 @@ export const useChatStore = defineStore("chat", () => {
   /** "/..." runs an mcp_server tool directly (no AI); the call and its
    * result are added to the chat. */
   async function runCommand(text: string): Promise<void> {
-    if (!auth.hasPermission("tools.use")) {
-      sendError.value = "Slash commands need the tools.use permission.";
+    if (!auth.hasPermission("tools.execute")) {
+      sendError.value = "Slash commands need the tools.execute permission.";
       return;
     }
     working.value = "Running command ...";

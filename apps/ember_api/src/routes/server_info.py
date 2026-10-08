@@ -1,15 +1,15 @@
 """/api/commands, /api/capabilities (and /api/capabilities/{name}/gui, a
 capability's page layout) and /api/extensions: mcp_server's command
 registry, capability help, capability switchboard and extensions, passed
-through. Reading needs tools.use (extensions: chat.use or tools.use, since
+through. Reading needs tools.view (extensions: chat.use or tools.view, since
 the chat picks which ones the agent may use). Switching a capability (going
 online reloads its code from disk) and refreshing the capability list
 (POST /api/capabilities/refresh, which finds folders added while mcp_server
-runs) need admin.manage; adding/removing an extension needs
+runs) need capabilities.manage; adding/removing an extension needs
 extensions.manage. All change mcp_server for everyone and are written to the
 activity log.
 
-The command form (tools.use) also gets a select's options from a path a
+The command form (tools.view) also gets a select's options from a path a
 tool's schema declares (`options_url`, with {placeholders} filled from
 `arg.<param>`), and can store a dropped file on mcp_server for a file-path
 parameter (/api/uploads)."""
@@ -35,15 +35,17 @@ from src.services.account_capability_service import forget_extension
 from src.services.agent_gateway import Caller
 from src.services.log_service import LogWriter
 from src.services.mcp_server_info import McpServerInfo, McpServerRefused, McpServerUnavailable, is_server_path
-from src.services.permissions import ADMIN_MANAGE, CHAT_USE, EXTENSIONS_MANAGE, TOOLS_USE
+from src.services.permissions import (CHAT_USE, TOOLS_VIEW, CAPABILITIES_MANAGE, EXTENSIONS_MANAGE, FILES_UPLOAD, FILES_DOWNLOAD)
 from src.services.server_tools import ServerTools, ServerUnavailable
 
 router = APIRouter(prefix="/api", tags=["server-info"])
 
-require_tools = require_permission(TOOLS_USE)
-require_admin = require_permission(ADMIN_MANAGE)
+require_tools = require_any_permission(TOOLS_VIEW, CAPABILITIES_MANAGE)
+require_upload = require_permission(FILES_UPLOAD)
+require_download = require_permission(FILES_DOWNLOAD)
+require_admin = require_permission(CAPABILITIES_MANAGE)
 require_extensions_manage = require_permission(EXTENSIONS_MANAGE)
-require_chat_or_tools = require_any_permission(CHAT_USE, TOOLS_USE)
+require_chat_or_tools = require_any_permission(CHAT_USE, TOOLS_VIEW, EXTENSIONS_MANAGE)
 
 # Capability ids and command names as mcp_server defines them (one Path()
 # per route: FastAPI binds a shared instance to the first parameter name).
@@ -214,7 +216,7 @@ async def command_options(
 @router.post("/uploads", status_code=status.HTTP_201_CREATED)
 async def upload_file(
     body: UploadIn,
-    account: Account = Depends(require_tools),
+    account: Account = Depends(require_upload),
     info: McpServerInfo = Depends(get_server_info),
     logs: LogWriter = Depends(get_log_writer),
 ) -> UploadOut:
@@ -251,7 +253,7 @@ def _download_name(path: str, upstream_headers: Any) -> str:
 @router.get("/server/download")
 async def download_file(
     path: str = Query(pattern=DOWNLOAD_PATH_PATTERN),
-    account: Account = Depends(require_tools),
+    account: Account = Depends(require_download),
     info: McpServerInfo = Depends(get_server_info),
 ) -> StreamingResponse:
     """A file a tool offered with a `[[DOWNLOAD ...]]` marker, streamed from
@@ -282,7 +284,7 @@ async def list_capabilities(
     account: Account = Depends(require_tools), info: McpServerInfo = Depends(get_server_info)
 ) -> list[CapabilityOut]:
     # A load error is a traceback with server paths and maybe config values: admins only.
-    is_admin = ADMIN_MANAGE in account.permission_names
+    is_admin = CAPABILITIES_MANAGE in account.permission_names
     rows = [CapabilityOut(**r) for r in await _call(info.capabilities(account)) if isinstance(r, dict)]
     if not is_admin:
         for row in rows:

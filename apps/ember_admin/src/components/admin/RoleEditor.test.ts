@@ -1,12 +1,14 @@
+import { useAuthStore } from "../../stores/auth";
+import { createPinia, setActivePinia } from "pinia";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { PermissionInfo, Role } from "../../api/AdminClient";
 import RoleEditor from "./RoleEditor.vue";
 
 const PERMISSIONS: PermissionInfo[] = [
   { name: "chat.use", description: "Chat with the agent" },
-  { name: "tools.use", description: "Run mcp_server tools" },
-  { name: "admin.manage", description: null },
+  { name: "tools.view", description: "Run mcp_server tools" },
+  { name: "roles.manage", description: null },
 ];
 
 const MEMBER: Role = {
@@ -14,7 +16,7 @@ const MEMBER: Role = {
   name: "Member",
   description: "Default role",
   is_protected: false,
-  permissions: ["chat.use", "tools.use"],
+  permissions: ["chat.use", "tools.view"],
   account_count: 2,
 };
 
@@ -23,7 +25,7 @@ const ADMIN: Role = {
   name: "Administrator",
   description: null,
   is_protected: true,
-  permissions: ["chat.use", "tools.use", "admin.manage"],
+  permissions: ["chat.use", "tools.view", "roles.manage"],
   account_count: 1,
 };
 
@@ -60,18 +62,18 @@ describe("RoleEditor", () => {
 
     expect(wrapper.findAll('input[role="switch"]')).toHaveLength(3);
     expect((switchFor(wrapper, "chat.use").element as HTMLInputElement).checked).toBe(true);
-    expect((switchFor(wrapper, "admin.manage").element as HTMLInputElement).checked).toBe(false);
+    expect((switchFor(wrapper, "roles.manage").element as HTMLInputElement).checked).toBe(false);
     expect(wrapper.text()).toContain("Run mcp_server tools");
   });
 
   it("asks to grant a permission the role lacks, and to revoke one it holds", async () => {
     const wrapper = editor();
 
-    await switchFor(wrapper, "admin.manage").trigger("click");
+    await switchFor(wrapper, "roles.manage").trigger("click");
     await switchFor(wrapper, "chat.use").trigger("click");
 
     expect(wrapper.emitted("togglePermission")).toEqual([
-      ["admin.manage", true],
+      ["roles.manage", true],
       ["chat.use", false],
     ]);
   });
@@ -151,4 +153,17 @@ describe("RoleEditor", () => {
       "That would remove your own admin access",
     );
   });
+});
+
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["roles.manage", "chat.use", "tools.view"] };
+});
+
+it("shows roles read-only without roles.manage", () => {
+  useAuthStore().account!.permissions = ["roles.view"];
+  const wrapper = editor();
+  expect(wrapper.findAll("input[type=checkbox]").every((input) => (input.element as HTMLInputElement).disabled)).toBe(true);
+  expect(wrapper.find(".danger-zone").exists()).toBe(false);
 });

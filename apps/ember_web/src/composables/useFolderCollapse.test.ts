@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useAuthStore } from "../stores/auth";
 import { useFolderCollapse } from "./useFolderCollapse";
 
-const account = (id: number) => ({ id, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use"] });
+const account = (id: number) => ({ id, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
 
 beforeEach(() => {
   localStorage.clear();

@@ -10,7 +10,7 @@ vi.mock("../api/NavPreferencesClient", () => ({
   navPreferencesClient: { get: vi.fn(), save: vi.fn(), reset: vi.fn() },
 }));
 
-const ACCOUNT: Account = { id: 1, username: "lex", email: "l@e.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+const ACCOUNT: Account = { id: 1, username: "lex", email: "l@e.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 // chat.use opens: Chat, Capabilities, Agents, Usage, Settings (in that default order).
 const DEFAULT_ORDER = ["Chat", "Capabilities", "Agents", "Usage", "Settings"];
 const EMPTY: NavPrefs = { order: [], pinned: [], hidden: [] };

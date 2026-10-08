@@ -50,11 +50,11 @@ export interface PermissionInfo {
 
 /** Counts for the Admin overview tiles. */
 export interface AdminSummary {
-  accounts: number;
-  unverified: number;
-  disabled: number;
-  open_invites: number;
-  roles: number;
+  accounts: number | null;
+  unverified: number | null;
+  disabled: number | null;
+  open_invites: number | null;
+  roles: number | null;
 }
 
 export type AccountStatus = "all" | "unverified" | "disabled";
@@ -79,7 +79,7 @@ export interface RoleChanges {
 
 const enc = encodeURIComponent;
 
-/** ember_api's /api/admin routes (admin.manage). */
+/** ember_api's /api/admin routes (separate administrative permissions). */
 export const adminClient = {
   listInvites: () => apiRequest<Invite[]>("GET", "/api/admin/invites"),
   createInvite: (invitee_email: string | null, delivery_method: "manual" | "email") =>

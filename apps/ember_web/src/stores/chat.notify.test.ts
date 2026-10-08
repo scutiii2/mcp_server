@@ -52,7 +52,7 @@ const ACCOUNT = {
   email: "root@example.com",
   email_verified: true,
   roles: [],
-  permissions: ["chat.use", "tools.use"],
+  permissions: ["chat.use", "tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
 };
 const CHIME_KEY = "ember_web.chime.1";
 
@@ -408,7 +408,7 @@ describe("a slash command", () => {
 
     await chat.send("/files list");
 
-    expect(chat.sendError).toContain("tools.use");
+    expect(chat.sendError).toContain("tools.execute");
     expect(chat.clockStart).toBeNull();
     expect(runCommand).not.toHaveBeenCalled();
   });

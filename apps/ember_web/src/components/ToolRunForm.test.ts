@@ -1,5 +1,7 @@
+import { useAuthStore } from "../stores/auth";
+import { createPinia, setActivePinia } from "pinia";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JsonSchema } from "../api/types";
 import ToolRunForm from "./ToolRunForm.vue";
 
@@ -83,4 +85,15 @@ describe("ToolRunForm live mode", () => {
     await w.get("input[type=range]").trigger("change");
     expect(w.emitted("run")).toBeUndefined();
   });
+});
+
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["tools.execute", "files.upload"] };
+});
+
+it("does not run a live form without tools.execute", () => {
+  useAuthStore().account!.permissions = [];
+  expect(mountForm({ live: true }).emitted("run")).toBeUndefined();
 });

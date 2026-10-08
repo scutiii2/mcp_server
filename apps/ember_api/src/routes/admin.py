@@ -1,4 +1,4 @@
-"""/api/admin: accounts, roles, permissions and invites (admin.manage only)."""
+"""/api/admin: accounts, roles, permissions and invites (separate administrative permissions)."""
 
 from __future__ import annotations
 
@@ -17,20 +17,34 @@ from src.deps import (
     get_otp_service,
     get_settings_service,
     require_permission,
+    require_any_permission,
+    get_settings,
 )
+from src.config import Settings
 from src.models import Account, InviteCode, Permission, Role
-from src.services.admin_service import AccountStatus, AdminError, AdminService, NotFoundError
+from src.services.admin_service import AccountStatus, AdminError, AdminService, DelegationError, NotFoundError
 from src.services.email_service import EmailDeliveryError, EmailSender
 from src.services.log_service import LogWriter
 from src.services.otp_service import OtpService
-from src.services.permissions import ADMIN_MANAGE, ADMIN_ROLE
+from src.services.permissions import (
+    ADMIN_ROLE, ALL_PERMISSIONS, ADMIN_PERMISSIONS, ACCOUNTS_VIEW, ACCOUNTS_MANAGE,
+    ACCOUNTS_DELETE, ROLES_VIEW, ROLES_MANAGE, ROLES_ASSIGN, INVITES_MANAGE, SETTINGS_MANAGE,
+)
 from src.services.settings_service import BOOLEAN_SETTINGS, SettingsService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-require_admin = require_permission(ADMIN_MANAGE)
+require_accounts_delete = require_permission(ACCOUNTS_DELETE)
+require_accounts_manage = require_permission(ACCOUNTS_MANAGE)
+require_accounts_view = require_any_permission(ACCOUNTS_VIEW, ACCOUNTS_MANAGE, ACCOUNTS_DELETE, ROLES_ASSIGN)
+require_invites_manage = require_permission(INVITES_MANAGE)
+require_roles_assign = require_permission(ROLES_ASSIGN)
+require_roles_manage = require_permission(ROLES_MANAGE)
+require_roles_view = require_any_permission(ROLES_VIEW, ROLES_MANAGE, ROLES_ASSIGN)
+require_settings_manage = require_permission(SETTINGS_MANAGE)
+require_overview = require_any_permission(*ADMIN_PERMISSIONS)
 
 
 def get_admin_service(session: AsyncSession = Depends(get_db_session)) -> AdminService:
@@ -38,6 +52,8 @@ def get_admin_service(session: AsyncSession = Depends(get_db_session)) -> AdminS
 
 
 def _http_error(error: AdminError) -> HTTPException:
+    if isinstance(error, DelegationError):
+        return HTTPException(status.HTTP_403_FORBIDDEN, str(error))
     code = status.HTTP_404_NOT_FOUND if isinstance(error, NotFoundError) else status.HTTP_409_CONFLICT
     return HTTPException(code, str(error))
 
@@ -91,7 +107,7 @@ class RoleOut(BaseModel):
             name=role.name,
             description=role.description,
             is_protected=role.name == ADMIN_ROLE,
-            permissions=sorted(p.name for p in role.permissions),
+            permissions=sorted(p.name for p in role.permissions if p.name in ALL_PERMISSIONS),
             account_count=len(role.accounts),
         )
 
@@ -106,11 +122,11 @@ class PermissionOut(BaseModel):
 
 
 class AdminSummaryOut(BaseModel):
-    accounts: int
-    unverified: int
-    disabled: int
-    open_invites: int
-    roles: int
+    accounts: int | None
+    unverified: int | None
+    disabled: int | None
+    open_invites: int | None
+    roles: int | None
 
 
 class EmailSentOut(BaseModel):
@@ -181,7 +197,7 @@ class SettingIn(BaseModel):
 async def change_setting(
     name: str,
     body: SettingIn,
-    account: Account = Depends(require_admin),
+    account: Account = Depends(require_settings_manage),
     app_settings: SettingsService = Depends(get_settings_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> dict[str, bool]:
@@ -195,18 +211,26 @@ async def change_setting(
 
 @router.get("/summary")
 async def summary(
-    _admin: Account = Depends(require_admin),
+    _admin: Account = Depends(require_overview),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> AdminSummaryOut:
     """Counts for the Admin overview tiles."""
-    return AdminSummaryOut(**await admin_service.summary())
+    counts = await admin_service.summary()
+    for key in ("accounts", "unverified", "disabled"):
+        if not _admin.permission_names.intersection({ACCOUNTS_VIEW, ACCOUNTS_MANAGE, ACCOUNTS_DELETE, ROLES_ASSIGN}):
+            counts[key] = None
+    if INVITES_MANAGE not in _admin.permission_names:
+        counts["open_invites"] = None
+    if not _admin.permission_names.intersection({ROLES_VIEW, ROLES_MANAGE, ROLES_ASSIGN}):
+        counts["roles"] = None
+    return AdminSummaryOut(**counts)
 
 
 @router.get("/accounts")
 async def list_accounts(
     q: str = Query(default="", max_length=120),
     status: AccountStatus = "all",
-    _admin: Account = Depends(require_admin),
+    _admin: Account = Depends(require_accounts_view),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> list[AdminAccountOut]:
     """All accounts, or those matching `q` (username/email substring) and `status`."""
@@ -217,7 +241,7 @@ async def list_accounts(
 async def update_account(
     account_id: int,
     body: UpdateAccountRequest,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_accounts_manage),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> AdminAccountOut:
@@ -239,7 +263,7 @@ async def update_account(
 @router.delete("/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
     account_id: int,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_accounts_delete),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> Response:
@@ -257,13 +281,13 @@ async def delete_account(
 async def assign_role(
     account_id: int,
     role_id: int,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_roles_assign),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> AdminAccountOut:
     try:
         role = await admin_service.role(role_id)
-        account = await admin_service.assign_role(await admin_service.account(account_id), role)
+        account = await admin_service.assign_role(await admin_service.account(account_id), role, actor=admin)
     except AdminError as error:
         raise _http_error(error) from error
     await logs.action(admin, "admin.assign_role", f"Gave role '{role.name}' to '{account.username}'")
@@ -274,7 +298,7 @@ async def assign_role(
 async def remove_role(
     account_id: int,
     role_id: int,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_roles_assign),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> AdminAccountOut:
@@ -290,7 +314,7 @@ async def remove_role(
 @router.post("/accounts/{account_id}/send-verification")
 async def send_verification(
     account_id: int,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_accounts_manage),
     admin_service: AdminService = Depends(get_admin_service),
     otp: OtpService = Depends(get_otp_service),
     email: EmailSender = Depends(get_email_sender),
@@ -317,7 +341,7 @@ async def send_verification(
 
 @router.get("/roles")
 async def list_roles(
-    _admin: Account = Depends(require_admin),
+    _admin: Account = Depends(require_roles_view),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> list[RoleOut]:
     return [RoleOut.of(r) for r in await admin_service.roles()]
@@ -326,7 +350,7 @@ async def list_roles(
 @router.post("/roles", status_code=status.HTTP_201_CREATED)
 async def create_role(
     body: CreateRoleRequest,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_roles_manage),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
@@ -345,7 +369,7 @@ async def create_role(
 async def update_role(
     role_id: int,
     body: UpdateRoleRequest,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_roles_manage),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
@@ -355,6 +379,7 @@ async def update_role(
     try:
         role = await admin_service.update_role(
             await admin_service.role(role_id),
+            actor=admin,
             name=name,
             description=body.description.strip() if body.description is not None else None,
         )
@@ -367,7 +392,7 @@ async def update_role(
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_role(
     role_id: int,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_roles_manage),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> Response:
@@ -385,12 +410,12 @@ async def delete_role(
 async def grant_permission(
     role_id: int,
     permission_name: str,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_roles_manage),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
     try:
-        role = await admin_service.grant_permission(await admin_service.role(role_id), permission_name)
+        role = await admin_service.grant_permission(await admin_service.role(role_id), permission_name, actor=admin)
     except AdminError as error:
         raise _http_error(error) from error
     await logs.action(admin, "admin.grant_permission", f"Gave '{permission_name}' to role '{role.name}'")
@@ -401,7 +426,7 @@ async def grant_permission(
 async def revoke_permission(
     role_id: int,
     permission_name: str,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_roles_manage),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> RoleOut:
@@ -415,7 +440,7 @@ async def revoke_permission(
 
 @router.get("/permissions")
 async def list_permissions(
-    _admin: Account = Depends(require_admin),
+    _admin: Account = Depends(require_roles_view),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> list[PermissionOut]:
     return [PermissionOut.of(p) for p in await admin_service.permissions()]
@@ -427,13 +452,22 @@ async def list_permissions(
 @router.post("/invites", status_code=status.HTTP_201_CREATED)
 async def create_invite(
     body: CreateInviteRequest,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_invites_manage),
     otp: OtpService = Depends(get_otp_service),
     email: EmailSender = Depends(get_email_sender),
     logs: LogWriter = Depends(get_log_writer),
+    settings: Settings = Depends(get_settings),
+    admin_service: AdminService = Depends(get_admin_service),
 ) -> CreatedInviteOut:
     if body.delivery_method == "email" and body.invitee_email is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invitee_email is required for email delivery")
+
+    default = next((r for r in await admin_service.roles() if r.name == settings.default_role), None)
+    if default is not None:
+        try:
+            admin_service.ensure_can_delegate(admin, default)
+        except AdminError as error:
+            raise _http_error(error) from error
 
     invitee = str(body.invitee_email) if body.invitee_email else None
     invite, code = await otp.create_invite(admin, invitee, body.delivery_method)
@@ -458,7 +492,7 @@ async def create_invite(
 
 @router.get("/invites")
 async def list_invites(
-    _admin: Account = Depends(require_admin),
+    _admin: Account = Depends(require_invites_manage),
     otp: OtpService = Depends(get_otp_service),
 ) -> list[InviteOut]:
     """Unused, unexpired invites. Codes are never listed - only hashes exist."""
@@ -468,7 +502,7 @@ async def list_invites(
 @router.delete("/invites/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_invite(
     invite_id: int,
-    admin: Account = Depends(require_admin),
+    admin: Account = Depends(require_invites_manage),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
 ) -> Response:

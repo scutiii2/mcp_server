@@ -1,5 +1,7 @@
+import { useAuthStore } from "../stores/auth";
+import { createPinia, setActivePinia } from "pinia";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import DownloadCards from "./DownloadCards.vue";
 
 const card = (extra = {}) => ({ filename: "report.csv", bytes: 2048, href: "/api/server/download?path=x", label: "EXPORT", ...extra });
@@ -45,4 +47,16 @@ describe("DownloadCards", () => {
     expect(wrapper.find("img").exists()).toBe(false);
     expect(wrapper.find("a.file").text()).toContain("<img src=x onerror=alert(1)>");
   });
+});
+
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["files.download"] };
+});
+
+it("does not offer server downloads without files.download", () => {
+  useAuthStore().account!.permissions = [];
+  const wrapper = mount(DownloadCards, { props: { downloads: [card()] } });
+  expect(wrapper.find("a.file").exists()).toBe(false);
 });

@@ -26,7 +26,7 @@ const ext = (id: string, extra: Partial<UserExtension> = {}): UserExtension => (
   ...extra,
 });
 
-const ACCOUNT: Account = { id: 1, username: "lex", email: "l@e.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+const ACCOUNT: Account = { id: 1, username: "lex", email: "l@e.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 
 function setup(account: Account | null = ACCOUNT) {
   setActivePinia(createPinia());
@@ -53,7 +53,7 @@ describe("userExtensions store", () => {
 
   it("asks for nothing while logged out or without chat.use", async () => {
     setup(null);
-    setup({ ...ACCOUNT, permissions: ["tools.use"] });
+    setup({ ...ACCOUNT, permissions: ["tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
     await flushPromises();
 
     expect(client.list).not.toHaveBeenCalled();

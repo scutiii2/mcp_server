@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import { useAuthStore } from "../stores/auth";
 import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
@@ -13,7 +14,7 @@ import { fieldsFromSchema, type ToolField } from "../utils/toolSchema";
 import TemplatePicker from "./TemplatePicker.vue";
 
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
-// suggest while "/..." is being typed (empty without tools.use).
+// suggest while "/..." is being typed (empty without tools.view).
 // history: the questions asked in this chat, oldest first. ↑ in an empty box
 // brings them back one at a time, ↓ goes forward again.
 // templates: the account's saved prompts, for the picker button and for
@@ -54,6 +55,7 @@ const flights = ref(0);
 // starts only from an empty box, so ↓ past the newest returns to empty.
 const recallIndex = ref<number | null>(null);
 const textarea = ref<HTMLTextAreaElement | null>(null);
+const auth = useAuthStore();
 const fileInput = ref<HTMLInputElement | null>(null);
 const dragging = ref(false);
 
@@ -89,6 +91,7 @@ const placeholder = computed(() => {
 
 
 async function addFiles(files: FileList | File[] | null | undefined): Promise<void> {
+  if (!auth.hasPermission("files.upload")) return;
   for (const file of Array.from(files ?? [])) {
     const entry: PendingAttachment = {
       id: nextAttachmentId++,
@@ -478,7 +481,7 @@ function onKeydown(event: KeyboardEvent): void {
         @paste="onPaste"
       />
       <div class="tools">
-        <button type="button" class="attach" title="Attach files (text, code, PDF, Word, Excel)" @click="fileInput?.click()">
+        <button v-if="auth.hasPermission('files.upload')" type="button" class="attach" title="Attach files (text, code, PDF, Word, Excel)" @click="fileInput?.click()">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <path
               d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"

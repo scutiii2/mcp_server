@@ -1,6 +1,6 @@
 """ember_api's own MCP client for mcp_server, for pages that gather data
 from several tools at once (the Watchers page), so the browser doesn't
-need tools.use and the result is one permission-checked request.
+need tools.view and the result is one permission-checked request.
 
 The Protocol is what routes depend on; tests swap in a fake.
 """

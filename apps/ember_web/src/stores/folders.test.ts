@@ -17,7 +17,7 @@ vi.mock("./chat", () => ({ useChatStore: vi.fn() }));
 const client = vi.mocked(foldersClient);
 const forgetFolder = vi.fn();
 
-const ACCOUNT = { id: 1, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+const ACCOUNT = { id: 1, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 
 const folder = (id: number, position = id, name = `F${id}`): ChatFolder => ({ id, name, position, chat_count: 0 });
 

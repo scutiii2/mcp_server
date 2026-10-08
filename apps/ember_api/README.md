@@ -128,23 +128,23 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `PATCH` | `/api/account/preferences` | logged in | `{prompt_suggestions: bool}`: whether chat suggests the next prompt. Returns the account. |
 | `GET` | `/api/account/devices` | cookie | Devices this account logged in from, most recent first: `[{id, label, user_agent, ip_subnet, first_seen_at, last_seen_at, current}]`. |
 | `DELETE` | `/api/account/devices/{id}` | cookie | `204`; its next login counts as a new device again. `404` unknown or another account's. |
-| `POST` | `/api/admin/invites` | `admin.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
-| `PUT` | `/api/admin/settings/{name}` | `admin.manage` | `{value: true\|false}` -> `{name: value}`. Switches a setting everyone is held to; the only one is `force_tool_approval`. `404` unknown name, `422` for a non-boolean value. Logged as `admin.setting` with the old and new value. |
+| `POST` | `/api/admin/invites` | `invites.manage` | `{invitee_email?, delivery_method: "manual"\|"email"}` -> `201 {invite, code, email_sent, email_error}`. The code is shown only here. |
+| `PUT` | `/api/admin/settings/{name}` | `settings.manage` | `{value: true\|false}` -> `{name: value}`. Switches a setting everyone is held to; the only one is `force_tool_approval`. `404` unknown name, `422` for a non-boolean value. Logged as `admin.setting` with the old and new value. |
 | `GET` | `/api/settings` | any logged-in account | `{force_tool_approval}`: what the administrator requires of everyone. |
-| `GET` | `/api/admin/invites` | `admin.manage` | Open (unused, unexpired) invites, without codes. |
-| `DELETE` | `/api/admin/invites/{id}` | `admin.manage` | `204`; the code stops working. `409` if already used. |
-| `GET` | `/api/admin/summary` | `admin.manage` | `{accounts, unverified, disabled, open_invites, roles}`: counts for the Admin overview tiles. |
-| `GET` | `/api/admin/accounts` | `admin.manage` | `[{id, username, email, email_verified, is_active, is_protected, created_at, roles: [{id, name}]}]`. Optional `?q=` (username/email substring, case-insensitive) and `?status=all\|unverified\|disabled`; `422` for any other status. |
-| `PATCH` | `/api/admin/accounts/{id}` | `admin.manage` | Any of `{username, email, is_active}` -> the account. Disabling ends its sessions. `409` taken name/email, protected account, or disabling yourself. |
-| `DELETE` | `/api/admin/accounts/{id}` | `admin.manage` | `204`. `409` for the protected account or yourself. |
-| `PUT` `DELETE` | `/api/admin/accounts/{id}/roles/{role_id}` | `admin.manage` | Assign / remove a role -> the account. `409` removing from the protected account, or removing your own last `admin.manage`. |
-| `POST` | `/api/admin/accounts/{id}/send-verification` | `admin.manage` | `{sent: true}`; `409` already verified, `503` SMTP failed. |
-| `GET` | `/api/admin/roles` | `admin.manage` | `[{id, name, description, is_protected, permissions, account_count}]` |
-| `POST` | `/api/admin/roles` | `admin.manage` | `{name, description?}` -> `201` role. `409` name taken (case-insensitive). |
-| `PATCH` | `/api/admin/roles/{id}` | `admin.manage` | Any of `{name, description}` (`""` clears it) -> the role. Administrator can't be renamed. |
-| `DELETE` | `/api/admin/roles/{id}` | `admin.manage` | `204`. `409` for Administrator, or if it's your only source of `admin.manage`. |
-| `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `admin.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last `admin.manage`. |
-| `GET` | `/api/admin/permissions` | `admin.manage` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |
+| `GET` | `/api/admin/invites` | `invites.manage` | Open (unused, unexpired) invites, without codes. |
+| `DELETE` | `/api/admin/invites/{id}` | `invites.manage` | `204`; the code stops working. `409` if already used. |
+| `GET` | `/api/admin/summary` | `any administrative permission; unrelated counts are null` | `{accounts, unverified, disabled, open_invites, roles}`: counts for the Admin overview tiles. |
+| `GET` | `/api/admin/accounts` | `accounts.view (also accounts.manage/accounts.delete/roles.assign)` | `[{id, username, email, email_verified, is_active, is_protected, created_at, roles: [{id, name}]}]`. Optional `?q=` (username/email substring, case-insensitive) and `?status=all\|unverified\|disabled`; `422` for any other status. |
+| `PATCH` | `/api/admin/accounts/{id}` | `accounts.manage` | Any of `{username, email, is_active}` -> the account. Disabling ends its sessions. `409` taken name/email, protected account, or disabling yourself. |
+| `DELETE` | `/api/admin/accounts/{id}` | `accounts.delete` | `204`. `409` for the protected account or yourself. |
+| `PUT` `DELETE` | `/api/admin/accounts/{id}/roles/{role_id}` | `roles.assign` | Assign / remove a role -> the account. `409` removing from the protected account, or removing your own last role management/assignment access. |
+| `POST` | `/api/admin/accounts/{id}/send-verification` | `accounts.manage` | `{sent: true}`; `409` already verified, `503` SMTP failed. |
+| `GET` | `/api/admin/roles` | `roles.view (also roles.manage/roles.assign)` | `[{id, name, description, is_protected, permissions, account_count}]` |
+| `POST` | `/api/admin/roles` | `roles.manage` | `{name, description?}` -> `201` role. `409` name taken (case-insensitive). |
+| `PATCH` | `/api/admin/roles/{id}` | `roles.manage` | Any of `{name, description}` (`""` clears it) -> the role. Administrator can't be renamed. |
+| `DELETE` | `/api/admin/roles/{id}` | `roles.manage` | `204`. `409` for Administrator, or if it's your only source of role management/assignment access. |
+| `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `roles.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last role management/assignment access. |
+| `GET` | `/api/admin/permissions` | `roles.view (also roles.manage/roles.assign)` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |
 | `GET` | `/api/chats` | `chat.use` | This account's chats, newest first: `[{id, title, agent_id, message_count, folder_id, pinned, created_at, updated_at}]` (no messages; `folder_id` is null for a chat in no folder). |
 | `GET` | `/api/chats/search?q=` | `chat.use` | `q` 2-100 characters. Chats whose title or message text contains `q` (case-insensitive, literal; attached files' text is not searched), newest first, at most 50: `[{id, title, updated_at, title_match: {start, length}\|null, snippet: {text, start, length}\|null, message_index, message_matches}]`. The snippet is one line around the first matching message. |
 | `GET` | `/api/chats/{id}` | `chat.use` | One chat with `messages`. `404` if missing or another account's. |
@@ -179,7 +179,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `POST` | `/api/user-extensions` | `chat.use` | `{label, url, description?, headers?}` -> `201` the extension, probed once. Saved even if it cannot be reached right now. `422` with a message for a bad address (http or https only, no username or password) or header (up to 20; name `A-Za-z0-9-`; value 1-2000 characters, no control characters; `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Upgrade`, `TE`, `Trailer`, `Proxy-Authorization` and `Cookie` are refused); `409` at 20 extensions. |
 | `PATCH` | `/api/user-extensions/{id}` | `chat.use` | Any of `{label, description, url, headers, enabled}` -> the extension. `headers`, when present, replaces all of them (send it only when the user retyped them). A URL with a new host and no `headers` clears the saved headers, so a token is never sent to another host unasked. `404` for another account's id, `422` for an empty body. |
 | `DELETE` | `/api/user-extensions/{id}` | `chat.use` | `204`; `404` for another account's id. |
-| `POST` | `/api/chats/{id}/shares` | `chat.use` | `{expires_in_days: 1 \| 7 \| 30 \| null}` (default 7; null: never) -> `201 {id, chat_id, title, message_count, created_at, expires_at, token}`. Freezes a sanitized copy of the chat behind a new link; **`token` is in this response only** (ember_api stores its SHA-256). `404` unknown chat, `409` at 50 active links, `422` bad expiry or nothing shareable. Logged as `share.create`. |
+| `POST` | `/api/chats/{id}/shares` | `chat.use + chat.share` | `{expires_in_days: 1 \| 7 \| 30 \| null}` (default 7; null: never) -> `201 {id, chat_id, title, message_count, created_at, expires_at, token}`. Freezes a sanitized copy of the chat behind a new link; **`token` is in this response only** (ember_api stores its SHA-256). `404` unknown chat, `409` at 50 active links, `422` bad expiry or nothing shareable. Logged as `share.create`. |
 | `GET` | `/api/shares?chat_id=` | `chat.use` | This account's active links, newest first: `[{id, chat_id, title, message_count, created_at, expires_at}]`. Never a token. |
 | `DELETE` | `/api/shares/{id}` | `chat.use` | `204`, the link stops working at once; `404` if missing or another account's. Logged as `share.revoke`. |
 | `GET` | `/api/shared/{token}` | **none** | `{title, messages: [{role, content}], created_at, expires_at}` - the read-only snapshot. Unknown, malformed, revoked and expired tokens all get the same `404`. `429` past 60 requests a minute from one address. `Cache-Control: no-store`, `X-Robots-Tag: noindex`. |
@@ -189,11 +189,11 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/commands` | `tools.use` | mcp_server's slash commands: `[{capability, name, description, tool_name}]`. |
 | `GET` | `/api/commands/help`, `/api/commands/help/{capability}?target=&command=` | `tools.use` | mcp_server's capability help (what `/help` shows). |
 | `GET` | `/api/commands/options?template=...&arg.<name>=...` | `tools.use` | A command-form select's options: `[{value, label, extra}]` from the mcp_server path `template`, which must be an `options_url` some tool's schema declares (its `{name}` placeholders filled from `arg.<name>`). `400` undeclared template or missing arg, `502` mcp_server down. |
-| `POST` | `/api/uploads` | `tools.use` | `{filename, data}` (base64, up to 15 MB) -> `201 {path}`: stored by mcp_server's `/upload` (which picks the allowed file types) for a command's file-path parameter. `400` refused type. |
+| `POST` | `/api/uploads` | `files.upload` | `{filename, data}` (base64, up to 15 MB) -> `201 {path}`: stored by mcp_server's `/upload` (which picks the allowed file types) for a command's file-path parameter. `400` refused type. |
 | `GET` | `/api/server/download?path=` | `tools.use` | A file a tool offered with a `[[DOWNLOAD ...]]` marker, streamed from mcp_server's `/download?path=` (identity and internal token added). Always sent as an attachment of type `application/octet-stream`, named by mcp_server's `Content-Disposition` filename (cleaned to a bare name) or else the last part of `path`, so a file never runs as a page on ember's origin. `path` is 1 to 1000 characters without control characters (`422`). `404` unknown file, `400` refused, `502` mcp_server unreachable or failing. mcp_server's `/download` takes an opaque id (see "Downloads" under Security). |
-| `GET` | `/api/capabilities` | `tools.use` | mcp_server's built-in capabilities: `[{name, label, enabled, tools, resources, has_gui}]`. |
-| `GET` | `/api/capabilities/{name}/gui` | `tools.use` | The capability's page layout (`{version, title, description, sections}`) as mcp_server validated it; `404` when it has no page. |
-| `PATCH` | `/api/capabilities/{name}` | `admin.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
+| `GET` | `/api/capabilities` | `tools.view (also capabilities.manage)` | mcp_server's built-in capabilities: `[{name, label, enabled, tools, resources, has_gui}]`. |
+| `GET` | `/api/capabilities/{name}/gui` | `tools.view (also capabilities.manage)` | The capability's page layout (`{version, title, description, sections}`) as mcp_server validated it; `404` when it has no page. |
+| `PATCH` | `/api/capabilities/{name}` | `capabilities.manage` | `{enabled}` turns a capability on/off for every mcp_server client. |
 | `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools, web_url}]`. `web_url` is the extension's own web app (an http(s) address from mcp_server's config, or `null`); ember_web links to it. |
 | `POST` | `/api/extensions` | `extensions.manage` | `{label, url, description?}` (http/https URL) -> `201` the extension; mcp_server connects to it and saves it (an unreachable one is still added, `status: "error"`). |
 | `DELETE` | `/api/extensions/{id}` | `extensions.manage` | `204`; `404` unknown id. |
@@ -201,7 +201,7 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/logs` | any `logs.*` | `{kinds, accounts}`: the log kinds this account may read and every account to filter by. |
 | `GET` | `/api/logs/analytics?range=24h\|7d\|30d\|90d` | any `logs.*` | Counts for the Analytics page, only for the kinds this account may read (default `7d`): `{period, bucket (hour\|day), kinds, totals {kind: {current, previous}}, series [{bucket, counts}] (zero-filled), top_sources {kind: [{source, count}]}, accounts {kind: [{account_id, username, count}]}, heatmap [{weekday, hour, count}]}`. Top lists hold 10; `account_id` null is the server, `username` null a deleted account; heatmap is UTC, weekday 0 = Sunday. `422` bad range. |
 | `GET` | `/api/logs/{kind}?actor=server\|<account id>` | `logs.view` (action), `logs.errors.view` (error), `logs.chat.view` (chat_trace) | The 200 newest entries: `[{id, kind, account_id, source, message, details, created_at}]`. |
-| `POST` | `/api/attachments/text` | `chat.use` | `{filename, data}` (base64, up to 15 MB) -> `{filename, text, char_count, truncated}`: text from a text/code, `.pdf`, `.docx` or `.xlsx` file, at most 20,000 characters. The file isn't kept. `400` with a readable reason when it can't be read. |
+| `POST` | `/api/attachments/text` | `files.upload` | `{filename, data}` (base64, up to 15 MB) -> `{filename, text, char_count, truncated}`: text from a text/code, `.pdf`, `.docx` or `.xlsx` file, at most 20,000 characters. The file isn't kept. `400` with a readable reason when it can't be read. |
 | `GET` | `/api/traffic/analytics?range=24h\|7d\|30d\|90d` | `traffic.view` | Network traffic for the Analytics Traffic tab (default `7d`): `{period, bucket (hour\|day), latency_cap_ms, totals {requests, error_rate, p95_ms, upstream_failures: {current, previous}}, series [{bucket, requests {2xx,3xx,4xx,5xx}, p50_ms, p95_ms}] (zero-filled), routes {busiest, slowest: [{name, count, error_rate, p95_ms}]}, upstream [{target, calls, failures, failure_rate, p95_ms, tools [{name, calls, failures, p95_ms}]}]}`. Counts come from `traffic_buckets` (written by `TrafficMiddleware` and the upstream timing, flushed every 30 s); names are route templates, never raw paths. Latency is kept as bands (50/100/250/500/1000/2500/5000 ms), so a percentile is its band's upper bound, and one in the slowest band shows as `latency_cap_ms` (meaning "at least"). `error_rate` is 5xx over all requests (`null` with no requests); `slowest` needs 5 requests per route; top lists hold 10. `422` bad range. |
 | `GET` | `/api/config-issues` | `config.issues.view` | `[{file, key, message}]`: problems in `config_app.json`, the agent registry and the secret files. Never includes secret values. |
 | `GET` | `/api/agent` | `chat.use` | The agent every question goes to, as `{id, label}` - no URL. `503` "No agent is running" when none is registered. |
@@ -252,11 +252,15 @@ addresses only, never loopback, link-local or cloud-metadata ones).
   changes, every admin action and capability/extension changes; errors and
   one line per answered chat turn go there too. Entries older than 90 days
   are deleted on startup; a deleted account's entries stay.
-- **Permissions:** `chat.use`, `tools.use`, `admin.manage`, `extensions.manage`, `watchers.view`,
+- **Permissions:** `chat.use`, `chat.share`, `tools.view`, `tools.execute`, `files.upload`, `files.download`,
+  `accounts.view`, `accounts.manage`, `accounts.delete`, `roles.view`, `roles.manage`, `roles.assign`,
+  `invites.manage`, `settings.manage`, `capabilities.manage`, `usage.all.view`,
+  `extensions.personal.manage`, `extensions.manage`, `watchers.view`,
   `logs.view`, `logs.errors.view`, `logs.chat.view`, `config.issues.view`,
   `traffic.view` (`src/services/permissions.py`). The Administrator role always holds all
   of them (new ones are added to it on startup). New registrations get `default_role` (config, default `Member`:
-  `chat.use` + `tools.use`) - unlike chat_app, where new accounts get no
+  `chat.use`, `chat.share`, `tools.view`, `tools.execute`,
+  `extensions.personal.manage`, `files.upload`, `files.download`) - unlike chat_app, where new accounts get no
   role. An account with an unverified email holds no permissions at all, unless
   `require_email_verification` is `false` in config.
 - **Invites and verification codes:** 10 random characters, stored as
@@ -464,3 +468,33 @@ scripts/   import_chat_app.py                   one-off move of chat_app's data 
 migrations/  Alembic environment and versions/ (0001_baseline.py)
 tests/
 ```
+
+### Permission split (migration 0010)
+
+Startup backs up existing databases, then grants the equivalents of the old
+`admin.manage`, `tools.use`, and `chat.use` permissions to each existing role.
+This runs once: subsequent restarts preserve revoked grants. Legacy broad
+permission rows remain only for rollback and are neither listed nor authorized.
+The Administrator role receives all currently known permissions on startup.
+
+Read-only permissions do not grant mutation access. Account and role management
+permissions include the corresponding discovery routes needed to perform their
+actions. Role assignment, role changes, and account edits/deletions cannot affect
+permissions beyond the actor's own authority. Invitations currently have no role
+picker; the inviter must hold every permission in the configured default role.
+
+`chat.share` controls creating public links; owners can still list and revoke
+existing links with `chat.use`. Personal extension listing and use remain under
+`chat.use`; creating, editing, switching, or removing one also requires
+`extensions.personal.manage`. File attachment extraction requires `files.upload`.
+
+`tools.execute` applies to both direct MCP calls and agent calls, including shared
+and private extensions and delegated agents. Without it, chat sends a server-owned
+block-all filter; an older agent lacking `tool_filter_all` is refused before it
+answers. Update/restart ai_agent together with ember_api. `tools.view` still allows
+tool discovery and resource reads. File download permission gates Ember's server
+file-transfer route; it does not prohibit copying chat text or tool results.
+
+To roll back, deploy the previous code with the pre-migration backup. Alembic
+downgrade to 0009 retains original broad grants and removes the new permission
+rows, but does not undo role edits made after upgrading.

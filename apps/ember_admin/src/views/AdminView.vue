@@ -8,22 +8,25 @@ import RolesPanel from "../components/admin/RolesPanel.vue";
 import SettingsPanel from "../components/admin/SettingsPanel.vue";
 import StatTile from "../components/admin/StatTile.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
+import { useAuthStore } from "../stores/auth";
 import { errorMessage } from "../utils/errors";
 
 const TABS = [
-  { id: "accounts", label: "Accounts" },
-  { id: "roles", label: "Roles" },
-  { id: "invites", label: "Invites" },
-  { id: "settings", label: "Settings" },
+  { id: "accounts", label: "Accounts", permissions: ["accounts.view", "accounts.manage", "accounts.delete", "roles.assign"] },
+  { id: "roles", label: "Roles", permissions: ["roles.view", "roles.manage", "roles.assign"] },
+  { id: "invites", label: "Invites", permissions: ["invites.manage"] },
+  { id: "settings", label: "Settings", permissions: ["settings.manage"] },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
-const TAB_OPTIONS = TABS.map((t) => ({ value: t.id, label: t.label }));
+const auth = useAuthStore();
+const visibleTabs = computed(() => TABS.filter((t) => t.permissions.some(auth.hasPermission)));
+const TAB_OPTIONS = computed(() => visibleTabs.value.map((t) => ({ value: t.id, label: t.label })));
 
 const route = useRoute();
 const router = useRouter();
 
 // The tab lives in the URL (?tab=roles), so reload and back/forward keep it.
-const tab = computed<TabId>(() => TABS.find((t) => t.id === route.query.tab)?.id ?? "accounts");
+const tab = computed<TabId | undefined>(() => visibleTabs.value.find((t) => t.id === route.query.tab)?.id ?? visibleTabs.value[0]?.id);
 
 const summary = ref<AdminSummary | null>(null);
 const summaryError = ref("");
@@ -42,7 +45,7 @@ onMounted(loadSummary);
 // they are read again whenever the tab changes.
 watch(tab, loadSummary);
 
-function select(id: TabId): void {
+function select(id: string): void {
   void router.replace({ query: { ...route.query, tab: id } });
 }
 </script>
@@ -56,23 +59,23 @@ function select(id: TabId): void {
           <h2>Admin</h2>
           <p class="description">Manage people, access, and workspace settings.</p>
         </div>
-        <button type="button" class="invite-button" @click="select('invites')">＋ Invite account</button>
+        <button v-if="auth.hasPermission('invites.manage')" type="button" class="invite-button" @click="select('invites')">＋ Invite account</button>
       </header>
       <div class="stats">
-        <StatTile label="Accounts" :value="summary?.accounts ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M20 21v-2a4 4 0 0 0-3-3.9M17 3a4 4 0 0 1 0 8" /></svg></StatTile>
-        <StatTile label="Unverified" :value="summary?.unverified ?? null" warn><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3zM3 5l9 7 9-7" /></svg></StatTile>
-        <StatTile label="Disabled" :value="summary?.disabled ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10h14v11H5zM8 10V7a4 4 0 0 1 8 0v3" /></svg></StatTile>
-        <StatTile label="Open invites" :value="summary?.open_invites ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L9 15M22 2l-7 20-6-7-7-6z" /></svg></StatTile>
+        <StatTile v-if="auth.hasPermission('accounts.view')" label="Accounts" :value="summary?.accounts ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M20 21v-2a4 4 0 0 0-3-3.9M17 3a4 4 0 0 1 0 8" /></svg></StatTile>
+        <StatTile v-if="auth.hasPermission('accounts.view')" label="Unverified" :value="summary?.unverified ?? null" warn><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3zM3 5l9 7 9-7" /></svg></StatTile>
+        <StatTile v-if="auth.hasPermission('accounts.view')" label="Disabled" :value="summary?.disabled ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10h14v11H5zM8 10V7a4 4 0 0 1 8 0v3" /></svg></StatTile>
+        <StatTile v-if="auth.hasPermission('invites.manage')" label="Open invites" :value="summary?.open_invites ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L9 15M22 2l-7 20-6-7-7-6z" /></svg></StatTile>
       </div>
       <p v-if="summaryError" class="error">Couldn't load the overview: {{ summaryError }}</p>
-      <SegmentedControl class="tabs" :model-value="tab" :options="TAB_OPTIONS" label="Section" aria-label="Admin section" @update:model-value="select" />
+      <SegmentedControl v-if="tab" class="tabs" :model-value="tab" :options="TAB_OPTIONS" label="Section" aria-label="Admin section" @update:model-value="select" />
 
       <!-- v-if, not v-show: each panel reloads its data when opened, so a
            role created on one tab shows up in the Accounts dropdown. -->
       <AccountsPanel v-if="tab === 'accounts'" @changed="loadSummary" />
       <RolesPanel v-else-if="tab === 'roles'" />
       <InvitesPanel v-else-if="tab === 'invites'" @changed="loadSummary" />
-      <div v-else class="admin-panel">
+      <div v-else-if="tab === 'settings'" class="admin-panel">
         <header class="section-head"><div><h3>Workspace settings</h3><p>Controls that apply to every account.</p></div></header>
         <SettingsPanel />
       </div>

@@ -162,7 +162,7 @@ class McpAgentGateway:
             # Fail closed, like approvals: an ai_agent that predates this option
             # would offer every tool, including the ones the user switched off.
             status = await self._call(url, caller, "status", {})
-            if not status.get("tool_filter"):
+            if not status.get("tool_filter") or ("*" in disabled_tools and not status.get("tool_filter_all")):
                 raise AgentCallError(
                     "This agent cannot leave out the tools you switched off (it needs updating and restarting). "
                     "Switch those capabilities back on or restart the agent."

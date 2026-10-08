@@ -62,7 +62,7 @@ async function runningTurn() {
     email: "root@example.com",
     email_verified: true,
     roles: [],
-    permissions: ["chat.use"],
+    permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
   };
   client.list.mockResolvedValue([summary("c1", 2)]);
   client.get.mockImplementation(async (id: string) => ({ ...summary(id, 2), messages: structuredClone(TWO) }));

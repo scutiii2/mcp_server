@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   client.list.mockResolvedValue([tpl(1, "Summarize"), tpl(2, "Review")]);
   setActivePinia(createPinia());
-  useAuthStore().account = { id: 1, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+  useAuthStore().account = { id: 1, username: "u", email: "u@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 });
 
 afterEach(() => {

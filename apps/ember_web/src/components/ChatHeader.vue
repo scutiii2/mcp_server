@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef } from "vue";
 import type { MenuItem } from "../utils/chatMenu";
+import { useAuthStore } from "../stores/auth";
 import ActionButton from "./ActionButton.vue";
 import EntryAgentTag from "./EntryAgentTag.vue";
 import PopupMenu from "./PopupMenu.vue";
@@ -19,6 +20,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ export: []; share: []; summarize: []; clear: [] }>();
+
+const auth = useAuthStore();
 
 const MENU_WIDTH = 210;
 
@@ -74,7 +77,7 @@ function choose(id: string): void {
     </span>
     <template v-if="hasMessages">
       <ActionButton icon="export" icon-only title="Download this chat as Markdown" @click="emit('export')">Export</ActionButton>
-      <ActionButton icon="share" icon-only title="Make a read-only link to this chat" @click="emit('share')">Share</ActionButton>
+      <ActionButton v-if="auth.hasPermission('chat.share')" icon="share" icon-only title="Make a read-only link to this chat" @click="emit('share')">Share</ActionButton>
       <ActionButton
         ref="more"
         icon="more"

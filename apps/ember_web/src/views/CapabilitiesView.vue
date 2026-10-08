@@ -72,8 +72,8 @@ const readResult = ref<{ uri: string; text: string } | null>(null);
 const readError = ref("");
 const reader = useTemplateRef<HTMLElement>("reader");
 
-// Capabilities, tools and resources need tools.use; extensions need only chat.use.
-const canTools = computed(() => auth.hasPermission("tools.use"));
+// Capabilities, tools and resources need tools.view; extensions need only chat.use.
+const canTools = computed(() => auth.hasPermission("tools.view"));
 const showBuiltin = computed(() => canTools.value && kind.value !== "extensions");
 const showExtensions = computed(() => kind.value !== "builtin");
 // Headings tell the groups apart; only when both can show.
@@ -163,7 +163,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    // Without tools.use only the extensions are listed.
+    // Without tools.view only the extensions are listed.
     const [caps, toolList, res, exts] = await Promise.all([
       canTools.value ? commandsClient.capabilities() : [],
       canTools.value ? server.listTools() : [],
@@ -380,6 +380,7 @@ onMounted(() => {
             :status="i.status === 'connected' ? 'ok' : i.status === 'error' ? 'bad' : 'off'"
             control="switch"
             :checked="true"
+            :locked="!auth.hasPermission('extensions.personal.manage')"
             scope="Private"
             switch-title="Turn off. It stays in your Supermarket under My extensions."
             @toggle="toggleSection(privateKey(i.id))"

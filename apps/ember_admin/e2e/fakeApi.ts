@@ -10,7 +10,7 @@ export const ADMIN_ACCOUNT = {
   email: "root@example.com",
   email_verified: true,
   roles: ["Administrator"],
-  permissions: ["chat.use", "tools.use", "admin.manage", "extensions.manage", "logs.view", "traffic.view"],
+  permissions: ["chat.use", "tools.view", "tools.execute", "files.upload", "files.download", "accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "invites.manage", "settings.manage", "capabilities.manage", "usage.all.view", "extensions.manage", "logs.view", "traffic.view"],
 };
 
 export interface FakeCapability {

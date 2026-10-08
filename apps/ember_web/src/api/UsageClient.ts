@@ -103,7 +103,7 @@ export const usageClient = {
       "GET",
       `/api/usage/records?${query(days, since, { agent: options.agent, provider: options.provider, limit: options.limit })}`,
     ),
-  /** admin.manage only. */
+  /** usage.all.view only. */
   allAccounts: (days: number, since?: string) =>
     apiRequest<AccountUsage[]>("GET", `/api/admin/usage?${period(days, since)}`),
 };

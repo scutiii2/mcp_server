@@ -256,6 +256,10 @@ off for their own chats (`src/core/tool_filter.py`). For that turn the agent doe
 not offer them (`list_tools`) and refuses a call to one the model names anyway.
 A delegated agent is told the same list. `status()` reports `tool_filter: true`
 so ember_api can refuse an agent that would ignore the option.
+`disabled_tools: ["*"]` blocks every built-in, shared-extension, and private-extension
+tool when the Ember account lacks `tools.execute`. `status()` also reports
+`tool_filter_all: true`; ember_api and delegates refuse older agents without it
+before starting a restricted turn. The filter follows nested delegation.
 
 `ask` also accepts `private_extensions`, the user's own MCP servers for this
 turn; see the next section for its shape and behavior.

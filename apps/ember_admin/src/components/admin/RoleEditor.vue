@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import type { PermissionInfo, Role, RoleChanges } from "../../api/AdminClient";
+import { useAuthStore } from "../../stores/auth";
 import ToggleSwitch from "../ToggleSwitch.vue";
 import "./admin.css";
 
@@ -23,6 +24,8 @@ const emit = defineEmits<{
   remove: [];
 }>();
 
+const auth = useAuthStore();
+const canManage = computed(() => auth.hasPermission("roles.manage") && props.role.permissions.every(auth.hasPermission));
 const editing = ref(false);
 const form = reactive({ name: "", description: "" });
 
@@ -75,7 +78,7 @@ function save(): void {
         <ToggleSwitch
           small
           :checked="role.permissions.includes(p.name)"
-          :disabled="role.is_protected || busy"
+          :disabled="role.is_protected || busy || !canManage || !auth.hasPermission(p.name)"
           :aria-label="p.name"
           @click.prevent="emit('togglePermission', p.name, !role.permissions.includes(p.name))"
         />
@@ -87,12 +90,12 @@ function save(): void {
     </ul>
 
     <div class="actions">
-      <button v-if="!editing" type="button" class="small" :disabled="busy" @click="startEdit">
+      <button v-if="!editing && canManage" type="button" class="small" :disabled="busy" @click="startEdit">
         {{ role.is_protected ? "Edit description" : "Edit details" }}
       </button>
     </div>
 
-    <section v-if="!role.is_protected" class="danger-zone">
+    <section v-if="!role.is_protected && canManage" class="danger-zone">
       <h4>Danger zone</h4>
       <p class="muted description">Accounts holding this role lose its permissions. This can't be undone.</p>
       <button type="button" class="small danger" :disabled="busy" @click="emit('remove')">Delete role</button>

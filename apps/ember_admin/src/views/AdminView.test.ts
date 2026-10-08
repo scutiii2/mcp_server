@@ -1,3 +1,5 @@
+import { useAuthStore } from "../stores/auth";
+import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -23,6 +25,8 @@ async function view() {
 }
 
 beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["accounts.view", "roles.view", "invites.manage", "settings.manage"] };
   vi.clearAllMocks();
   client.summary.mockResolvedValue(SUMMARY);
 });
@@ -69,4 +73,13 @@ describe("AdminView", () => {
     expect(wrapper.text()).toContain("boom");
     expect(wrapper.text()).toContain("accounts panel");
   });
+});
+
+it("opens only the role tab for a role viewer", async () => {
+  useAuthStore().account!.permissions = ["roles.view"];
+  const { wrapper } = await view();
+  expect(wrapper.text()).toContain("roles panel");
+  expect(wrapper.text()).not.toContain("accounts panel");
+  expect(wrapper.find(".invite-button").exists()).toBe(false);
+  expect(wrapper.findAll(".stats .tile")).toHaveLength(0);
 });

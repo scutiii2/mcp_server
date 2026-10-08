@@ -5,7 +5,7 @@ Same protections as chat_app: the bootstrap admin account (is_protected)
 can't be edited, deleted or stripped of roles, and the Administrator role
 can't be renamed, deleted or lose permissions. ember_api adds two of its
 own: an admin can't delete or disable their own account, and no change may
-take admin.manage away from the admin making it - so nobody locks
+take role management or assignment away from the actor making it - so nobody locks
 themselves out by accident.
 
 Permissions themselves are defined in code (permissions.ALL_PERMISSIONS),
@@ -21,11 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db import utcnow
 from src.models import Account, AuthSession, InviteCode, Permission, Role
-from src.services.permissions import ADMIN_MANAGE, ADMIN_ROLE, ALL_PERMISSIONS
+from src.services.permissions import ROLES_MANAGE, ROLES_ASSIGN, ADMIN_ROLE, ALL_PERMISSIONS
 
 
 class AdminError(Exception):
     """A request the rules refuse (maps to 409)."""
+
+
+class DelegationError(AdminError):
+    """The actor cannot delegate these permissions (maps to 403)."""
 
 
 class NotFoundError(AdminError):
@@ -109,6 +113,8 @@ class AdminService:
         is_active: bool | None = None,
     ) -> Account:
         """Applies only the fields given; all checks run before anything changes."""
+        for held_role in account.roles:
+            self.ensure_can_delegate(actor, held_role)
         if account.is_protected:
             raise AdminError(f"Account '{account.username}' is protected and cannot be edited")
         if username is not None and username != account.username:
@@ -132,6 +138,8 @@ class AdminService:
         return account
 
     async def delete_account(self, actor: Account, account: Account) -> None:
+        for held_role in account.roles:
+            self.ensure_can_delegate(actor, held_role)
         if account.is_protected:
             raise AdminError(f"Account '{account.username}' is protected and cannot be deleted")
         if account.id == actor.id:
@@ -139,13 +147,17 @@ class AdminService:
         await self._session.delete(account)
         await self._session.commit()
 
-    async def assign_role(self, account: Account, role: Role) -> Account:
+    async def assign_role(self, account: Account, role: Role, *, actor: Account) -> Account:
+        self.ensure_can_delegate(actor, role)
         if role not in account.roles:
             account.roles.append(role)
             await self._session.commit()
         return account
 
     async def remove_role(self, actor: Account, account: Account, role: Role) -> Account:
+        self.ensure_can_delegate(actor, role)
+        for held_role in account.roles:
+            self.ensure_can_delegate(actor, held_role)
         if account.is_protected:
             raise AdminError(f"Account '{account.username}' is protected; its roles cannot be removed")
         if account.id == actor.id:
@@ -165,7 +177,8 @@ class AdminService:
         await self._session.refresh(role, ["accounts", "permissions"])
         return role
 
-    async def update_role(self, role: Role, *, name: str | None = None, description: str | None = None) -> Role:
+    async def update_role(self, role: Role, *, actor: Account, name: str | None = None, description: str | None = None) -> Role:
+        self.ensure_can_delegate(actor, role)
         if name is not None and name != role.name:
             if role.name == ADMIN_ROLE:
                 raise AdminError(f"Role '{ADMIN_ROLE}' cannot be renamed")
@@ -177,13 +190,17 @@ class AdminService:
         return role
 
     async def delete_role(self, actor: Account, role: Role) -> None:
+        self.ensure_can_delegate(actor, role)
         if role.name == ADMIN_ROLE:
             raise AdminError(f"Role '{ADMIN_ROLE}' cannot be deleted")
         self._ensure_keeps_admin(actor, [r for r in actor.roles if r.id != role.id])
         await self._session.delete(role)
         await self._session.commit()
 
-    async def grant_permission(self, role: Role, permission_name: str) -> Role:
+    async def grant_permission(self, role: Role, permission_name: str, *, actor: Account) -> Role:
+        self.ensure_can_delegate(actor, role)
+        if permission_name in ALL_PERMISSIONS and permission_name not in actor.permission_names:
+            raise DelegationError("You cannot grant a permission you do not hold")
         if permission_name not in ALL_PERMISSIONS:
             raise NotFoundError(f"Unknown permission: {permission_name}")
         permission = await self._session.scalar(select(Permission).where(Permission.name == permission_name))
@@ -196,11 +213,12 @@ class AdminService:
         return role
 
     async def revoke_permission(self, actor: Account, role: Role, permission_name: str) -> Role:
+        self.ensure_can_delegate(actor, role)
         if role.name == ADMIN_ROLE:
             raise AdminError(f"Role '{ADMIN_ROLE}' always holds every permission")
-        if permission_name == ADMIN_MANAGE and any(r.id == role.id for r in actor.roles):
+        if permission_name in (ROLES_MANAGE, ROLES_ASSIGN) and any(r.id == role.id for r in actor.roles):
             others = [r for r in actor.roles if r.id != role.id]
-            if not any(ADMIN_MANAGE in {p.name for p in r.permissions} for r in others):
+            if not any(permission_name in {p.name for p in r.permissions} for r in others):
                 raise AdminError("That would remove your own admin access")
         role.permissions = [p for p in role.permissions if p.name != permission_name]
         await self._session.commit()
@@ -214,6 +232,12 @@ class AdminService:
             raise AdminError("That invite was already used")
         await self._session.delete(invite)
         await self._session.commit()
+
+    @staticmethod
+    def ensure_can_delegate(actor: Account, role: Role) -> None:
+        """Delegated administrators may only affect roles within their own authority."""
+        if not {p.name for p in role.permissions if p.name in ALL_PERMISSIONS} <= actor.permission_names:
+            raise DelegationError("You cannot manage or assign a role with permissions you do not hold")
 
     # --- helpers -------------------------------------------------------------
 
@@ -236,5 +260,6 @@ class AdminService:
 
     @staticmethod
     def _ensure_keeps_admin(actor: Account, remaining_roles: list[Role]) -> None:
-        if ADMIN_MANAGE not in {p.name for r in remaining_roles for p in r.permissions}:
+        remaining = {p.name for r in remaining_roles for p in r.permissions}
+        if (actor.permission_names & {ROLES_MANAGE, ROLES_ASSIGN}) - remaining:
             raise AdminError("That would remove your own admin access")

@@ -82,7 +82,7 @@ async function show(
 ) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().account = { ...ACCOUNT, permissions: options.permissions ?? ["tools.use", "chat.use"] };
+  useAuthStore().account = { ...ACCOUNT, permissions: options.permissions ?? ["tools.view", "chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
   mocks.accountGet.mockResolvedValue({
     capabilities: options.added?.capabilities ?? ["pdf"],
     extensions: options.added?.extensions ?? [],
@@ -227,8 +227,8 @@ describe("SupermarketView", () => {
     });
   });
 
-  it("lists only the extensions to an account without tools.use", async () => {
-    const { w } = await show({ permissions: ["chat.use"] });
+  it("lists only the extensions to an account without tools.view", async () => {
+    const { w } = await show({ permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
 
     expect(mocks.capabilities).not.toHaveBeenCalled();
     expect(w.findAll("h4.group-title").map((h) => h.text())).toEqual(["Extensions", "My extensions"]);
@@ -236,7 +236,7 @@ describe("SupermarketView", () => {
   });
 
   it("leaves shared extension and global capability management in Ember Admin", async () => {
-    const { w } = await show({ permissions: ["tools.use", "chat.use", "admin.manage", "extensions.manage"] });
+    const { w } = await show({ permissions: ["tools.view", "chat.use", "roles.manage", "extensions.manage", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
     expect(w.text()).not.toContain("Add extension");
     expect(row(w, "Notes").find("button.remove").exists()).toBe(false);
     expect(row(w, "Legacy").find("button.everyone").exists()).toBe(false);
@@ -284,13 +284,13 @@ describe("My extensions", () => {
   });
 
   it("is there for an account with only chat.use", async () => {
-    const { w } = await show({ permissions: ["chat.use"], userExtensions: [MINE] });
+    const { w } = await show({ permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"], userExtensions: [MINE] });
 
     expect(names(w)).toContain("My notes");
   });
 
   it("is not there without chat.use", async () => {
-    const { w } = await show({ permissions: ["tools.use"], userExtensions: [MINE] });
+    const { w } = await show({ permissions: ["tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"], userExtensions: [MINE] });
 
     expect(w.text()).not.toContain("My extensions");
     expect(mocks.userList).not.toHaveBeenCalled();

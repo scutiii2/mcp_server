@@ -22,7 +22,7 @@ const ACCOUNT: Account = {
   email: "lex@example.com",
   email_verified: true,
   roles: [],
-  permissions: ["chat.use", "tools.use"],
+  permissions: ["chat.use", "tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
 };
 
 async function setup(account: Account | null) {
@@ -59,7 +59,7 @@ describe("NavRail", () => {
 
     const links = pageLinks(wrapper);
 
-    // chat.use -> Chat, Agents, Usage, Settings; tools.use or chat.use -> Capabilities
+    // chat.use -> Chat, Agents, Usage, Settings; tools.view or chat.use -> Capabilities
     expect(links.map((l) => l.attributes("aria-label"))).toEqual(["Chat", "Capabilities", "Agents", "Usage", "Settings"]);
     for (const link of links) {
       expect(link.text()).toBe("");

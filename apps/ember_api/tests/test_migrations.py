@@ -18,8 +18,45 @@ from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
 # The newest real migration; the tests' throwaway one comes after it.
-HEAD = "0009"
-NEXT = "0010"
+HEAD = "0010"
+NEXT = "0011"
+
+
+def test_permission_split_preserves_access_once_and_keeps_revocations(tmp_path: Path) -> None:
+    run_with(make_database(tmp_path))
+    path = tmp_path / "ember.db"
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("UPDATE alembic_version SET version_num = '0009'")
+        for name in ("admin.manage", "tools.use", "chat.use"):
+            conn.execute("INSERT INTO roles (name) VALUES (?)", (name,))
+            conn.execute("INSERT INTO permissions (name) VALUES (?)", (name,))
+            conn.execute(
+                "INSERT INTO role_permission SELECT r.id, p.id FROM roles r, permissions p "
+                "WHERE r.name = ? AND p.name = ?", (name, name)
+            )
+        conn.commit()
+
+    assert run_with(make_database(tmp_path)) == "upgraded"
+
+    def grants(name: str) -> set[str]:
+        with closing(sqlite3.connect(path)) as conn:
+            return {row[0] for row in conn.execute(
+                "SELECT p.name FROM role_permission rp JOIN roles r ON r.id = rp.role_id "
+                "JOIN permissions p ON p.id = rp.permission_id WHERE r.name = ?", (name,)
+            )}
+
+    assert {"accounts.view", "roles.assign", "capabilities.manage", "usage.all.view"} <= grants("admin.manage")
+    assert {"tools.view", "tools.execute", "files.upload", "files.download"} <= grants("tools.use")
+    assert {"chat.share", "extensions.personal.manage", "tools.execute", "files.upload"} <= grants("chat.use")
+    assert "files.download" not in grants("chat.use")
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute(
+            "DELETE FROM role_permission WHERE role_id = (SELECT id FROM roles WHERE name = 'chat.use') "
+            "AND permission_id = (SELECT id FROM permissions WHERE name = 'chat.share')"
+        )
+        conn.commit()
+    assert run_with(make_database(tmp_path)) == "current"
+    assert "chat.share" not in grants("chat.use")
 
 
 def make_database(tmp_path: Path) -> Database:
@@ -184,7 +221,7 @@ class TestDatabaseFromBeforeMigrations:
     def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
         scripts = tmp_path / "baseline_only"
-        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*"))
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*", "0010*"))
         calls: list[int] = []
 
         async def backup() -> None:
@@ -208,9 +245,9 @@ def scripts_with_a_new_migration(tmp_path: Path) -> Path:
     """The real migrations plus a throwaway one adding a column."""
     scripts = tmp_path / "migrations"
     shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
-    (scripts / "versions" / "0010_add_nickname.py").write_text(
-        'revision = "0010"\n'
-        'down_revision = "0009"\n'
+    (scripts / "versions" / "0011_add_nickname.py").write_text(
+        'revision = "0011"\n'
+        'down_revision = "0010"\n'
         "branch_labels = None\n"
         "depends_on = None\n"
         "import sqlalchemy as sa\n"

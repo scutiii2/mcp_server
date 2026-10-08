@@ -20,7 +20,8 @@ declare module "vue-router" {
 // Pages a logged-in, verified user may land on, in order of preference.
 const HOME_PAGES: { name: string; permission: string }[] = [
   { name: "chat", permission: "chat.use" },
-  { name: "capabilities", permission: "tools.use" },
+  { name: "capabilities", permission: "tools.view" },
+  { name: "usage", permission: "usage.all.view" },
 ];
 
 export const router = createRouter({
@@ -37,22 +38,22 @@ export const router = createRouter({
       path: "/capabilities",
       name: "capabilities",
       component: () => import("../views/CapabilitiesView.vue"),
-      // tools.use for the capabilities and tools, chat.use for switching extensions.
-      meta: { permission: ["tools.use", "chat.use"] },
+      // tools.view for the capabilities and tools, chat.use for switching extensions.
+      meta: { permission: ["tools.view", "chat.use"] },
     },
     // Declared before /capabilities/:name so a capability named "supermarket" can never shadow it.
     {
       path: "/capabilities/supermarket",
       name: "supermarket",
       component: () => import("../views/SupermarketView.vue"),
-      // tools.use for the built-in capabilities, chat.use for the extensions.
-      meta: { permission: ["tools.use", "chat.use"] },
+      // tools.view for the built-in capabilities, chat.use for the extensions.
+      meta: { permission: ["tools.view", "chat.use"] },
     },
     {
       path: "/capabilities/:name",
       name: "capability-page",
       component: () => import("../views/CapabilityPageView.vue"),
-      meta: { permission: "tools.use" },
+      meta: { permission: "tools.view" },
     },
     // The Extensions page was merged into Capabilities; old links and bookmarks still work.
     { path: "/extensions", redirect: (to) => ({ path: "/capabilities", query: to.query }) },
@@ -80,7 +81,7 @@ export const router = createRouter({
       path: "/usage",
       name: "usage",
       component: () => import("../views/UsageView.vue"),
-      meta: { permission: "chat.use" },
+      meta: { permission: ["chat.use", "usage.all.view"] },
     },
     {
       path: "/settings",

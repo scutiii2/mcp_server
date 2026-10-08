@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory, type RouteLocationRaw } from "vue-router";
 import { useAuthStore } from "../stores/auth";
-import { ADMIN_PAGES, ANALYTICS_PERMISSIONS } from "./pages";
+import { ADMIN_PAGES, ADMIN_PERMISSIONS, ANALYTICS_PERMISSIONS } from "./pages";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -19,10 +19,10 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", redirect: "/capabilities" },
-    { path: "/capabilities", name: "capabilities", component: () => import("../views/CapabilitiesAdminView.vue"), meta: { permission: "admin.manage" } },
-    { path: "/extensions", name: "extensions", component: () => import("../views/ExtensionsAdminView.vue"), meta: { permission: ["admin.manage", "extensions.manage"] } },
+    { path: "/capabilities", name: "capabilities", component: () => import("../views/CapabilitiesAdminView.vue"), meta: { permission: "capabilities.manage" } },
+    { path: "/extensions", name: "extensions", component: () => import("../views/ExtensionsAdminView.vue"), meta: { permission: "extensions.manage" } },
     { path: "/analytics", name: "analytics", component: () => import("../views/AnalyticsView.vue"), meta: { permission: ANALYTICS_PERMISSIONS } },
-    { path: "/admin", name: "admin", component: () => import("../views/AdminView.vue"), meta: { permission: "admin.manage" } },
+    { path: "/admin", name: "admin", component: () => import("../views/AdminView.vue"), meta: { permission: ADMIN_PERMISSIONS } },
     { path: "/login", name: "login", component: () => import("../views/LoginView.vue"), meta: { guestOnly: true } },
     { path: "/no-access", name: "no-access", component: () => import("../views/NoAccessView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },

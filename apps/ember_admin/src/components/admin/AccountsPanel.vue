@@ -66,7 +66,7 @@ async function loadAccounts(): Promise<void> {
 
 async function loadRoles(): Promise<void> {
   try {
-    roles.value = await adminClient.listRoles();
+    roles.value = ["roles.view", "roles.manage", "roles.assign"].some(auth.hasPermission) ? await adminClient.listRoles() : [];
   } catch (err) {
     loadError.value = errorMessage(err);
   }

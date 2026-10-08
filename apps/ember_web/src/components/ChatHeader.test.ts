@@ -1,3 +1,4 @@
+import { useAuthStore } from "../stores/auth";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +23,7 @@ const menuItem = (label: string) =>
 
 beforeEach(() => {
   setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["chat.share"] };
   document.body.innerHTML = "";
 });
 
@@ -98,4 +100,9 @@ describe("ChatHeader", () => {
     menuItem("Clear").click();
     expect(w.emitted("clear")).toBeUndefined();
   });
+});
+
+it("does not offer public sharing without chat.share", () => {
+  useAuthStore().account!.permissions = [];
+  expect(iconButton(mountHeader(), "Share")).toBeUndefined();
 });

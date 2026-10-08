@@ -86,7 +86,7 @@ const ACCOUNT: Account = {
   email: "lex@example.com",
   email_verified: true,
   roles: [],
-  permissions: ["tools.use"],
+  permissions: ["tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
 };
 
 async function show(options: { admin?: boolean; query?: string; permissions?: string[]; attach?: boolean; added?: { capabilities?: string[]; extensions?: string[] }; userExtensions?: UserExtension[] } = {}) {
@@ -94,7 +94,7 @@ async function show(options: { admin?: boolean; query?: string; permissions?: st
   setActivePinia(pinia);
   useAuthStore().account = {
     ...ACCOUNT,
-    permissions: options.permissions ?? (options.admin ? ["tools.use", "admin.manage"] : ["tools.use"]),
+    permissions: options.permissions ?? (options.admin ? ["tools.view", "roles.manage", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] : ["tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]),
   };
   const listedExtensions = (await Promise.resolve(mocks.extensions()).catch(() => [])) as { id: string }[];
   mocks.accountGet.mockResolvedValue({
@@ -416,7 +416,7 @@ describe("CapabilitiesView extension cards", () => {
     tools: [`${id}__run`],
     web_url: webUrl,
   });
-  const WITH_CHAT = ["tools.use", "chat.use"];
+  const WITH_CHAT = ["tools.view", "chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"];
   const openButtons = (w: Wrapper) =>
     w.findAll("article.card a").filter((a) => a.text() === "Open page" || a.text() === "Open app");
 
@@ -466,9 +466,9 @@ describe("CapabilitiesView extension cards", () => {
 
 
 
-  it("lists only the extensions when the account lacks tools.use", async () => {
+  it("lists only the extensions when the account lacks tools.view", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
-    const w = await show({ permissions: ["chat.use"] });
+    const w = await show({ permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
 
     expect(mocks.capabilities).not.toHaveBeenCalled();
     expect(mocks.listTools).not.toHaveBeenCalled();
@@ -494,7 +494,7 @@ describe("CapabilitiesView extension cards", () => {
 
   it("has no Remove button on an extension card, even for admins (Remove lives in Ember Admin)", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
-    const admin = await show({ permissions: [...WITH_CHAT, "admin.manage"] });
+    const admin = await show({ permissions: [...WITH_CHAT, "roles.manage"] });
     await head(admin, "PDF2").trigger("click");
 
     expect(admin.find("button.danger").exists()).toBe(false);
@@ -511,7 +511,7 @@ describe("the page layout", () => {
     tools: [`${id}__run`],
     web_url: null,
   });
-  const WITH_CHAT = ["tools.use", "chat.use"];
+  const WITH_CHAT = ["tools.view", "chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"];
 
   it("keeps the long explanation behind a How switches work disclosure", async () => {
     const w = await show();
@@ -559,7 +559,7 @@ describe("the page layout", () => {
 });
 
 describe("built-in switches for your own account", () => {
-  const WITH_CHAT = ["tools.use", "chat.use"];
+  const WITH_CHAT = ["tools.view", "chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"];
   const boxes = (w: Wrapper) => w.findAll("input[type=checkbox]");
 
   it("turns one off for the account at once, without asking, and the card goes", async () => {
@@ -588,7 +588,7 @@ describe("built-in switches for your own account", () => {
 });
 
 describe("private extensions on the page", () => {
-  const WITH_CHAT = ["tools.use", "chat.use"];
+  const WITH_CHAT = ["tools.view", "chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"];
 
   it("shows an enabled private extension as a card with its status and tools", async () => {
     const w = await show({ permissions: WITH_CHAT, userExtensions: [MINE] });
@@ -677,7 +677,7 @@ describe("private extensions on the page", () => {
     expect(mocks.userList).toHaveBeenCalledTimes(2);
 
     mocks.userList.mockClear();
-    await show({ permissions: ["tools.use"] });
+    await show({ permissions: ["tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
     expect(mocks.userList).not.toHaveBeenCalled();
   });
 });

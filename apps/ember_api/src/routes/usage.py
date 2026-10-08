@@ -1,5 +1,5 @@
 """/api/usage: the logged-in account's token usage and limits (chat.use),
-and /api/admin/usage: every account's totals (admin.manage)."""
+and /api/admin/usage: every account's totals (usage.all.view)."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.deps import get_db_session, get_settings, require_permission
 from src.models import Account, UsageRecord
-from src.services.permissions import ADMIN_MANAGE, CHAT_USE
+from src.services.permissions import USAGE_ALL_VIEW, CHAT_USE
 from src.db import utcnow
 from src.services.usage_service import MAX_REPORT_DAYS, UsageService, Window
 
 router = APIRouter(tags=["usage"])
 
 require_chat = require_permission(CHAT_USE)
-require_admin = require_permission(ADMIN_MANAGE)
+require_admin = require_permission(USAGE_ALL_VIEW)
 
 
 def get_usage_service(

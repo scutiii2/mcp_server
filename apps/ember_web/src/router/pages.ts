@@ -28,7 +28,7 @@ export const NAV_PAGES: NavPage[] = [
     label: "Capabilities",
     icon: ["m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z", "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65", "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"],
     description: "What mcp_server offers: its capabilities and extensions (other MCP servers). Run their tools, read their resources, pick the extensions your chats may use.",
-    permission: ["tools.use", "chat.use"],
+    permission: ["tools.view", "chat.use"],
   },
   {
     to: "/agents",
@@ -38,7 +38,7 @@ export const NAV_PAGES: NavPage[] = [
     permission: "chat.use",
   },
   { to: "/watchers", label: "Watchers", icon: ["M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0z", "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"], description: "Background watchers of every capability.", permission: "watchers.view" },
-  { to: "/usage", label: "Usage", icon: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"], description: "Your token usage and limits.", permission: "chat.use" },
+  { to: "/usage", label: "Usage", icon: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"], description: "Token usage and limits.", permission: ["chat.use", "usage.all.view"] },
   {
     to: "/settings",
     label: "Settings",

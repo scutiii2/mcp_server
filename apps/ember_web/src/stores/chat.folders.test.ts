@@ -44,7 +44,7 @@ const TWO: ChatMessage[] = [
 
 async function setup(list: ChatSummary[]) {
   setActivePinia(createPinia());
-  useAuthStore().account = { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions: ["chat.use"] };
+  useAuthStore().account = { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
   client.list.mockResolvedValue(list);
   client.get.mockImplementation(async (id: string) => ({ ...summary(id), messages: structuredClone(TWO) }));
   const chat = useChatStore();

@@ -47,7 +47,7 @@ const ACCOUNT = {
   email: "root@example.com",
   email_verified: true,
   roles: [],
-  permissions: ["chat.use"],
+  permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
 };
 
 const summary = (id: string, count = 0, running = false): ChatSummary => ({

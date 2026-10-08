@@ -25,7 +25,7 @@ from src.services.agent_directory import AgentDirectory
 from src.services.agent_gateway import Caller
 from src.services.extension_probe import ExtensionProbe, ProbeResult
 from src.services.log_service import LogWriter
-from src.services.permissions import CHAT_USE
+from src.services.permissions import CHAT_USE, EXTENSIONS_PERSONAL_MANAGE
 from src.services.secret_box import SecretBox
 from src.services.user_extension_service import (
     MAX_SLUG,
@@ -40,6 +40,7 @@ from src.services.user_extension_service import (
 router = APIRouter(prefix="/api/user-extensions", tags=["user-extensions"])
 
 require_chat = require_permission(CHAT_USE)
+require_manage = require_permission(EXTENSIONS_PERSONAL_MANAGE)
 
 NOT_PROBED = ProbeResult("unknown", None, ())
 
@@ -130,7 +131,7 @@ async def list_extensions(
     return [ExtensionOut.of(item, result) for item, result in zip(stored, results)]
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_manage)])
 async def add_extension(
     body: ExtensionCreate,
     account: Account = Depends(require_chat),
@@ -154,7 +155,7 @@ async def add_extension(
     return ExtensionOut.of(stored, await _probe(stored, account, probe, directory))
 
 
-@router.patch("/{slug}")
+@router.patch("/{slug}", dependencies=[Depends(require_manage)])
 async def update_extension(
     body: ExtensionUpdate,
     slug: str = Path(pattern=SLUG_PATTERN, max_length=MAX_SLUG),
@@ -190,7 +191,7 @@ async def update_extension(
     return ExtensionOut.of(stored, await _probe(stored, account, probe, directory))
 
 
-@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_manage)])
 async def remove_extension(
     slug: str = Path(pattern=SLUG_PATTERN, max_length=MAX_SLUG),
     account: Account = Depends(require_chat),

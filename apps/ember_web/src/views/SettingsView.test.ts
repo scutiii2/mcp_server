@@ -29,8 +29,8 @@ vi.mock("../stores/chat", () => ({ useChatStore: () => chat }));
 
 const client = vi.mocked(settingsClient);
 
-const MEMBER = ["chat.use"];
-const ADMIN = ["chat.use", "admin.manage"];
+const MEMBER = ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"];
+const ADMIN = ["chat.use", "roles.manage", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"];
 
 async function mountView(permissions: string[] = MEMBER, forced = false) {
   setActivePinia(createPinia());

@@ -2,6 +2,7 @@ import { flushPromises, mount, type DOMWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "../api/types";
+import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
 import { useEntryAgentStore } from "../stores/entryAgent";
 import { withAttachments } from "../utils/attachments";
@@ -25,9 +26,11 @@ const FILE = { filename: "f.txt", chars: 3, truncated: false, text: "abc" };
 type Props = InstanceType<typeof MessageList>["$props"];
 
 function mountList(props: Partial<Props> = {}) {
+  const pinia = createPinia();
+  useAuthStore(pinia).account = { id: 1, username: "alice", email: "a@example.com", email_verified: true, roles: [], permissions: ["files.download"] };
   return mount(MessageList, {
     props: { messages: FOUR, streaming: "", activity: "", steps: [], busy: false, canChange: true, regenerateIndex: 2, ...props },
-    global: { plugins: [createPinia()] },
+    global: { plugins: [pinia] },
     attachTo: document.body,
   });
 }

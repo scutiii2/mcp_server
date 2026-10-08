@@ -45,7 +45,7 @@ const recordsFailed = ref(false);
 const loading = ref(false);
 const error = ref("");
 
-const isAdmin = computed(() => auth.hasPermission("admin.manage"));
+const isAdmin = computed(() => auth.hasPermission("usage.all.view"));
 
 // Each load takes a number; a response that is no longer the latest request's
 // (the period or grouping changed meanwhile) is dropped.
@@ -59,9 +59,9 @@ async function load(): Promise<void> {
     const { days, since } = period();
     let failed = false;
     const [report, all, rows] = await Promise.all([
-      usageClient.mine(days, since, { groupBy: groupBy.value }),
+      auth.hasPermission("chat.use") ? usageClient.mine(days, since, { groupBy: groupBy.value }) : Promise.resolve(null),
       isAdmin.value ? usageClient.allAccounts(days, since) : Promise.resolve([]),
-      usageClient.records(days, since, { limit: 100 }).catch(() => {
+      (auth.hasPermission("chat.use") ? usageClient.records(days, since, { limit: 100 }) : Promise.resolve([])).catch(() => {
         failed = true; // the list is extra: the report still shows
         return [];
       }),
@@ -117,6 +117,7 @@ const activitySeries = computed(() => {
 const ACTIVITY_LINES = [{ id: "tokens", label: "Tokens", color: "var(--accent)" }];
 
 async function loadYear(): Promise<void> {
+  if (!auth.hasPermission("chat.use")) return;
   try {
     year.value = await usageClient.mine(366);
   } catch {
@@ -258,20 +259,20 @@ onMounted(() => {
           </ul>
         </div>
 
-        <div v-if="isAdmin" class="panel accounts">
-          <div class="panel-head"><h3>All accounts</h3><span class="muted small">Admin only</span></div>
-          <p v-if="accounts.length === 0" class="muted">No usage in this period.</p>
-          <ul v-else class="calls">
-            <li v-for="a in accounts" :key="a.account_id" class="call">
-              <div class="call-main">
-                <div class="call-agent">{{ a.username }}</div>
-                <div class="muted small">{{ tokens(a.turns) }} answers · last used {{ a.last_used_at ? formatUtc(a.last_used_at) : "-" }}</div>
-              </div>
-              <div class="call-tokens"><strong>{{ tokens(a.tokens) }}</strong></div>
-            </li>
-          </ul>
-        </div>
       </template>
+      <div v-if="isAdmin && !error" class="panel accounts">
+        <div class="panel-head"><h3>All accounts</h3><span class="muted small">Workspace usage</span></div>
+        <p v-if="accounts.length === 0" class="muted">No usage in this period.</p>
+        <ul v-else class="calls">
+          <li v-for="a in accounts" :key="a.account_id" class="call">
+            <div class="call-main">
+              <div class="call-agent">{{ a.username }}</div>
+              <div class="muted small">{{ tokens(a.turns) }} answers · last used {{ a.last_used_at ? formatUtc(a.last_used_at) : "-" }}</div>
+            </div>
+            <div class="call-tokens"><strong>{{ tokens(a.tokens) }}</strong></div>
+          </li>
+        </ul>
+      </div>
     </div>
   </section>
 </template>

@@ -34,7 +34,7 @@ beforeAll(() => {
 
 const PERMISSIONS: PermissionInfo[] = [
   { name: "chat.use", description: "Chat with the agent" },
-  { name: "admin.manage", description: "Manage accounts" },
+  { name: "roles.manage", description: "Manage accounts" },
 ];
 
 const ADMIN: Role = {
@@ -42,7 +42,7 @@ const ADMIN: Role = {
   name: "Administrator",
   description: null,
   is_protected: true,
-  permissions: ["chat.use", "admin.manage"],
+  permissions: ["chat.use", "roles.manage"],
   account_count: 1,
 };
 const MEMBER: Role = {
@@ -74,7 +74,7 @@ const clickIn = (root: { findAll: Panel["findAll"] }, label: string) =>
 beforeEach(() => {
   vi.clearAllMocks();
   setActivePinia(createPinia());
-  useAuthStore().account = { id: 1, username: "admin", email: "admin@mail.com", email_verified: true, roles: ["Administrator"], permissions: [] };
+  useAuthStore().account = { id: 1, username: "admin", email: "admin@mail.com", email_verified: true, roles: ["Administrator"], permissions: ["roles.view", "roles.manage", "chat.use", "tools.view"] };
   client.listRoles.mockResolvedValue([ADMIN, MEMBER, OPS]);
   client.listPermissions.mockResolvedValue(PERMISSIONS);
 });
@@ -109,25 +109,25 @@ describe("RolesPanel", () => {
   });
 
   it("grants a permission and shows the switch on", async () => {
-    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "admin.manage"] });
+    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
 
-    await editor(wrapper).get('input[aria-label="admin.manage"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="roles.manage"]').trigger("click");
     await flushPromises();
 
-    expect(client.grantPermission).toHaveBeenCalledWith(2, "admin.manage");
-    const box = editor(wrapper).get('input[aria-label="admin.manage"]').element as HTMLInputElement;
+    expect(client.grantPermission).toHaveBeenCalledWith(2, "roles.manage");
+    const box = editor(wrapper).get('input[aria-label="roles.manage"]').element as HTMLInputElement;
     expect(box.checked).toBe(true);
   });
 
   it("shows Saved after a permission change, and clears it on another role", async () => {
-    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "admin.manage"] });
+    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
     expect(editor(wrapper).find(".chip.saved").exists()).toBe(false);
 
-    await editor(wrapper).get('input[aria-label="admin.manage"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="roles.manage"]').trigger("click");
     await flushPromises();
     expect(editor(wrapper).get(".chip.saved").text()).toBe("Saved");
 
@@ -175,11 +175,11 @@ describe("RolesPanel", () => {
   it("does not re-read the account for a role it does not hold", async () => {
     const auth = useAuthStore();
     const refresh = vi.spyOn(auth, "refresh").mockResolvedValue();
-    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "admin.manage"] });
+    client.grantPermission.mockResolvedValue({ ...MEMBER, permissions: ["chat.use", "roles.manage"] });
     const wrapper = await panel();
     await listItem(wrapper, "Member").trigger("click");
 
-    await editor(wrapper).get('input[aria-label="admin.manage"]').trigger("click");
+    await editor(wrapper).get('input[aria-label="roles.manage"]').trigger("click");
     await flushPromises();
 
     expect(refresh).not.toHaveBeenCalled();

@@ -115,11 +115,13 @@ def list_tools(enabled_extensions: list[str] | None = None) -> list[Any]:
     turn = private_turn.current()
     if turn:
         # Fetched before the provider started (prefetch_private), so this never waits on a network.
-        result.extend(tool for tool in turn.tools() if scope.allows(tool.name))
+        result.extend(tool for tool in turn.tools() if scope.allows(tool.name) and not tool_filter.is_blocked(tool.name))
     return result
 
 
 def call_tool(name: str, arguments: dict[str, Any]) -> str:
+    if tool_filter.is_blocked(unprefixed(name) if name.startswith(_PREFIX) else name):
+        raise PermissionError(f"tool {name!r} is switched off for this user")
     if name.startswith(private_turn.TOOL_PREFIX):
         return _call_private(name, arguments)
     if name.startswith(_PREFIX) and not agent_spec.current().tools.allows(unprefixed(name)):

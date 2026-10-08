@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useAuthStore } from "../stores/auth";
 import { commandsClient, type ParamOption } from "../api/CommandsClient";
 import type { JsonSchema } from "../api/types";
 import { errorMessage } from "../utils/errors";
@@ -11,6 +12,7 @@ import { buildArgs, fieldsFromSchema, initialValues, type FieldValues, type Tool
  * field), options that fill in (`sets`) or show (`shows`) other values, and
  * file fields that upload the chosen file and hold its server-side path. */
 
+const auth = useAuthStore();
 const props = withDefaults(defineProps<{ schema: JsonSchema; running: boolean; submitLabel?: string; live?: boolean }>(), {
   submitLabel: "Run",
   live: false,
@@ -120,7 +122,7 @@ const dragging = ref<string | null>(null);
 const uploading = computed(() => Object.values(uploads).some((u) => u.state === "uploading"));
 
 async function upload(field: ToolField, file: File | undefined): Promise<void> {
-  if (!file) return;
+  if (!file || !auth.hasPermission("files.upload")) return;
   uploads[field.name] = { filename: file.name, state: "uploading", error: "" };
   values.value[field.name] = "";
   try {
@@ -152,7 +154,7 @@ function onDrop(field: ToolField, event: DragEvent): void {
 // --- submit -------------------------------------------------------------------
 
 function submit(): void {
-  if (uploading.value) return;
+  if (uploading.value || !auth.hasPermission("tools.execute")) return;
   const built = buildArgs(fields.value, values.value);
   if (!built.ok) {
     errors.value = built.errors;
@@ -208,7 +210,7 @@ function inputType(field: ToolField): string {
           @dragleave="onDropLeave($event, f.name)"
           @drop.prevent="onDrop(f, $event)"
         >
-          <input :id="`field-${f.name}`" type="file" class="file-input" @change="onFileInput(f, $event)" />
+          <input :disabled="!auth.hasPermission('files.upload')" :id="`field-${f.name}`" type="file" class="file-input" @change="onFileInput(f, $event)" />
           <span v-if="!uploads[f.name]" class="muted">Drop a file here or choose one</span>
           <span v-else-if="uploads[f.name]!.state === 'uploading'" class="muted">uploading {{ uploads[f.name]!.filename }} ...</span>
           <span v-else-if="uploads[f.name]!.state === 'done'">✓ {{ uploads[f.name]!.filename }}</span>
@@ -281,7 +283,7 @@ function inputType(field: ToolField): string {
       <small v-else-if="f.description" class="hint">{{ f.description }}</small>
     </div>
 
-    <button v-if="!live" type="submit" class="run" :disabled="running || uploading">
+    <button v-if="!live" type="submit" class="run" :disabled="running || uploading || !auth.hasPermission('tools.execute')">
       {{ running ? "Running ..." : uploading ? "Uploading ..." : submitLabel }}
     </button>
   </form>

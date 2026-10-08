@@ -12,7 +12,7 @@ export interface CapabilityStatus extends CapabilityInfo {
 
 const enc = encodeURIComponent;
 
-/** ember_api's capability switchboard, for admins (admin.manage). Going online
+/** ember_api's capability switchboard, for admins (capabilities.manage). Going online
  * re-imports the capability's code; refresh finds folders added while mcp_server runs. */
 export const capabilitiesAdminClient = {
   list: () => apiRequest<CapabilityStatus[]>("GET", "/api/capabilities"),

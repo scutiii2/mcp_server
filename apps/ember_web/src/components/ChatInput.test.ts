@@ -1,3 +1,5 @@
+import { useAuthStore } from "../stores/auth";
+import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { attachmentsClient } from "../api/AttachmentsClient";
@@ -25,6 +27,8 @@ const clipboard = (files: File[], plain = "") => ({ files, getData: (type: strin
 const drag = (types: string[], files: File[] = []) => ({ types, files });
 
 beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["files.upload"] };
   text.mockResolvedValue({ text: "extracted", char_count: 9, truncated: false } as never);
   table.mockResolvedValue({ table_id: "tbl-1", filename: "sales.csv", rows: 1200, columns: ["region", "units"], sheet: null, notes: [] });
 });

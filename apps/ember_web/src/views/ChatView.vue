@@ -14,6 +14,7 @@ import ShareDialog from "../components/ShareDialog.vue";
 import TemplatesModal from "../components/TemplatesModal.vue";
 import TurnNotices from "../components/TurnNotices.vue";
 import { useEntryAgentStore } from "../stores/entryAgent";
+import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
 import { useFoldersStore } from "../stores/folders";
 import { useTemplatesStore } from "../stores/templates";
@@ -29,6 +30,7 @@ import { builtinCommand, type BuiltinCommand } from "../utils/builtinCommands";
 import { questionHistory } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
 
+const auth = useAuthStore();
 const chat = useChatStore();
 // storeToRefs keeps destructured state reactive; actions come off `chat`.
 const {
@@ -158,6 +160,10 @@ function runBuiltin(command: BuiltinCommand): boolean {
   }
   if ((command === "clear" || command === "compact") && (busy.value || working.value)) {
     sendError.value = `/${command}: wait for the current answer to finish.`;
+    return false;
+  }
+  if (command === "share" && !auth.hasPermission("chat.share")) {
+    sendError.value = "Sharing needs the chat.share permission.";
     return false;
   }
   sendError.value = "";

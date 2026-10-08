@@ -122,7 +122,7 @@ onMounted(load);
   <div class="admin-panel">
     <header class="section-head">
       <div><h3>Roles &amp; permissions</h3><p>Define what each role can access.</p></div>
-      <button type="button" class="primary new" @click="openCreate">+ New role</button>
+      <button v-if="auth.hasPermission('roles.manage')" type="button" class="primary new" @click="openCreate">+ New role</button>
     </header>
     <p v-if="loadError" class="error">error: {{ loadError }}</p>
 

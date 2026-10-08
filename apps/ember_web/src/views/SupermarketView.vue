@@ -30,14 +30,14 @@ const extensions = ref<ExtensionInfo[]>([]);
 const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
-const canUsePrivate = computed(() => auth.hasPermission("chat.use"));
+const canUsePrivate = computed(() => auth.hasPermission("chat.use") && auth.hasPermission("extensions.personal.manage"));
 const modalOpen = ref(false);
 const editing = ref<UserExtension | null>(null);
 const pendingRemovePrivate = ref<UserExtension | null>(null);
 const removingPrivate = ref(false);
 
-// Capabilities need tools.use; the extension list needs chat.use or tools.use.
-const canTools = computed(() => auth.hasPermission("tools.use"));
+// Capabilities need tools.view; the extension list needs chat.use or tools.view.
+const canTools = computed(() => auth.hasPermission("tools.view"));
 const accountLoading = computed(() => !account.ready && account.error === "");
 
 type StateFilter = "enabled" | "disabled" | null;

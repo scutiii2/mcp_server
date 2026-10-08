@@ -50,7 +50,7 @@ function account(permissions: string[]) {
   return { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions };
 }
 
-async function mountView(permissions = ["chat.use"]) {
+async function mountView(permissions = ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]) {
   setActivePinia(createPinia());
   useAuthStore().account = account(permissions);
   const wrapper = mount(UsageView);
@@ -115,7 +115,7 @@ describe("the period buttons", () => {
   });
 
   it("asks for every account's totals with the same period, for an admin", async () => {
-    const wrapper = await mountView(["chat.use", "admin.manage"]);
+    const wrapper = await mountView(["chat.use", "usage.all.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]);
     expect(allAccounts).toHaveBeenLastCalledWith(30, undefined);
 
     await rangeButton(wrapper, "This month").trigger("click");
@@ -124,8 +124,8 @@ describe("the period buttons", () => {
     expect(allAccounts).toHaveBeenLastCalledWith(30, "2026-10-01");
   });
 
-  it("does not ask for them without admin.manage", async () => {
-    await mountView(["chat.use"]);
+  it("does not ask for them without usage.all.view", async () => {
+    await mountView(["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]);
 
     expect(allAccounts).not.toHaveBeenCalled();
   });
@@ -293,7 +293,7 @@ describe("group by", () => {
     });
     let calls = 0;
     setActivePinia(createPinia());
-    useAuthStore().account = account(["chat.use"]);
+    useAuthStore().account = account(["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]);
     const wrapper = mount(UsageView); // first request (30 days) stays pending
     await flushPromises();
     await rangeButton(wrapper, "7 days").trigger("click"); // second request answers at once
@@ -360,7 +360,7 @@ describe("Export .md", () => {
   it("is off until the report has loaded", async () => {
     mine.mockReturnValue(new Promise(() => {}));
     setActivePinia(createPinia());
-    useAuthStore().account = account(["chat.use"]);
+    useAuthStore().account = account(["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]);
 
     const wrapper = mount(UsageView);
 
@@ -423,4 +423,12 @@ describe("activity line chart", () => {
     await wrapper.find(".activity .chart .chip").trigger("click");
     expect(wrapper.findAll(".activity .chart tbody tr td").map((cell) => cell.text())).toEqual(["10", "0", "30"]);
   });
+});
+
+
+it("opens all-account usage without chat access", async () => {
+  const wrapper = await mountView(["usage.all.view"]);
+  expect(allAccounts).toHaveBeenCalledWith(30, undefined);
+  expect(mine).not.toHaveBeenCalled();
+  expect(wrapper.text()).toContain("All accounts");
 });

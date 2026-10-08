@@ -20,7 +20,7 @@ from src.routes.chats import ChatId, get_chat_service
 from src.security import client_ip
 from src.services.chat_service import ChatNotFound, ChatService
 from src.services.log_service import LogWriter
-from src.services.permissions import CHAT_USE
+from src.services.permissions import CHAT_USE, CHAT_SHARE
 from src.services.public_rate_limiter import PublicReadLimiter
 from src.services.share_service import (
     NothingToShare,
@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api", tags=["shares"])
 public_router = APIRouter(prefix="/api/shared", tags=["shares"])
 
 require_chat = require_permission(CHAT_USE)
+require_share = require_permission(CHAT_SHARE)
 
 ShareId = Path(ge=1, le=2**31 - 1)
 # secrets.token_urlsafe(32) is 43 characters; anything else cannot be a link.
@@ -91,7 +92,7 @@ def _not_found() -> HTTPException:
 # --- the account's own links --------------------------------------------------------
 
 
-@router.post("/chats/{chat_id}/shares", status_code=status.HTTP_201_CREATED)
+@router.post("/chats/{chat_id}/shares", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_share)])
 async def create_share(
     body: CreateShareRequest,
     chat_id: str = ChatId,

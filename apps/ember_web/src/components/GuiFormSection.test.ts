@@ -1,3 +1,5 @@
+import { createPinia, setActivePinia } from "pinia";
+import { useAuthStore } from "../stores/auth";
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, KeepAlive } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -396,4 +398,19 @@ describe("GuiFormSection lifecycle", () => {
     expect(w.text()).toContain("mcp_server is unreachable");
     expect(w.find(".refresh").exists()).toBe(false);
   });
+});
+
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "alice", email: "a@example.com", email_verified: true, roles: [], permissions: ["tools.execute"] };
+});
+
+
+it("does not execute a live capability form without tools.execute", async () => {
+  useAuthStore().account!.permissions = ["tools.view"];
+  const runTool = vi.fn();
+  mount(GuiFormSection, { props: { section: { ...SECTION, live: true }, tool: TOOL, runTool } });
+  await flushPromises();
+  expect(runTool).not.toHaveBeenCalled();
 });

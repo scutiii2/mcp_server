@@ -1,5 +1,7 @@
+import { useAuthStore } from "../../stores/auth";
+import { createPinia, setActivePinia } from "pinia";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { AdminAccount, Role } from "../../api/AdminClient";
 import AccountDrawer from "./AccountDrawer.vue";
 
@@ -148,4 +150,10 @@ describe("AccountDrawer", () => {
     expect(wrapper.get(".error").text()).toBe("Email already in use");
     expect(wrapper.get(".notice").text()).toBe("Sent");
   });
+});
+
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["accounts.manage", "accounts.delete", "roles.assign"] };
 });

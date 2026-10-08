@@ -171,6 +171,7 @@ def test_status_delegates_to_agent_config():
             **fake_status,
             "tool_approval": True,
             "tool_filter": True,
+            "tool_filter_all": True,
             "user_questions": True,
             "private_extensions": True,
         }

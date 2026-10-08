@@ -125,7 +125,7 @@ def test_restart_updates_known_permission_descriptions_and_creates_missing_rows(
 
     async def seed_old_permissions() -> None:
         async with client.app.state.database.sessions() as session:
-            permission = await session.scalar(select(Permission).where(Permission.name == "admin.manage"))
+            permission = await session.scalar(select(Permission).where(Permission.name == "roles.manage"))
             permission.description = "Manage accounts, roles, invites and mcp_server extensions"
             await session.execute(delete(Permission).where(Permission.name == "extensions.manage"))
             session.add(Permission(name="retired.permission", description="Leave this description alone"))
@@ -135,7 +135,7 @@ def test_restart_updates_known_permission_descriptions_and_creates_missing_rows(
     restarted = client_factory()
     assert login(restarted).status_code == 200
     permissions = {p["name"]: p["description"] for p in restarted.get("/api/admin/permissions").json()}
-    assert permissions["admin.manage"] == "Manage accounts, roles, invites and settings everyone is held to"
+    assert permissions["roles.manage"] == "Create, edit and delete roles and change their permissions"
     assert permissions["extensions.manage"] == "Add and remove mcp_server extensions (other MCP servers offered to every client)"
 
     async def retired_description() -> str:

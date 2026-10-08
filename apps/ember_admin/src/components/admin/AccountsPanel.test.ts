@@ -71,7 +71,7 @@ const clickIn = (root: { findAll: Panel["findAll"] }, label: string) =>
 beforeEach(() => {
   vi.clearAllMocks();
   setActivePinia(createPinia());
-  useAuthStore().account = { id: 1, username: "admin", email: "admin@mail.com", email_verified: true, roles: [], permissions: [] };
+  useAuthStore().account = { id: 1, username: "admin", email: "admin@mail.com", email_verified: true, roles: [], permissions: ["accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "chat.use", "tools.view"] };
   client.listAccounts.mockResolvedValue([ADMIN, MARIA, LI]);
   client.listRoles.mockResolvedValue(ROLES);
 });

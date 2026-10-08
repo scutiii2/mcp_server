@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import FakeEmailSender, FakeUpstream
 from tests.test_admin import login, make_member, role_by_name
+from src.services.permissions import DEFAULT_ROLE_PERMISSIONS
 from tests.test_registration import as_admin
 
 COMMANDS = [{"capability": "srv", "name": "list", "description": "List apps", "tool_name": "tool_srv_listApps"}]
@@ -114,12 +115,12 @@ def test_capability_page_needs_tools_use(client_factory, email: FakeEmailSender,
     make_member(member, email)  # verified, so only the permission can refuse
     admin = as_admin(client_factory())
     role = role_by_name(admin, "Member")
-    assert admin.delete(f"/api/admin/roles/{role['id']}/permissions/tools.use").status_code == 200
+    assert admin.delete(f"/api/admin/roles/{role['id']}/permissions/tools.view").status_code == 200
     login(member, "alice")
 
     refused = member.get("/api/capabilities/server_manager/gui")
 
-    assert (refused.status_code, refused.json()["detail"]) == (403, "Missing permission: tools.use")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "Missing permission: tools.view or capabilities.manage")
     assert len(upstream.requests) == 0
 
 
@@ -195,10 +196,10 @@ def test_extension_manager_can_add_remove_and_log_without_admin_access(
     member_id = make_member(member, email)
     admin = as_admin(client_factory())
     role = role_by_name(admin, "Member")
-    assert admin.delete(f"/api/admin/roles/{role['id']}/permissions/tools.use").status_code == 200
+    assert admin.delete(f"/api/admin/roles/{role['id']}/permissions/tools.view").status_code == 200
     assert admin.put(f"/api/admin/roles/{role['id']}/permissions/extensions.manage").status_code == 200
     login(member, "alice")
-    assert member.get("/api/auth/me").json()["permissions"] == ["chat.use", "extensions.manage"]
+    assert member.get("/api/auth/me").json()["permissions"] == sorted([p for p in DEFAULT_ROLE_PERMISSIONS if p != "tools.view"] + ["extensions.manage"])
 
     assert member.post("/api/extensions", json={"label": "Wiki", "url": "http://wiki.internal/mcp"}).status_code == 201
     assert member.delete("/api/extensions/notes").status_code == 204
@@ -218,7 +219,7 @@ def test_admin_manage_without_extensions_manage_cannot_add_or_remove(
     make_member(member, email)
     admin = as_admin(client_factory())
     role = role_by_name(admin, "Member")
-    assert admin.put(f"/api/admin/roles/{role['id']}/permissions/admin.manage").status_code == 200
+    assert admin.put(f"/api/admin/roles/{role['id']}/permissions/roles.manage").status_code == 200
     login(member, "alice")
 
     assert member.post("/api/extensions", json={"label": "Wiki", "url": "http://wiki.internal/mcp"}).status_code == 403

@@ -16,7 +16,7 @@ export function pickGreeting(random: () => number = Math.random): string {
 }
 
 /** What to try first. Slash commands are offered only when there are some
- * (they need the tools.use permission). */
+ * (they need the tools.view permission). */
 export function welcomeTip(hasCommands: boolean): string {
   return hasCommands
     ? "Type / to run a command, # for a saved prompt, or just ask a question."

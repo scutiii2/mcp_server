@@ -33,4 +33,5 @@ def blocked() -> frozenset[str]:
 
 
 def is_blocked(name: str) -> bool:
-    return name in _blocked.get()
+    names = _blocked.get()
+    return "*" in names or name in names

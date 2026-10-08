@@ -324,6 +324,7 @@ def status() -> dict[str, Any]:
         **agent_config.status(),
         "tool_approval": True,
         "tool_filter": True,
+        "tool_filter_all": True,
         "user_questions": True,
         # laya keeps its own tool shortlist and never lists tools through mcp_upstream.
         "private_extensions": agent_config.PROVIDER_ID != "laya",

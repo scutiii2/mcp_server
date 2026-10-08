@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from src.services.permissions import ALL_PERMISSIONS
+from src.services.permissions import ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS
 from tests.conftest import ADMIN_USERNAME, FakeEmailSender
 from tests.test_registration import as_admin, new_invite, register
 
@@ -286,28 +286,28 @@ def test_grant_and_revoke_permission(client: TestClient, email: FakeEmailSender)
     as_admin(client)
     member = role_by_name(client, "Member")
 
-    granted = client.put(f"/api/admin/roles/{member['id']}/permissions/admin.manage")
-    assert granted.json()["permissions"] == ["admin.manage", "chat.use", "tools.use"]
+    granted = client.put(f"/api/admin/roles/{member['id']}/permissions/roles.manage")
+    assert granted.json()["permissions"] == sorted([*DEFAULT_ROLE_PERMISSIONS, "roles.manage"])
     assert client.put(f"/api/admin/roles/{member['id']}/permissions/no.such").status_code == 404
 
-    revoked = client.delete(f"/api/admin/roles/{member['id']}/permissions/tools.use")
-    assert revoked.json()["permissions"] == ["admin.manage", "chat.use"]
+    revoked = client.delete(f"/api/admin/roles/{member['id']}/permissions/tools.view")
+    assert revoked.json()["permissions"] == sorted([p for p in DEFAULT_ROLE_PERMISSIONS if p != "tools.view"] + ["roles.manage"])
 
     client.post("/api/auth/logout", json={})
     login(client, "alice")
-    assert client.get("/api/auth/me").json()["permissions"] == ["admin.manage", "chat.use"]
+    assert client.get("/api/auth/me").json()["permissions"] == sorted([p for p in DEFAULT_ROLE_PERMISSIONS if p != "tools.view"] + ["roles.manage"])
 
 
 def test_admin_cannot_revoke_or_delete_own_only_admin_access(client: TestClient, email: FakeEmailSender) -> None:
     carol = make_member(client, email, "carol")
     as_admin(client)
     ops = client.post("/api/admin/roles", json={"name": "Ops"}).json()
-    client.put(f"/api/admin/roles/{ops['id']}/permissions/admin.manage")
+    client.put(f"/api/admin/roles/{ops['id']}/permissions/roles.manage")
     client.put(f"/api/admin/accounts/{carol}/roles/{ops['id']}")
     client.post("/api/auth/logout", json={})
     login(client, "carol")
 
-    assert client.delete(f"/api/admin/roles/{ops['id']}/permissions/admin.manage").status_code == 409
+    assert client.delete(f"/api/admin/roles/{ops['id']}/permissions/roles.manage").status_code == 409
     assert client.delete(f"/api/admin/roles/{ops['id']}").status_code == 409
     # Other permissions on the same role are fine.
     assert client.delete(f"/api/admin/roles/{ops['id']}/permissions/chat.use").status_code == 200
@@ -342,7 +342,7 @@ def test_used_invite_cannot_be_revoked(client: TestClient, email: FakeEmailSende
 def test_extensions_permission_bootstrap_and_descriptions(client: TestClient) -> None:
     as_admin(client)
     assert "extensions.manage" in role_by_name(client, "Administrator")["permissions"]
-    assert role_by_name(client, "Member")["permissions"] == ["chat.use", "tools.use"]
+    assert role_by_name(client, "Member")["permissions"] == sorted(DEFAULT_ROLE_PERMISSIONS)
     permissions = {p["name"]: p["description"] for p in client.get("/api/admin/permissions").json()}
     assert permissions["extensions.manage"] == "Add and remove mcp_server extensions (other MCP servers offered to every client)"
-    assert permissions["admin.manage"] == "Manage accounts, roles, invites and settings everyone is held to"
+    assert permissions["roles.manage"] == "Create, edit and delete roles and change their permissions"

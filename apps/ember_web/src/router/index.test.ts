@@ -14,7 +14,7 @@ const ACCOUNT: Account = {
   email: "root@example.com",
   email_verified: true,
   roles: [],
-  permissions: ["chat.use"],
+  permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
 };
 
 beforeEach(async () => {
@@ -135,7 +135,7 @@ describe("email verification", () => {
   });
 });
 
-const ACCOUNT_WITH_TOOLS = { ...ACCOUNT, permissions: ["chat.use", "tools.use"] };
+const ACCOUNT_WITH_TOOLS = { ...ACCOUNT, permissions: ["chat.use", "tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 
 describe("the merged Capabilities page", () => {
   it("sends the old Tools address to Capabilities, keeping the filter", async () => {
@@ -165,7 +165,7 @@ describe("the merged Capabilities page", () => {
   });
 
   it("opens for chat.use alone, to switch extensions", async () => {
-    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use"] });
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
 
     await router.push("/capabilities");
 
@@ -173,7 +173,7 @@ describe("the merged Capabilities page", () => {
   });
 
   it("opens the Supermarket for chat.use alone", async () => {
-    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use"] });
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
 
     await router.push("/capabilities/supermarket");
 
@@ -186,7 +186,7 @@ describe("the merged Capabilities page", () => {
   });
 
 
-  it("stays closed to an account with neither tools.use nor chat.use", async () => {
+  it("stays closed to an account with neither tools.view nor chat.use", async () => {
     me.mockResolvedValue({ ...ACCOUNT, permissions: ["watchers.view"] });
 
     await router.push("/capabilities");
@@ -197,13 +197,20 @@ describe("the merged Capabilities page", () => {
 
 describe("pages moved to Ember Admin", () => {
   it.each(["/admin", "/analytics", "/logs"])("opens the Web home for an old %s link", async (path) => {
-    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use", "admin.manage", "logs.view"] });
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use", "roles.manage", "logs.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] });
     await router.push(path);
     expect(router.currentRoute.value.name).toBe("chat");
   });
   it("does not use Admin as a Web landing page", async () => {
-    me.mockResolvedValue({ ...ACCOUNT, permissions: ["admin.manage"] });
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["roles.manage"] });
     await router.push("/");
     expect(router.currentRoute.value.name).toBe("no-access");
   });
+});
+
+
+it("lands a usage observer on Usage without chat permission", async () => {
+  me.mockResolvedValue({ ...ACCOUNT, permissions: ["usage.all.view"] });
+  await router.push("/");
+  expect(router.currentRoute.value.name).toBe("usage");
 });

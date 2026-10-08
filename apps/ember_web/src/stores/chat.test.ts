@@ -38,7 +38,7 @@ const ACCOUNT = {
   email: "root@example.com",
   email_verified: true,
   roles: [],
-  permissions: ["chat.use"],
+  permissions: ["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"],
 };
 
 function summary(id: string, count = 0): ChatSummary {

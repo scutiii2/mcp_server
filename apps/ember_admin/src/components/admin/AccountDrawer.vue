@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import type { AccountChanges, AdminAccount, Role, RoleRef } from "../../api/AdminClient";
+import { useAuthStore } from "../../stores/auth";
 import { formatUtc } from "../../utils/errors";
 import ToggleSwitch from "../ToggleSwitch.vue";
 import "./admin.css";
@@ -28,6 +29,9 @@ const emit = defineEmits<{
   remove: [];
 }>();
 
+const auth = useAuthStore();
+const canManage = computed(() => auth.hasPermission("accounts.manage"));
+const canAssign = computed(() => auth.hasPermission("roles.assign"));
 const editing = ref(false);
 const form = reactive({ username: "", email: "" });
 
@@ -39,12 +43,12 @@ watch(
 
 const missingRoles = computed(() => {
   const held = new Set(props.account.roles.map((r) => r.id));
-  return props.roles.filter((r) => !held.has(r.id));
+  return props.roles.filter((r) => !held.has(r.id) && r.permissions.every(auth.hasPermission));
 });
 
 /** Protected accounts can't be changed at all; your own can't be disabled or deleted. */
 const locked = computed(() => props.account.is_protected);
-const canDisable = computed(() => !locked.value && !props.isSelf);
+const canDisable = computed(() => canManage.value && !locked.value && !props.isSelf);
 
 function startEdit(): void {
   form.username = props.account.username;
@@ -107,7 +111,7 @@ function onAddRole(event: Event): void {
         <span v-for="r in account.roles" :key="r.id" class="chip" :class="{ fixed: locked }">
           {{ r.name }}
           <button
-            v-if="!locked"
+            v-if="!locked && canAssign"
             type="button"
             class="chip-x"
             :aria-label="`Remove role ${r.name}`"
@@ -119,7 +123,7 @@ function onAddRole(event: Event): void {
         </span>
         <span v-if="account.roles.length === 0" class="muted">No roles</span>
       </div>
-      <select v-if="!locked && missingRoles.length" class="add-role" aria-label="Role to add" :disabled="busy" @change="onAddRole">
+      <select v-if="!locked && canAssign && missingRoles.length" class="add-role" aria-label="Role to add" :disabled="busy" @change="onAddRole">
         <option value="">+ Add role</option>
         <option v-for="r in missingRoles" :key="r.id" :value="r.id">{{ r.name }}</option>
       </select>
@@ -137,16 +141,16 @@ function onAddRole(event: Event): void {
     </section>
 
     <div v-if="!locked" class="buttons">
-      <button v-if="!editing" type="button" class="small" :disabled="busy" @click="startEdit">
+      <button v-if="!editing && canManage" type="button" class="small" :disabled="busy" @click="startEdit">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16 3a2.1 2.1 0 0 1 3 3L7 18l-4 1 1-4z" /></svg>
         Edit details
       </button>
-      <button v-if="!account.email_verified" type="button" class="small" :disabled="busy" @click="emit('sendVerification')">
+      <button v-if="!account.email_verified && canManage" type="button" class="small" :disabled="busy" @click="emit('sendVerification')">
         Send verification
       </button>
     </div>
 
-    <section v-if="!locked && !isSelf" class="danger-zone">
+    <section v-if="!locked && !isSelf && auth.hasPermission('accounts.delete')" class="danger-zone">
       <h4>Danger zone</h4>
       <p class="muted small-text">Removes the account for good. This can't be undone.</p>
       <button type="button" class="small danger" :disabled="busy" @click="emit('remove')">Delete account</button>

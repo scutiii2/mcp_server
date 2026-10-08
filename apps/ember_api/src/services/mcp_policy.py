@@ -85,8 +85,11 @@ class McpPolicy:
 AGENT_POLICY = McpPolicy(tools={"status": frozenset()})
 
 # mcp_server: list and call any tool it exposes, and browse/read its
-# resources (the Capabilities page) - tools.use covers all of it.
+# resources (the Capabilities page) - tools.execute allows calls; tools.view permits discovery and reads.
 SERVER_POLICY = McpPolicy(
     extra_methods=frozenset({"tools/list", "resources/list", "resources/templates/list", "resources/read"}),
     tools=None,
 )
+
+# Browsing permits discovery and resource reads, but never tools/call.
+SERVER_VIEW_POLICY = McpPolicy(extra_methods=SERVER_POLICY.extra_methods)

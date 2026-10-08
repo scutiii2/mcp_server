@@ -12,14 +12,14 @@ export const ACCOUNT = {
   email: "ada@example.com",
   email_verified: true,
   roles: ["Member"],
-  permissions: ["chat.use"],
+  permissions: ["chat.use", "chat.share", "files.upload", "extensions.personal.manage"],
 };
 
 /** The same person with the Administrator role, for the pages that need `admin.manage`. */
 export const ADMIN_ACCOUNT = {
   ...ACCOUNT,
   roles: ["Administrator"],
-  permissions: ["chat.use", "tools.use", "admin.manage", "extensions.manage"],
+  permissions: [...ACCOUNT.permissions, "tools.view", "tools.execute", "files.upload", "files.download", "accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "invites.manage", "settings.manage", "capabilities.manage", "usage.all.view", "extensions.manage"],
 };
 
 /** The agent GET /api/agent returns, and the one every new chat is stored with. */
@@ -156,8 +156,8 @@ const ADMIN_ACCOUNTS: StoredAccount[] = [
   { id: 3, username: "joe", email: "joe@example.com", email_verified: false, is_active: true, is_protected: false, created_at: "2026-09-20T10:00:00", roles: [] },
 ];
 const ADMIN_ROLES = [
-  { id: 1, name: "Administrator", description: "Everything", is_protected: true, permissions: ["chat.use", "tools.use", "admin.manage"], account_count: 1 },
-  { id: 2, name: "Member", description: "Default role", is_protected: false, permissions: ["chat.use"], account_count: 1 },
+  { id: 1, name: "Administrator", description: "Everything", is_protected: true, permissions: [...ACCOUNT.permissions, "tools.view", "tools.execute", "files.upload", "files.download", "accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "invites.manage", "settings.manage", "capabilities.manage", "usage.all.view"], account_count: 1 },
+  { id: 2, name: "Member", description: "Default role", is_protected: false, permissions: ["chat.use", "chat.share", "files.upload", "extensions.personal.manage"], account_count: 1 },
   { id: 3, name: "Ops", description: null, is_protected: false, permissions: [], account_count: 0 },
 ];
 const ADMIN_CAPABILITIES: StoredCapability[] = [
@@ -166,8 +166,8 @@ const ADMIN_CAPABILITIES: StoredCapability[] = [
 ];
 const ADMIN_PERMISSIONS = [
   { name: "chat.use", description: "Chat with the agent" },
-  { name: "tools.use", description: "Run mcp_server tools" },
-  { name: "admin.manage", description: "Manage accounts" },
+  { name: "tools.view", description: "Run mcp_server tools" },
+  { name: "roles.manage", description: "Manage accounts" },
   { name: "extensions.manage", description: "Add and remove mcp_server extensions (other MCP servers offered to every client)" },
 ];
 

@@ -32,7 +32,7 @@ const client = vi.mocked(chatsClient);
 const account = vi.mocked(accountCapabilitiesClient);
 const commands = vi.mocked(commandsClient);
 
-const ACCOUNT = { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.use"] };
+const ACCOUNT = { id: 1, username: "root", email: "root@example.com", email_verified: true, roles: [], permissions: ["chat.use", "tools.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"] };
 
 const summary = (id: string): ChatSummary => ({
   id,

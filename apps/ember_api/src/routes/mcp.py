@@ -11,19 +11,19 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from src.config import Settings
-from src.deps import get_settings, require_permission
+from src.deps import get_settings, require_permission, require_any_permission
 from src.models import Account
 from src.services.agent_directory import NO_AGENT_RUNNING, AgentDirectory
-from src.services.mcp_policy import AGENT_POLICY, SERVER_POLICY, McpPolicy, PolicyViolation
+from src.services.mcp_policy import AGENT_POLICY, SERVER_POLICY, SERVER_VIEW_POLICY, McpPolicy, PolicyViolation
 from src.services.mcp_proxy import McpProxy
-from src.services.permissions import CHAT_USE, TOOLS_USE
+from src.services.permissions import CHAT_USE, TOOLS_VIEW, TOOLS_EXECUTE
 
 router = APIRouter(prefix="/api", tags=["mcp"])
 
 MAX_BODY_BYTES = 1_000_000
 
 require_chat = require_permission(CHAT_USE)
-require_tools = require_permission(TOOLS_USE)
+require_tools = require_any_permission(TOOLS_VIEW, TOOLS_EXECUTE)
 
 _PROXY_METHODS = ["GET", "POST", "DELETE"]
 
@@ -143,7 +143,8 @@ async def proxy_server(
     settings: Settings = Depends(get_settings),
     proxy: McpProxy = Depends(get_proxy),
 ) -> Response:
-    body = await _checked_body(request, SERVER_POLICY)
+    policy = SERVER_POLICY if TOOLS_EXECUTE in account.permission_names else SERVER_VIEW_POLICY
+    body = await _checked_body(request, policy)
     if isinstance(body, Response):
         return body
     return await proxy.forward(request, settings.mcp_server_url, account, body, target="mcp_server")

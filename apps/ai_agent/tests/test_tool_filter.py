@@ -112,3 +112,35 @@ def test_a_delegate_is_told_what_the_user_switched_off():
         tool_filter.reset(token)
 
     assert captured["arguments"]["disabled_tools"] == ["tool_calc", "tool_pdf_merge"]
+
+
+def test_wildcard_blocks_builtin_shared_and_private_tools():
+    token = tool_filter.bind(["*"])
+    try:
+        for name in ("tool_pdf_merge", "notes__search", "u_notes__search"):
+            assert tool_filter.is_blocked(name)
+            with pytest.raises(PermissionError, match="switched off"):
+                mcp_upstream.call_tool(name if name.startswith("u_") else f"main__{name}", {})
+        with patch.object(mcp_upstream.client, "list_tools", return_value=[_tool("tool_pdf_merge")]):
+            assert mcp_upstream.list_tools() == []
+    finally:
+        tool_filter.reset(token)
+
+
+def test_wildcard_refuses_a_delegate_without_block_all_support():
+    seen = []
+
+    async def fake_call(url, name, arguments, **kwargs):
+        seen.append(name)
+        return {"tool_filter": True}
+
+    token = tool_filter.bind(["*"])
+    try:
+        with patch("src.agents.delegation._call_tool", side_effect=fake_call), \
+             patch("src.agents.delegation.agent_registry") as registry:
+            registry.get_agent.return_value = {"url": "http://127.0.0.1:9101/mcp", "label": "Sub"}
+            with pytest.raises(PermissionError, match="block all tools"):
+                delegation.call("openai-agent", "sub-question", depth=0)
+    finally:
+        tool_filter.reset(token)
+    assert seen == ["status"]

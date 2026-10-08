@@ -214,6 +214,10 @@ def call(
             arguments["model_tier"] = model_tier
         if reasoning_effort:
             arguments["reasoning_effort"] = reasoning_effort
+        if "*" in tool_filter.blocked():
+            status = asyncio.run(_call_tool(agent["url"], "status", {}))
+            if not status.get("tool_filter_all"):
+                raise PermissionError("The delegated agent cannot block all tools; update and restart it")
         result = asyncio.run(
             _call_tool(
                 agent["url"],

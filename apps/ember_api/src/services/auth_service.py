@@ -156,7 +156,7 @@ class AuthService:
         if role is None:
             role = Role(name=ADMIN_ROLE, description="Full-access bootstrap role")
             self._session.add(role)
-        role.permissions = list(existing.values())
+        role.permissions = [existing[name] for name in ALL_PERMISSIONS]
         await self._session.commit()
         return role
 

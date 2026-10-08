@@ -47,7 +47,7 @@ from src.services.chat_service import (
     message_time,
 )
 from src.services.folder_service import FolderNotFound
-from src.services.permissions import CHAT_USE
+from src.services.permissions import CHAT_USE, TOOLS_EXECUTE
 from src.services.secret_box import SecretBox
 from src.services.settings_service import FORCE_TOOL_APPROVAL, SettingsService
 from src.services.turns import (
@@ -702,7 +702,7 @@ async def start_turn(
             enabled_extensions=tuple(dict.fromkeys(body.enabled_extensions)),
             ask_before_tools=body.ask_before_tools or forced,
             allowed_tools=() if forced else tuple(dict.fromkeys(body.allowed_tools)),
-            disabled_tools=tuple(dict.fromkeys(body.disabled_tools)),
+            disabled_tools=tuple(dict.fromkeys(body.disabled_tools)) if TOOLS_EXECUTE in account.permission_names else ("*",),
             can_ask=body.can_ask,
             private_extensions=private.items,
             private_skipped=private.skipped,
