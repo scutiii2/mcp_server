@@ -174,6 +174,10 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `DELETE` | `/api/nav-preferences` | any logged-in account | Back to the default arrangement. `204`, also when nothing was saved. |
 | `GET` | `/api/account-capabilities` | any logged-in account | Which built-in capabilities and server-listed extensions this account has added: `{capabilities, extensions, disabled_tools}`. A new account has nothing added. `disabled_tools` is the sorted tool names of every mcp_server capability not added, read from mcp_server's `/capabilities` (`502` if it is unreachable). |
 | `PUT` | `/api/account-capabilities/{kind}/{key}` | any logged-in account | `{enabled: bool}` adds or removes one item (`kind`: `capability` or `extension`; `key` 1-64 characters of `A-Za-z0-9_.-`, else `422`). Same reply as `GET`. Repeating a change is a no-op; at most 200 items per account (`409`). Logged as `account.capability_enable` / `_disable` (or `extension`). Removing an extension through `DELETE /api/extensions/{id}` clears it from every account. |
+| `GET` | `/api/user-extensions` | `chat.use` | This account's own MCP servers ("private extensions"): `[{id, label, description, url, header_names, enabled, status, error, tools}]`. `id` is a slug of the label, unique per account. `status` is `connected`, `error` or `unknown`, from `ai_agent`'s `probe_extension`, cached for 60 seconds; a disabled extension is not probed and reports `unknown`. Header **values** are never returned, only their names. |
+| `POST` | `/api/user-extensions` | `chat.use` | `{label, url, description?, headers?}` -> `201` the extension, probed once. Saved even if it cannot be reached right now. `422` with a message for a bad address (http or https only, no username or password) or header (up to 20; name `A-Za-z0-9-`; value 1-2000 characters, no control characters; `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Upgrade`, `TE`, `Trailer`, `Proxy-Authorization` and `Cookie` are refused); `409` at 20 extensions. |
+| `PATCH` | `/api/user-extensions/{id}` | `chat.use` | Any of `{label, description, url, headers, enabled}` -> the extension. `headers`, when present, replaces all of them (send it only when the user retyped them). A URL with a new host and no `headers` clears the saved headers, so a token is never sent to another host unasked. `404` for another account's id, `422` for an empty body. |
+| `DELETE` | `/api/user-extensions/{id}` | `chat.use` | `204`; `404` for another account's id. |
 | `POST` | `/api/chats/{id}/shares` | `chat.use` | `{expires_in_days: 1 \| 7 \| 30 \| null}` (default 7; null: never) -> `201 {id, chat_id, title, message_count, created_at, expires_at, token}`. Freezes a sanitized copy of the chat behind a new link; **`token` is in this response only** (ember_api stores its SHA-256). `404` unknown chat, `409` at 50 active links, `422` bad expiry or nothing shareable. Logged as `share.create`. |
 | `GET` | `/api/shares?chat_id=` | `chat.use` | This account's active links, newest first: `[{id, chat_id, title, message_count, created_at, expires_at}]`. Never a token. |
 | `DELETE` | `/api/shares/{id}` | `chat.use` | `204`, the link stops working at once; `404` if missing or another account's. Logged as `share.revoke`. |
@@ -204,6 +208,34 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` `POST` `DELETE` | `/api/mcp/agents/{agent_id}` | `chat.use` | MCP Streamable HTTP proxy to that agent. `404` if the id isn't in ai_agent's registry. |
 | `GET` `POST` `DELETE` | `/api/mcp/server` | `tools.use` | MCP Streamable HTTP proxy to mcp_server. |
 | `GET` | `/api/health` | - | `{status: "ok"}` |
+
+## Private extensions
+
+A user can add an MCP server of their own (`/api/user-extensions`). Only that
+account sees it and only its chats use it. `ember_api` stores it; `ai_agent`
+makes every connection (it holds the address guard: public and private-LAN
+addresses only, never loopback, link-local or cloud-metadata ones).
+
+- **Headers are secrets.** They are stored as one Fernet token per extension,
+  made with `EMBER_SECRETS_KEY` in `.env`. The key is generated and appended to
+  `.env` on first start (a warning line, without the key, is logged once).
+  Keep it with any backup of `.env`. If it is lost or replaced, the affected
+  extensions show "Its headers can't be read" and are left out of turns until
+  their headers are entered again; the others keep working. A value that is
+  not a valid key stops startup with a one-line message. Needs the
+  `cryptography` package.
+- **Nothing leaks.** The API returns header names only. The activity log
+  (`account.user_extension_add`, `_edit`, `_remove`) names the label and the
+  URL's host, never the full URL (it may carry a token) or a header value.
+- **On a turn**, the account's enabled extensions are read from the database
+  and sent to `ai_agent` as `private_extensions` (the browser cannot name one).
+  An `ai_agent` that does not report `private_extensions` in `status` is
+  refused: the turn fails with a message rather than quietly running without
+  them. Their tools are named `u_<id>__<tool>` and always ask for approval
+  (the agent raises the usual `approval_request`).
+- **Notices.** An extension the agent could not use, or whose headers could not
+  be read, is reported to the watcher as a live turn event
+  `{type: "notice", notices: [{id, label, error}]}`. It is not saved in the chat.
 
 ## Security model
 
