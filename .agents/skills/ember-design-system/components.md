@@ -1,6 +1,6 @@
 # Ember component patterns
 
-Copy-ready CSS for the recurring pieces. All values are tokens from [tokens.css](tokens.css). Working Vue versions live in `apps/ember_web/src/components/` (named per pattern).
+Copy-ready CSS for the recurring pieces. All values are tokens from [tokens.css](tokens.css). Working Vue versions live in `apps/Ember/ember_web/src/components/` (named per pattern).
 
 ## Buttons
 

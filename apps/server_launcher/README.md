@@ -58,7 +58,7 @@ scrollbar appears only then.
 
 ## Look
 
-Dark only, in ember_web's dark tokens (`apps/ember_web/src/style.css`): the
+Dark only, in ember_web's dark tokens (`apps/Ember/ember_web/src/style.css`): the
 colors and the 4/8/12 px radius scale live in `src/theme.py`. Ember orange
 marks the active tab, the selected row and the one primary button per view
 (Start, Start all); danger actions (Stop, Kill, Delete group) are outlined in

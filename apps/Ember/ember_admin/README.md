@@ -64,7 +64,7 @@ The first mcp_server run with the folder scanner writes `enabled: true` for
 every existing capability and a `_scanner` marker into
 `mcp_server/configs/config_capabilities.json` (gitignored). After that, a
 folder with no entry starts offline. See
-[mcp_server/configs/README.md](../mcp_server/configs/README.md).
+[mcp_server/configs/README.md](../../mcp_server/configs/README.md).
 
 ## Agents
 

@@ -1,0 +1,4 @@
+[
+  {"project": "mcp_server", "path": "../mcp_server/src"},
+  {"project": "ai_agent", "path": "../ai_agent/src"}
+]

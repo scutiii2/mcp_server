@@ -153,8 +153,8 @@ page can show an agent that is stopped or disabled. On the ai_agent machine:
 - The same `INTERNAL_API_TOKEN` as ember_api, and the ports open in the
   firewall. Use a private network or TLS: the token travels in a header.
 
-Then set `agents_registry_url` in `apps/ember_api/configs/config_app.json` (see
-`apps/ember_api/configs/README.md`).
+Then set `agents_registry_url` in `apps/Ember/ember_api/configs/config_app.json` (see
+`apps/Ember/ember_api/configs/README.md`).
 
 ## Laya-only Triage Assistant
 

@@ -151,7 +151,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
        every emit with `if on_event is not None:`. This is what
        ultimately reaches ember_api (and from there ember_web) as events - see
        `server.py`'s `ask()` tool (`ctx.report_progress(0, None, json.dumps(event))`)
-       and `apps/ember_api/src/services/agent_gateway.py` on the other end.
+       and `apps/Ember/ember_api/src/services/agent_gateway.py` on the other end.
    - `run_interpret(text, model) -> ChatResult` — one non-agentic
      completion, no tools offered (used to finish an AI-required
      `mcp_server` tool's result — see `server.py`'s `interpret` tool).

@@ -1,6 +1,6 @@
 # chat_cli
 
-A terminal chat with an ember agent. It logs in to [ember_api](../ember_api/README.md) with your
+A terminal chat with an ember agent. It logs in to [ember_api](../Ember/ember_api/README.md) with your
 account and works like the web chat: every question goes to ember_api's entry agent, which hands
 work to specialist agents, and answers stream as they are written, with
 tool progress, saved chats, usage limits and tool approvals. It is an interactive program,

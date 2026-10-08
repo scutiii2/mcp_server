@@ -5,7 +5,7 @@ description: Use when building or restyling any UI (web app, dashboard, admin pa
 
 # Ember design system
 
-The look and interaction rules of ember_web, extracted so a new UI feels like the same product. Source of truth in code: `apps/ember_web/src/style.css` (tokens) and `apps/ember_web/src/components/`. Framework-agnostic: the examples are Vue, the rules are CSS and behavior.
+The look and interaction rules of ember_web, extracted so a new UI feels like the same product. Source of truth in code: `apps/Ember/ember_web/src/style.css` (tokens) and `apps/Ember/ember_web/src/components/`. Framework-agnostic: the examples are Vue, the rules are CSS and behavior.
 
 **Core idea:** one coherent system, not per-component choices. Pick tokens and patterns first, write styles second. Never hardcode a colour or a pixel radius.
 
@@ -67,7 +67,7 @@ A nested corner is `calc(outer - padding)`. An element flush to an edge is squar
 
 ## Theme
 
-`color-scheme: light dark` on `:root` follows the system. A user override sets `document.documentElement.style.colorScheme` to `light` or `dark`; "system" restores `light dark`. The toggle cycles system, light, dark and persists the choice per browser. Because every token is `light-dark()`, no per-theme stylesheet exists. Apply the saved theme before the app mounts to avoid a flash. See `apps/ember_web/src/composables/useTheme.ts`.
+`color-scheme: light dark` on `:root` follows the system. A user override sets `document.documentElement.style.colorScheme` to `light` or `dark`; "system" restores `light dark`. The toggle cycles system, light, dark and persists the choice per browser. Because every token is `light-dark()`, no per-theme stylesheet exists. Apply the saved theme before the app mounts to avoid a flash. See `apps/Ember/ember_web/src/composables/useTheme.ts`.
 
 ## Review checklist
 

@@ -11,7 +11,7 @@ _RADIUS_MD = 8   # button, row
 _RADIUS_LG = 12  # card, panel
 _RADIUS = _RADIUS_MD
 
-# Colors are ember_web's dark tokens (apps/ember_web/src/style.css); the launcher is dark only.
+# Colors are ember_web's dark tokens (apps/Ember/ember_web/src/style.css); the launcher is dark only.
 _BG = "#17171a"              # --bg
 _SIDEBAR_BG = "#1f1f23"      # --surface
 _TABBAR_BG = "#1f1f23"

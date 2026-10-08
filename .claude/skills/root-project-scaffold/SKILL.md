@@ -6,8 +6,9 @@ description: Create or audit a new top-level project directory under apps/ (a ne
 # root_project_scaffold
 
 Every Python project in this repo's `apps/` folder (`mcp_server`, `ai_agent`, `ember_api`,
-and `chat_cli`) shares one top-level shape. (`ember_web` is a
-Node project with its own layout - see ember-feature-scaffold.) A new root-level project must match it, not
+and `chat_cli`) shares one top-level shape. The three Ember projects sit together in
+`apps/Ember/` (`ember_api`, plus the Node apps `ember_web` and `ember_admin`, which have their
+own layout - see ember-feature-scaffold); everything else is `apps/<name>/`. A new root-level project must match it, not
 invent its own layout — consistency here is what lets `server_launcher.py`,
 onboarding docs, and anyone jumping between projects rely on the same
 mental map.
