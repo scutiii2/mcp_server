@@ -5,6 +5,7 @@
 // arrangement applies: pinned pages first, a divider, the rest, hidden ones left out.
 import { computed } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
+import EmberLogo from "./EmberLogo.vue";
 import { useTheme } from "../composables/useTheme";
 import { CONFIG_ISSUES_ICON, OVERVIEW_ICON, PROFILE_ICON, visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
@@ -35,6 +36,8 @@ interface Tab {
   to: string;
   label: string;
   icon: string[];
+  /** Draw the Ember logo instead of the icon. */
+  logo?: boolean;
   /** Beside the Chat button: its highlight runs under it. */
   near?: "l" | "r";
 }
@@ -45,7 +48,7 @@ const tabs = computed(() => {
     const p = open.get(to);
     return p && { to: p.to, label: p.label, icon: p.icon };
   };
-  const left: Tab[] = [{ to: "/overview", label: "Overview", icon: OVERVIEW_ICON }];
+  const left: Tab[] = [{ to: "/overview", label: "Overview", icon: OVERVIEW_ICON, logo: true }];
   const right: Tab[] = [{ to: "/account", label: "Profile", icon: PROFILE_ICON }];
   const capabilities = page("/capabilities");
   const usage = page("/usage");
@@ -85,8 +88,8 @@ async function logout(): Promise<void> {
 
 <template>
   <aside class="rail">
-    <RouterLink v-if="canBrowse" to="/overview" class="wordmark" data-label="Overview" aria-label="Ember - overview of every page">E</RouterLink>
-    <span v-else class="wordmark" aria-label="Ember">E</span>
+    <RouterLink v-if="canBrowse" to="/overview" class="wordmark" data-label="Overview" aria-label="Ember - overview of every page"><EmberLogo /></RouterLink>
+    <span v-else class="wordmark" role="img" aria-label="Ember"><EmberLogo /></span>
 
     <nav v-if="canBrowse" class="tabs" aria-label="Main pages">
       <template v-for="(side, i) in [tabs.left, tabs.right]" :key="i">
@@ -98,7 +101,8 @@ async function logout(): Promise<void> {
           :aria-label="t.label"
           :class="[t.near && `near-${t.near}`, { current: isOpenedFromHere(t.to) }]"
         >
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <EmberLogo v-if="t.logo" class="tab-logo" />
+          <svg v-else viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
             <path v-for="d in t.icon" :key="d" :d="d" />
           </svg>
         </RouterLink>
@@ -226,13 +230,13 @@ nav {
 .wordmark {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  font-weight: 700;
-  color: var(--bg);
-  background: var(--accent);
+  width: 36px;
+  height: 36px;
   text-decoration: none;
+}
+.wordmark svg {
+  width: 100%;
+  height: 100%;
 }
 
 /* One shape for every control in the rail. */
@@ -379,6 +383,10 @@ svg {
   }
   .tabs a svg {
     position: relative;
+  }
+  .tabs a .tab-logo {
+    width: 28px;
+    height: 28px;
   }
   .tabs a::before {
     content: "";
