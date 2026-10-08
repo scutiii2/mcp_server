@@ -58,6 +58,7 @@ class AgentGateway(Protocol):
         approval_mode: str = "off",
         allowed_tools: list[str] | None = None,
         disabled_tools: list[str] | None = None,
+        private_extensions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]: ...
 
     async def interpret(self, url: str, caller: Caller, text: str) -> dict[str, Any]: ...
@@ -65,6 +66,10 @@ class AgentGateway(Protocol):
     async def cancel(self, url: str, caller: Caller, request_id: str) -> bool: ...
 
     async def decide(self, url: str, caller: Caller, request_id: str, step_id: str, decision: str) -> bool: ...
+
+    async def probe_extension(
+        self, url: str, caller: Caller, *, extension_url: str, headers: dict[str, str] | None
+    ) -> dict[str, Any]: ...
 
 
 class McpAgentGateway:
@@ -125,6 +130,7 @@ class McpAgentGateway:
         approval_mode="off",
         allowed_tools=None,
         disabled_tools=None,
+        private_extensions=None,
     ):
         arguments = {
             "question": question,
@@ -156,6 +162,17 @@ class McpAgentGateway:
                     "Switch those capabilities back on or restart the agent."
                 )
             arguments["disabled_tools"] = disabled_tools
+        if private_extensions:
+            # Fail closed, like approvals: an ai_agent that predates this would ignore the
+            # argument and the user's private tools would silently be missing (or, worse, a
+            # laya agent that cannot use them).
+            status = await self._call(url, caller, "status", {})
+            if not status.get("private_extensions"):
+                raise AgentCallError(
+                    "This agent cannot use your private extensions (it needs updating and restarting, or it "
+                    "does not support them). Turn them off in the Supermarket or restart the agent."
+                )
+            arguments["private_extensions"] = private_extensions
         return await self._call(url, caller, "ask", arguments, on_event)
 
     async def interpret(self, url, caller, text):
@@ -170,4 +187,15 @@ class McpAgentGateway:
         False when nothing was waiting (already answered, or the turn ended)."""
         result = await self._call(url, caller, "decide", {"request_id": request_id, "step_id": step_id, "decision": decision})
         return bool(result.get("decided"))
+
+    async def probe_extension(self, url, caller, *, extension_url, headers):
+        """Asks the agent to connect once to a user's MCP server and say what it offers.
+        The agent never raises for a bad server: its answer carries the error."""
+        result = await self._call(url, caller, "probe_extension", {"url": extension_url, "headers": headers or None})
+        tools = result.get("tools")
+        return {
+            "status": str(result.get("status") or "error"),
+            "error": result.get("error") if isinstance(result.get("error"), str) else None,
+            "tools": [t for t in tools if isinstance(t, str)] if isinstance(tools, list) else [],
+        }
 

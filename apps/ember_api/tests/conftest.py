@@ -102,6 +102,11 @@ class FakeAgent:
     decide_result: bool | None = None  # force decide()'s answer
     decide_error: str | None = None
     ran: list[str] = field(default_factory=list)  # tools that actually ran
+    # Private extensions: what probe_extension() was asked, what it answers per URL
+    # (default: connected with two tools), and a forced failure.
+    probes: list = field(default_factory=list)
+    probe_results: dict = field(default_factory=dict)
+    probe_fail: str | None = None
     _waiting: dict = field(default_factory=dict)
 
     loop: Any = None
@@ -125,6 +130,7 @@ class FakeAgent:
         approval_mode="off",
         allowed_tools=None,
         disabled_tools=None,
+        private_extensions=None,
     ):
         self.asks.append(
             {
@@ -138,6 +144,7 @@ class FakeAgent:
                 "approval_mode": approval_mode,
                 "allowed_tools": allowed_tools,
                 "disabled_tools": disabled_tools,
+                "private_extensions": private_extensions,
             }
         )
         for event in self.events:
@@ -170,7 +177,8 @@ class FakeAgent:
     async def _run_tool(self, step_id, tool, request_id, approval_mode, allowed_tools, on_event):
         await on_event({"type": "step_start", "id": step_id, "tool": tool, "label": tool.upper(), "arguments": {"a": 1}})
         approved = True
-        if approval_mode == "ask" and tool not in allowed_tools:
+        # Like the real agent: a private tool (u_...) asks even when approvals are off.
+        if (approval_mode == "ask" or tool.startswith("u_")) and tool not in allowed_tools:
             waiting = asyncio.get_running_loop().create_future()
             self._waiting[(request_id, step_id)] = waiting
             await on_event(
@@ -198,6 +206,14 @@ class FakeAgent:
         if answered and waiting is not None and not waiting.done():
             waiting.set_result(decision)
         return answered
+
+    async def probe_extension(self, url, caller, *, extension_url, headers):
+        self.probes.append({"url": url, "caller": caller, "extension_url": extension_url, "headers": headers})
+        if self.probe_fail:
+            raise AgentCallError(self.probe_fail)
+        return self.probe_results.get(
+            extension_url, {"status": "connected", "error": None, "tools": ["add", "search"]}
+        )
 
     async def interpret(self, url, caller, text):
         self.interprets.append(text)

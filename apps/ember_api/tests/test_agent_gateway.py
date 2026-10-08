@@ -27,9 +27,10 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _build_agent(approvals: bool = True) -> FastMCP:
+def _build_agent(approvals: bool = True, private: bool | None = None) -> FastMCP:
     """`approvals` False: an agent from before tool approval existed - its
     status says nothing about it and its ask() has no such options."""
+    private = approvals if private is None else private
     mcp = FastMCP("fake-ai-agent")
     seen: dict = {}
     calls = {"asks": 0}
@@ -44,6 +45,7 @@ def _build_agent(approvals: bool = True) -> FastMCP:
         approval_mode: str = "off",
         allowed_tools: list[str] | None = None,
         disabled_tools: list[str] | None = None,
+        private_extensions: list[dict] | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         headers = ctx.request_context.request.headers
@@ -59,11 +61,19 @@ def _build_agent(approvals: bool = True) -> FastMCP:
             "seen": dict(seen),
             "approval": {"mode": approval_mode, "allowed": allowed_tools},
             "disabled": disabled_tools,
+            "private": private_extensions,
         }
 
     @mcp.tool()
     def status() -> dict[str, Any]:
-        return {"available": True, **({"tool_approval": True, "tool_filter": True} if approvals else {})}
+        flags = {"tool_approval": True, "tool_filter": True} if approvals else {}
+        return {"available": True, **flags, **({"private_extensions": True} if private else {})}
+
+    @mcp.tool()
+    def probe_extension(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
+        if url.endswith("/down"):
+            return {"status": "error", "error": "Timed out", "tools": []}
+        return {"status": "connected", "error": None, "tools": ["add", "search"], "seen": [url, headers]}
 
     @mcp.tool()
     def decide(request_id: str, step_id: str, decision: str) -> dict[str, Any]:
@@ -235,3 +245,51 @@ def test_switched_off_tools_refuse_an_agent_that_would_offer_them_anyway(old_age
         _ask(gateway, old_agent_url, disabled_tools=["tool_pdf_merge"])
 
     assert _asks_made(gateway, old_agent_url) == before  # ask() never ran
+
+
+# --- private extensions ---------------------------------------------------------------------
+
+
+RAW_PRIVATE = [{"id": "notes", "label": "Notes", "url": "https://notes.example.com/mcp", "headers": {"X-Key": "s3cret"}}]
+
+
+def test_ask_sends_private_extensions(agent_url: str) -> None:
+    result = _ask(McpAgentGateway(None), agent_url, private_extensions=RAW_PRIVATE)
+
+    assert result["private"] == RAW_PRIVATE
+
+
+def test_ask_leaves_the_argument_out_when_there_are_none(agent_url: str) -> None:
+    assert _ask(McpAgentGateway(None), agent_url)["private"] is None
+    assert _ask(McpAgentGateway(None), agent_url, private_extensions=[])["private"] is None
+
+
+def test_private_extensions_refuse_an_agent_that_would_ignore_them(old_agent_url: str) -> None:
+    gateway = McpAgentGateway(None)
+    before = _asks_made(gateway, old_agent_url)
+
+    with pytest.raises(AgentCallError, match="cannot use your private extensions"):
+        _ask(gateway, old_agent_url, private_extensions=RAW_PRIVATE)
+
+    assert _asks_made(gateway, old_agent_url) == before  # ask() never ran
+
+
+def test_probe_extension_returns_status_error_and_tools(agent_url: str) -> None:
+    gateway = McpAgentGateway(None)
+
+    ok = asyncio.run(gateway.probe_extension(agent_url, CALLER, extension_url="https://x.example.com/mcp", headers={"A": "b"}))
+    down = asyncio.run(gateway.probe_extension(agent_url, CALLER, extension_url="https://x.example.com/down", headers=None))
+
+    assert ok == {"status": "connected", "error": None, "tools": ["add", "search"]}
+    assert down == {"status": "error", "error": "Timed out", "tools": []}
+
+
+def test_probe_extension_of_an_unreachable_agent_raises_agent_call_error() -> None:
+    gateway = McpAgentGateway(None)
+
+    with pytest.raises(AgentCallError, match="Could not reach the agent"):
+        asyncio.run(
+            gateway.probe_extension(
+                f"http://127.0.0.1:{_free_port()}/mcp", CALLER, extension_url="https://x.example.com/mcp", headers=None
+            )
+        )
