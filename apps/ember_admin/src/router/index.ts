@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory, type RouteLocationRaw } from "vue-router";
 import { useAuthStore } from "../stores/auth";
-import { ADMIN_PAGES, ADMIN_PERMISSIONS, ANALYTICS_PERMISSIONS } from "./pages";
+import { ADMIN_PAGES, ADMIN_PERMISSIONS, ADMIN_SECTIONS, ANALYTICS_PERMISSIONS } from "./pages";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -22,7 +22,16 @@ export const router = createRouter({
     { path: "/capabilities", name: "capabilities", component: () => import("../views/CapabilitiesAdminView.vue"), meta: { permission: "capabilities.manage" } },
     { path: "/extensions", name: "extensions", component: () => import("../views/ExtensionsAdminView.vue"), meta: { permission: "extensions.manage" } },
     { path: "/analytics", name: "analytics", component: () => import("../views/AnalyticsView.vue"), meta: { permission: ANALYTICS_PERMISSIONS } },
-    { path: "/admin", name: "admin", component: () => import("../views/AdminView.vue"), meta: { permission: ADMIN_PERMISSIONS } },
+    {
+      path: "/admin", component: () => import("../views/AdminView.vue"), meta: { permission: ADMIN_PERMISSIONS },
+      children: [
+        { path: "", name: "admin", component: () => import("../views/AdminOverviewView.vue") },
+        { path: "accounts", name: "admin-accounts", component: () => import("../views/AccountsAdminView.vue"), meta: { permission: ADMIN_SECTIONS[1]!.permission } },
+        { path: "roles", name: "admin-roles", component: () => import("../views/RolesAdminView.vue"), meta: { permission: ADMIN_SECTIONS[2]!.permission } },
+        { path: "invites", name: "admin-invites", component: () => import("../views/InvitesAdminView.vue"), meta: { permission: "invites.manage" } },
+        { path: "settings", name: "admin-settings", component: () => import("../views/WorkspaceSettingsView.vue"), meta: { permission: "settings.manage" } },
+      ],
+    },
     { path: "/login", name: "login", component: () => import("../views/LoginView.vue"), meta: { guestOnly: true } },
     { path: "/no-access", name: "no-access", component: () => import("../views/NoAccessView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
@@ -36,6 +45,13 @@ router.beforeEach(async (to): Promise<true | RouteLocationRaw> => {
   await auth.ensureLoaded();
   if (!auth.account) {
     return to.meta.guestOnly ? true : { name: "login", query: to.fullPath === "/" ? {} : { redirect: to.fullPath } };
+  }
+  if (to.name === "admin") {
+    const section = ADMIN_SECTIONS.find((s) => s.to === `/admin/${String(to.query.tab)}`);
+    if (section) {
+      const { tab: _tab, ...query } = to.query;
+      return { path: section.to, query, hash: to.hash };
+    }
   }
   const home = ADMIN_PAGES.find((p) => allowed(p.permission, auth.hasPermission));
   if (to.meta.guestOnly) return { name: home ? routeName(home.to) : "no-access" };

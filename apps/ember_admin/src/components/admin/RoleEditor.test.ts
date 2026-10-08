@@ -167,3 +167,33 @@ it("shows roles read-only without roles.manage", () => {
   expect(wrapper.findAll("input[type=checkbox]").every((input) => (input.element as HTMLInputElement).disabled)).toBe(true);
   expect(wrapper.find(".danger-zone").exists()).toBe(false);
 });
+
+it("groups permissions and searches by label, key, or description", async () => {
+  const wrapper = editor();
+  expect(wrapper.get('section[aria-label="Chat & files"]').text()).toContain('Use chat');
+  expect(wrapper.get('section[aria-label="Accounts & access"]').text()).toContain('0 of 1 enabled');
+  await wrapper.get('input[aria-label="Find a permission"]').setValue('browse');
+  expect(wrapper.findAll('input[role="switch"]')).toHaveLength(1);
+  expect(switchFor(wrapper, 'tools.view').attributes('aria-label')).toBe('tools.view');
+  await wrapper.get('input[aria-label="Find a permission"]').setValue('chat.use');
+  expect(switchFor(wrapper, 'chat.use').attributes('aria-label')).toBe('chat.use');
+  await wrapper.get('input[aria-label="Find a permission"]').setValue('mcp_server');
+  expect(switchFor(wrapper, 'tools.view').attributes('aria-label')).toBe('tools.view');
+  await wrapper.get('input[aria-label="Find a permission"]').setValue('no matches');
+  expect(wrapper.text()).toContain('No permissions match your search.');
+});
+
+it("keeps permission state unchanged until the server supplies an updated role", async () => {
+  const wrapper = editor();
+  await switchFor(wrapper, 'roles.manage').trigger('click');
+  expect((switchFor(wrapper, 'roles.manage').element as HTMLInputElement).checked).toBe(false);
+  await wrapper.setProps({ role: { ...MEMBER, permissions: [...MEMBER.permissions, 'roles.manage'] } });
+  expect((switchFor(wrapper, 'roles.manage').element as HTMLInputElement).checked).toBe(true);
+});
+
+it("shows permissions added by the server even when their group is not yet known", async () => {
+  const wrapper = editor();
+  await wrapper.setProps({ permissions: [...PERMISSIONS, { name: 'new.permission', description: 'Future feature' }] });
+  expect(wrapper.get('section[aria-label="Other permissions"]').text()).toContain('new.permission');
+  expect(switchFor(wrapper, 'new.permission').attributes('disabled')).toBeDefined();
+});

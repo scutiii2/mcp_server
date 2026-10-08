@@ -20,7 +20,7 @@ const pages = computed(() => ADMIN_PAGES.filter((p) =>
     <RouterLink v-if="pages.length" to="/" class="wordmark" data-label="Ember Admin" aria-label="Ember Admin home"><EmberLogo /></RouterLink>
     <span v-else class="wordmark" role="img" aria-label="Ember Admin"><EmberLogo /></span>
     <nav v-if="pages.length" class="pages" aria-label="Admin sections">
-      <RouterLink v-for="page in pages" :key="page.to" :to="page.to" :data-label="page.label" :aria-label="page.label" :aria-current="route.path === page.to ? 'page' : undefined">
+      <RouterLink v-for="page in pages" :key="page.to" :to="page.to" :data-label="page.label" :aria-label="page.label" :aria-current="route.path === page.to || route.path.startsWith(page.to + '/') ? 'page' : undefined">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path v-for="d in page.icon" :key="d" :d="d" /></svg>
       </RouterLink>
     </nav>

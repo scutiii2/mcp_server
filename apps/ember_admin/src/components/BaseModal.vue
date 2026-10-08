@@ -4,7 +4,7 @@ import { nextTick, ref, watch } from "vue";
 /** A modal dialog the parent opens and closes with `open`. It closes itself on
  * Escape, on the × and on a click outside the panel, by asking the parent
  * (`close`) rather than hiding on its own. The default slot is the body. */
-const props = defineProps<{ open: boolean; title: string }>();
+const props = defineProps<{ open: boolean; title: string; side?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
 const dialog = ref<HTMLDialogElement | null>(null);
@@ -26,7 +26,7 @@ function onClick(event: MouseEvent): void {
 </script>
 
 <template>
-  <dialog ref="dialog" class="modal" :aria-label="title" @close="emit('close')" @cancel.prevent="emit('close')" @click="onClick">
+  <dialog ref="dialog" :class="['modal', { 'side-modal': side }]" :aria-label="title" @close="emit('close')" @cancel.prevent="emit('close')" @click="onClick">
     <header>
       <h3>{{ title }}</h3>
       <button type="button" class="close" aria-label="Close" @click="emit('close')">×</button>
@@ -48,6 +48,26 @@ function onClick(event: MouseEvent): void {
 }
 .modal::backdrop {
   background: rgb(0 0 0 / 45%);
+}
+dialog.modal.side-modal {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  width: min(440px, 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: 24px;
+  border-radius: 0;
+  background: var(--bg);
+}
+@media (max-width: 767px) {
+  dialog.modal.side-modal {
+    inset: auto 0 var(--rail-height) 0;
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - var(--rail-height) - 24px);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
 }
 header {
   display: flex;

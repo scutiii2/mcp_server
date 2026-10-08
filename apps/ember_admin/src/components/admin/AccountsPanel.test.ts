@@ -126,6 +126,16 @@ describe("AccountsPanel", () => {
     expect(client.listAccounts).toHaveBeenLastCalledWith({ q: "", status: "unverified" });
   });
 
+  it("loads bookmark filters and follows updates from browser navigation", async () => {
+    const wrapper = mount(AccountsPanel, { props: { filters: { q: 'mar', status: 'unverified' } } });
+    await flushPromises();
+    expect(client.listAccounts).toHaveBeenLastCalledWith({ q: 'mar', status: 'unverified' });
+    await wrapper.setProps({ filters: { q: '', status: 'disabled' } });
+    await flushPromises();
+    expect(client.listAccounts).toHaveBeenLastCalledWith({ q: '', status: 'disabled' });
+    expect(wrapper.emitted('filter')?.at(-1)).toEqual([{ q: '', status: 'disabled' }]);
+  });
+
   it("ignores a slow answer to an older search", async () => {
     vi.useFakeTimers();
     const wrapper = await panel();
@@ -149,7 +159,7 @@ describe("AccountsPanel", () => {
     await rowFor(wrapper, "maria").trigger("click");
     expect(drawer(wrapper).attributes("aria-label")).toBe("Account maria");
 
-    await drawer(wrapper).get('button[aria-label="Close"]').trigger("click");
+    await wrapper.get('dialog[aria-label="Account maria"] button[aria-label="Close"]').trigger("click");
     expect(drawer(wrapper).exists()).toBe(false);
   });
 

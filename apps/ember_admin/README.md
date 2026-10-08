@@ -16,7 +16,7 @@ and extension calls to mcp_server).
 - `npm run dev`
 
 Open <http://127.0.0.1:5175> and log in with an account that has
-`admin.manage`. A login made in ember_web also works here: cookies are not
+at least one of the page permissions below. A login made in ember_web also works here: cookies are not
 scoped by port, so the same ember_api session cookie is sent.
 
 | Env var | Default | Meaning |
@@ -28,10 +28,14 @@ scoped by port, so the same ember_api session cookie is sent.
 
 | Page | Needs |
 |---|---|
-| Capabilities (`/capabilities`) | `admin.manage` |
-| Extensions (`/extensions`) | `admin.manage` or `extensions.manage` (adding and removing need `extensions.manage` in ember_api) |
+| Capabilities (`/capabilities`) | `capabilities.manage` |
+| Extensions (`/extensions`) | `extensions.manage` |
 | Analytics (`/analytics`) | any of `logs.view`, `logs.errors.view`, `logs.chat.view`, `traffic.view` |
-| Admin (`/admin`) | `admin.manage` |
+| Workspace overview (`/admin`) | any account, role, invitation, or workspace settings permission |
+| Accounts (`/admin/accounts`) | any of `accounts.view`, `accounts.manage`, `accounts.delete`, `roles.assign` |
+| Roles & permissions (`/admin/roles`) | any of `roles.view`, `roles.manage`, `roles.assign` |
+| Invites (`/admin/invites`) | `invites.manage` |
+| Workspace settings (`/admin/settings`) | `settings.manage` |
 
 The router and the nav read one list (`src/router/pages.ts`). A user with none
 of these sees the no-access page. ember_api enforces every permission itself;
@@ -77,6 +81,29 @@ The shell uses ember_web's Ember mark, 52px icon rail, named hover/focus labels,
 and bottom navigation below 768px. Theme cycles through System, Light, and Dark
 and persists in this browser, including on the login page. Page content scrolls
 independently of navigation; controls use the same theme and radius tokens.
+
+Administration has a labeled sidebar beside the icon rail and separate pages,
+rather than tabs. Below 768px its section links form a horizontally scrollable
+menu above the content. The icon rail continues to mark Admin while a child
+page is open. Each page checks its own permissions; restricted administrators
+see only the destinations and actions they can access.
+
+The overview shows permitted account and invite counts, links to filtered
+account lists, and shortcuts to the administration pages. Accounts keep search
+and status filters in the URL (`q`, `status`) across reload and browser navigation.
+Account details and invite creation use native dialog drawers, with keyboard
+focus contained while open; on mobile they sit above the bottom rail. Invite
+codes remain visible only immediately after creation.
+
+Role permissions have friendly labels and keys, grouped into Chat & files,
+Tools & personal extensions, Accounts & access, and Workspace & monitoring.
+Search matches the label, key, or server description. Switches retain the
+server-confirmed state while saving, and protected roles remain locked.
+Workspace settings remain drafts until saved through the unsaved-change bar.
+
+Old bookmarks such as `/admin?tab=roles` redirect to `/admin/roles`, preserving
+other query options and the fragment. `/admin/invites?create=1` opens the invite
+drawer and removes the transient creation flag from the URL.
 
 ## Tests
 

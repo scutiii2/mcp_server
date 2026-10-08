@@ -12,7 +12,7 @@ async function logInAdmin(page: Page): Promise<void> {
   await page.getByLabel("Username").fill(ACCOUNT.username);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("heading", { name: "Admin", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Workspace overview", exact: true })).toBeVisible();
 }
 
 test("an administrator deletes an account from the Danger zone by typing its name", async ({ page }) => {
@@ -20,6 +20,7 @@ test("an administrator deletes an account from the Danger zone by typing its nam
   await logInAdmin(page);
   await page.getByRole("link", { name: "Admin", exact: true }).click();
   await expect(page).toHaveURL(/\/admin/);
+  await page.getByRole('navigation', { name: 'Administration pages' }).getByRole('link', { name: 'Accounts', exact: true }).click();
 
   // Open maria's drawer: Delete account is in its own Danger zone, not among the edit buttons.
   await page.getByRole("row").filter({ hasText: "maria" }).click();
@@ -28,8 +29,10 @@ test("an administrator deletes an account from the Danger zone by typing its nam
   await expect(zone.getByRole("button", { name: "Delete account" })).toBeVisible();
 
   // Protected accounts offer no Danger zone at all.
+  await page.getByRole('dialog', { name: 'Account maria', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole("row").filter({ hasText: "ada" }).click();
   await expect(page.locator(".danger-zone")).toHaveCount(0);
+  await page.getByRole('dialog', { name: 'Account ada', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole("row").filter({ hasText: "maria" }).click();
 
   await zone.getByRole("button", { name: "Delete account" }).click();
@@ -59,8 +62,8 @@ test("an administrator deletes an account from the Danger zone by typing its nam
 test("an administrator saves tool approval through the unsaved bar", async ({ page }) => {
   const api = await installFakeApi(page);
   await logInAdmin(page);
-  await page.getByRole("group", { name: "Admin section" }).getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL(/tab=settings/);
+  await page.getByRole('navigation', { name: 'Administration pages' }).getByRole('link', { name: 'Workspace settings', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/settings/);
 
   const approval = page.getByRole("switch", { name: "Require approval for every tool" });
   const bar = page.getByRole("group", { name: "Unsaved change" });
@@ -100,7 +103,7 @@ test("deleting a role: one that accounts hold needs its name typed, an unused on
   const api = await installFakeApi(page);
   await logInAdmin(page);
   await page.getByRole("link", { name: "Admin", exact: true }).click();
-  await page.getByRole("button", { name: "Roles", exact: true }).click();
+  await page.getByRole('navigation', { name: 'Administration pages' }).getByRole('link', { name: 'Roles & permissions', exact: true }).click();
   const roleButton = (name: string) => page.locator("button.role").filter({ hasText: name });
   await expect(roleButton("Member")).toBeVisible();
 
@@ -135,6 +138,71 @@ test("deleting a role: one that accounts hold needs its name typed, an unused on
   await expect.poll(() => api.roles.has(3)).toBe(false);
   await expect(roleButton("Ops")).toHaveCount(0);
 
+  expect(api.unexpected).toEqual([]);
+});
+
+test('overview shortcuts retain account filters across reload and legacy links open their new page', async ({ page }) => {
+  const api = await installFakeApi(page);
+  await logInAdmin(page);
+  await page.locator('.admin-info').getByRole('link', { name: 'Review accounts' }).click();
+  await expect(page).toHaveURL(/\/admin\/accounts\?status=unverified/);
+  await expect(page.locator('tbody tr')).toHaveCount(1);
+  await expect(page.locator('tbody')).toContainText('joe');
+  await page.reload();
+  await expect(page.locator('tbody tr')).toHaveCount(1);
+  await page.goto('/admin?tab=roles&source=bookmark');
+  await expect(page).toHaveURL(/\/admin\/roles\?source=bookmark/);
+  await expect(page.getByRole('heading', { name: 'Roles & permissions', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Admin sections' }).getByRole('link', { name: 'Admin', exact: true })).toHaveAttribute('aria-current', 'page');
+  expect(api.unexpected).toEqual([]);
+});
+
+test('a role viewer sees only the permitted pages and cannot change permissions', async ({ page }) => {
+  const api = await installFakeApi(page, ['roles.view']);
+  await logInAdmin(page);
+  const nav = page.getByRole('navigation', { name: 'Administration pages' });
+  await expect(nav.getByRole('link')).toHaveCount(2);
+  await expect(page.locator('.stats')).toHaveCount(0);
+  await nav.getByRole('link', { name: 'Roles & permissions', exact: true }).click();
+  await expect(page.getByRole('button', { name: '＋ New role', exact: true })).toHaveCount(0);
+  await page.locator('button.role').filter({ hasText: 'Member' }).click();
+  for (const control of await page.getByRole('switch').all()) await expect(control).toBeDisabled();
+  await page.goto('/admin/settings');
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
+  expect(api.unexpected).toEqual([]);
+});
+
+test('invite creation uses a focus-trapped drawer and reveals the new code', async ({ page }) => {
+  const api = await installFakeApi(page);
+  await logInAdmin(page);
+  await page.getByRole('link', { name: '＋ Create invite', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/invites$/);
+  const dialog = page.getByRole('dialog', { name: 'Create invite', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Invitee email' }).fill('new@example.com');
+  await dialog.getByRole('button', { name: 'Create invite', exact: true }).click();
+  await expect(dialog).toContainText('TEST-INVITE-123');
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  expect(api.unexpected).toEqual([]);
+});
+
+test('admin pages fit desktop, tablet, and mobile in both themes', async ({ page }) => {
+  const api = await installFakeApi(page);
+  await logInAdmin(page);
+  for (const color of ['light', 'dark']) {
+    await page.evaluate((scheme) => { localStorage.setItem('ember_admin.theme', scheme); }, color);
+    for (const width of [1280, 768, 375]) {
+      await page.setViewportSize({ width, height: 812 });
+      for (const route of ['/admin', '/admin/accounts', '/admin/roles', '/admin/invites', '/admin/settings']) {
+        await page.goto(route);
+        await expect(page.getByRole('navigation', { name: 'Administration pages' })).toBeVisible();
+        expect(await page.evaluate<string>('document.documentElement.style.colorScheme')).toBe(color);
+        expect(await page.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+      }
+    }
+  }
   expect(api.unexpected).toEqual([]);
 });
 

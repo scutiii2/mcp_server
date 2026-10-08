@@ -1,185 +1,76 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { adminClient, type AdminSummary } from "../api/AdminClient";
-import AccountsPanel from "../components/admin/AccountsPanel.vue";
-import InvitesPanel from "../components/admin/InvitesPanel.vue";
-import RolesPanel from "../components/admin/RolesPanel.vue";
-import SettingsPanel from "../components/admin/SettingsPanel.vue";
-import StatTile from "../components/admin/StatTile.vue";
-import SegmentedControl from "../components/SegmentedControl.vue";
+import { computed, watch } from "vue";
+import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
+import { ADMIN_SECTIONS } from "../router/pages";
 import { useAuthStore } from "../stores/auth";
-import { errorMessage } from "../utils/errors";
+import "../components/admin/adminPages.css";
 
-const TABS = [
-  { id: "accounts", label: "Accounts", permissions: ["accounts.view", "accounts.manage", "accounts.delete", "roles.assign"] },
-  { id: "roles", label: "Roles", permissions: ["roles.view", "roles.manage", "roles.assign"] },
-  { id: "invites", label: "Invites", permissions: ["invites.manage"] },
-  { id: "settings", label: "Settings", permissions: ["settings.manage"] },
-] as const;
-type TabId = (typeof TABS)[number]["id"];
 const auth = useAuthStore();
-const visibleTabs = computed(() => TABS.filter((t) => t.permissions.some(auth.hasPermission)));
-const TAB_OPTIONS = computed(() => visibleTabs.value.map((t) => ({ value: t.id, label: t.label })));
-
 const route = useRoute();
 const router = useRouter();
-
-// The tab lives in the URL (?tab=roles), so reload and back/forward keep it.
-const tab = computed<TabId | undefined>(() => visibleTabs.value.find((t) => t.id === route.query.tab)?.id ?? visibleTabs.value[0]?.id);
-
-const summary = ref<AdminSummary | null>(null);
-const summaryError = ref("");
-
-async function loadSummary(): Promise<void> {
-  try {
-    summary.value = await adminClient.summary();
-    summaryError.value = "";
-  } catch (err) {
-    summaryError.value = errorMessage(err);
-  }
-}
-
-onMounted(loadSummary);
-// Counts change through the tabs (disable an account, revoke an invite), so
-// they are read again whenever the tab changes.
-watch(tab, loadSummary);
-
-function select(id: string): void {
-  void router.replace({ query: { ...route.query, tab: id } });
-}
+const sections = computed(() => ADMIN_SECTIONS.filter((s) => Array.isArray(s.permission) ? s.permission.some(auth.hasPermission) : auth.hasPermission(s.permission)));
+const current = computed(() => ADMIN_SECTIONS.find((s) => s.to === route.path)?.label ?? "Overview");
+// Editing a held role may remove access to the page currently open.
+watch(sections, (now) => {
+  if (!now.some((s) => s.to === route.path)) void router.replace(now.length ? '/admin' : '/');
+});
 </script>
 
 <template>
-  <section class="admin-view">
-    <div class="column">
-      <header class="page-head">
-        <div>
-          <p class="eyebrow">Workspace administration</p>
-          <h2>Admin</h2>
-          <p class="description">Manage people, access, and workspace settings.</p>
-        </div>
-        <button v-if="auth.hasPermission('invites.manage')" type="button" class="invite-button" @click="select('invites')">＋ Invite account</button>
-      </header>
-      <div class="stats">
-        <StatTile v-if="auth.hasPermission('accounts.view')" label="Accounts" :value="summary?.accounts ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M20 21v-2a4 4 0 0 0-3-3.9M17 3a4 4 0 0 1 0 8" /></svg></StatTile>
-        <StatTile v-if="auth.hasPermission('accounts.view')" label="Unverified" :value="summary?.unverified ?? null" warn><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3zM3 5l9 7 9-7" /></svg></StatTile>
-        <StatTile v-if="auth.hasPermission('accounts.view')" label="Disabled" :value="summary?.disabled ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10h14v11H5zM8 10V7a4 4 0 0 1 8 0v3" /></svg></StatTile>
-        <StatTile v-if="auth.hasPermission('invites.manage')" label="Open invites" :value="summary?.open_invites ?? null"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L9 15M22 2l-7 20-6-7-7-6z" /></svg></StatTile>
+  <section class="admin-workspace">
+    <aside class="admin-sidebar" aria-label="Workspace administration">
+      <div class="sidebar-brand">Ember Admin<span>People &amp; workspace</span></div>
+      <p class="nav-label">Administration</p>
+      <nav aria-label="Administration pages">
+        <RouterLink v-for="section in sections" :key="section.to" :to="section.to" :aria-current="route.path === section.to ? 'page' : undefined">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in section.icon" :key="d" :d="d" /></svg>
+          {{ section.label }}
+        </RouterLink>
+      </nav>
+      <div v-if="auth.account" class="sidebar-profile">
+        <span class="profile-avatar" aria-hidden="true">{{ auth.account.username.slice(0, 2).toUpperCase() }}</span>
+        <div><strong>{{ auth.account.username }}</strong><span>{{ auth.account.roles.join(', ') || 'Workspace account' }}</span></div>
       </div>
-      <p v-if="summaryError" class="error">Couldn't load the overview: {{ summaryError }}</p>
-      <SegmentedControl v-if="tab" class="tabs" :model-value="tab" :options="TAB_OPTIONS" label="Section" aria-label="Admin section" @update:model-value="select" />
-
-      <!-- v-if, not v-show: each panel reloads its data when opened, so a
-           role created on one tab shows up in the Accounts dropdown. -->
-      <AccountsPanel v-if="tab === 'accounts'" @changed="loadSummary" />
-      <RolesPanel v-else-if="tab === 'roles'" />
-      <InvitesPanel v-else-if="tab === 'invites'" @changed="loadSummary" />
-      <div v-else-if="tab === 'settings'" class="admin-panel">
-        <header class="section-head"><div><h3>Workspace settings</h3><p>Controls that apply to every account.</p></div></header>
-        <SettingsPanel />
+    </aside>
+    <div class="admin-content">
+      <div class="admin-column">
+        <nav class="admin-breadcrumb" aria-label="Breadcrumb"><RouterLink to="/admin">Administration</RouterLink><span aria-hidden="true">/</span><span aria-current="page">{{ current }}</span></nav>
+        <RouterView />
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.admin-view {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-.column {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 30px 24px;
-}
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 24px;
-}
-.page-head > div {
-  min-width: 0;
-}
-.eyebrow {
-  margin: 0 0 5px;
-  color: var(--accent);
-  font-size: 0.75em;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.description {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.9em;
-}
-.invite-button {
-  flex-shrink: 0;
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  color: var(--accent-contrast);
-  background: var(--accent);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.invite-button:hover {
-  background: color-mix(in srgb, var(--accent) 90%, var(--text));
-}
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.stats svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-h2 {
-  margin: 0 0 4px;
-  font-size: 1.2em;
-}
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 24px;
-}
-.error {
-  margin: 0 0 12px;
-  color: var(--danger);
-}
-.tabs {
-  display: flex;
-  width: 100%;
-  padding-bottom: 10px;
-  margin-bottom: 22px;
-  border-bottom: 1px solid var(--border);
-}
+.admin-workspace { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.admin-sidebar { width: 222px; flex-shrink: 0; display: flex; flex-direction: column; padding: 28px 16px 20px; border-right: 1px solid var(--border); }
+.sidebar-brand { padding: 0 10px 24px; font-weight: 600; }
+.sidebar-brand span { display: block; margin-top: 3px; font-size: 0.78em; font-weight: 400; color: var(--muted); }
+.nav-label { margin: 0; padding: 8px 10px; color: var(--muted); font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.09em; }
+.admin-sidebar nav { display: flex; flex-direction: column; gap: 5px; }
+.admin-sidebar nav a { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: var(--radius-md); color: var(--muted); text-decoration: none; font-size: 0.9em; }
+.admin-sidebar nav a:hover { background: var(--surface); color: var(--text); }
+.admin-sidebar nav a[aria-current='page'] { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--bg)); font-weight: 600; }
+svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-profile { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 16px 10px 0; border-top: 1px solid var(--border); font-size: 0.85em; }
+.sidebar-profile > div { min-width: 0; overflow-wrap: anywhere; }
+.sidebar-profile strong { font-weight: 500; }
+.sidebar-profile div span { display: block; color: var(--muted); font-size: 0.85em; }
+.profile-avatar { width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--surface); font-size: 0.8em; }
+.admin-content { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
+.admin-column { max-width: 1060px; margin: 0 auto; padding: 30px 32px 48px; }
+.admin-breadcrumb { display: flex; gap: 12px; margin-bottom: 20px; font-size: 0.8em; color: var(--muted); }
+.admin-breadcrumb a { color: var(--muted); text-decoration: none; }
+.admin-breadcrumb a:hover { color: var(--accent); }
+.admin-breadcrumb [aria-current] { color: var(--text); }
+@media (max-width: 1000px) { .admin-sidebar { width: 195px; } .admin-column { padding: 25px 22px; } }
 @media (max-width: 767px) {
-  .column {
-    padding: 22px 16px;
-  }
-  .page-head {
-    align-items: flex-start;
-  }
-  .invite-button {
-    padding: 7px 12px;
-    font-size: 0.8em;
-  }
-  .stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-bottom: 18px;
-  }
+  .admin-workspace { flex-direction: column; }
+  .admin-sidebar { width: 100%; padding: 7px 10px; border-right: none; border-bottom: 1px solid var(--border); }
+  .sidebar-brand, .nav-label, .sidebar-profile { display: none; }
+  .admin-sidebar nav { flex-direction: row; overflow-x: auto; }
+  .admin-sidebar nav a { white-space: nowrap; padding: 9px; font-size: 0.78em; }
+  .admin-sidebar nav svg { display: none; }
+  .admin-column { padding: 22px 16px 30px; }
 }
 </style>

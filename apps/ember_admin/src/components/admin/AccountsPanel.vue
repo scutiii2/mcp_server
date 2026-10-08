@@ -11,12 +11,14 @@ import {
 import { useAuthStore } from "../../stores/auth";
 import { errorMessage } from "../../utils/errors";
 import SegmentedControl from "../SegmentedControl.vue";
+import BaseModal from "../BaseModal.vue";
 import AccountDrawer from "./AccountDrawer.vue";
 import ConfirmModal from "./ConfirmModal.vue";
 import "./admin.css";
 
 /** The overview counts (AdminView) change whenever an account does. */
-const emit = defineEmits<{ changed: [] }>();
+const props = withDefaults(defineProps<{ showHeading?: boolean; filters?: { q: string; status: AccountStatus } }>(), { showHeading: true });
+const emit = defineEmits<{ changed: []; filter: [value: { q: string; status: AccountStatus }] }>();
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All" },
@@ -35,8 +37,8 @@ const auth = useAuthStore();
 
 const accounts = ref<AdminAccount[]>([]);
 const roles = ref<Role[]>([]);
-const search = ref("");
-const status = ref<AccountStatus>("all");
+const search = ref(props.filters?.q ?? "");
+const status = ref<AccountStatus>(props.filters?.status ?? "all");
 const loadError = ref("");
 const actionError = ref("");
 const notice = ref("");
@@ -77,6 +79,10 @@ watch(search, () => {
   searchTimer = setTimeout(loadAccounts, SEARCH_DELAY_MS);
 });
 watch(status, loadAccounts);
+watch(() => props.filters, (next) => {
+  if (next) { search.value = next.q; status.value = next.status; }
+});
+watch([search, status], () => emit("filter", { q: search.value, status: status.value }));
 
 onMounted(() => {
   void loadAccounts();
@@ -190,7 +196,7 @@ async function confirm(): Promise<void> {
 
 <template>
   <div class="admin-panel">
-    <header class="section-head">
+    <header v-if="showHeading" class="section-head">
       <div><h3>Accounts</h3><p>Choose an account to manage its details and access.</p></div>
     </header>
     <div :class="['layout', { open: selected }]">
@@ -255,6 +261,7 @@ async function confirm(): Promise<void> {
         </footer>
       </div>
 
+      <BaseModal :open="selected !== null" :title="selected ? `Account ${selected.username}` : 'Account details'" side @close="selectedId = null">
       <AccountDrawer
         v-if="selected"
         :account="selected"
@@ -263,6 +270,7 @@ async function confirm(): Promise<void> {
         :busy="busy"
         :error="actionError"
         :notice="notice"
+        :show-close="false"
         @close="selectedId = null"
         @save="(changes) => saveDetails(selected!, changes)"
         @set-active="(active) => setActive(selected!, active)"
@@ -271,6 +279,7 @@ async function confirm(): Promise<void> {
         @send-verification="sendVerification(selected!)"
         @remove="pending = { kind: 'delete', account: selected! }"
       />
+      </BaseModal>
     </div>
 
     <ConfirmModal
@@ -391,7 +400,7 @@ color: var(--muted);
   align-items: start;
 }
 .layout.open {
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr);
 }
 .accounts {
   width: 100%;

@@ -10,14 +10,15 @@ import "./admin.css";
  * verification, delete. It only shows state and reports what the admin chose
  * (the parent runs the call and asks for confirmation); `busy` disables the
  * controls while a call is in flight. */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   account: AdminAccount;
   roles: Role[];
   isSelf: boolean;
   busy: boolean;
   error: string;
   notice: string;
-}>();
+  showClose?: boolean;
+}>(), { showClose: true });
 
 const emit = defineEmits<{
   close: [];
@@ -82,7 +83,7 @@ function onAddRole(event: Event): void {
           <span v-if="isSelf" class="self-label">Your account</span>
         </div>
       </div>
-      <button type="button" class="x" aria-label="Close" @click="emit('close')">
+      <button v-if="showClose" type="button" class="x" aria-label="Close" @click="emit('close')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
       </button>
     </header>
@@ -163,10 +164,8 @@ function onAddRole(event: Event): void {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  padding: 0;
+  background: var(--bg);
 }
 .identity {
   display: flex;
@@ -311,15 +310,5 @@ h4 {
   padding: 8px 10px;
   font-size: 0.85em;
   cursor: pointer;
-}
-@media (max-width: 767px) {
-  .drawer {
-    position: fixed;
-    inset: auto 0 var(--rail-height) 0;
-    z-index: 5;
-    max-height: calc(75vh - var(--rail-height));
-    overflow-y: auto;
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  }
 }
 </style>

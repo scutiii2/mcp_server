@@ -4,11 +4,22 @@ import { adminClient, type CreatedInvite, type Invite } from "../../api/AdminCli
 import { errorMessage, formatUtc } from "../../utils/errors";
 import CopyButton from "../CopyButton.vue";
 import ToggleSwitch from "../ToggleSwitch.vue";
+import BaseModal from "../BaseModal.vue";
 import ConfirmModal from "./ConfirmModal.vue";
 import "./admin.css";
 
 /** The overview counts (AdminView) change whenever an invite does. */
 const emit = defineEmits<{ changed: [] }>();
+withDefaults(defineProps<{ showHeading?: boolean; drawer?: boolean }>(), { showHeading: true, drawer: false });
+const createOpen = ref(false);
+function openCreate(): void {
+  inviteeEmail.value = "";
+  byEmail.value = false;
+  created.value = null;
+  createError.value = "";
+  createOpen.value = true;
+}
+defineExpose({ openCreate });
 
 const invites = ref<Invite[]>([]);
 const listError = ref("");
@@ -82,9 +93,9 @@ onMounted(loadInvites);
 
 <template>
   <div class="admin-panel">
-    <header class="section-head"><div><h3>Invites</h3><p>Give someone access to your workspace.</p></div></header>
-    <section class="card invite-create">
-      <h3>Create an invite</h3>
+    <header v-if="showHeading" class="section-head"><div><h3>Invites</h3><p>Give someone access to your workspace.</p></div></header>
+    <component :is="drawer ? BaseModal : 'section'" class="card invite-create admin-panel" :open="createOpen" title="Create invite" :side="drawer" @close="createOpen = false">
+      <h3 v-if="!drawer">Create an invite</h3>
       <p class="muted">Codes are valid for 7 days and can be used once.</p>
       <form class="row-form" @submit.prevent="createInvite">
         <input v-model="inviteeEmail" type="email" placeholder="Invitee email (optional)" aria-label="Invitee email" />
@@ -114,7 +125,7 @@ onMounted(loadInvites);
         </p>
       </div>
       <p class="notice">The invite code appears only once, immediately after creation.</p>
-    </section>
+    </component>
 
     <h3>Open invites</h3>
     <p v-if="listError" class="error">error: {{ listError }}</p>
@@ -159,6 +170,10 @@ onMounted(loadInvites);
   background: var(--bg);
 
 }
+.invite-create.side-modal.card { margin: 0; padding: 24px; background: var(--bg); }
+.invite-create.side-modal .row-form { flex-direction: column; align-items: stretch; }
+.invite-create.side-modal .row-form input { flex: none; width: 100%; }
+.invite-create.side-modal .row-form .primary { align-self: flex-start; }
 .invite-create h3 {
   margin: 0 0 4px;
 }

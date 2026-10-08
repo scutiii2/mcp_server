@@ -9,6 +9,7 @@ import RoleEditor from "./RoleEditor.vue";
 import "./admin.css";
 
 const auth = useAuthStore();
+withDefaults(defineProps<{ showHeading?: boolean }>(), { showHeading: true });
 
 const roles = ref<Role[]>([]);
 const permissions = ref<PermissionInfo[]>([]);
@@ -69,6 +70,7 @@ function openCreate(): void {
   newRole.error = "";
   creating.value = true;
 }
+defineExpose({ openCreate });
 
 async function createRole(): Promise<void> {
   newRole.error = "";
@@ -120,7 +122,7 @@ onMounted(load);
 
 <template>
   <div class="admin-panel">
-    <header class="section-head">
+    <header v-if="showHeading" class="section-head">
       <div><h3>Roles &amp; permissions</h3><p>Define what each role can access.</p></div>
       <button v-if="auth.hasPermission('roles.manage')" type="button" class="primary new" @click="openCreate">+ New role</button>
     </header>
@@ -195,12 +197,9 @@ onMounted(load);
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
 }
 .list li + li {
-  border-top: 1px solid var(--border);
+  margin-top: 7px;
 }
 .new {
   flex-shrink: 0;
@@ -212,7 +211,8 @@ onMounted(load);
   gap: 2px 6px;
   width: 100%;
   padding: 14px 16px;
-  border: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -221,7 +221,8 @@ onMounted(load);
 }
 .role:hover,
 .role.selected {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 .role-name {
   overflow-wrap: anywhere;
@@ -230,6 +231,12 @@ onMounted(load);
 .count {
   flex-basis: 100%;
   font-size: 0.8em;
+}
+@media (max-width: 767px) {
+  .list ul { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px; }
+  .list li { flex: 0 0 150px; }
+  .list li + li { margin-top: 0; }
+  .role { height: 100%; }
 }
 .create {
   display: flex;

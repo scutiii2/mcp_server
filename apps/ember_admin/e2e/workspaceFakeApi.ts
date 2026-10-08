@@ -60,14 +60,14 @@ const ADMIN_PERMISSIONS = [
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
-export async function installFakeApi(page: Page) {
+export async function installFakeApi(page: Page, permissions?: string[]) {
   const api = {
     settings: { forceToolApproval: false },
     accounts: new Map(ADMIN_ACCOUNTS.map(a => [a.id, { ...a }])),
     roles: new Map(ADMIN_ROLES.map(r => [r.id, { ...r }])),
     unexpected: [] as string[],
   };
-  const account = ADMIN_ACCOUNT;
+  const account = { ...ADMIN_ACCOUNT, permissions: permissions ?? ADMIN_ACCOUNT.permissions };
   let loggedIn = false;
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -107,7 +107,8 @@ export async function installFakeApi(page: Page) {
     }
     if (method === "GET" && path === "/api/admin/accounts") {
       const q = (url.searchParams.get("q") ?? "").toLowerCase();
-      const all = [...api.accounts.values()].filter((a) => !q || `${a.username} ${a.email}`.toLowerCase().includes(q));
+      const status = url.searchParams.get('status') ?? 'all';
+      const all = [...api.accounts.values()].filter((a) => (!q || `${a.username} ${a.email}`.toLowerCase().includes(q)) && (status !== 'unverified' || !a.email_verified) && (status !== 'disabled' || !a.is_active));
       return json(route, all);
     }
     const accountPath = /^\/api\/admin\/accounts\/(\d+)$/.exec(path);
@@ -125,6 +126,13 @@ export async function installFakeApi(page: Page) {
     }
     if (method === "GET" && path === "/api/admin/permissions") return json(route, ADMIN_PERMISSIONS);
     if (method === "GET" && path === "/api/admin/invites") return json(route, []);
+    if (method === "POST" && path === "/api/admin/invites") {
+      const body = request.postDataJSON() as { invitee_email: string | null; delivery_method: string };
+      return json(route, {
+        invite: { id: 1, invitee_email: body.invitee_email, delivery_method: body.delivery_method, created_at: '2026-10-08T10:00:00', expires_at: '2026-10-15T10:00:00' },
+        code: 'TEST-INVITE-123', email_sent: body.delivery_method === 'email', email_error: null,
+      }, 201);
+    }
     api.unexpected.push(method + " " + path);
     return json(route, { detail: "not faked" }, 404);
   });
