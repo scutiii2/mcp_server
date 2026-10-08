@@ -153,6 +153,9 @@ class ChatResult:
     # when the request was capped (see llm/reasoning_effort.py).
     reasoning_effort: str | None = None
     effort_note: str = ""
+    # Private extensions that could not be used this turn (see private_extensions/turn.py):
+    # [{"id", "label", "error"}]. The turn went on without their tools.
+    private_extension_errors: list[dict[str, str]] = field(default_factory=list)
 
 
 @catalog

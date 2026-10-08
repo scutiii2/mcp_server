@@ -29,7 +29,7 @@ from typing import Any
 
 from src.config import UsageSettings
 from src.db import Database
-from src.services import summarization
+from src.services import question_answers, summarization
 from src.services.agent_directory import AgentEntry
 from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
 from src.services.chat_service import ChatNotFound, ChatService, decode_messages, message_time
@@ -83,6 +83,8 @@ class TurnOptions:
     allowed_tools: tuple[str, ...] = ()
     # Tools the account switched off for its own chats; the agent neither offers nor runs them.
     disabled_tools: tuple[str, ...] = ()
+    # The browser can show the agent's clickable questions and send answers back.
+    can_ask: bool = False
 
 
 def _iso(value: Any) -> str | None:
@@ -131,6 +133,8 @@ class Turn:
     active_agents: list[dict[str, str]] = field(default_factory=list)
     # Tool runs waiting for the user's answer, by step id: {id, tool, label, arguments}.
     pending_approvals: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Questions waiting for the user's answer, by step id: {id, questions}.
+    pending_questions: dict[str, dict[str, Any]] = field(default_factory=dict)
     sequence: int = 0
     events: deque = field(default_factory=lambda: deque(maxlen=EVENT_BUFFER))
     condition: asyncio.Condition = field(default_factory=asyncio.Condition)
@@ -146,6 +150,7 @@ class Turn:
             "activity": self.activity,
             "steps": [dict(s) for s in self.steps],
             "approvals": [dict(a) for a in self.pending_approvals.values()],
+            "questions": [dict(q) for q in self.pending_questions.values()],
             "active_agents": [dict(a) for a in self.active_agents],
             "sequence": self.sequence,
         }
@@ -162,6 +167,14 @@ class Turn:
             "label": str(event.get("label") or ""),
             "arguments": event.get("arguments") if isinstance(event.get("arguments"), dict) else {},
         }
+
+    def record_question(self, event: dict[str, Any]) -> None:
+        """Remembers questions that wait for the user, so a browser that joins
+        late (or reloads) still gets them."""
+        step_id = str(event.get("id") or "")
+        if not step_id:
+            return
+        self.pending_questions[step_id] = {"id": step_id, "questions": event.get("questions") or []}
 
     def record_agent(self, event: dict[str, Any]) -> None:
         """Folds agent_start / agent_end into the stack of working agents."""
@@ -290,6 +303,25 @@ class TurnRegistry:
             return False
         return await self._gateway.decide(turn.agent.url, turn.caller, turn.request_id, step_id, decision)
 
+    def pending_question(self, account_id: int, chat_id: str, step_id: str) -> dict[str, Any] | None:
+        """The question set of this step that is waiting for an answer, if any."""
+        turn = self.get(account_id, chat_id)
+        if turn is None or turn.status != "running":
+            return None
+        return turn.pending_questions.get(step_id)
+
+    async def answer(
+        self, account_id: int, chat_id: str, step_id: str, answers: list[dict[str, Any]], skipped: bool
+    ) -> bool:
+        """Sends the user's answers (or a skip) for a waiting question of this
+        account's running turn. False when it is not waiting (unknown, already
+        answered, or the turn moved on). The agent then reports the outcome as a
+        `question_resolved` event, which clears it for every watcher."""
+        turn = self.get(account_id, chat_id)
+        if turn is None or turn.status != "running" or step_id not in turn.pending_questions:
+            return False
+        return await self._gateway.answer_question(turn.agent.url, turn.caller, turn.request_id, step_id, answers, skipped)
+
     async def discard(self, account_id: int, chat_id: str) -> None:
         """The chat is being deleted: stop its turn and forget the replay.
         The task finds no chat to save into and ends quietly."""
@@ -365,6 +397,7 @@ class TurnRegistry:
                 turn.activity = ""
                 turn.record_step(event)
                 turn.pending_approvals.pop(str(event.get("id") or ""), None)
+                turn.pending_questions.pop(str(event.get("id") or ""), None)
             elif kind in ("agent_start", "agent_end"):
                 turn.record_agent(event)
             elif kind == "approval_request":
@@ -373,6 +406,12 @@ class TurnRegistry:
             elif kind == "approval_resolved":
                 turn.activity = ""
                 turn.pending_approvals.pop(str(event.get("id") or ""), None)
+            elif kind == "question_request":
+                turn.activity = "waiting for your answer"
+                turn.record_question(event)
+            elif kind == "question_resolved":
+                turn.activity = ""
+                turn.pending_questions.pop(str(event.get("id") or ""), None)
             elif kind == "summarized":
                 turn.activity = ""
             elif kind == "summarizing":
@@ -382,6 +421,7 @@ class TurnRegistry:
                 turn.status = status or "failed"
                 turn.finished_at = monotonic()
                 turn.pending_approvals.clear()
+                turn.pending_questions.clear()
                 turn.active_agents.clear()
             turn.condition.notify_all()
 
@@ -434,7 +474,8 @@ class TurnRegistry:
         async def on_event(event: dict[str, Any]) -> None:
             if event.get("type") in (
                 "token", "token_reset", "step_start", "step_progress", "step_end", "usage",
-                "approval_request", "approval_resolved", "agent_start", "agent_end", "agent_token",
+                "approval_request", "approval_resolved", "question_request", "question_resolved",
+                "agent_start", "agent_end", "agent_token",
             ):
                 await self._publish(turn, _clamped(event))
 
@@ -452,6 +493,7 @@ class TurnRegistry:
                 approval_mode="ask" if turn.options.ask_before_tools else "off",
                 allowed_tools=list(turn.options.allowed_tools),
                 disabled_tools=list(turn.options.disabled_tools),
+                ask_user=turn.options.can_ask,
             )
         except AgentCallError as error:
             await self._logs.error(turn.account_id, "chat.answer", f"{turn.agent.id}: {error}")
@@ -579,6 +621,8 @@ def _clamped(event: dict[str, Any]) -> dict[str, Any]:
         return {**event, "question": event["question"][:AGENT_QUESTION_MAX]}
     if kind == "agent_token" and isinstance(event.get("text"), str):
         return {**event, "text": event["text"][:AGENT_TEXT_MAX]}
+    if kind == "question_request":
+        return {**event, "questions": question_answers.clamp_questions(event.get("questions"))}
     return event
 
 

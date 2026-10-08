@@ -145,6 +145,10 @@ URL, token or key.
   you answer, and no answer within 4 minutes counts as Deny. "Allow for this
   chat" is remembered in this browser per chat (a chip shows how many tools are
   allowed and resets them). Slash commands you type yourself never ask.
+- Clickable questions: the agent can stop mid-answer and ask 1-4 questions with options (single or multiple
+  choice) plus your own typed answer. The question card appears inside the live answer; answer and Submit, or Skip
+  to let the agent go on with its best guess. There is no time limit while you decide, and Stop cancels the
+  answer. A reload brings the card back. Saved answers show the questions and what you chose under "Ran N tools".
 - "Terse replies" toggle in the chat header (ai_agent's `caveman`
   option), remembered per account.
 - Settings page (`/settings`, `chat.use`): your preferences in one place, grouped by task: Chat (terse

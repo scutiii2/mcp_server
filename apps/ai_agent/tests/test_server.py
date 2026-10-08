@@ -124,7 +124,7 @@ def test_ask_relays_events_via_ctx_report_progress():
     0/None - chat_app cares only about the message payload, not a
     percentage), and pass it through to run_chat as on_event=..."""
     async def _run():
-        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False, approval_mode="off", allowed_tools=None, disabled_tools=None):
+        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False, approval_mode="off", allowed_tools=None, disabled_tools=None, ask_user=False):
             await on_event({"type": "step_start", "id": "1", "tool": "x"})
             return ChatResult(response="done")
 
@@ -151,7 +151,7 @@ def test_ask_on_event_is_a_noop_without_ctx():
     client that doesn't support progress), on_event must not blow up -
     it should just do nothing."""
     async def _run():
-        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False, approval_mode="off", allowed_tools=None, disabled_tools=None):
+        async def fake_run_chat(question, history, enabled_extensions, request_id, depth, on_event=None, caveman=False, approval_mode="off", allowed_tools=None, disabled_tools=None, ask_user=False):
             await on_event({"type": "step_start", "id": "1", "tool": "x"})
             return ChatResult(response="done")
 
@@ -166,8 +166,14 @@ def test_ask_on_event_is_a_noop_without_ctx():
 
 def test_status_delegates_to_agent_config():
     fake_status = {"provider_id": "anthropic", "model": "claude-sonnet-5", "available": True, "reason": None, "cooldown_seconds_remaining": 0}
-    with patch("src.server.agent_config.status", return_value=fake_status):
-        assert server.status() == {**fake_status, "tool_approval": True, "tool_filter": True}
+    with patch("src.server.agent_config.status", return_value=fake_status),          patch.object(server.agent_config, "PROVIDER_ID", "anthropic"):
+        assert server.status() == {
+            **fake_status,
+            "tool_approval": True,
+            "tool_filter": True,
+            "user_questions": True,
+            "private_extensions": True,
+        }
 
 
 def test_cancel_delegates_to_agent_config():

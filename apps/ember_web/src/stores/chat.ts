@@ -11,6 +11,8 @@ import type {
   Conversation,
   JsonSchema,
   PendingApproval,
+  PendingQuestion,
+  QuestionAnswer,
   ToolStep,
   TurnEvent,
 } from "../api/types";
@@ -172,6 +174,10 @@ export const useChatStore = defineStore("chat", () => {
   // answer was sent but not yet confirmed by the agent.
   const pendingApprovals = ref<PendingApproval[]>([]);
   const deciding = ref<string[]>([]);
+  // Questions the agent asked that wait for the user's answer, and the ones
+  // whose answer was sent but not yet confirmed by the agent.
+  const pendingQuestions = ref<PendingQuestion[]>([]);
+  const answeringQuestions = ref<string[]>([]);
   // What this account has added on the Capabilities page, kept in ember_api:
   // the extensions whose tools the agent (and slash commands) may use, and the
   // built-in capabilities it may use. Nothing is added to begin with.
@@ -442,6 +448,7 @@ export const useChatStore = defineStore("chat", () => {
           if (step.id) liveStepIndex.set(stepKey(step.agent_id, step.id), index);
         });
         pendingApprovals.value = event.approvals ?? [];
+        pendingQuestions.value = event.questions ?? [];
         activeAgents.value = event.active_agents ?? [];
         agentText.value = {};
         break;
@@ -479,9 +486,20 @@ export const useChatStore = defineStore("chat", () => {
         activity.value = "";
         dropApproval(event.id);
         break;
+      case "question_request":
+        activity.value = "waiting for your answer ...";
+        if (!pendingQuestions.value.some((q) => q.id === event.id)) {
+          pendingQuestions.value.push({ id: event.id, questions: event.questions });
+        }
+        break;
+      case "question_resolved":
+        activity.value = "";
+        dropQuestion(event.id);
+        break;
       case "step_end": {
         activity.value = "";
         dropApproval(event.id);
+        dropQuestion(event.id);
         const index = liveStepIndex.get(stepKey(event.agent_id, event.id));
         const step = index === undefined ? undefined : liveSteps.value[index];
         if (step) {
@@ -539,6 +557,11 @@ export const useChatStore = defineStore("chat", () => {
     deciding.value = deciding.value.filter((d) => d !== id);
   }
 
+  function dropQuestion(id: string): void {
+    pendingQuestions.value = pendingQuestions.value.filter((q) => q.id !== id);
+    answeringQuestions.value = answeringQuestions.value.filter((a) => a !== id);
+  }
+
   function unfollow(): void {
     watcher?.abort();
     watcher = null;
@@ -551,6 +574,8 @@ export const useChatStore = defineStore("chat", () => {
     liveStepIndex.clear();
     pendingApprovals.value = [];
     deciding.value = [];
+    pendingQuestions.value = [];
+    answeringQuestions.value = [];
   }
 
   /** Streams chat `id`'s running answer into `streaming` until it ends,
@@ -697,6 +722,7 @@ export const useChatStore = defineStore("chat", () => {
       const turn = await chatsClient.startTurn(id, {
         question,
         caveman: caveman.value,
+        can_ask: true,
         enabled_extensions: enabledExtensions.value,
         ...(disabledTools.length ? { disabled_tools: disabledTools } : {}),
         title: conversation.title,
@@ -977,6 +1003,37 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
+  /** Answers (or skips) the questions the running answer waits on. The card
+   * stays (its buttons off) until the agent confirms with a question_resolved event. */
+  async function sendQuestionAnswer(stepId: string, answers: QuestionAnswer[], skipped: boolean): Promise<void> {
+    const conversation = active.value;
+    const waiting = pendingQuestions.value.find((q) => q.id === stepId);
+    if (!conversation || !waiting || answeringQuestions.value.includes(stepId)) return;
+    const started = generation;
+    answeringQuestions.value = [...answeringQuestions.value, stepId];
+    sendError.value = "";
+    try {
+      await chatsClient.answerQuestion(conversation.id, stepId, { answers, skipped });
+    } catch (err) {
+      if (started !== generation) return;
+      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+        // Already answered (maybe in another tab), or the answer ended: nothing is waiting.
+        dropQuestion(stepId);
+      } else {
+        answeringQuestions.value = answeringQuestions.value.filter((a) => a !== stepId);
+        sendError.value = errorMessage(err);
+      }
+    }
+  }
+
+  function answerQuestion(stepId: string, answers: QuestionAnswer[]): Promise<void> {
+    return sendQuestionAnswer(stepId, answers, false);
+  }
+
+  function skipQuestion(stepId: string): Promise<void> {
+    return sendQuestionAnswer(stepId, [], true);
+  }
+
   function setCaveman(on: boolean): void {
     caveman.value = on;
     const accountId = auth.account?.id;
@@ -1160,6 +1217,10 @@ export const useChatStore = defineStore("chat", () => {
     pendingApprovals,
     deciding,
     decideApproval,
+    pendingQuestions,
+    answeringQuestions,
+    answerQuestion,
+    skipQuestion,
     enabledExtensions,
     enabledCapabilities,
     refreshCommands,

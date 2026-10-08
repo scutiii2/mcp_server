@@ -28,7 +28,7 @@ from src.deps import (
 from src.models import Account, Chat
 from src.routes.mcp import get_agent_directory
 from src.routes.server_info import EXTENSION_ID_PATTERN
-from src.services import suggestions, summarization
+from src.services import question_answers, suggestions, summarization
 from src.services.agent_directory import NO_AGENT_RUNNING, AgentDirectory
 from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
 from src.services.log_service import LogWriter
@@ -224,6 +224,9 @@ class TurnRequest(BaseModel):
     # allowed for this chat, which run without asking.
     ask_before_tools: bool = False
     allowed_tools: list[str] = Field(default_factory=list, max_length=MAX_ALLOWED_TOOLS)
+    # The browser can show the agent's clickable questions (answers go to
+    # POST /api/chats/{id}/questions). Off for clients that cannot, e.g. chat_cli.
+    can_ask: bool = False
     # mcp_server tool names the account switched off for its own chats (the
     # tools of the built-in capabilities it turned off on the Capabilities page).
     disabled_tools: list[str] = Field(default_factory=list, max_length=MAX_DISABLED_TOOLS)
@@ -249,6 +252,21 @@ class ApprovalRequest(BaseModel):
     # allow: run it this once. always: run it, and stop asking about this tool
     # for the rest of the turn (the browser remembers it for the chat).
     decision: Literal["allow", "always", "deny"]
+
+
+class QuestionAnswerIn(BaseModel):
+    # The labels of the options chosen, and the user's own typed answer.
+    selected: list[str] = Field(default_factory=list, max_length=question_answers.MAX_OPTIONS)
+    other: str | None = Field(default=None, max_length=question_answers.OTHER_MAX)
+
+
+class QuestionRequest(BaseModel):
+    # The question set being answered: the `id` of a question_request event.
+    step_id: str = Field(min_length=1, max_length=200)
+    # Decline to answer; the agent then goes on with its best judgement.
+    skipped: bool = False
+    # One entry per question, in order (ignored when skipped).
+    answers: list[QuestionAnswerIn] = Field(default_factory=list, max_length=question_answers.MAX_QUESTIONS)
 
 
 class BranchRequest(BaseModel):
@@ -679,6 +697,7 @@ async def start_turn(
             ask_before_tools=body.ask_before_tools or forced,
             allowed_tools=() if forced else tuple(dict.fromkeys(body.allowed_tools)),
             disabled_tools=tuple(dict.fromkeys(body.disabled_tools)),
+            can_ask=body.can_ask,
         )
         turn = turns.start(account.id, chat_id, agent, _caller(account), options)
     except TurnConflict as error:
@@ -753,6 +772,36 @@ async def decide_approval(
         raise HTTPException(status.HTTP_409_CONFLICT, "Nothing is waiting for that answer")
     await logs.action(account, "tool.approval", f'{decision}: "{pending["tool"]}"')
     return {"decided": True}
+
+
+@router.post("/{chat_id}/questions")
+async def answer_questions(
+    body: QuestionRequest,
+    chat_id: str = ChatId,
+    account: Account = Depends(require_chat),
+    turns: TurnRegistry = Depends(get_turns),
+) -> dict[str, bool]:
+    """Answers (or skips) the questions the running answer is waiting on (the
+    `id` of a `question_request` event). Only the chat's own account can; once
+    answered nothing else can answer them. The answer text is not logged: it
+    is the user's own words, kept only in the chat's saved steps."""
+    if not turns.is_running(account.id, chat_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No answer is being written for this chat")
+    pending = turns.pending_question(account.id, chat_id, body.step_id)
+    if pending is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Nothing is waiting for that answer")
+    answers = [answer.model_dump() for answer in body.answers] if not body.skipped else []
+    if not body.skipped:
+        problem = question_answers.check_answers(pending["questions"], answers)
+        if problem is not None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problem)
+    try:
+        answered = await turns.answer(account.id, chat_id, body.step_id, answers, body.skipped)
+    except AgentCallError as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
+    if not answered:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Nothing is waiting for that answer")
+    return {"answered": True}
 
 
 @router.post("/{chat_id}/cancel")

@@ -257,6 +257,64 @@ not offer them (`list_tools`) and refuses a call to one the model names anyway.
 A delegated agent is told the same list. `status()` reports `tool_filter: true`
 so ember_api can refuse an agent that would ignore the option.
 
+`ask` also accepts `private_extensions`, the user's own MCP servers for this
+turn; see the next section for its shape and behavior.
+
+## Private extensions
+
+A private extension is a user's own MCP server, passed to `ask()` per turn by
+ember_api. Its tools belong to that account and turn only. Private extensions
+are never forwarded to delegated agents.
+
+The `private_extensions` argument is `[{id, label, url, headers}]`; `headers`
+is an optional object of header names and values, and `label` defaults to `id`.
+Validation applies before connecting:
+
+- `id`: at most 40 characters, matching `^[a-z0-9]+(_[a-z0-9]+)*$` (no `__`).
+- `label`: trimmed to 60 characters.
+- `url`: at most 1000 characters, `http` or `https`, with a host and no
+  username or password in the authority.
+- `headers`: at most 20; names match `^[A-Za-z0-9-]{1,64}$`, values are 1–2000
+  characters with no control characters. Connection-controlling headers are
+  refused, case-insensitively: `host`, `content-length`, `transfer-encoding`,
+  `connection`, `upgrade`, `te`, `trailer`, `proxy-authorization`, and `cookie`.
+- At most 100 tools per extension. Full tool names must be at most 64
+  characters and match `^[A-Za-z0-9_-]+$`; others are left out with a notice.
+
+Public and private LAN addresses (`10/8`, `172.16/12`, `192.168/16`,
+`fc00::/7`) are allowed. Loopback, link-local, unspecified, multicast,
+reserved, `0.0.0.0/8`, `64:ff9b::/96`, and cloud metadata addresses
+(`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`) are blocked, including
+IPv4-mapped IPv6 forms. If any resolved address is blocked, the host is
+refused. The guard checks every connection and redirect and pins the
+connection to a checked IP, keeping the original Host header and TLS server
+name, so a second DNS answer cannot redirect it. Redirects are followed only
+to the same scheme, host and port, at most three hops; configured headers
+therefore never follow to another host.
+
+Tools are named `u_<id>__<tool>` and honor the agent file's `tools` scope.
+They always ask before running, even with `approval_mode="off"`, unless
+already in `allowed_tools`. An `always` decision allows the tool for the
+rest of the turn; mode `deny` refuses tools that need approval.
+
+A private tool's result is text from a server this agent does not control, so
+once one has run in a turn (whether it succeeded or failed) every later tool in
+that turn asks first as well, unless the user already allowed it for the chat.
+A result longer than 50,000 characters is cut, with a note saying so.
+
+An unavailable extension does not fail the turn: its tools are omitted and
+`ask()` includes `private_extension_errors: [{id, label, error}]` in the
+reply when there are errors. Header values are hidden in error messages.
+
+The `probe_extension(url, headers=None)` MCP tool connects once, lists tools,
+and closes, returning `{status, error, tools}`. A bad server returns
+`status: "error"` and an empty tool list instead of raising.
+
+`status()` reports `private_extensions: true` for supported providers, so
+ember_api can refuse an older agent that would ignore the argument. Laya
+agents report `false`: they have their own tool shortlist and do not support
+private extensions.
+
 ## Asking before tools run
 
 `ask` takes `approval_mode` and `allowed_tools` (`src/core/approvals.py`):
@@ -273,6 +331,11 @@ so ember_api can refuse an agent that would ignore the option.
 
 `status` reports `tool_approval: true`, so a caller that needs tools asked about
 (ember_api) can refuse an older agent that would ignore the option.
+
+`ask(ask_user=True)` offers the top-level agent clickable questions; answer or
+skip through `answer_question(request_id, step_id, answers, skipped)`. Questions
+emit `question_request` / `question_resolved`, wait up to 60 minutes with
+keepalive events, and Stop cancels the turn. `status()` reports `user_questions: true`.
 
 ## Prompts
 

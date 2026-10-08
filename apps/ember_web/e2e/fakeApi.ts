@@ -268,6 +268,10 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
       return json(route, { ...account, ...(request.postDataJSON() as Record<string, unknown>) });
     }
 
+    // The agent's clickable questions: the fake never asks one (its stream is a finished body), so any answer is refused.
+    if (method === "POST" && /^\/api\/chats\/[^/]+\/questions$/.test(path)) {
+      return json(route, { detail: "Nothing is waiting for that answer" }, 409);
+    }
     if (method === "GET" && path === "/api/chats") return json(route, [...api.chats.values()].map(summary));
     // Deleting every chat, or one.
     if (method === "DELETE" && path === "/api/chats") {

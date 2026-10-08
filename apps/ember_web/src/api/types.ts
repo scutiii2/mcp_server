@@ -87,10 +87,38 @@ export interface PendingApproval {
  * asking about this tool in this chat, or don't run it. */
 export type ApprovalDecision = "allow" | "always" | "deny";
 
+/** One choice of a question the agent asks. */
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+/** One question the agent asks. The page always adds an "Other" typed answer. */
+export interface Question {
+  /** A very short label (a chip). */
+  header: string;
+  question: string;
+  multi_select: boolean;
+  options: QuestionOption[];
+}
+
+/** Questions that wait for the user's answer before the agent goes on. */
+export interface PendingQuestion {
+  /** The step's id: what an answer names. */
+  id: string;
+  questions: Question[];
+}
+
+/** The answer to one question: the labels chosen and/or the user's own words. */
+export interface QuestionAnswer {
+  selected: string[];
+  other: string | null;
+}
+
 /** Events of a turn ember_api runs, as its /events stream sends them. The
  * token/step ones are ai_agent's own, relayed. */
 export type TurnEvent = { sequence: number } & (
-  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[]; approvals?: PendingApproval[]; active_agents?: ActiveAgent[] }
+  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[]; approvals?: PendingApproval[]; questions?: PendingQuestion[]; active_agents?: ActiveAgent[] }
   | { type: "token"; text: string }
   | { type: "token_reset" }
   | { type: "step_start"; id: string; tool: string; label?: string; arguments: unknown; agent_id?: string; agent_label?: string }
@@ -98,6 +126,8 @@ export type TurnEvent = { sequence: number } & (
   | { type: "step_end"; id: string; ok: boolean; result: string; agent_id?: string; agent_label?: string }
   | { type: "approval_request"; id: string; tool: string; label?: string; arguments: unknown }
   | { type: "approval_resolved"; id: string; outcome: string }
+  | { type: "question_request"; id: string; questions: Question[] }
+  | { type: "question_resolved"; id: string; outcome: string }
   | { type: "usage"; total_tokens: number; estimated: boolean }
   | { type: "summarizing" }
   | { type: "summarized" }

@@ -39,9 +39,9 @@ from typing import Any, Sequence
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, BadRequestError, OpenAI, RateLimitError
 
-from src.agents import agent_routing, agent_spec, delegation
+from src.agents import agent_routing, agent_spec, ask_user, delegation
 
-from src.core import approvals
+from src.core import approvals, questions
 
 from src.mcp_client import tool_selection
 from src.agents.agent_spec import RosterEntry
@@ -229,6 +229,17 @@ def _tool_schemas(
                 "display_label": None,
             }
         )
+    # Only the top-level agent of a turn whose caller can show questions.
+    if questions.current().enabled:
+        schemas.append(
+            {
+                "type": "function",
+                "name": ask_user.TOOL_NAME,
+                "description": ask_user.tool_description(),
+                "parameters": ask_user.tool_parameters(),
+                "display_label": None,
+            }
+        )
     return schemas
 
 
@@ -280,7 +291,7 @@ async def run_chat(
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
     schemas = _tool_schemas(enabled_extensions, roster)
-    schemas = await tool_selection.shortlist_schemas(question, schemas, {delegation.TOOL_NAME})
+    schemas = await tool_selection.shortlist_schemas(question, schemas, {delegation.TOOL_NAME, ask_user.TOOL_NAME})
     # display_label isn't a real Responses API tools= field (see
     # _tool_schemas) - pop it into this name->label lookup here, once,
     # rather than sending it to the API or re-deriving it per call below.
@@ -373,20 +384,26 @@ async def run_chat(
                     await on_event(step_event(
                         "step_start", id=step_id, tool=call.name, label=labels.get(call.name), arguments=arguments,
                     ))
-                # With approvals on, the user answers before anything runs; a
-                # refusal is handed to the model as this step's result.
-                declined = await approvals.review(
-                    request_id, step_id, call.name, labels.get(call.name), arguments, on_event
-                )
-                if declined is not None:
-                    result_text, ok = declined, False
+                # ask_user waits for the user's answers, not for an approval: it
+                # is not gated by tool approval and never reaches _dispatch.
+                asked = await questions.handle(call.name, request_id, step_id, arguments, on_event)
+                if asked is not None:
+                    result_text, ok = asked
                 else:
-                    try:
-                        result_text = await dispatch_with_progress(_dispatch, on_event, step_id, call.name, arguments, depth)
-                        ok = True
-                    except Exception as error:
-                        result_text = f"Tool '{call.name}' failed: {error}"
-                        ok = False
+                    # With approvals on, the user answers before anything runs; a
+                    # refusal is handed to the model as this step's result.
+                    declined = await approvals.review(
+                        request_id, step_id, call.name, labels.get(call.name), arguments, on_event
+                    )
+                    if declined is not None:
+                        result_text, ok = declined, False
+                    else:
+                        try:
+                            result_text = await dispatch_with_progress(_dispatch, on_event, step_id, call.name, arguments, depth)
+                            ok = True
+                        except Exception as error:
+                            result_text = f"Tool '{call.name}' failed: {error}"
+                            ok = False
                 if on_event:
                     await on_event(step_event("step_end", id=step_id, ok=ok, result=result_text))
                 tool_calls.append(ToolCallRecord(name=call.name, arguments=arguments, result=result_text))
