@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { sharesClient, type ShareCreated, type ShareExpiry, type ShareInfo } from "../api/SharesClient";
 import { errorMessage, formatUtc } from "../utils/errors";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import CopyButton from "./CopyButton.vue";
 
 /** Makes, lists and revokes read-only share links for one chat. A link's

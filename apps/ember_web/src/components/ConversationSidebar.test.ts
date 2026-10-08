@@ -4,7 +4,7 @@ import type { ChatSearchHit } from "../api/ChatsClient";
 import type { ChatFolder } from "../api/FoldersClient";
 import type { Conversation } from "../api/types";
 import { usageClient } from "../api/UsageClient";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import ConversationSidebar from "./ConversationSidebar.vue";
 
 // jsdom has no <dialog> methods.

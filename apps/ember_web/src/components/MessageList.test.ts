@@ -5,7 +5,7 @@ import type { ChatMessage } from "../api/types";
 import { useChatStore } from "../stores/chat";
 import { useEntryAgentStore } from "../stores/entryAgent";
 import { withAttachments } from "../utils/attachments";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import MessageList from "./MessageList.vue";
 
 // <AgentActivity> reads the chat store, which loads chats when it starts.

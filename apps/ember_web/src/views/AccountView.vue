@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { authClient, type KnownDevice } from "../api/AuthClient";
 import ActionButton from "../components/ActionButton.vue";
-import ConfirmModal from "../components/admin/ConfirmModal.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
 import { useTheme } from "../composables/useTheme";
 import { CONFIG_ISSUES_ICON, visiblePages } from "../router/pages";
 import { useAuthStore } from "../stores/auth";

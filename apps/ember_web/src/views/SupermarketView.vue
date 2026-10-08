@@ -4,29 +4,23 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
 import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
 import type { UserExtension } from "../api/UserExtensionsClient";
-import ConfirmModal from "../components/admin/ConfirmModal.vue";
-import AddExtensionModal from "../components/AddExtensionModal.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
 import SupermarketItem from "../components/SupermarketItem.vue";
 import UserExtensionModal from "../components/UserExtensionModal.vue";
-import { useEveryoneSwitch } from "../composables/useEveryoneSwitch";
 import { useAccountCapabilitiesStore } from "../stores/accountCapabilities";
 import { useAuthStore } from "../stores/auth";
-import { useChatStore } from "../stores/chat";
 import { useUserExtensionsStore } from "../stores/userExtensions";
 import { errorMessage } from "../utils/errors";
 import { userExtensionSummary } from "../utils/userExtensions";
 
 /** Everything the account can add: mcp_server's built-in capabilities and its
  * extensions, in two sections, with Add and Disable per row. A user can only
- * add or disable; extensions.manage also permits adding and removing extensions
- * on the server, and admin.manage permits turning a built-in capability back on
- * for everyone. Two exclusive filter
+ * add or disable shared items for their account. Two exclusive filter
  * chips (Enabled, Disabled) narrow both lists; the choice lives in the address
  * (?state=enabled|disabled). */
 
 const auth = useAuthStore();
 const account = useAccountCapabilitiesStore();
-const chat = useChatStore();
 const userExt = useUserExtensionsStore();
 const route = useRoute();
 const router = useRouter();
@@ -36,17 +30,12 @@ const extensions = ref<ExtensionInfo[]>([]);
 const loading = ref(true);
 const loadError = ref("");
 const actionError = ref("");
-const addOpen = ref(false);
-const pendingRemove = ref<ExtensionInfo | null>(null);
-const removing = ref(false);
 const canUsePrivate = computed(() => auth.hasPermission("chat.use"));
 const modalOpen = ref(false);
 const editing = ref<UserExtension | null>(null);
 const pendingRemovePrivate = ref<UserExtension | null>(null);
 const removingPrivate = ref(false);
 
-const isAdmin = computed(() => auth.hasPermission("admin.manage"));
-const canManageExtensions = computed(() => auth.hasPermission("extensions.manage"));
 // Capabilities need tools.use; the extension list needs chat.use or tools.use.
 const canTools = computed(() => auth.hasPermission("tools.use"));
 const accountLoading = computed(() => !account.ready && account.error === "");
@@ -124,48 +113,6 @@ async function load(): Promise<void> {
   }
 }
 
-const {
-  pending: pendingSwitch,
-  error: switchError,
-  copy: switchCopy,
-  ask: askSwitch,
-  cancel: cancelSwitch,
-  confirm: confirmSwitch,
-} = useEveryoneSwitch((updated) => {
-  capabilities.value = capabilities.value.map((c) => (c.name === updated.name ? updated : c));
-});
-
-function onAdded(created: ExtensionInfo): void {
-  extensions.value = [...extensions.value.filter((e) => e.id !== created.id), created];
-  addOpen.value = false;
-  chat.refreshCommands();
-}
-
-const removeMessage = computed(() =>
-  pendingRemove.value
-    ? `Remove "${pendingRemove.value.label}"? Its tools stop being offered to every mcp_server client.`
-    : "",
-);
-
-async function confirmRemove(): Promise<void> {
-  const extension = pendingRemove.value;
-  if (!extension) return;
-  actionError.value = "";
-  removing.value = true;
-  try {
-    await extensionsClient.remove(extension.id);
-    extensions.value = extensions.value.filter((e) => e.id !== extension.id);
-    // ember_api cleared the extension from every account; read our copy again.
-    await account.refresh();
-    chat.refreshCommands();
-  } catch (err) {
-    actionError.value = errorMessage(err);
-  } finally {
-    removing.value = false;
-    pendingRemove.value = null;
-  }
-}
-
 onMounted(() => {
   void load();
   // Each one's status comes from a live probe, so look again whenever the page opens.
@@ -203,8 +150,8 @@ onMounted(() => {
       <p v-if="loading || accountLoading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
       <p v-else-if="!account.ready" class="error">error: {{ account.error }}</p>
-      <p v-if="actionError || switchError || (account.ready && account.error) || userExt.error" class="error" role="alert">
-        {{ actionError || switchError || account.error || userExt.error }}
+      <p v-if="actionError || (account.ready && account.error) || userExt.error" class="error" role="alert">
+        {{ actionError || account.error || userExt.error }}
       </p>
 
       <template v-if="!loading && !loadError && account.ready">
@@ -221,17 +168,12 @@ onMounted(() => {
             :locked="!c.enabled"
             @add="account.setCapability(c.name, true)"
             @disable="account.setCapability(c.name, false)"
-          >
-            <template v-if="isAdmin && !c.enabled" #actions>
-              <button type="button" class="everyone" @click="askSwitch(c)">Turn on for everyone</button>
-            </template>
-          </SupermarketItem>
+          />
           <p v-if="builtIn.length === 0" class="muted">No built-in capabilities match this filter.</p>
         </template>
 
         <div class="section-head">
           <h4 class="group-title">Extensions</h4>
-          <button v-if="canManageExtensions" type="button" class="primary" @click="addOpen = true">Add extension</button>
         </div>
         <SupermarketItem
           v-for="e in extensionRows"
@@ -244,11 +186,7 @@ onMounted(() => {
           :added="addedExtensions.has(e.id)"
           @add="account.setExtension(e.id, true)"
           @disable="account.setExtension(e.id, false)"
-        >
-          <template v-if="canManageExtensions" #actions>
-            <button type="button" class="remove" :aria-label="`Remove ${e.label}`" @click="pendingRemove = e">Remove</button>
-          </template>
-        </SupermarketItem>
+        />
         <p v-if="extensionRows.length === 0" class="muted">No extensions match this filter.</p>
 
         <template v-if="canUsePrivate">
@@ -289,31 +227,6 @@ onMounted(() => {
         </template>
       </template>
     </div>
-
-    <ConfirmModal
-      v-if="pendingSwitch"
-      open
-      :title="switchCopy.title"
-      :message="switchCopy.message"
-      :confirm-label="switchCopy.label"
-      :danger="pendingSwitch.enabled"
-      @confirm="confirmSwitch"
-      @close="cancelSwitch"
-    />
-
-    <ConfirmModal
-      v-if="canManageExtensions && pendingRemove"
-      open
-      title="Remove extension"
-      :message="removeMessage"
-      confirm-label="Remove"
-      danger
-      :busy="removing"
-      @confirm="confirmRemove"
-      @close="pendingRemove = null"
-    />
-
-    <AddExtensionModal v-if="canManageExtensions" :open="addOpen" @close="addOpen = false" @added="onAdded" />
 
     <UserExtensionModal
       v-if="canUsePrivate"
@@ -421,7 +334,6 @@ h2 {
   color: var(--accent-contrast);
   background: var(--accent);
 }
-.everyone,
 .edit,
 .remove {
   padding: 4px 14px;
@@ -432,8 +344,7 @@ h2 {
   color: var(--muted);
   background: transparent;
 }
-.edit:hover,
-.everyone:hover {
+.edit:hover {
   color: var(--text);
   border-color: var(--accent);
 }
@@ -441,7 +352,6 @@ h2 {
   border-color: var(--danger);
   color: var(--danger);
 }
-.everyone:focus-visible,
 .edit:focus-visible,
 .remove:focus-visible,
 .primary:focus-visible {

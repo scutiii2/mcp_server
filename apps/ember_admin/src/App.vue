@@ -19,7 +19,7 @@ watch(account, (now) => {
 
 <template>
   <div class="shell">
-    <AdminNav v-if="account" />
+    <AdminNav />
     <main class="page"><RouterView :key="account?.id ?? 'guest'" /></main>
   </div>
 </template>
@@ -39,7 +39,7 @@ watch(account, (now) => {
 }
 @media (max-width: 767px) {
   .shell {
-    flex-direction: column;
+    flex-direction: column-reverse;
   }
 }
 </style>

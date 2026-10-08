@@ -6,7 +6,7 @@ import type { Account } from "../api/AuthClient";
 import type { CapabilityInfo } from "../api/CommandsClient";
 import type { UserExtension } from "../api/UserExtensionsClient";
 import type { ResourceInfo, ToolInfo } from "../api/types";
-import ConfirmModal from "../components/admin/ConfirmModal.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
 import { useAuthStore } from "../stores/auth";
 import { useAccountCapabilitiesStore } from "../stores/accountCapabilities";
 import CapabilitiesView from "./CapabilitiesView.vue";
@@ -350,52 +350,12 @@ describe("CapabilitiesView", () => {
     expect(w.text()).toContain("Help text");
   });
 
-  const everyone = (w: Wrapper) => w.get("button.everyone");
-
-  it("gives admins a button in the card that turns a capability on or off for everyone, asking first", async () => {
-    mocks.setCapability.mockResolvedValue({ ...CAPS[2]!, enabled: true });
+  it("leaves global capability switches in Ember Admin even for administrators", async () => {
     const w = await show({ admin: true });
+    await head(w, "PDF files").trigger("click");
     await head(w, "Legacy").trigger("click");
-    expect(everyone(w).text()).toBe("Turn on for everyone");
-
-    await everyone(w).trigger("click");
-    expect(mocks.setCapability).not.toHaveBeenCalled();
-    expect(w.getComponent(ConfirmModal).props("message")).toContain('Turn on "Legacy"');
-    expect(w.getComponent(ConfirmModal).props("danger")).toBe(false);
-    await w.getComponent(ConfirmModal).get(".confirm").trigger("click");
-    await flushPromises();
-
-    expect(mocks.setCapability).toHaveBeenCalledWith("legacy", true);
-    expect(head(w, "Legacy").text()).toContain("0 tools");
-  });
-
-  it("does not switch anything when the admin declines", async () => {
-    const w = await show({ admin: true });
-    await head(w, "PDF files").trigger("click");
-
-    await everyone(w).trigger("click");
-    await w.getComponent(ConfirmModal).get(".cancel").trigger("click");
-
-    expect(w.findComponent(ConfirmModal).exists()).toBe(false);
-    expect(mocks.setCapability).not.toHaveBeenCalled();
-  });
-
-  it("marks turning a capability off as a dangerous action", async () => {
-    const w = await show({ admin: true });
-    await head(w, "PDF files").trigger("click");
-    expect(everyone(w).text()).toBe("Turn off for everyone");
-
-    await everyone(w).trigger("click");
-
-    expect(w.getComponent(ConfirmModal).props("message")).toContain("Turn off");
-    expect(w.getComponent(ConfirmModal).props("danger")).toBe(true);
-  });
-
-  it("shows no everyone button to an account that is not an admin", async () => {
-    const w = await show({ permissions: ["tools.use", "chat.use"] });
-    await head(w, "PDF files").trigger("click");
-
     expect(w.find("button.everyone").exists()).toBe(false);
+    expect(w.findAll("input[type=checkbox]")).toHaveLength(3);
   });
 
   it("gives every card a switch that is on, whatever the permissions", async () => {
@@ -532,7 +492,7 @@ describe("CapabilitiesView extension cards", () => {
     expect(sectionNames(w)).toEqual(["PDF files", "services", "Legacy", "PDF2", "Other tools"]);
   });
 
-  it("has no Remove button on an extension card, even for admins (Remove lives in the Supermarket)", async () => {
+  it("has no Remove button on an extension card, even for admins (Remove lives in Ember Admin)", async () => {
     mocks.extensions.mockResolvedValue([ext("pdf2")]);
     const admin = await show({ permissions: [...WITH_CHAT, "admin.manage"] });
     await head(admin, "PDF2").trigger("click");
@@ -625,12 +585,6 @@ describe("built-in switches for your own account", () => {
     expect(head(w, "Legacy").text()).toContain("off");
   });
 
-  it("leaves the everyone switch to admins, inside the card", async () => {
-    const w = await show({ permissions: [...WITH_CHAT, "admin.manage"] });
-    await head(w, "PDF files").trigger("click");
-
-    expect(w.get("button.everyone").text()).toBe("Turn off for everyone");
-  });
 });
 
 describe("private extensions on the page", () => {

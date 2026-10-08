@@ -14,7 +14,7 @@ import { FILE_ONLY_QUESTION, splitAttachments } from "../utils/attachments";
 import { hideDownloadMarkers, parseDownloads } from "../utils/downloads";
 import { clockTime, dayDividers, fullTime } from "../utils/messageTime";
 import { toolTitle } from "../utils/toolTitles";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import AgentActivity from "./AgentActivity.vue";
 import CopyButton from "./CopyButton.vue";
 import DownloadCards from "./DownloadCards.vue";

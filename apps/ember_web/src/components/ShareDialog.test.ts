@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/http";
 import { sharesClient, type ShareCreated, type ShareInfo } from "../api/SharesClient";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import ShareDialog from "./ShareDialog.vue";
 
 vi.mock("../api/SharesClient", () => ({ sharesClient: { create: vi.fn(), list: vi.fn(), revoke: vi.fn(), read: vi.fn() } }));

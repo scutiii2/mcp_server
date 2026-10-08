@@ -5,8 +5,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import type { CapabilityInfo } from "../api/CommandsClient";
 import type { UserExtension } from "../api/UserExtensionsClient";
-import ConfirmModal from "../components/admin/ConfirmModal.vue";
-import AddExtensionModal from "../components/AddExtensionModal.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
 import UserExtensionModal from "../components/UserExtensionModal.vue";
 import { useAuthStore } from "../stores/auth";
 import SupermarketView from "./SupermarketView.vue";
@@ -236,71 +235,13 @@ describe("SupermarketView", () => {
     expect(names(w)).toEqual(["Notes", "Wiki"]);
   });
 
-  describe("management permissions", () => {
-    const ADMIN = ["tools.use", "chat.use", "admin.manage"];
-    const EXTENSION_MANAGER = ["tools.use", "chat.use", "extensions.manage"];
-
-    it("admin.manage alone permits turning on for everyone but hides extension management", async () => {
-      const { w } = await show({ permissions: ADMIN });
-
-      expect(w.text()).not.toContain("Add extension");
-      expect(w.find("button.remove").exists()).toBe(false);
-      expect(w.findComponent(AddExtensionModal).exists()).toBe(false);
-      expect(row(w, "Legacy").get("button.everyone").text()).toBe("Turn on for everyone");
-    });
-
-    it("extensions.manage alone permits extension management but hides turning on for everyone", async () => {
-      const { w } = await show({ permissions: EXTENSION_MANAGER });
-
-      expect(w.text()).toContain("Add extension");
-      expect(row(w, "Notes").get("button.remove").text()).toBe("Remove");
-      expect(row(w, "Legacy").find("button.everyone").exists()).toBe(false);
-      await w.get("button.primary").trigger("click");
-      expect(w.getComponent(AddExtensionModal).props("open")).toBe(true);
-    });
-
-    it("add and remove extensions; others see neither", async () => {
-      const user = await show();
-      expect(user.w.text()).not.toContain("Add extension");
-      expect(user.w.find("button.remove").exists()).toBe(false);
-
-      const manager = await show({ permissions: EXTENSION_MANAGER });
-      expect(manager.w.text()).toContain("Add extension");
-      await row(manager.w, "Notes").get("button.remove").trigger("click");
-      expect(manager.w.getComponent(ConfirmModal).props("message")).toContain('Remove "Notes"');
-    });
-
-    it("removing an extension asks the server and reloads the account's choices", async () => {
-      mocks.removeExtension.mockResolvedValue(undefined);
-      const { w } = await show({ permissions: EXTENSION_MANAGER, added: { extensions: ["notes"] } });
-      await row(w, "Notes").get("button.remove").trigger("click");
-
-      await w.getComponent(ConfirmModal).get(".confirm").trigger("click");
-      await flushPromises();
-
-      expect(mocks.removeExtension).toHaveBeenCalledWith("notes");
-      expect(names(w)).not.toContain("Notes");
-      expect(mocks.accountGet).toHaveBeenCalledTimes(2);
-    });
-
-    it("can turn a capability that is off for everyone back on, asking first", async () => {
-      mocks.setCapability.mockResolvedValue({ ...CAPS[2]!, enabled: true });
-      const { w } = await show({ permissions: ADMIN });
-
-      await row(w, "Legacy").get("button.everyone").trigger("click");
-      expect(w.getComponent(ConfirmModal).props("message")).toContain('Turn on "Legacy"');
-      await w.getComponent(ConfirmModal).get(".confirm").trigger("click");
-      await flushPromises();
-
-      expect(mocks.setCapability).toHaveBeenCalledWith("legacy", true);
-      expect(row(w, "Legacy").find(".badge").exists()).toBe(false);
-    });
-
-    it("shows no everyone button on a capability that is on for everyone", async () => {
-      const { w } = await show({ permissions: ADMIN });
-
-      expect(row(w, "PDF files").find("button.everyone").exists()).toBe(false);
-    });
+  it("leaves shared extension and global capability management in Ember Admin", async () => {
+    const { w } = await show({ permissions: ["tools.use", "chat.use", "admin.manage", "extensions.manage"] });
+    expect(w.text()).not.toContain("Add extension");
+    expect(row(w, "Notes").find("button.remove").exists()).toBe(false);
+    expect(row(w, "Legacy").find("button.everyone").exists()).toBe(false);
+    expect(w.text()).toContain("Add your own extension");
+    expect(row(w, "Calculator").find("button.add").exists()).toBe(true);
   });
 
   it("shows why a change failed", async () => {

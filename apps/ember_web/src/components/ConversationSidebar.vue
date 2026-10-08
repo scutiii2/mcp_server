@@ -6,7 +6,7 @@ import type { Conversation } from "../api/types";
 import { chatMenuItems, folderMenuItems, parseChatChoice } from "../utils/chatMenu";
 import { dropOps, type DropTarget } from "../utils/chatDrop";
 import { buildLayout } from "../utils/chatSections";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import ChatRow from "./ChatRow.vue";
 import ChatSection from "./ChatSection.vue";
 import PopupMenu from "./PopupMenu.vue";

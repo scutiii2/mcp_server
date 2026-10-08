@@ -194,3 +194,16 @@ describe("the merged Capabilities page", () => {
     expect(router.currentRoute.value.name).not.toBe("capabilities");
   });
 });
+
+describe("pages moved to Ember Admin", () => {
+  it.each(["/admin", "/analytics", "/logs"])("opens the Web home for an old %s link", async (path) => {
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["chat.use", "admin.manage", "logs.view"] });
+    await router.push(path);
+    expect(router.currentRoute.value.name).toBe("chat");
+  });
+  it("does not use Admin as a Web landing page", async () => {
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["admin.manage"] });
+    await router.push("/");
+    expect(router.currentRoute.value.name).toBe("no-access");
+  });
+});

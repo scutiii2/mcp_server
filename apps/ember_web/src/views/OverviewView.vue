@@ -16,13 +16,11 @@ const descriptions: Record<string, string> = {
   "/capabilities": "Discover tools, resources, and connected extensions.",
   "/watchers": "Browse background watchers across your capabilities.",
   "/usage": "Review your token usage and account limits.",
-  "/analytics": "Explore activity, errors, and network traffic.",
   "/settings": "Adjust chat and appearance preferences.",
-  "/admin": "Manage accounts, roles, and invite codes.",
 };
 const groups = computed(() => {
-  const monitor = new Set(["/watchers", "/usage", "/analytics"]);
-  const manage = new Set(["/settings", "/admin"]);
+  const monitor = new Set(["/watchers", "/usage"]);
+  const manage = new Set(["/settings"]);
   return [
     {
       id: "work", title: "Build & explore", subtitle: "Meet your agents and their tools",

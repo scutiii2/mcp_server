@@ -152,90 +152,15 @@ test("deleting a saved prompt asks first", async ({ page }) => {
   expect(api.unexpected).toEqual([]);
 });
 
-test("deleting a role: one that accounts hold needs its name typed, an unused one does not", async ({ page }) => {
+test("global capability switches are absent for administrators", async ({ page }) => {
   const api = await installFakeApi(page, { admin: true });
   await logIn(page);
-  await page.getByRole("link", { name: "Admin", exact: true }).click();
-  await page.getByRole("button", { name: "Roles", exact: true }).click();
-  const roleButton = (name: string) => page.locator("button.role").filter({ hasText: name });
-  await expect(roleButton("Member")).toBeVisible();
-
-  // The protected Administrator role has no Danger zone.
-  await roleButton("Administrator").click();
-  await expect(page.locator(".danger-zone")).toHaveCount(0);
-
-  // Member is held by an account: its name must be typed.
-  await roleButton("Member").click();
-  const zone = page.locator(".danger-zone");
-  await expect(zone).toContainText("Danger zone");
-  await zone.getByRole("button", { name: "Delete role" }).click();
-  const dialog = page.getByRole("dialog", { name: "Delete role" });
-  await expect(dialog).toContainText("Delete role 'Member'? It is removed from 1 account.");
-  const confirm = dialog.getByRole("button", { name: "Delete" });
-  await expect(dialog.getByRole("textbox")).toBeFocused();
-  await expect(confirm).toBeDisabled();
-  await page.keyboard.type("Membe");
-  await expect(confirm).toBeDisabled();
-  await page.keyboard.type("r");
-  await expect(confirm).toBeEnabled();
-  await confirm.click();
-  await expect.poll(() => api.roles.has(2)).toBe(false);
-  await expect(roleButton("Member")).toHaveCount(0);
-
-  // Ops holds no account: no text to type, the button is ready at once.
-  await roleButton("Ops").click();
-  await page.locator(".danger-zone").getByRole("button", { name: "Delete role" }).click();
-  await expect(dialog).toContainText("It is removed from 0 accounts.");
-  await expect(dialog.getByRole("textbox")).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Delete" }).click();
-  await expect.poll(() => api.roles.has(3)).toBe(false);
-  await expect(roleButton("Ops")).toHaveCount(0);
-
-  expect(api.unexpected).toEqual([]);
-});
-
-test("switching a capability asks first: off is a danger confirm, on a plain one", async ({ page }) => {
-  const api = await installFakeApi(page, { admin: true });
-  await logIn(page);
-  await page.getByRole("link", { name: "Capabilities", exact: true }).click();
-  await expect(page).toHaveURL(/\/capabilities$/);
-
-  const card = (label: string) => page.locator("article.card").filter({ has: page.getByRole("heading", { name: label }) });
-  await expect(card("PDF files")).toContainText("1 tool");
-  await expect(card("Legacy")).toContainText("1 tool");
-
-  // Open the card: the button for everyone is inside it (the switch in its header is only yours).
-  await card("PDF files").getByRole("button", { name: /PDF files/ }).click();
-
-  // Turn PDF files off for everyone: it asks, and Cancel changes nothing.
-  await card("PDF files").getByRole("button", { name: "Turn off for everyone" }).click();
-  const dialog = page.getByRole("dialog", { name: "Turn off capability" });
-  await expect(dialog).toContainText('Turn off "PDF files" for every mcp_server client (chat_app, agents, ember)?');
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(dialog).toHaveCount(0);
+  await page.goto("/capabilities");
+  const card = page.locator("article.card").filter({ has: page.getByRole("heading", { name: "PDF files" }) });
+  await card.getByRole("button", { name: /PDF files/ }).click();
+  await expect(page.getByRole("button", { name: "Turn off for everyone" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Turn on for everyone" })).toHaveCount(0);
+  await expect(card.getByRole("switch")).toBeChecked();
   expect(api.capabilities.get("pdf")?.enabled).toBe(true);
-  await expect(card("PDF files")).toContainText("1 tool");
-
-  // Confirm: turning off is the risky way round, so the button has the danger style. It is then off
-  // here and on the server, and the tools mcp_server lists no longer include its tool.
-  await card("PDF files").getByRole("button", { name: "Turn off for everyone" }).click();
-  const turnOff = dialog.getByRole("button", { name: "Turn off" });
-  await expect(turnOff).toHaveClass(/danger/);
-  await turnOff.click();
-  await expect.poll(() => api.capabilities.get("pdf")?.enabled).toBe(false);
-  await expect(card("PDF files")).toContainText("off");
-  await expect(card("Legacy")).toContainText("1 tool");
-
-  // Turn it back on: a plain confirm, no danger style.
-  await card("PDF files").getByRole("button", { name: "Turn on for everyone" }).click();
-  const onDialog = page.getByRole("dialog", { name: "Turn on capability" });
-  await expect(onDialog).toContainText('Turn on "PDF files" for every mcp_server client');
-  const turnOn = onDialog.getByRole("button", { name: "Turn on" });
-  await expect(turnOn).not.toHaveClass(/danger/);
-  await turnOn.click();
-  await expect.poll(() => api.capabilities.get("pdf")?.enabled).toBe(true);
-  await expect(card("PDF files")).toContainText("1 tool");
-
-  // The fake knew every request the page made.
   expect(api.unexpected).toEqual([]);
 });

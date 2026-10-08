@@ -6,12 +6,7 @@ export interface AppSettings {
   force_tool_approval: boolean;
 }
 
-export type SettingName = keyof AppSettings;
-
 export const settingsClient = {
   /** Any logged-in account may read these. */
   get: () => apiRequest<AppSettings>("GET", "/api/settings"),
-  /** admin.manage only. */
-  set: (name: SettingName, value: boolean) =>
-    apiRequest<Partial<AppSettings>>("PUT", `/api/admin/settings/${name}`, { value }),
 };

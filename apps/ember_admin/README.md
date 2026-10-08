@@ -69,9 +69,14 @@ reloaded from here.
 
 ## Admin and Analytics
 
-`AdminView.vue`, `AnalyticsView.vue` and the components they use are copies of
-ember_web's. Both apps keep them for now, so a fix to one usually needs the
-same fix in the other until the ember_web copy is removed.
+Admin and Analytics live only in ember_admin. ember_web keeps personal preferences,
+capability/tool browsing, and private extensions; shared extension management and
+global capability switches live here.
+
+The shell uses ember_web's Ember mark, 52px icon rail, named hover/focus labels,
+and bottom navigation below 768px. Theme cycles through System, Light, and Dark
+and persists in this browser, including on the login page. Page content scrolls
+independently of navigation; controls use the same theme and radius tokens.
 
 ## Tests
 

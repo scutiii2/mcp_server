@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import BaseModal from "../BaseModal.vue";
-import DeleteButton from "../DeleteButton.vue";
+import BaseModal from "./BaseModal.vue";
+import DeleteButton from "./DeleteButton.vue";
 
 /** Asks the user to confirm an action, in place of the browser's confirm().
  * The parent keeps `open`, runs the action on `confirm` and closes on `close`

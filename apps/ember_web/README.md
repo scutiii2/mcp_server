@@ -8,10 +8,7 @@ URL, token or key.
 
 ## Features
 
-- Admin workspace: account overview, searchable account list with status filters,
-  account detail panel (bottom sheet on mobile), roles and permissions, invites,
-  and workspace settings. The header's Invite account shortcut opens Invites;
-  section selection stays in the URL. Uses the app's light and dark theme tokens.
+- Workspace administration, activity logs, and traffic analytics live in [ember_admin](../ember_admin).
 
 - Log in, register with an invite code, verify your email (ember_api
   accounts - separate from chat_app's).
@@ -137,8 +134,7 @@ URL, token or key.
   capability and extension in two sections, with Add and Disable per row. What an account has added is kept in ember_api
   (`/api/account-capabilities`), so it follows the account across devices; a new account starts with nothing added. Two exclusive
   filter chips, Enabled and Disabled, narrow the lists (clicking the active chip clears it; the choice is in the address as
-  `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added; administrators
-  see "Turn on for everyone" there. Accounts with `extensions.manage` also add and remove extensions in the Extensions section.
+  `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added. Global capability switches and shared extension management live in ember_admin.
 - Private extensions (`chat.use`): the Supermarket's "My extensions" section adds an MCP server only this account can see, with an
   optional set of headers (a token or key). Header values are write-only: they are stored encrypted by ember_api and never shown
   again; editing offers "Replace headers", which replaces the whole set. Each row has Enable/Disable, Edit and Remove, and shows
@@ -159,13 +155,11 @@ URL, token or key.
 - "Terse replies" toggle in the chat header (ai_agent's `caveman`
   option), remembered per account.
 - Settings page (`/settings`, `chat.use`): your preferences in one place, grouped by task: Chat (terse
-  replies, ask before tools, chime), Appearance (theme), Sidebar (see below) and, for admins, Administration
-  (tool approval).
+  replies, ask before tools, chime), Appearance (theme), Sidebar (see below). Workspace tool approval is configured in ember_admin.
   A search box filters them as you type (label, description and extra keywords; Enter focuses the first
   match, Esc clears it). A setting that differs from its default shows an accent dot and a reset
   button ("Back to default"), and the header counts how many are changed. Chat and theme apply instantly and
-  are saved in this browser; tool approval applies to every account, so a flip (or its reset) waits for
-  Save in an unsaved bar. The chat gear menu keeps its quick switches and links here.
+  are saved in this browser. The chat gear menu keeps its quick switches and links here.
 - Sidebar arrangement, per account (Settings, Sidebar card; saved through `/api/nav-preferences`): one row per
   page you may open. Drag a row or use its arrows to reorder, pin it to a group at the top of the rail (a divider
   separates the groups), or switch it off to hide it from the rail (hidden pages stay on the Overview page).
@@ -191,8 +185,7 @@ URL, token or key.
   on/off switch with who it is for. Every card's switch is for "Account": turning it off removes the item from the account
   and its card leaves the page. What the account has added follows it across devices; a new account starts with nothing added.
   An account that has added nothing sees "Nothing added yet" with a link to the Supermarket. The tools of capabilities not
-  added are sent as `disabled_tools` with each question; admins turn one off for everyone with a button inside its
-  card (a dialog asks first). A capability off for everyone stays dimmed and its account switch can still be turned off.
+  added are sent as `disabled_tools` with each question. Global switches live in ember_admin. A capability off for everyone stays dimmed and its account switch can still be turned off.
   An extension's Open button leads to its `web_url` (for
   example `pdf_merger` and its web app) in a new tab, labelled "Open app"; only http(s) addresses
   count, and it works without `tools.use` and when the extension is not connected. An extension with no
@@ -203,8 +196,7 @@ URL, token or key.
   capability and extension in two sections, with Add and Disable per row. What an account has added is kept in ember_api
   (`/api/account-capabilities`), so it follows the account across devices; a new account starts with nothing added. Two exclusive
   filter chips, Enabled and Disabled, narrow the lists (clicking the active chip clears it; the choice is in the address as
-  `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added; administrators
-  see "Turn on for everyone" there. Accounts with `extensions.manage` also add and remove extensions in the Extensions section.
+  `?state=`). A capability an administrator turned off for everyone shows "Off for everyone" and cannot be added. Global capability switches and shared extension management live in ember_admin.
 - Agents page (`chat.use`): a card per agent from `GET /api/agents` - name, id,
   Entry / Orchestrator badges, what it is for, its provider / gateway / model
   (a value the agent file does not set is left out), and a status (running,
@@ -220,19 +212,7 @@ URL, token or key.
   drawn ("Show all N") and a capability with a failure always is. Search, a
   24h / 7d / All range, and a "Focus" menu for one capability (kept in the
   address as `?capability=`).
-- Analytics page (`/analytics`, any `logs.*` or `traffic.view` permission; `/logs`
-  redirects here), three tabs, each shown only if the account may use it. Overview: a 24h / 7d / 30d / 90d range, a tile per log kind
-  (count, change vs the previous period, trend), entries over time (stacked
-  columns, hover or arrow keys for a tooltip, table view), top sources and
-  busiest accounts per kind (click an account to open its entries), and a
-  weekday-by-hour heatmap; only the kinds the account may read, times in UTC.
-  Traffic (`traffic.view`): the same range, tiles for requests, error rate (change
-  in percentage points), slowest 5% and upstream failures, requests over time by
-  status class (2xx to 5xx), response time (median and slowest 5% lines), busiest
-  and slowest routes, and calls to ai_agent and mcp_server per target. Counts
-  only, never who made a request; latency is kept in bands, so a time at the top
-  band reads "5 s+" (at least that). Entries: the Activity, Errors and Chat turns
-  lists, each for the server or one account.
+
 - Config issues page (`config.issues.view`): problems in ember_api's config and
   secret files, as errors (broken) or warnings (risky or incomplete), grouped by
   file. Not a nav tab: a red (errors) or amber (warnings only) alert with a count
@@ -244,25 +224,14 @@ URL, token or key.
   from (forget one to have its next login noted as new). Reachable while
   unverified.
 - Overview (click "Ember"): every page you may open, as tiles.
-- Admin page: overview tiles (accounts, unverified, disabled, open invites)
-  above four tabs. Accounts (search by name or email, filter by status, click a
-  row for a drawer to edit, enable/disable, add/remove roles, send
-  verification, delete), Roles (a list and an editor with a switch per
-  permission; create, edit, delete), Invites (create, optionally email, list,
-  revoke) and Settings
-  ("Require approval for every tool": every account's answers then ask before
-  each tool, the "Ask before tools" checkbox is locked on, and "Allow for this
-  chat" is not offered). Delete account and Delete role sit in a red Danger
-  zone, last in the drawer and the editor.
+
 - Confirmations: no native `confirm()` is used anywhere. Every destructive or
   discarding action asks in `ConfirmModal`, and the friction scales with the
   severity. One chat, a few ticked chats, a forgotten device, a share link, a
-  saved prompt and a question edit that drops later messages ask once. Turning
-  a capability off uses the danger style. A severe action also makes you type
+  saved prompt and a question edit that drops later messages ask once. A severe action also makes you type
   something before its button unlocks (`requireText`, with a character counter,
-  the field focused when the dialog opens): the username to delete an account,
-  the role's name to delete a role that accounts still hold, and `delete all` for
-  "Delete all chats". The dialog always has Cancel; Escape and a click outside
+  the field focused when the dialog opens): `delete all` for
+  "Delete all chats". Account and role deletion confirmations live in ember_admin. The dialog always has Cancel; Escape and a click outside
   close it too.
 - Capability pages (`/capabilities/<name>`, needs `tools.use`): a capability
   that ships a `gui/page.json` gets its own page, and its card on the
@@ -392,8 +361,8 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 
 ```
 src/
-  api/          http + AuthClient / AdminClient / ChatsClient / UsageClient / CommandsClient /
-                ExtensionsClient / AgentsClient / WatchersClient / LogsClient / TrafficClient / AttachmentsClient /
+  api/          http + AuthClient / ChatsClient / UsageClient / CommandsClient /
+                ExtensionsClient / AgentsClient / WatchersClient / AttachmentsClient /
                 ConfigIssuesClient / TemplatesClient / NavPreferencesClient / SharesClient / SettingsClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
@@ -402,15 +371,13 @@ src/
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Capabilities, Agents, Watchers, Usage, Settings, Analytics, ConfigIssues,
-                Admin, Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
+  views/        pages: Overview, Chat, Capabilities, Agents, Watchers, Usage, Settings, ConfigIssues,
+                Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
-                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, LogEntries, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
-    admin/      the Admin page's Accounts / Roles / Invites / Settings panels, AccountDrawer, RoleEditor, StatTile, ConfirmModal + shared admin.css
-    analytics/  the Analytics Overview and Traffic tabs: ActivityChart (stacked columns), LineChart, StatTile / KindStatTile, Sparkline, BarList, HourHeatmap, TrafficPanel
-                (hand-drawn SVG/CSS; shared hover/keyboard state in useBucketCursor, shared frame in chart.css; series colours `--kind-*`, `--http-*`, `--latency-*`)
+                CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, ConfirmModal, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
+    analytics/  shared LineChart, hover/keyboard state in useBucketCursor and chart.css, used by Usage
     watchers/   the Watchers page's WatcherTimeline, WatcherList, CapabilityFocus (status colours `--status-*`)
-    infoPage.css  shared look of the Agents / Watchers / Analytics / Config pages
+    infoPage.css  shared look of the Agents / Watchers / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
                 tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics and watcher helpers, saved-prompt helpers

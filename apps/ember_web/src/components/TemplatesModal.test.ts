@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/http";
 import { templatesClient, type PromptTemplate } from "../api/TemplatesClient";
 import { useAuthStore } from "../stores/auth";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 import TemplatesModal from "./TemplatesModal.vue";
 
 vi.mock("../api/TemplatesClient", async (importOriginal) => ({

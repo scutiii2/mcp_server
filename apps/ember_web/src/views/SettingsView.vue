@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, useTemplateRef, watch } from "vue";
 import SettingRow from "../components/SettingRow.vue";
-import SettingsPanel from "../components/admin/SettingsPanel.vue";
 import SidebarEditor from "../components/SidebarEditor.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
@@ -19,11 +18,11 @@ import { filterSettings, type SearchableSetting } from "../utils/settingsSearch"
 
 interface SettingDef extends SearchableSetting {
   id: string;
-  group: "chat" | "appearance" | "sidebar" | "admin";
+  group: "chat" | "appearance" | "sidebar";
 }
 
 // Icon paths are on a 16px grid, stroke only. The scope chip says where a group's
-// settings live; Administration has none, its card carries its own scope chip.
+// settings live.
 const SCOPE_NOTE = "Applies instantly. Saved on this device.";
 const GROUPS = [
   { id: "chat", title: "Chat", icon: "M2 3h12v8H7l-3 3v-3H2z", scope: "This device" },
@@ -40,7 +39,6 @@ const GROUPS = [
     scope: "Your account",
     note: "Applies instantly. Saved to your account.",
   },
-  { id: "admin", title: "Administration", icon: "M8 1.5l5 2v4c0 3-2 5.5-5 7-3-1.5-5-4-5-7v-4z", scope: "" },
 ] as const;
 const SEARCH_ICON = "M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M11 11l3.5 3.5";
 
@@ -87,13 +85,6 @@ const DEFS: SettingDef[] = [
     description: "Order, pin or hide the pages in the sidebar.",
     keywords: ["rearrange", "reorder", "navigation", "menu", "rail", "icons", "pin", "hide", "drag"],
   },
-  {
-    id: "admin-tool-approval",
-    group: "admin",
-    label: "Tool approval",
-    description: "Require approval for every tool, for every account.",
-    keywords: ["force", "lock", "require", "administrator", "approval"],
-  },
 ];
 
 const THEME_OPTIONS: { value: Theme; label: string }[] = [
@@ -107,12 +98,11 @@ const chat = useChatStore();
 const { theme, setTheme } = useTheme();
 const navPrefs = useNavPrefsStore();
 
-const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 const query = ref("");
 const onlyModified = ref(false);
 const root = useTemplateRef<HTMLElement>("root");
 
-const available = computed(() => DEFS.filter((d) => d.group !== "admin" || isAdmin.value));
+const available = computed(() => DEFS);
 const shown = computed(
   () =>
     new Set(
@@ -128,10 +118,6 @@ const groups = computed(() =>
 );
 const noMatches = computed(() => shown.value.size === 0);
 
-// The tool approval switch keeps its own value (it is saved on the server); it
-// tells this page when it differs from the default.
-const toolApprovalModified = ref(false);
-
 const themeModel = computed<Theme>({ get: () => theme.value, set: (value) => setTheme(value) });
 
 const modified = computed(() => ({
@@ -141,7 +127,6 @@ const modified = computed(() => ({
   "chat-suggestions": !auth.promptSuggestions,
   "appearance-theme": theme.value !== DEFAULT_THEME,
   "sidebar-pages": !isDefault(navPrefs.prefs),
-  "admin-tool-approval": isAdmin.value && toolApprovalModified.value,
 }));
 const modifiedCount = computed(() => Object.values(modified.value).filter(Boolean).length);
 
@@ -296,7 +281,6 @@ onMounted(() => {
         </div>
       </section>
 
-      <SettingsPanel v-if="isAdmin" v-show="shown.has('admin-tool-approval')" class="admin-card" @modified="toolApprovalModified = $event" />
     </div>
   </section>
 </template>
@@ -413,11 +397,7 @@ h2 {
   color: var(--muted);
   background: var(--code-bg);
 }
-/* The tool approval card is not inside its group (it stays mounted while a
-   search hides it, so an unsaved draft survives); close the gap to its heading. */
-.admin-card {
-  margin-top: -8px;
-}
+
 .card {
   padding: 4px 16px 6px;
   border: 1px solid var(--border);

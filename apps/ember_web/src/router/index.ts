@@ -2,7 +2,6 @@ import { createRouter, createWebHistory, type RouteLocationRaw } from "vue-route
 import { useAuthStore } from "../stores/auth";
 import { useConfigIssuesStore } from "../stores/configIssues";
 import ChatView from "../views/ChatView.vue";
-import { ANALYTICS_PERMISSIONS } from "./pages";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -22,7 +21,6 @@ declare module "vue-router" {
 const HOME_PAGES: { name: string; permission: string }[] = [
   { name: "chat", permission: "chat.use" },
   { name: "capabilities", permission: "tools.use" },
-  { name: "admin", permission: "admin.manage" },
 ];
 
 export const router = createRouter({
@@ -72,14 +70,6 @@ export const router = createRouter({
       component: () => import("../views/WatchersView.vue"),
       meta: { permission: "watchers.view" },
     },
-    // The Logs page became Analytics (its entries are a tab there); old links and bookmarks still work.
-    { path: "/logs", redirect: (to) => ({ path: "/analytics", query: to.query }) },
-    {
-      path: "/analytics",
-      name: "analytics",
-      component: () => import("../views/AnalyticsView.vue"),
-      meta: { permission: ANALYTICS_PERMISSIONS },
-    },
     {
       path: "/config-issues",
       name: "config-issues",
@@ -97,12 +87,6 @@ export const router = createRouter({
       name: "settings",
       component: () => import("../views/SettingsView.vue"),
       meta: { permission: "chat.use" },
-    },
-    {
-      path: "/admin",
-      name: "admin",
-      component: () => import("../views/AdminView.vue"),
-      meta: { permission: "admin.manage" },
     },
     {
       path: "/account",

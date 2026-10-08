@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
-import ConfirmModal from "../components/admin/ConfirmModal.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
 import ChatHeader from "../components/ChatHeader.vue";
 import ChatInput from "../components/ChatInput.vue";
 import ChatSettingsMenu from "../components/ChatSettingsMenu.vue";

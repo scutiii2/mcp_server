@@ -43,8 +43,6 @@ export const commandsClient = {
       `/api/commands/help/${enc(capability)}?target=${target}${command ? `&command=${enc(command)}` : ""}`,
     ),
   capabilities: () => apiRequest<CapabilityInfo[]>("GET", "/api/capabilities"),
-  setCapability: (name: string, enabled: boolean) =>
-    apiRequest<CapabilityInfo>("PATCH", `/api/capabilities/${enc(name)}`, { enabled }),
   /** A select's options from a tool's `options_url`; `args` fill its {placeholders}. */
   options: (template: string, args: Record<string, string> = {}) => {
     const query = new URLSearchParams({ template });

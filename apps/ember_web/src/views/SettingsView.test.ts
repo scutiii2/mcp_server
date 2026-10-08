@@ -115,12 +115,6 @@ describe("SettingsView", () => {
     expect(w.text()).not.toContain("Tool approval");
   });
 
-  it("shows the tool approval setting to an administrator", async () => {
-    const w = await mountView(ADMIN);
-
-    expect(w.text()).toContain("Tool approval");
-    expect(w.text()).toContain("Applies to all accounts");
-  });
 
   it("shows no modified badge, dot or reset while everything is at its default", async () => {
     const w = await mountView();
@@ -186,11 +180,6 @@ describe("SettingsView", () => {
     expect(row(w, "chat-ask-tools").find("button.reset").exists()).toBe(false);
   });
 
-  it("counts the stored tool approval setting for an administrator", async () => {
-    const w = await mountView(ADMIN, true);
-
-    expect(w.get(".badge").text()).toBe("1 modified");
-  });
 
   it("re-reads what the administrator requires when it opens", async () => {
     await mountView();
@@ -258,16 +247,6 @@ describe("search", () => {
     expect(rowIds(w)).toEqual(["appearance-theme"]);
   });
 
-  it("hides the tool approval card unless it matches", async () => {
-    const w = await mountView(ADMIN);
-    const card = () => w.get(".admin-card").attributes("style") ?? "";
-
-    expect(card()).not.toContain("display: none");
-    await search(w).setValue("chime");
-    expect(card()).toContain("display: none");
-    await search(w).setValue("lock");
-    expect(card()).not.toContain("display: none");
-  });
 
   it("says nothing matches, and Clear search brings everything back", async () => {
     const w = await mountView();
@@ -292,4 +271,11 @@ describe("search", () => {
     expect((search(w).element as HTMLInputElement).value).toBe("");
     expect(rowIds(w)).toHaveLength(6);
   });
+});
+
+it("keeps workspace tool approval in Ember Admin", async () => {
+  const w = await mountView(ADMIN);
+  expect(w.text()).not.toContain("Tool approval");
+  expect(w.text()).not.toContain("Applies to all accounts");
+  expect(rowIds(w)).toHaveLength(6);
 });

@@ -4,7 +4,7 @@ import { TEMPLATE_BODY_MAX, TEMPLATE_NAME_MAX, type PromptTemplate } from "../ap
 import { useTemplatesStore } from "../stores/templates";
 import { errorMessage } from "../utils/errors";
 import { preview } from "../utils/templates";
-import ConfirmModal from "./admin/ConfirmModal.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 
 /** Create, edit and delete the account's saved prompts. Opened with
  * `draft` (the text typed in the chat input) it starts on a new template

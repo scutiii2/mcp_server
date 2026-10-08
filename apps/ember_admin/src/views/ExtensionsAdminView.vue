@@ -173,8 +173,8 @@ onMounted(load);
 }
 .remove {
   padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--danger);
   font: inherit;

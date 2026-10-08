@@ -60,44 +60,12 @@ test("search, change and reset settings on the Settings page", async ({ page }) 
   expect(api.unexpected).toEqual([]);
 });
 
-test("an administrator saves tool approval through the unsaved bar", async ({ page }) => {
+test("workspace tool approval stays in Admin even for administrators", async ({ page }) => {
   const api = await installFakeApi(page, { admin: true });
   await logIn(page);
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings$/);
-
-  const approval = page.getByRole("switch", { name: "Require approval for every tool" });
-  const bar = page.getByRole("group", { name: "Unsaved change" });
-  await expect(page.getByText("Applies to all accounts")).toBeVisible();
-  await expect(bar).toHaveCount(0);
-
-  // Flipping it is only a draft: the bar says who it reaches, and nothing is sent.
-  await flipSwitch(page, "Require approval for every tool");
-  await expect(bar).toContainText("Turning it on applies to every account");
-  expect(api.settings.forceToolApproval).toBe(false);
-
-  // Cancel drops the draft.
-  await bar.getByRole("button", { name: "Cancel" }).click();
-  await expect(bar).toHaveCount(0);
-  await expect(approval).not.toBeChecked();
-  expect(api.settings.forceToolApproval).toBe(false);
-
-  // Save sends it, and the setting then counts as modified.
-  await flipSwitch(page, "Require approval for every tool");
-  await bar.getByRole("button", { name: "Save" }).click();
-  await expect.poll(() => api.settings.forceToolApproval).toBe(true);
-  await expect(bar).toHaveCount(0);
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
-  await expect(page.getByText("1 modified")).toBeVisible();
-
-  // Back to default is a draft too, until it is saved.
-  await page.getByRole("button", { name: "Back to default" }).click();
-  await expect(bar).toContainText("Turning it off applies to every account");
-  expect(api.settings.forceToolApproval).toBe(true);
-  await bar.getByRole("button", { name: "Save" }).click();
-  await expect.poll(() => api.settings.forceToolApproval).toBe(false);
-  await expect(page.getByText(/\d+ modified/)).toHaveCount(0);
-
-  // The fake knew every request the page made.
+  await page.goto("/settings");
+  await expect(page.getByRole("switch", { name: "Require approval for every tool" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Analytics", exact: true })).toHaveCount(0);
   expect(api.unexpected).toEqual([]);
 });

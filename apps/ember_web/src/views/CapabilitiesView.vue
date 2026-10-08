@@ -5,13 +5,11 @@ import { commandsClient, type CapabilityInfo } from "../api/CommandsClient";
 import { extensionsClient, type ExtensionInfo } from "../api/ExtensionsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ResourceInfo, ToolInfo, ToolRunResult } from "../api/types";
-import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import CapabilitySection, { type SectionPage } from "../components/CapabilitySection.vue";
 import MarkdownContent from "../components/MarkdownContent.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
 import ToolCard from "../components/ToolCard.vue";
 import ToolRunModal from "../components/ToolRunModal.vue";
-import { useEveryoneSwitch } from "../composables/useEveryoneSwitch";
 import { useAccountCapabilitiesStore } from "../stores/accountCapabilities";
 import { useAuthStore } from "../stores/auth";
 import { useUserExtensionsStore } from "../stores/userExtensions";
@@ -25,8 +23,7 @@ import { safeWebUrl } from "../utils/webUrl";
  * cards: built-in capabilities and extensions (other MCP servers). Each card
  * brings tools (run them in place) and resources to read, may have an Open
  * button, and has a switch: turning it off removes the card (the item goes back
- * to the Supermarket). Admins can also turn a built-in capability off for
- * everyone, from inside its card. Collapsed by default, opened while a filter is
+ * to the Supermarket). Collapsed by default, opened while a filter is
  * typed. A tool is a row (label and name); a click opens its description and
  * run form in a modal. */
 
@@ -75,7 +72,6 @@ const readResult = ref<{ uri: string; text: string } | null>(null);
 const readError = ref("");
 const reader = useTemplateRef<HTMLElement>("reader");
 
-const isAdmin = computed(() => auth.hasPermission("admin.manage"));
 // Capabilities, tools and resources need tools.use; extensions need only chat.use.
 const canTools = computed(() => auth.hasPermission("tools.use"));
 const showBuiltin = computed(() => canTools.value && kind.value !== "extensions");
@@ -186,27 +182,6 @@ async function load(): Promise<void> {
   }
 }
 
-// Switching a capability for everyone reaches every mcp_server client, so it
-// asks first, in the confirmation dialog (turning one off is the riskier way round).
-const {
-  pending: pendingSwitch,
-  switching,
-  error: switchError,
-  copy: switchCopy,
-  ask: askSwitch,
-  cancel: cancelSwitch,
-  confirm: confirmSwitch,
-} = useEveryoneSwitch(async (updated) => {
-  capabilities.value = capabilities.value.map((c) => (c.name === updated.name ? updated : c));
-  // Switching changes which tools and resources the server offers.
-  const [toolList, res] = await Promise.all([
-    server.listTools().catch(() => tools.value),
-    server.listResources().catch(() => resources.value),
-  ]);
-  tools.value = [...toolList].sort((a, b) => a.title.localeCompare(b.title));
-  resources.value = res;
-});
-
 function openToolModal(name: string): void {
   openTool.value = name;
   result.value = null;
@@ -275,8 +250,7 @@ onMounted(() => {
         <p>
           Each switch decides whether the agent and the <code>/</code> commands may use that capability or extension in
           your chats. What you've added follows your account to other devices. Turning one off here takes it off this
-          page and puts it back in the Supermarket. Nothing is deleted. Admins can also turn a built-in capability off for
-          everyone, from inside its card.
+          page and puts it back in the Supermarket. Nothing is deleted.
         </p>
       </details>
       <div v-if="!loading && !loadError" class="toolbar">
@@ -302,8 +276,8 @@ onMounted(() => {
       <p v-if="loading || accountLoading" class="muted">loading ...</p>
       <p v-else-if="loadError" class="error">error: {{ loadError }}</p>
       <p v-else-if="!account.ready" class="error">error: {{ account.error }}</p>
-      <p v-if="actionError || switchError || (account.ready && account.error) || userExt.error" class="error">
-        {{ actionError || switchError || account.error || userExt.error }}
+      <p v-if="actionError || (account.ready && account.error) || userExt.error" class="error">
+        {{ actionError || account.error || userExt.error }}
       </p>
 
       <template v-if="!loading && !loadError && account.ready">
@@ -350,16 +324,6 @@ onMounted(() => {
                 </li>
               </ul>
             </template>
-            <div v-if="isAdmin" class="card-foot">
-              <button
-                type="button"
-                class="everyone"
-                :disabled="switching === g.capability.name"
-                @click="askSwitch(g.capability)"
-              >
-                {{ g.capability.enabled ? "Turn off for everyone" : "Turn on for everyone" }}
-              </button>
-            </div>
           </CapabilitySection>
         </template>
 
@@ -470,17 +434,6 @@ onMounted(() => {
         </section>
       </template>
     </div>
-
-    <ConfirmModal
-      v-if="pendingSwitch"
-      open
-      :title="switchCopy.title"
-      :message="switchCopy.message"
-      :confirm-label="switchCopy.label"
-      :danger="pendingSwitch.enabled"
-      @confirm="confirmSwitch"
-      @close="cancelSwitch"
-    />
 
     <ToolRunModal
       :tool="selectedTool"
@@ -622,27 +575,7 @@ h3 {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.card-foot {
-  display: flex;
-  justify-content: flex-end;
-}
-.everyone {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 0.85em;
-  color: var(--muted);
-  background: transparent;
-}
-.everyone:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.everyone:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
+
 .search {
   box-sizing: border-box;
   width: 100%;
