@@ -25,6 +25,7 @@ import httpx
 from mcp import types
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+from mcp.shared.exceptions import McpError
 
 from src.private_extensions.guard import guarded_client_factory
 from src.private_extensions.spec import PrivateSpec
@@ -152,8 +153,9 @@ class PrivateSessionPool:
     async def _use(self, account: str, spec: PrivateSpec, action: Callable[[ClientSession], Awaitable[Any]]) -> Any:
         try:
             return await action(await self.session(account, spec))
-        except RuntimeError as error:
-            if str(error) != "Session terminated":
+        except (RuntimeError, McpError) as error:
+            # The SDK raises McpError after a server restart (RuntimeError in older versions).
+            if "Session terminated" not in str(error):
                 raise
         # The server dropped the session: one fresh one, one retry.
         await self.drop(account, spec)

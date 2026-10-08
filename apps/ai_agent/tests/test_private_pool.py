@@ -7,6 +7,7 @@ import asyncio
 
 import pytest
 from mcp import types
+from mcp.shared.exceptions import McpError
 
 from src.private_extensions.pool import PrivateSessionPool
 from src.private_extensions.spec import PrivateSpec
@@ -178,6 +179,35 @@ def test_any_other_error_is_not_retried():
         await h.pool.call("a@x", spec(), "echo", {})
 
     with pytest.raises(RuntimeError, match="boom"):
+        run(go())
+    assert len(h.opened) == 1
+
+
+def test_an_mcp_error_saying_the_session_terminated_is_retried_once():
+    """What the SDK raises after the server restarted (seen against a real server)."""
+    h = Harness()
+
+    async def go():
+        await h.pool.call("a@x", spec(), "echo", {})
+        h.sessions[0].fail_once = McpError(types.ErrorData(code=32600, message="Session terminated"))
+        return await h.pool.call("a@x", spec(), "echo", {"n": 1})
+
+    result = run(go())
+    assert result.content[0].text == "ok"
+    assert len(h.opened) == 2
+    assert h.closed == ["notes"]
+    assert h.sessions[1].calls == [("echo", {"n": 1})]
+
+
+def test_an_mcp_error_with_another_message_is_not_retried():
+    h = Harness()
+
+    async def go():
+        await h.pool.call("a@x", spec(), "echo", {})
+        h.sessions[0].fail_once = McpError(types.ErrorData(code=-32602, message="Invalid params"))
+        await h.pool.call("a@x", spec(), "echo", {})
+
+    with pytest.raises(McpError, match="Invalid params"):
         run(go())
     assert len(h.opened) == 1
 
