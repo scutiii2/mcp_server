@@ -571,7 +571,7 @@ describe("saved prompts", () => {
 
     try {
       await wrapper.find("textarea").setValue("/apps");
-      const box = wrapper.find<HTMLElement>(".suggestions").element;
+      const box = wrapper.find<HTMLElement>(".options").element;
       for (let i = 0; i < 3; i++) await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" });
       await flushPromises();
       expect(box.scrollTop).toBe(64); // row 3 ends at 120: 120 - 60 + 4 padding

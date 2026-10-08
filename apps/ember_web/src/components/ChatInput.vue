@@ -403,22 +403,24 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <form class="composer" @submit.prevent="submit" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
-    <ul v-if="suggestions.length" ref="list" class="suggestions" role="listbox" aria-label="Commands">
-      <li
-        v-for="(s, i) in suggestions"
-        :key="s.text"
-        role="option"
-        :aria-selected="i === highlighted"
-        :class="{ active: i === highlighted }"
-        @mousedown.prevent="complete(s)"
-      >
-        <code>{{ s.text }}</code>
-        <span>{{ s.description }}</span>
-      </li>
-      <li v-if="lookingUpTemplate" class="hint" aria-hidden="true">Tab or Enter inserts the prompt</li>
-      <li v-else-if="paramContext" class="hint" aria-hidden="true">Tab picks · Enter runs</li>
-      <li v-else class="hint" aria-hidden="true">Tab picks (a command opens its form) · Enter runs</li>
-    </ul>
+    <div v-if="suggestions.length" class="suggestions">
+      <ul ref="list" class="options" role="listbox" aria-label="Commands">
+        <li
+          v-for="(s, i) in suggestions"
+          :key="s.text"
+          role="option"
+          :aria-selected="i === highlighted"
+          :class="{ active: i === highlighted }"
+          @mousedown.prevent="complete(s)"
+        >
+          <code>{{ s.text }}</code>
+          <span>{{ s.description }}</span>
+        </li>
+      </ul>
+      <p v-if="lookingUpTemplate" class="hint" aria-hidden="true">Tab or Enter inserts the prompt</p>
+      <p v-else-if="paramContext" class="hint" aria-hidden="true">Tab picks · Enter runs</p>
+      <p v-else class="hint" aria-hidden="true">Tab picks (a command opens its form) · Enter runs</p>
+    </div>
     <ul v-if="attachments.length" class="attachments">
       <li v-for="a in attachments" :key="a.id" :class="a.state" :title="a.error || a.filename">
         <span class="name">
@@ -512,15 +514,24 @@ function onKeydown(event: KeyboardEvent): void {
   bottom: calc(100% - 4px);
   left: 16px;
   z-index: 16; /* above the settings menu (15) that sits over the composer */
+  display: flex;
+  flex-direction: column;
   max-height: 280px;
-  margin: 0;
-  padding: 4px;
-  overflow-y: auto;
-  list-style: none;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+/* Only the options scroll; the key hint below stays put. */
+.suggestions .options {
+  position: relative; /* offsetParent of the rows, for the arrow-key scrolling */
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
 }
 .suggestions li {
   display: flex;
@@ -543,7 +554,10 @@ function onKeydown(event: KeyboardEvent): void {
   color: var(--muted);
 }
 .suggestions .hint {
-  cursor: default;
+  flex: none;
+  margin: 0;
+  padding: 6px 14px;
+  border-top: 1px solid var(--border);
   font-size: 0.75em;
   color: var(--muted);
 }
