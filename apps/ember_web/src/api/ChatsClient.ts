@@ -93,6 +93,8 @@ export const chatsClient = {
   search: (query: string) =>
     apiRequest<ChatSearchHit[]>("GET", `/api/chats/search?q=${encodeURIComponent(query)}`),
   get: (id: string) => apiRequest<ChatDetail>("GET", path(id)),
+  /** The message the user will probably type next ({text: null} for none). */
+  suggestion: (id: string) => apiRequest<{ text: string | null }>("GET", `${path(id)}/suggestion`),
   put: (id: string, chat: ChatWrite) => apiRequest<ChatSummary>("PUT", path(id), chat),
   rename: (id: string, title: string) => apiRequest<ChatSummary>("PATCH", path(id), { title }),
   update: (id: string, changes: ChatChanges) => apiRequest<ChatSummary>("PATCH", path(id), changes),
