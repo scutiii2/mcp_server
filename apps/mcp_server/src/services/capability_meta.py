@@ -59,6 +59,12 @@ def register(folder: str, id: str, label: str) -> CapabilityMeta:  # noqa: A002 
     return meta
 
 
+def unregister(folder: str) -> None:
+    """Forget `folder`'s id/label so its package can register again after a
+    reload (see capability_loader.py). A folder that never registered is fine."""
+    _BY_FOLDER.pop(folder, None)
+
+
 def for_folder(folder: str) -> CapabilityMeta | None:
     """None for a folder that never called ``register()`` - callers fall
     back to the folder name itself (see

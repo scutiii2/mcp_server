@@ -240,3 +240,36 @@ def test_set_enabled_on_an_unknown_name_names_the_ones_that_exist(mcp):
 
     with pytest.raises(KeyError, match="widgets"):
         registry.set_enabled(mcp, "gadgets", False)
+
+
+def test_register_unloaded_adds_an_offline_handle_with_no_tools():
+    registry.register_unloaded("widgets", "Widgets")
+
+    assert registry.names() == ["widgets"]
+    assert registry.is_enabled("widgets") is False
+    assert registry.label("widgets") == "Widgets"
+    assert registry.tool_names("widgets") == []
+
+
+def test_register_unloaded_refuses_a_taken_name():
+    registry.register_unloaded("widgets", "Widgets")
+
+    with pytest.raises(ValueError, match="already registered"):
+        registry.register_unloaded("widgets", "Again")
+
+
+def test_discard_removes_live_tools_and_the_handle():
+    server = FastMCP(name="t")
+    with registry.capturing(server, "widgets"):
+        @server.tool()
+        def make_widget() -> str:
+            return "w"
+
+    registry.discard(server, "widgets")
+
+    assert registry.names() == []
+    assert "make_widget" not in server._tool_manager._tools
+
+
+def test_discard_of_an_unknown_name_is_a_no_op():
+    registry.discard(FastMCP(name="t"), "nothing")

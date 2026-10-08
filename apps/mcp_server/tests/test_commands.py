@@ -59,3 +59,20 @@ def test_all_commands_returns_every_registered_spec():
         commands.CommandSpec("otp", "get_otp", "generate otp", "fn_a"),
         commands.CommandSpec("otp", "verify_otp", "verify otp", "fn_b"),
     }
+
+
+def test_remove_capability_drops_only_that_capabilitys_commands():
+    def fn_a():
+        ...
+
+    def fn_b():
+        ...
+
+    fn_a.__module__ = "src.capabilities.widgets.tool"
+    fn_b.__module__ = "src.capabilities.gadgets.tool"
+    commands.command(name="a", description="a", capability="wid")(fn_a)
+    commands.command(name="b", description="b", capability="gad")(fn_b)
+
+    commands.remove_capability("wid")
+
+    assert [spec.capability for spec in commands.all_commands()] == ["gad"]

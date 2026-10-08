@@ -150,3 +150,22 @@ def set_enabled(mcp: FastMCP, name: str, enabled: bool) -> None:
             mcp._resource_manager._templates.pop(template.uri_template, None)
 
     handle.enabled = enabled
+
+
+def register_unloaded(name: str, label: str) -> None:
+    """Record a capability that exists on disk but has not been brought
+    online: an offline handle with no tools. Going online replaces it with
+    a captured one (capability_loader.py)."""
+    if name in _REGISTRY:
+        raise ValueError(f"Capability {name!r} is already registered")
+    _REGISTRY[name] = _CapabilityHandle(enabled=False, label=label)
+
+
+def discard(mcp: FastMCP, name: str) -> None:
+    """Take `name` off the live server and forget it. Used before a reload,
+    so the fresh import can capture again under the same name."""
+    handle = _REGISTRY.get(name)
+    if handle is None:
+        return
+    set_enabled(mcp, name, False)
+    del _REGISTRY[name]

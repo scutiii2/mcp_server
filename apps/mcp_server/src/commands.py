@@ -96,3 +96,10 @@ def command(name: str, description: str, capability: str | None = None):
 
 def all_commands() -> list[CommandSpec]:
     return list(_COMMANDS.values())
+
+
+def remove_capability(capability_id: str) -> None:
+    """Drop every command of one capability, so a reload can register them
+    again without tripping over its own earlier entries."""
+    for key in [key for key in _COMMANDS if key[0] == capability_id]:
+        del _COMMANDS[key]
