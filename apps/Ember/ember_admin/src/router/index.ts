@@ -19,6 +19,10 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", redirect: "/admin" },
+    { path: "/profile", name: "profile", component: () => import("../views/ProfileView.vue") },
+    { path: "/account", redirect: "/profile" },
+    { path: "/settings", name: "settings", component: () => import("../views/SettingsView.vue") },
+    { path: "/verify-email", name: "verify-email", component: () => import("../views/VerifyEmailView.vue") },
     { path: "/capabilities", name: "capabilities", component: () => import("../views/CapabilitiesAdminView.vue"), meta: { permission: "capabilities.manage" } },
     { path: "/extensions", name: "extensions", component: () => import("../views/ExtensionsAdminView.vue"), meta: { permission: "extensions.manage" } },
     { path: "/agents", name: "agents", component: () => import("../views/AgentsAdminView.vue"), meta: { permission: "agents.manage" } },
@@ -46,6 +50,9 @@ router.beforeEach(async (to): Promise<true | RouteLocationRaw> => {
   await auth.ensureLoaded();
   if (!auth.account) {
     return to.meta.guestOnly ? true : { name: "login", query: to.fullPath === "/" ? {} : { redirect: to.fullPath } };
+  }
+  if (auth.needsVerification && !["profile", "verify-email", "settings"].includes(String(to.name))) {
+    return { name: "verify-email" };
   }
   if (to.name === "admin") {
     const section = ADMIN_SECTIONS.find((s) => s.to === `/admin/${String(to.query.tab)}`);

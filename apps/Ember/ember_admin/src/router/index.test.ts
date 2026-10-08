@@ -54,3 +54,21 @@ it("preserves a direct child URL through login", async () => {
   expect(router.currentRoute.value.query.redirect).toBe("/admin/accounts?status=unverified");
   warn.mockRestore();
 });
+
+it("allows personal pages without workspace permissions", async () => {
+  vi.mocked(authClient.me).mockResolvedValue({ id: 4, username: "member", email: "m@example.com", email_verified: true, roles: [], permissions: [] });
+  await router.replace({ path: "/profile", force: true });
+  expect(router.currentRoute.value.name).toBe("profile");
+  await router.push("/settings");
+  expect(router.currentRoute.value.name).toBe("settings");
+});
+
+it("lets an unverified account recover through Profile and verification", async () => {
+  vi.mocked(authClient.me).mockResolvedValue({ id: 5, username: "pending", email: "p@example.com", email_verified: false, roles: [], permissions: ["roles.view"] });
+  await router.replace({ path: "/profile", force: true });
+  expect(router.currentRoute.value.name).toBe("profile");
+  await router.push("/verify-email");
+  expect(router.currentRoute.value.name).toBe("verify-email");
+  await router.push("/admin/roles");
+  expect(router.currentRoute.value.name).toBe("verify-email");
+});

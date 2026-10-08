@@ -4,6 +4,7 @@ import { beforeEach, expect, it } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import AdminNav from "./AdminNav.vue";
+import { useNavPrefsStore } from "../stores/navPrefs";
 
 beforeEach(() => {
   localStorage.clear();
@@ -15,7 +16,7 @@ async function show(permissions: string[] | null, path = "/admin") {
   setActivePinia(pinia);
   const auth = useAuthStore();
   if (permissions) auth.account = { id: 1, username: "ada", email: "ada@example.com", email_verified: true, roles: [], permissions };
-  const router = createRouter({ history: createMemoryHistory(), routes: ["/", "/capabilities", "/extensions", "/agents", "/analytics", "/admin", "/admin/accounts", "/admin/roles", "/admin/invites", "/admin/settings"].map(path => ({ path, component: { template: "<div />" } })) });
+  const router = createRouter({ history: createMemoryHistory(), routes: ["/", "/profile", "/settings", "/capabilities", "/extensions", "/agents", "/analytics", "/admin", "/admin/accounts", "/admin/roles", "/admin/invites", "/admin/settings"].map(path => ({ path, component: { template: "<div />" } })) });
   await router.push(path);
   const w = mount(AdminNav, { global: { plugins: [pinia, router] } });
   await flushPromises();
@@ -54,4 +55,19 @@ it("lets visitors cycle and save their theme", async () => {
   expect(document.documentElement.style.colorScheme).toBe("dark");
   await button.trigger("click");
   expect(document.documentElement.style.colorScheme).toBe("light dark");
+});
+
+it("keeps personal pages reachable without admin grants", async () => {
+  const w = await show([], "/profile");
+  expect(w.get("a[aria-label='Profile']").attributes("aria-current")).toBe("page");
+  expect(w.get("a[aria-label='Settings']").attributes("href")).toBe("/settings");
+});
+
+it("keeps Overview reachable when every administration page is hidden", async () => {
+  const w = await show(["extensions.manage"]);
+  useNavPrefsStore().update({ order: ["/extensions"], pinned: [], hidden: ["/extensions"] });
+  await flushPromises();
+  expect(w.find("nav").exists()).toBe(false);
+  expect(w.get("a[aria-label='Overview']").attributes("href")).toBe("/");
+  expect(w.find("a[aria-label='Settings']").exists()).toBe(true);
 });

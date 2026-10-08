@@ -37,10 +37,25 @@ scoped by port, so the same ember_api session cookie is sent.
 | Roles & permissions (`/admin/roles`) | any of `roles.view`, `roles.manage`, `roles.assign` |
 | Invites (`/admin/invites`) | `invites.manage` |
 | Workspace settings (`/admin/settings`) | `settings.manage` |
+| Profile (`/profile`; `/account` redirects here) | any logged-in account |
+| Personal settings (`/settings`) | any logged-in account |
+| Email verification (`/verify-email`) | any logged-in account |
 
 The router and the nav read one list (`src/router/pages.ts`). A user with none
 of these sees the no-access page. ember_api enforces every permission itself;
 the UI only decides what to show.
+
+Profile mirrors Ember Web's account page: identity and email status, password
+and email changes, roles and permissions, remembered devices, theme, and sign-out.
+Email changes that require verification open the verification page here; Profile
+stays available while permissions are paused so the account can correct its email.
+
+Personal Settings uses Ember Web's appearance and sidebar controls, with searchable
+settings, modified indicators, and individual resets. Theme and sidebar changes
+apply immediately on this device. Sidebar order, pins, and hidden pages are stored
+per account in this browser, independently of Ember Web. Hidden administration
+pages stay reachable from the workspace overview; Profile and Settings always stay
+in the rail. Workspace settings continue to control server-wide policy separately.
 
 ## Capabilities
 
