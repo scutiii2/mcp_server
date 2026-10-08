@@ -4,17 +4,25 @@ import { CAPABILITY_ICONS } from "../utils/capabilityIcons";
 /** One row of the Supermarket: a built-in capability or an extension, what it
  * brings, and whether it is added to the account. The parent decides what Add
  * and Disable mean; extra actions (an admin's Remove) go in the `actions` slot. */
-defineProps<{
-  label: string;
-  name: string;
-  icon: "builtin" | "extension";
-  summary: string;
-  added: boolean;
-  /** Off for everyone (an administrator turned it off): it cannot be added. */
-  locked?: boolean;
-  /** The summary is a problem (an extension that is not connected). */
-  failed?: boolean;
-}>();
+withDefaults(
+  defineProps<{
+    label: string;
+    name: string;
+    icon: "builtin" | "extension";
+    summary: string;
+    added: boolean;
+    /** Off for everyone (an administrator turned it off): it cannot be added. */
+    locked?: boolean;
+    /** The summary is a problem (an extension that is not connected). */
+    failed?: boolean;
+    /** The add button's text and what "added" says; a private extension is "Enable" / "Enabled". */
+    addLabel?: string;
+    addedLabel?: string;
+    /** A muted line under the name (why an extension cannot be reached). */
+    detail?: string;
+  }>(),
+  { addLabel: "Add", addedLabel: "Added", detail: "" },
+);
 const emit = defineEmits<{ add: []; disable: [] }>();
 </script>
 
@@ -26,6 +34,7 @@ const emit = defineEmits<{ add: []; disable: [] }>();
     <span class="heading">
       <h3>{{ label }}</h3>
       <code class="name">{{ name }}</code>
+      <span v-if="detail" class="detail">{{ detail }}</span>
     </span>
     <span :class="['summary', failed ? 'bad' : 'muted']">{{ summary }}</span>
     <span class="actions">
@@ -33,12 +42,12 @@ const emit = defineEmits<{ add: []; disable: [] }>();
       <template v-if="added">
         <span class="added">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5" /></svg>
-          Added
+          {{ addedLabel }}
         </span>
         <button type="button" class="secondary" :aria-label="`Disable ${label}`" @click="emit('disable')">Disable</button>
       </template>
       <span v-else-if="locked" class="badge">Off for everyone</span>
-      <button v-else type="button" class="add" :aria-label="`Add ${label}`" @click="emit('add')">Add</button>
+      <button v-else type="button" class="add" :aria-label="`${addLabel} ${label}`" @click="emit('add')">{{ addLabel }}</button>
     </span>
   </article>
 </template>
@@ -96,6 +105,11 @@ h3 {
   font-size: 0.75em;
   white-space: nowrap;
   background: var(--bg);
+}
+.detail {
+  font-size: 0.8em;
+  color: var(--danger);
+  overflow-wrap: anywhere;
 }
 .muted {
   color: var(--muted);

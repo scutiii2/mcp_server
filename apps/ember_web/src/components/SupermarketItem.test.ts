@@ -51,3 +51,27 @@ describe("SupermarketItem", () => {
     expect(w.find("button.extra").exists()).toBe(true);
   });
 });
+
+describe("labels and detail", () => {
+  it("can call the buttons Enable and Enabled", () => {
+    const off = mount(SupermarketItem, { props: { ...base, addLabel: "Enable", addedLabel: "Enabled" } });
+    const on = mount(SupermarketItem, { props: { ...base, added: true, addLabel: "Enable", addedLabel: "Enabled" } });
+
+    expect(off.get("button.add").text()).toBe("Enable");
+    expect(off.get("button.add").attributes("aria-label")).toBe("Enable PDF files");
+    expect(on.get(".added").text()).toContain("Enabled");
+  });
+
+  it("keeps Add and Added by default", () => {
+    const off = mount(SupermarketItem, { props: base });
+    const on = mount(SupermarketItem, { props: { ...base, added: true } });
+
+    expect(off.get("button.add").text()).toBe("Add");
+    expect(on.get(".added").text()).toContain("Added");
+  });
+
+  it("shows a detail line only when given", () => {
+    expect(mount(SupermarketItem, { props: base }).find(".detail").exists()).toBe(false);
+    expect(mount(SupermarketItem, { props: { ...base, detail: "Timed out" } }).get(".detail").text()).toBe("Timed out");
+  });
+});

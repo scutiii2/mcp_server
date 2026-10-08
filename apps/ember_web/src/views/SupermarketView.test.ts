@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { Account } from "../api/AuthClient";
 import type { CapabilityInfo } from "../api/CommandsClient";
+import type { UserExtension } from "../api/UserExtensionsClient";
 import ConfirmModal from "../components/admin/ConfirmModal.vue";
 import AddExtensionModal from "../components/AddExtensionModal.vue";
+import UserExtensionModal from "../components/UserExtensionModal.vue";
 import { useAuthStore } from "../stores/auth";
 import SupermarketView from "./SupermarketView.vue";
 
@@ -16,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   removeExtension: vi.fn(),
   accountGet: vi.fn(),
   accountSet: vi.fn(),
+  userList: vi.fn(),
+  userCreate: vi.fn(),
+  userUpdate: vi.fn(),
+  userRemove: vi.fn(),
 }));
 
 vi.mock("../api/CommandsClient", () => ({
@@ -28,6 +34,14 @@ vi.mock("../api/ExtensionsClient", async (importOriginal) => ({
 vi.mock("../api/AccountCapabilitiesClient", () => ({
   accountCapabilitiesClient: { get: mocks.accountGet, set: mocks.accountSet },
 }));
+vi.mock("../api/UserExtensionsClient", () => ({
+  userExtensionsClient: {
+    list: mocks.userList,
+    create: mocks.userCreate,
+    update: mocks.userUpdate,
+    remove: mocks.userRemove,
+  },
+}));
 
 const CAPS: CapabilityInfo[] = [
   { name: "pdf", enabled: true, label: "PDF files", tools: ["tool_pdf_merge", "tool_pdf_split"], resources: [] },
@@ -36,10 +50,37 @@ const CAPS: CapabilityInfo[] = [
 ];
 const EXT = { id: "notes", label: "Notes", description: "", status: "connected", error: null, tools: ["notes__add"] };
 const BROKEN = { id: "wiki", label: "Wiki", description: "", status: "error", error: "refused", tools: [] };
+const MINE: UserExtension = {
+  id: "mynotes",
+  label: "My notes",
+  description: "",
+  url: "https://notes.example.com/mcp",
+  header_names: ["X-Key"],
+  enabled: true,
+  status: "connected",
+  error: null,
+  tools: ["search", "add"],
+};
+const MINE_OFF: UserExtension = { ...MINE, id: "draft", label: "Draft", enabled: false, status: "unknown", tools: [] };
+const MINE_DOWN: UserExtension = {
+  ...MINE,
+  id: "flaky",
+  label: "Flaky",
+  status: "error",
+  error: "That address is not allowed",
+  tools: [],
+};
 
 const ACCOUNT: Account = { id: 1, username: "lex", email: "l@e.com", email_verified: true, roles: [], permissions: [] };
 
-async function show(options: { permissions?: string[]; query?: string; added?: { capabilities?: string[]; extensions?: string[] } } = {}) {
+async function show(
+  options: {
+    permissions?: string[];
+    query?: string;
+    added?: { capabilities?: string[]; extensions?: string[] };
+    userExtensions?: UserExtension[];
+  } = {},
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().account = { ...ACCOUNT, permissions: options.permissions ?? ["tools.use", "chat.use"] };
@@ -48,6 +89,7 @@ async function show(options: { permissions?: string[]; query?: string; added?: {
     extensions: options.added?.extensions ?? [],
     disabled_tools: [],
   });
+  mocks.userList.mockResolvedValue(options.userExtensions ?? []);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -79,13 +121,17 @@ beforeEach(() => {
   mocks.capabilities.mockResolvedValue(CAPS);
   mocks.extensions.mockResolvedValue([EXT, BROKEN]);
   mocks.accountSet.mockImplementation(async () => ({ capabilities: ["pdf", "calc"], extensions: [], disabled_tools: [] }));
+  mocks.userUpdate.mockImplementation(async (id: string, patch: Partial<UserExtension>) => ({
+    ...[MINE, MINE_OFF, MINE_DOWN].find((item) => item.id === id)!,
+    ...patch,
+  }));
 });
 
 describe("SupermarketView", () => {
   it("lists built-in capabilities and extensions in two sections", async () => {
     const { w } = await show();
 
-    expect(w.findAll("h4.group-title").map((h) => h.text())).toEqual(["Built-in", "Extensions"]);
+    expect(w.findAll("h4.group-title").map((h) => h.text())).toEqual(["Built-in", "Extensions", "My extensions"]);
     expect(names(w)).toEqual(["Calculator", "Legacy", "PDF files", "Notes", "Wiki"]);
     expect(row(w, "PDF files").find(".summary").text()).toBe("2 tools");
     expect(row(w, "Wiki").find(".summary").text()).toBe("Not connected");
@@ -186,7 +232,7 @@ describe("SupermarketView", () => {
     const { w } = await show({ permissions: ["chat.use"] });
 
     expect(mocks.capabilities).not.toHaveBeenCalled();
-    expect(w.findAll("h4.group-title").map((h) => h.text())).toEqual(["Extensions"]);
+    expect(w.findAll("h4.group-title").map((h) => h.text())).toEqual(["Extensions", "My extensions"]);
     expect(names(w)).toEqual(["Notes", "Wiki"]);
   });
 
@@ -272,5 +318,117 @@ describe("SupermarketView", () => {
     const { w } = await show();
 
     expect(w.text()).toContain("mcp_server is down");
+  });
+});
+
+describe("My extensions", () => {
+  const privateRows = (w: Wrapper) => rows(w).filter((r) => r.find("button.edit").exists());
+  const addButton = (w: Wrapper) => w.findAll("button.primary").find((b) => b.text() === "Add your own extension")!;
+
+  it("lists the account's own extensions with what each brings", async () => {
+    const { w } = await show({ userExtensions: [MINE, MINE_OFF, MINE_DOWN] });
+
+    expect(privateRows(w).map((r) => r.find("h3").text())).toEqual(["Draft", "Flaky", "My notes"]);
+    expect(row(w, "My notes").find(".summary").text()).toBe("2 tools");
+    expect(row(w, "Draft").find(".summary").text()).toBe("Not enabled");
+    expect(row(w, "Flaky").find(".summary").text()).toBe("Not connected");
+    expect(row(w, "Flaky").find(".detail").text()).toBe("That address is not allowed");
+  });
+
+  it("says so when there are none", async () => {
+    const { w } = await show();
+
+    expect(w.text()).toContain("You haven't added any private extensions.");
+    expect(w.text()).toContain("Add your own extension");
+  });
+
+  it("is there for an account with only chat.use", async () => {
+    const { w } = await show({ permissions: ["chat.use"], userExtensions: [MINE] });
+
+    expect(names(w)).toContain("My notes");
+  });
+
+  it("is not there without chat.use", async () => {
+    const { w } = await show({ permissions: ["tools.use"], userExtensions: [MINE] });
+
+    expect(w.text()).not.toContain("My extensions");
+    expect(mocks.userList).not.toHaveBeenCalled();
+  });
+
+  it("enables and disables with Enable and Disable", async () => {
+    const { w } = await show({ userExtensions: [MINE, MINE_OFF] });
+
+    expect(row(w, "Draft").get("button.add").text()).toBe("Enable");
+    expect(row(w, "My notes").get(".added").text()).toContain("Enabled");
+
+    await row(w, "Draft").get("button.add").trigger("click");
+    await flushPromises();
+    expect(mocks.userUpdate).toHaveBeenCalledWith("draft", { enabled: true });
+    expect(row(w, "Draft").find(".added").exists()).toBe(true);
+
+    await row(w, "My notes").get("button.secondary").trigger("click");
+    await flushPromises();
+    expect(mocks.userUpdate).toHaveBeenCalledWith("mynotes", { enabled: false });
+  });
+
+  it("follows the Enabled and Disabled chips", async () => {
+    const { w } = await show({ userExtensions: [MINE, MINE_OFF], query: "state=enabled" });
+
+    expect(privateRows(w).map((r) => r.find("h3").text())).toEqual(["My notes"]);
+  });
+
+  it("opens the add form from the button and the edit form from a row", async () => {
+    const { w } = await show({ userExtensions: [MINE] });
+
+    await addButton(w).trigger("click");
+    expect(w.getComponent(UserExtensionModal).props("open")).toBe(true);
+    expect(w.getComponent(UserExtensionModal).props("extension")).toBeNull();
+
+    await row(w, "My notes").get("button.edit").trigger("click");
+    expect(w.getComponent(UserExtensionModal).props("extension")).toMatchObject({ id: "mynotes" });
+  });
+
+  it("adds the saved extension to the list and closes the form", async () => {
+    mocks.userCreate.mockResolvedValue({ ...MINE, id: "fresh", label: "Fresh" });
+    const { w } = await show();
+    await addButton(w).trigger("click");
+
+    await w.get("input[name=label]").setValue("Fresh");
+    await w.get("input[name=url]").setValue("https://fresh.example.com/mcp");
+    await w.get("form.form").trigger("submit");
+    await flushPromises();
+
+    expect(names(w)).toContain("Fresh");
+    expect(w.getComponent(UserExtensionModal).props("open")).toBe(false);
+  });
+
+  it("asks before removing, and removes", async () => {
+    mocks.userRemove.mockResolvedValue(undefined);
+    const { w } = await show({ userExtensions: [MINE] });
+
+    await row(w, "My notes").get("button.remove").trigger("click");
+    expect(w.getComponent(ConfirmModal).props("message")).toContain('Remove "My notes"');
+    await w.getComponent(ConfirmModal).get(".confirm").trigger("click");
+    await flushPromises();
+
+    expect(mocks.userRemove).toHaveBeenCalledWith("mynotes");
+    expect(names(w)).not.toContain("My notes");
+  });
+
+  it("refreshes the statuses when the page opens", async () => {
+    await show({ userExtensions: [MINE] });
+
+    expect(mocks.userList).toHaveBeenCalledTimes(2); // once at sign-in, once for the page
+  });
+
+  it("shows why a change failed", async () => {
+    mocks.userUpdate.mockRejectedValue(new Error("offline"));
+    const { w } = await show({ userExtensions: [MINE] });
+
+    await row(w, "My notes").get("button.secondary").trigger("click");
+    await flushPromises();
+
+    expect(w.get("[role=alert]").text()).toContain("offline");
+    expect(row(w, "My notes").find(".added").exists()).toBe(true); // rolled back
   });
 });
