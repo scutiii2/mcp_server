@@ -44,6 +44,7 @@ from src.services.backup_service import BackupScheduler, DatabaseBackup
 from src.services.migrations import MigrationRunner
 from src.services.chat_service import MAX_CHAT_BYTES
 from src.services.email_service import EmailSender, SmtpEmailSender
+from src.services.extension_probe import ExtensionProbe
 from src.services.log_service import LogWriter
 from src.services.mcp_proxy import McpProxy
 from src.services.otp_service import OtpService
@@ -124,6 +125,7 @@ def create_app(
         )
         app.state.mcp_proxy = McpProxy(upstream, internal_token or None, recorder)
         app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None, recorder)
+        app.state.extension_probe = ExtensionProbe(app.state.agent_gateway)
         app.state.server_tools = server_tools or McpServerTools(settings.mcp_server_url, internal_token or None, recorder)
         app.state.logs = log_writer
         app.state.traffic = recorder
