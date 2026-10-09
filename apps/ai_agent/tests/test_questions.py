@@ -377,8 +377,8 @@ def test_anthropic_offers_the_schema_only_when_enabled() -> None:
         finally:
             questions.reset(token)
 
-    assert [s["name"] for s in off] == []
-    assert [s["name"] for s in on] == [ask_user.TOOL_NAME]
+    assert [s["name"] for s in off if s["name"] == "ask_user"] == []
+    assert [s["name"] for s in on if s["name"] == "ask_user"] == [ask_user.TOOL_NAME]
     assert on[0]["input_schema"] == ask_user.tool_parameters()
 
 
@@ -455,8 +455,8 @@ def test_openai_offers_the_schema_only_when_enabled() -> None:
         finally:
             questions.reset(token)
 
-    assert [s["name"] for s in off] == []
-    assert [s["name"] for s in on] == [ask_user.TOOL_NAME]
+    assert [s["name"] for s in off if s["name"] == "ask_user"] == []
+    assert [s["name"] for s in on if s["name"] == "ask_user"] == [ask_user.TOOL_NAME]
     assert on[0]["parameters"] == ask_user.tool_parameters()
 
 

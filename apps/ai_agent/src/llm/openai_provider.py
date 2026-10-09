@@ -40,7 +40,7 @@ from typing import Any, Sequence
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, BadRequestError, OpenAI, RateLimitError
 
 from src.llm.turn_guard import TurnStopped
-from src.agents import agent_routing, ask_user, delegation
+from src.agents import agent_routing, ask_user, delegation, plan
 
 from src.core import approvals, questions
 
@@ -240,6 +240,13 @@ def _tool_schemas(
                 "display_label": None,
             }
         )
+    schemas.append({
+        "type": "function",
+        "name": plan.TOOL_NAME,
+        "description": plan.tool_description(),
+        "parameters": plan.tool_parameters(),
+        "display_label": "Plan",
+    })
     return schemas
 
 
@@ -306,6 +313,7 @@ async def run_chat(
     meter = LiveUsage(on_event)
     options = llm_options.for_provider(PROVIDER_ID)
     guard = options.turn_guard()
+    checklist = plan.Checklist()
     stop_message = 'Reached maximum tool-call rounds without a final answer.'
     # The full prompt just sent (all resent history), not a sum across
     # rounds like total_tokens - overwritten each round rather than
@@ -389,9 +397,10 @@ async def run_chat(
                         await on_event(step_event(
                             "step_start", id=step_id, tool=call.name, label=labels.get(call.name), arguments=arguments,
                         ))
-                    # ask_user waits for the user's answers, not for an approval: it
-                    # is not gated by tool approval and never reaches _dispatch.
-                    asked = await questions.handle(call.name, request_id, step_id, arguments, on_event)
+                    # Local planning and questions do not run external tools or need approval.
+                    asked = await checklist.handle(call.name, arguments, on_event)
+                    if asked is None:
+                        asked = await questions.handle(call.name, request_id, step_id, arguments, on_event)
                     if asked is not None:
                         result_text, ok = asked
                     else:

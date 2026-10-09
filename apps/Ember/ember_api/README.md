@@ -9,6 +9,10 @@ Built with FastAPI + async SQLAlchemy (SQLite via aiosqlite). The auth logic
 mirrors chat_app's `services/auth_service.py`: same werkzeug password
 hashes, same bootstrap-admin rules, same role/permission tables.
 
+Chat turn streams relay bounded `plan_update` checklist snapshots by agent.
+Reconnect snapshots include the latest plans for that turn; plans are not
+stored in the chat transcript.
+
 ## Status
 
 | Phase | What | State |

@@ -99,6 +99,7 @@ def test_tool_schemas_use_function_parameters_shape():
     with patch("src.llm.openai_provider.list_tools", return_value=[_fake_tool()]):
         schemas = openai_provider._tool_schemas()
 
+    schemas = [s for s in schemas if s["name"] != "update_plan"]
     assert schemas == [
         {
             "type": "function",
@@ -115,6 +116,7 @@ def test_tool_schemas_includes_delegate_tool_when_available():
          patch("src.llm.openai_provider.delegation.tool_description", return_value="delegate away"):
         schemas = openai_provider._tool_schemas(roster=ROSTER)
 
+    schemas = [s for s in schemas if s["name"] != "update_plan"]
     assert schemas == [
         {
             "type": "function",
@@ -130,6 +132,7 @@ def test_tool_schemas_excludes_delegate_tool_when_unavailable():
     with patch("src.llm.openai_provider.list_tools", return_value=[]):
         schemas = openai_provider._tool_schemas()
 
+    schemas = [s for s in schemas if s["name"] != "update_plan"]
     assert schemas == []
 
 

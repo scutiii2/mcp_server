@@ -24,7 +24,7 @@ _bound: ContextVar[tuple[Sink, str] | None] = ContextVar("agent_events_sink", de
 # Specialist events that make sense in the orchestrator's stream as-is.
 # `usage` stays out on purpose: callers read usage events as the turn's
 # running total, and a specialist's figure would replace the orchestrator's.
-_PASS_THROUGH = {"step_start", "step_progress", "step_end", "agent_start", "agent_end", "agent_token"}
+_PASS_THROUGH = {"step_start", "step_progress", "step_end", "agent_start", "agent_end", "agent_token", "plan_update"}
 
 
 def now_iso() -> str:

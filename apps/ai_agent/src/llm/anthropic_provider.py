@@ -43,7 +43,7 @@ from anthropic import (
 )
 
 from src.llm.turn_guard import TurnStopped
-from src.agents import agent_routing, ask_user, delegation
+from src.agents import agent_routing, ask_user, delegation, plan
 
 from src.core import approvals, questions
 from src.core.chat_history import validate_history
@@ -261,6 +261,12 @@ def _tool_schemas(
                 "display_label": None,
             }
         )
+    schemas.append({
+        "name": plan.TOOL_NAME,
+        "description": plan.tool_description(),
+        "input_schema": plan.tool_parameters(),
+        "display_label": "Plan",
+    })
     return schemas
 
 
@@ -300,6 +306,7 @@ async def run_chat(
     meter = LiveUsage(on_event)
     options = llm_options.for_provider(PROVIDER_ID)
     guard = options.turn_guard()
+    checklist = plan.Checklist()
     stop_message = 'Reached maximum tool-call rounds without a final answer.'
     # The full prompt just sent (all resent history + this round's tool
     # results), not a sum across rounds like total_tokens - this is what
@@ -376,9 +383,10 @@ async def run_chat(
                         await on_event(step_event(
                             "step_start", id=step_id, tool=block.name, label=labels.get(block.name), arguments=block.input,
                         ))
-                    # ask_user waits for the user's answers, not for an approval: it
-                    # is not gated by tool approval and never reaches _dispatch.
-                    asked = await questions.handle(block.name, request_id, step_id, block.input, on_event)
+                    # Local planning and questions do not run external tools or need approval.
+                    asked = await checklist.handle(block.name, block.input, on_event)
+                    if asked is None:
+                        asked = await questions.handle(block.name, request_id, step_id, block.input, on_event)
                     if asked is not None:
                         result_text, ok = asked
                     else:

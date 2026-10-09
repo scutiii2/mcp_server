@@ -42,6 +42,7 @@ const {
   streaming,
   activity,
   liveSteps,
+  livePlans,
   busy,
   caveman,
   listLoading,
@@ -394,6 +395,7 @@ useChatShortcuts({
         :streaming="streaming"
         :activity="activity"
         :steps="liveSteps"
+        :plans="livePlans"
         :busy="busy"
         :can-change="!busy && !working"
         :approvals="pendingApprovals"
