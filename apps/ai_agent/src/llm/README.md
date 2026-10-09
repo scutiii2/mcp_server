@@ -26,7 +26,7 @@ Originally adapted from the retired chat_app's LLM layer.
   process, with one warning.
 - **`token_limits.py`** - per-request output/context/tool-round caps from
   `../../configs/config_tuning.json`; an agent file can lower its own.
-- **`llm_config.py`** - loads `../../configs/config_gateways.json`'s
+- **`llm_config.py`** - loads `../../gateways/<provider>/<gateway>.json`
   per-gateway `base_url`/`model` presets; resolves `"{ENV_VAR_NAME}"`
   placeholders against the process environment, never a literal secret.
 - **`agent_roles.py`** - builds `SYSTEM_PROMPT` once, at import time,

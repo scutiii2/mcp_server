@@ -1,0 +1,7 @@
+{
+  "label": "Azure OpenAI",
+  "azure_endpoint": "{AZURE_OPENAI_ENDPOINT}",
+  "api_version": "{AZURE_OPENAI_API_VERSION}",
+  "api_key": "{AZURE_OPENAI_API_KEY}",
+  "model": "{AZURE_OPENAI_DEPLOYMENT}"
+}

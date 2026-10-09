@@ -5,8 +5,8 @@ Adapted from chat_app/src/services/llm/openai_provider.py - see
 anthropic_provider.py's module docstring for what changed and why.
 
 AI_AGENT_GATEWAY picks which client this instance talks through, same
-pattern as anthropic_provider.py: always a block of
-that name in configs/config_gateways.json's "openai" section. "gpt" (default)
+pattern as anthropic_provider.py: always loaded from
+gateways/openai/<gateway>.json. "gpt" (default)
 is just another block there, except it has no base_url (the OpenAI SDK
 already defaults to api.openai.com) and its api_key points at the plain
 GPT_API_KEY var. "azure" is the one exception requiring a different SDK
@@ -105,7 +105,7 @@ class _OpenAI(BaseProvider):
             cfg = llm_config.gateway(PROVIDER_NAME, "azure")
             if not cfg.get("azure_endpoint") or not cfg.get("api_key"):
                 raise ValueError(
-                    "configs/config_gateways.json openai.azure: AZURE_OPENAI_ENDPOINT / "
+                    "gateways/openai/azure.json: AZURE_OPENAI_ENDPOINT / "
                     "AZURE_OPENAI_API_KEY not set in .env"
                 )
             cls._client = AsyncAzureOpenAI(
@@ -116,14 +116,14 @@ class _OpenAI(BaseProvider):
             return cls._client
 
         # Every other block ("gpt" itself, "together", "groq", "ollama",
-        # ...) is a plain AsyncOpenAI() build - config_gateways.json supplies
+        # ...) is a plain AsyncOpenAI() build - the gateway file supplies
         # api_key/base_url, "gpt"'s own block just leaves base_url unset
         # (SDK default).
         cfg = llm_config.gateway(PROVIDER_NAME, gateway_name)
         secret = cfg.get("api_key") or cfg.get("auth_token")
         if not secret:
             raise ValueError(
-                f"configs/config_gateways.json openai.{gateway_name}: its api_key env var is not "
+                f"gateways/openai/{gateway_name}.json: its api_key env var is not "
                 "set in .env"
             )
         cls._client = AsyncOpenAI(api_key=secret, base_url=cfg.get("base_url"))
@@ -146,7 +146,7 @@ class _OpenAI(BaseProvider):
             cfg = llm_config.gateway(PROVIDER_NAME, "azure")
             if not cfg.get("azure_endpoint") or not cfg.get("api_key"):
                 raise ValueError(
-                    "configs/config_gateways.json openai.azure: AZURE_OPENAI_ENDPOINT / "
+                    "gateways/openai/azure.json: AZURE_OPENAI_ENDPOINT / "
                     "AZURE_OPENAI_API_KEY not set in .env"
                 )
             cls._sync_client = AzureOpenAI(
@@ -160,7 +160,7 @@ class _OpenAI(BaseProvider):
         secret = cfg.get("api_key") or cfg.get("auth_token")
         if not secret:
             raise ValueError(
-                f"configs/config_gateways.json openai.{gateway_name}: its api_key env var is not "
+                f"gateways/openai/{gateway_name}.json: its api_key env var is not "
                 "set in .env"
             )
         cls._sync_client = OpenAI(api_key=secret, base_url=cfg.get("base_url"))
@@ -179,7 +179,7 @@ class _OpenAI(BaseProvider):
     @classmethod
     def resolve_vendor_label(cls) -> str:
         """See anthropic_provider._Anthropic.resolve_vendor_label - same
-        reasoning, just the "openai" section of config_gateways.json."""
+        reasoning, just the files in gateways/openai/."""
         gateway_name = cls._gateway_name()
         try:
             cfg = llm_config.gateway(PROVIDER_NAME, gateway_name)

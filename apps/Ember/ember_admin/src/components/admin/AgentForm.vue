@@ -278,7 +278,7 @@ function previewPrompt(): void {
         <label v-if="!isLaya" class="field"><span>Highest effort a delegating agent may request</span>
           <select v-model="maxEffort" data-test="max-effort"><option value="">No limit</option><option v-for="e in EFFORTS" :key="e" :value="e">{{ e }}</option></select>
         </label>
-        <small v-if="!isLaya">The orchestrator picks the lightest tier in this range that fits each task. Tier models are set per gateway in ai_agent's config_gateways.json.</small>
+        <small v-if="!isLaya">The orchestrator picks the lightest tier in this range that fits each task. Tier models are set per gateway in ai_agent's gateways directory.</small>
       </fieldset>
 
       <fieldset>

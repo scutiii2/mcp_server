@@ -66,7 +66,7 @@ typos are caught at startup.
 | `enabled` | no | `true` | `false`: not spawned, not registered. |
 | `entry` | no | `false` | The agent ember sends new turns to (Phase 2). Exactly one enabled file must set it. |
 | `llm.provider` | yes | none | `anthropic`, `openai`, or `laya` (local triage only). |
-| `llm.gateway` | no | provider default | A gateway key from `configs/config_gateways.json` under that provider. |
+| `llm.gateway` | no | provider default | A filename stem from `gateways/<provider>/<gateway>.json`. |
 | `llm.model` | no | gateway's `model` | Model id. |
 | `llm.temperature` | no | unset (provider default) | Float 0-2. |
 | `llm.reasoning_effort` | no | `off` | `off`, `low`, `medium`, `high`. Maps to the Anthropic thinking budget or OpenAI `reasoning_effort`. |
@@ -372,6 +372,9 @@ Agent files give each instance its own id, so any number of same-provider agents
 
 ## Project layout
 
+- **`gateways/<provider>/*.json`** - individual gateway presets, gitignored;
+  seeded from committed `.json.example` files or migrated from the old
+  combined config. See [`gateways/README.md`](gateways/README.md).
 - **`configs/*.json`** - structured settings, mostly gitignored. See
   [`configs/README.md`](configs/README.md).
 - **`.env`** - the one credentials file (provider, gateway, role, API

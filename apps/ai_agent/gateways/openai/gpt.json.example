@@ -1,0 +1,5 @@
+{
+  "label": "GPT",
+  "api_key": "{GPT_API_KEY}",
+  "model": "gpt-5.6-sol"
+}

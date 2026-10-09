@@ -33,6 +33,11 @@ __pycache__/
 !/apps/ai_agent/agents/agents.json.template
 !/apps/ai_agent/agents/triage-assistant.json.template
 /apps/ai_agent/.data/
+# Local gateway presets and migration state; examples remain tracked.
+/apps/ai_agent/gateways/*/*.json
+/apps/ai_agent/gateways/.initialized
+/apps/ai_agent/gateways/*/*.tmp
+/apps/ai_agent/gateways/*.tmp
 
 # mcp_server's real SMTP-account addresses. The equivalent data lived in the old root-level config.json,
 # which was gitignored outright - these carry the same real deployment

@@ -23,15 +23,11 @@ lives under `../.data/` instead (see the end of this file).
   `src/llm/agent_roles.py`). Holds only what differs from the built-in
   defaults, so a missing file means no change. Written by the admin UI
   (`PUT /agents/prompts`); the supervisor restarts every agent when it changes.
-- **`config_gateways.json`** - per-gateway `base_url`/`model` presets for
-  each provider (`anthropic` -> `claude`/`openrouter`/`bedrock`/`vertex`/
-  `litellm`/`helicone`/`portkey`; `openai` -> `gpt`/`azure`/`together`/
-  `groq`/`fireworks`/`deepinfra`/`perplexity`/`ollama`/`vllm`). Loaded by
-  `src/llm/llm_config.py`'s `gateway()`. Any `"{ENV_VAR_NAME}"` string
-  value is a placeholder resolved against the process environment
-  (populated from `.env`), never a literal secret.
+- Gateway presets live in [`../gateways/`](../gateways/README.md), one
+  `<provider>/<gateway>.json` file each. The old `config_gateways.json` is
+  migrated on first read and retained only as a rollback backup.
 
-The tuning, server and gateway files have committed `.example` twins with
+The tuning and server files have committed `.example` twins with
 the same shape. Prompt overrides use built-in defaults and need no example;
 the admin UI creates `config_prompts.json` when a prompt is customized. The
 real files are gitignored (`/apps/ai_agent/configs/*` and the root `config_*.json`

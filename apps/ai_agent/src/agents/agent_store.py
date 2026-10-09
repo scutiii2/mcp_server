@@ -20,11 +20,9 @@ from typing import Any
 
 from src.agents import agent_spec, prompt_config
 from src.agents.agent_spec import AgentSpec, AgentSpecError, RosterEntry
-from src.core import config_files
 from src.llm import agent_roles, llm_config
 
 _LOCK = threading.Lock()
-_GATEWAYS_PATH = config_files.CONFIGS_DIR / "config_gateways.json"
 
 
 class AgentStoreError(Exception):
@@ -36,13 +34,13 @@ class AgentStoreError(Exception):
 
 
 def gateway_catalog() -> dict[str, list[dict[str, Any]]]:
-    """Providers and the gateways each offers, from config_gateways.json.
-    Laya runs locally, so it lists the single "local" gateway. Secrets are
-    never read: only id, label, default model and tier ids."""
+    """Providers and gateways from gateways/<provider>/<gateway>.json.
+    Laya runs locally, so it lists the single "local" gateway. Credentials
+    are never returned: only id, label, default model and tier ids."""
     try:
-        raw = json.loads(_GATEWAYS_PATH.read_text(encoding="utf-8"))
+        raw = llm_config.load_gateways()
     except (OSError, ValueError) as error:
-        raise AgentStoreError(f"config_gateways.json cannot be read: {error}", 500) from error
+        raise AgentStoreError(f"gateways/ cannot be read: {error}", 500) from error
     catalog: dict[str, list[dict[str, Any]]] = {}
     for provider in agent_spec.PROVIDERS:
         if provider == "laya":
@@ -180,7 +178,7 @@ def _check_gateway(spec: AgentSpec) -> None:
         return
     known = {entry["id"] for entry in gateway_catalog().get(spec.llm.provider, [])}
     if gateway not in known:
-        raise AgentStoreError(f"llm.gateway {gateway!r} is not a {spec.llm.provider} gateway in config_gateways.json")
+        raise AgentStoreError(f"llm.gateway {gateway!r} is not a {spec.llm.provider} gateway in gateways/")
 
 
 def _other_specs(agent_id: str, directory: Path) -> list[AgentSpec]:

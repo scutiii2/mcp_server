@@ -7,7 +7,7 @@ export interface GatewayInfo {
   tiers: { tier: string; id: string }[];
 }
 
-/** Provider id -> the gateways it can run through (from ai_agent's config_gateways.json). */
+/** Provider id -> the gateways it can run through (from ai_agent's gateways/<provider>/<gateway>.json files). */
 export type ProviderCatalog = Record<string, GatewayInfo[]>;
 
 export interface AgentLlm {

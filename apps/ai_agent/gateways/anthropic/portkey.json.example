@@ -1,0 +1,6 @@
+{
+  "label": "Portkey",
+  "base_url": "https://api.portkey.ai/v1",
+  "api_key": "{PORTKEY_API_KEY}",
+  "model": "claude-sonnet-5"
+}

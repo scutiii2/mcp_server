@@ -1,0 +1,6 @@
+{
+  "label": "Together AI",
+  "base_url": "https://api.together.xyz/v1",
+  "api_key": "{TOGETHER_API_KEY}",
+  "model": "meta-llama/Llama-4-Maverick"
+}

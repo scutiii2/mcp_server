@@ -1,5 +1,4 @@
-"""Loads configs/config_gateways.json - per-gateway base_url/model presets for
-each provider (e.g. anthropic -> openrouter/bedrock/vertex).
+"""Loads gateways/<provider>/<gateway>.json base_url/model presets.
 
 Real secrets never live in that file: any "{ENV_VAR_NAME}" string value is
 a pointer, resolved here against the process environment (populated from
@@ -13,26 +12,98 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from src.agents.agent_spec import TIERS
 from src.core.catalog import catalog
-from src.core.seed import seed_from_example
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "configs" / "config_gateways.json"
+_ROOT = Path(__file__).resolve().parent.parent.parent
+GATEWAYS_DIR = _ROOT / "gateways"
+_LEGACY_PATH = _ROOT / "configs" / "config_gateways.json"
 _PLACEHOLDER = re.compile(r"^\{([A-Z0-9_]+)\}$")
+_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 _config: dict[str, Any] | None = None
 
 
-def _load() -> dict[str, Any]:
+@catalog
+def load_gateways() -> dict[str, Any]:
+    """Raw gateway blocks grouped by provider, cached until process restart.
+
+    First read migrates legacy settings or seeds committed examples. Existing
+    individual files win; the legacy file remains an unused rollback backup.
+    """
     global _config
     if _config is None:
-        seed_from_example(_CONFIG_PATH)
-        _config = json.loads(_CONFIG_PATH.read_text())
+        _initialize()
+        found: dict[str, Any] = {}
+        for path in sorted(GATEWAYS_DIR.glob("*/*.json")):
+            provider, name = path.parent.name, path.stem
+            if not _NAME.fullmatch(provider) or not _NAME.fullmatch(name):
+                raise ValueError(f"{path}: invalid provider or gateway name")
+            found.setdefault(provider, {})[name] = _read_block(path)
+        _config = found
     return _config
+
+
+def _read_block(path: Path) -> dict[str, Any]:
+    try:
+        block = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as error:
+        raise ValueError(f"{path}: invalid JSON") from error
+    if not isinstance(block, dict):
+        raise ValueError(f"{path}: must be an object")
+    return block
+
+
+def _initialize() -> None:
+    marker = GATEWAYS_DIR / ".initialized"
+    if marker.exists():
+        return
+    pending: dict[Path, dict[str, Any]] = {}
+    if _LEGACY_PATH.exists():
+        legacy = _read_block(_LEGACY_PATH)
+        # Validate the complete legacy file before publishing any migration.
+        for provider, gateways in legacy.items():
+            if not _NAME.fullmatch(provider) or not isinstance(gateways, dict):
+                raise ValueError(f"{_LEGACY_PATH}: invalid provider {provider!r}")
+            for name, block in gateways.items():
+                if not _NAME.fullmatch(name) or not isinstance(block, dict):
+                    raise ValueError(f"{_LEGACY_PATH}: invalid gateway {provider}.{name}")
+                pending[GATEWAYS_DIR / provider / f"{name}.json"] = block
+    else:
+        for example in sorted(GATEWAYS_DIR.glob("*/*.json.example")):
+            pending[example.with_suffix("")] = _read_block(example)
+    for path, block in pending.items():
+        _publish_missing(path, json.dumps(block, indent=2) + "\n")
+    # Mark only a completed initialization, so interrupted migrations can retry.
+    _publish_missing(marker, "Gateway initialization complete. Legacy config is no longer read.\n")
+
+
+def _publish_missing(path: Path, content: str) -> None:
+    """Publish a complete file without overwriting local edits or parallel starts."""
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False) as output:
+            temporary = Path(output.name)
+            output.write(content)
+        try:
+            if os.name == "nt":
+                # Windows rename is atomic and refuses an existing destination.
+                os.rename(temporary, path)
+            else:
+                os.link(temporary, path)
+        except FileExistsError:
+            pass
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _resolve(value: Any) -> Any:
@@ -48,8 +119,8 @@ def gateway(provider: str, gateway_name: str) -> dict[str, Any]:
     """One gateway's config block, e.g. gateway("anthropic", "openrouter")
     - {ENV_VAR} placeholders resolved to their live env var value (None if
     that var is unset). Raises KeyError if provider/gateway_name isn't in
-    config_gateways.json."""
-    block = _load()[provider][gateway_name]
+    gateways/."""
+    block = load_gateways()[provider][gateway_name]
     return {key: _resolve(value) for key, value in block.items()}
 
 
@@ -75,11 +146,11 @@ def tiers(provider: str, gateway_name: str) -> dict[str, TierModel]:
     standard, heavy), from the block's optional `models` map. A tier whose
     `id` is an {ENV_VAR} placeholder that is unset is left out. Returns {}
     when the block has no `models`. Raises KeyError if provider/gateway_name
-    isn't in config_gateways.json and ValueError for a malformed `models`."""
-    models = _load()[provider][gateway_name].get("models")
+    isn't in gateways/ and ValueError for a malformed `models`."""
+    models = load_gateways()[provider][gateway_name].get("models")
     if models is None:
         return {}
-    where = f"config_gateways.json {provider}.{gateway_name}.models"
+    where = f"gateways/{provider}/{gateway_name}.json {provider}.{gateway_name}.models"
     if not isinstance(models, dict):
         raise ValueError(f"{where} must be an object")
     for name in models:

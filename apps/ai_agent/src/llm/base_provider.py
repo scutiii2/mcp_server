@@ -162,7 +162,7 @@ class ChatResult:
 class BaseProvider:
     """Shared, provider-agnostic pieces of claude_provider.py and
     openai_provider.py: key/cooldown checks, the delegate-or-call_tool
-    dispatch, and default-model resolution from configs/config_gateways.json's
+    dispatch, and default-model resolution from gateways/<provider>/<gateway>.json's
     gateway block (so an OpenRouter-style gateway model override works the
     same way for both).
 
@@ -180,7 +180,7 @@ class BaseProvider:
     def has_api_key(cls) -> bool:
         """Whether the CURRENTLY SELECTED gateway (see GATEWAY_ENV) has its
         required secret(s) resolved - gateway-specific, since each block in
-        configs/config_gateways.json points at different env var(s). Each
+        gateways/<provider>/<gateway>.json points at different env var(s). Each
         subclass overrides this to check its own gateway's shape (plain
         api_key/auth_token vs bedrock's AWS triple vs vertex's project_id).
         """

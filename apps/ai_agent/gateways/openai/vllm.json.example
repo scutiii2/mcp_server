@@ -1,0 +1,6 @@
+{
+  "label": "vLLM",
+  "base_url": "{VLLM_BASE_URL}",
+  "api_key": "{VLLM_API_KEY}",
+  "model": "{VLLM_MODEL}"
+}

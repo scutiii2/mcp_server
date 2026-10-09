@@ -22,7 +22,7 @@ _parser = argparse.ArgumentParser(add_help=False)
 _parser.add_argument(
     "--gateway",
     help=(
-        "Override this run's gateway block (configs/config_gateways.json), "
+        "Override this run's gateway block (gateways/<provider>/<gateway>.json), "
         "e.g. openrouter/bedrock/vertex/litellm/helicone/portkey for "
         "anthropic, or azure/together/groq/fireworks/deepinfra/"
         "perplexity/ollama/vllm for openai. Takes precedence over "

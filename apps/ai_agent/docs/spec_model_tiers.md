@@ -4,7 +4,7 @@ Status: Implemented (see the plan docs/superpowers/plans/2026-10-08-model-tiers.
 
 ## Problem
 
-A gateway in `configs/config_gateways.json` has exactly one `model`, and an
+A gateway in `gateways/<provider>/<gateway>.json` has exactly one `model`, and an
 agent's model is fixed when its process starts (`agent_spec.apply_to_environ`
 sets `AI_AGENT_MODEL`). So a lookup and a hard multi-step analysis run on the
 same model. The orchestrator (ember) picks which specialist handles a task
@@ -45,13 +45,13 @@ from today.
 
 ## Changes
 
-### 1. Gateway config (`configs/config_gateways.json`, `src/llm/llm_config.py`)
+### 1. Gateway config (`gateways/<provider>/<gateway>.json`, `src/llm/llm_config.py`)
 
 Add an optional `models` object to a gateway block. `model` stays and remains
 the default model.
 
 ```json
-"claude": {
+{
   "label": "Claude",
   "api_key": "{CLAUDE_API_KEY}",
   "model": "claude-sonnet-5",
@@ -71,7 +71,7 @@ the default model.
 - New catalog function `llm_config.tiers(provider, gateway_name) ->
   dict[str, TierModel]` (`TierModel`: `id`, `use_for`), in ladder order. A
   gateway without `models` returns `{}`.
-- `configs/config_gateways.json.example` (the seed copy) gets the same
+- `gateways/anthropic/claude.json.example` (the seed copy) gets the same
   addition. Other gateways keep one `model` and gain `models` only when wanted.
   Gateways without `models` offer no choice.
 
@@ -227,7 +227,7 @@ caps in the repo's agent files (starting point, adjustable):
 
 ## Files touched
 
-`configs/config_gateways.json`(+`.example`), `src/llm/llm_config.py`,
+`gateways/<provider>/<gateway>.json`(+`.example`), `src/llm/llm_config.py`,
 `src/llm/model_tiers.py` (new), `src/agents/agent_spec.py`,
 `src/agents/agent_registry.py`, `src/agents/agent_routing.py`,
 `src/agents/delegation.py`, `src/agents/agent_config.py`, `src/server.py`,

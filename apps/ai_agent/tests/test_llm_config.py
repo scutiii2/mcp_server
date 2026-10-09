@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from src.llm import llm_config
@@ -71,3 +74,125 @@ def test_an_unknown_gateway_raises_key_error(monkeypatch):
     _use(monkeypatch, {})
     with pytest.raises(KeyError):
         llm_config.tiers("anthropic", "nope")
+
+
+@pytest.fixture
+def gateway_files(monkeypatch, tmp_path):
+    directory = tmp_path / "gateways"
+    legacy = tmp_path / "configs" / "config_gateways.json"
+    monkeypatch.setattr(llm_config, "GATEWAYS_DIR", directory, raising=False)
+    monkeypatch.setattr(llm_config, "_LEGACY_PATH", legacy, raising=False)
+    monkeypatch.setattr(llm_config, "_config", None)
+    return directory, legacy
+
+
+def _write(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_individual_gateway_files_keep_provider_scopes_and_resolve_env(gateway_files, monkeypatch):
+    directory, _ = gateway_files
+    _write(directory / "anthropic" / "shared.json", {"model": "claude", "api_key": "{GATEWAY_TEST_KEY}"})
+    _write(directory / "openai" / "shared.json", {"model": "gpt"})
+    monkeypatch.setenv("GATEWAY_TEST_KEY", "test-key")
+    assert llm_config.gateway("anthropic", "shared") == {"model": "claude", "api_key": "test-key"}
+    assert llm_config.gateway("openai", "shared") == {"model": "gpt"}
+
+
+def test_fresh_checkout_seeds_examples_without_replacing_existing_files(gateway_files):
+    directory, _ = gateway_files
+    _write(directory / "anthropic" / "claude.json.example", {"model": "default"})
+    _write(directory / "anthropic" / "claude.json", {"model": "custom"})
+    _write(directory / "openai" / "gpt.json.example", {"model": "gpt"})
+    assert llm_config.gateway("anthropic", "claude")["model"] == "custom"
+    assert llm_config.gateway("openai", "gpt")["model"] == "gpt"
+    assert (directory / "openai" / "gpt.json").is_file()
+
+
+def test_legacy_migration_preserves_custom_settings_and_backup(gateway_files):
+    directory, legacy = gateway_files
+    old = {"anthropic": {"custom": {"model": "private", "api_key": "{CUSTOM_KEY}"}, "claude": {"model": "old"}}}
+    _write(legacy, old)
+    _write(directory / "anthropic" / "claude.json", {"model": "new"})
+    _write(directory / "openai" / "gpt.json.example", {"model": "default"})
+    assert llm_config.gateway("anthropic", "custom")["model"] == "private"
+    assert llm_config.gateway("anthropic", "claude")["model"] == "new"
+    assert json.loads((directory / "anthropic" / "custom.json").read_text()) == old["anthropic"]["custom"]
+    assert json.loads(legacy.read_text()) == old
+    # Existing installations keep their configured gateway set, not all example gateways.
+    with pytest.raises(KeyError):
+        llm_config.gateway("openai", "gpt")
+
+
+def test_migration_does_not_resurrect_deleted_gateways_or_reread_legacy(gateway_files, monkeypatch):
+    directory, legacy = gateway_files
+    _write(legacy, {"anthropic": {"claude": {"model": "old"}, "removed": {"model": "old"}}})
+    llm_config.gateway("anthropic", "claude")
+    (directory / "anthropic" / "removed.json").unlink()
+    legacy.write_text("invalid backup", encoding="utf-8")
+    monkeypatch.setattr(llm_config, "_config", None)
+    assert llm_config.gateway("anthropic", "claude")["model"] == "old"
+    with pytest.raises(KeyError):
+        llm_config.gateway("anthropic", "removed")
+
+
+@pytest.mark.parametrize("raw", ["{", '[]', '{"anthropic": []}', '{"anthropic": {"claude": []}}', '{"../escape": {"claude": {}}}'])
+def test_invalid_legacy_stops_migration_without_publishing_files(gateway_files, raw):
+    directory, legacy = gateway_files
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError):
+        llm_config.gateway("anthropic", "claude")
+    assert not list(directory.glob("*/*.json"))
+
+
+def test_invalid_gateway_file_reports_its_path(gateway_files):
+    directory, _ = gateway_files
+    path = directory / "anthropic" / "claude.json"
+    _write(path, [])
+    with pytest.raises(ValueError, match="claude.json"):
+        llm_config.gateway("anthropic", "claude")
+
+
+def test_admin_catalog_uses_gateway_files_and_excludes_credentials(gateway_files):
+    from src.agents import agent_store
+
+    directory, _ = gateway_files
+    _write(directory / "anthropic" / "custom.json", {
+        "label": "Custom", "model": "my-model", "api_key": "{CUSTOM_KEY}",
+        "models": {"light": {"id": "small", "use_for": "quick tasks"}},
+    })
+    catalog = agent_store.gateway_catalog()
+    assert catalog["anthropic"] == [{"id": "custom", "label": "Custom", "model": "my-model", "tiers": [{"tier": "light", "id": "small"}]}]
+    assert catalog["laya"][0]["id"] == "local"
+    assert "api_key" not in json.dumps(catalog)
+
+
+def test_parallel_starts_publish_complete_files(gateway_files):
+    directory, legacy = gateway_files
+    _write(legacy, {"anthropic": {"claude": {"model": "custom"}}})
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: llm_config.gateway("anthropic", "claude"), range(16)))
+    assert results == [{"model": "custom"}] * 16
+    assert json.loads((directory / "anthropic" / "claude.json").read_text()) == {"model": "custom"}
+    assert not list(directory.glob("**/*.tmp"))
+
+
+def test_interrupted_migration_retries_without_overwriting_completed_files(gateway_files, monkeypatch):
+    directory, legacy = gateway_files
+    _write(legacy, {"anthropic": {"claude": {"model": "old"}, "custom": {"model": "second"}}})
+    publish = llm_config._publish_missing
+
+    def interrupt(path, content):
+        if path.name == "custom.json":
+            raise OSError("interrupted")
+        publish(path, content)
+
+    monkeypatch.setattr(llm_config, "_publish_missing", interrupt)
+    with pytest.raises(OSError, match="interrupted"):
+        llm_config.gateway("anthropic", "claude")
+    _write(directory / "anthropic" / "claude.json", {"model": "edited"})
+    monkeypatch.setattr(llm_config, "_publish_missing", publish)
+    assert llm_config.gateway("anthropic", "claude")["model"] == "edited"
+    assert llm_config.gateway("anthropic", "custom")["model"] == "second"

@@ -1,0 +1,7 @@
+{
+  "label": "OpenRouter",
+  "base_url": "https://openrouter.ai/api",
+  "auth_token": "{OPENROUTER_AUTH_TOKEN}",
+  "api_key": "{OPENROUTER_API_KEY}",
+  "model": "openrouter/free"
+}
