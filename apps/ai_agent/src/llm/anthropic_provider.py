@@ -47,7 +47,6 @@ from src.agents import agent_routing, ask_user, delegation
 from src.core import approvals, questions
 from src.core.chat_history import validate_history
 
-from src.mcp_client import tool_selection
 from src.agents.agent_spec import RosterEntry
 from src.llm import cancellation, cooldown, llm_config, llm_options, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
@@ -284,7 +283,6 @@ async def run_chat(
     tools_used: list[str] = []
     tool_calls: list[ToolCallRecord] = []
     schemas = _tool_schemas(enabled_extensions, roster)
-    schemas = await tool_selection.shortlist_schemas(question, schemas, {delegation.TOOL_NAME, ask_user.TOOL_NAME})
     # display_label isn't a real Anthropic tools= field (see _tool_schemas) -
     # pop it into this name->label lookup here, once, rather than sending it
     # to the API or re-deriving it per tool_use block below.
