@@ -69,6 +69,7 @@ can act on; nothing reaches the model):
 - `score` criteria: list of 2 to 10 strings.
 - `noul` criteria: optional dict with exactly the keys `false` and `true`.
 - `min_confidence`: optional number in (0, 1], default `MIN_CONFIDENCE` 0.7.
+- Text after the first JSON object is ignored, because delegation appends attachment references to the question string.
 
 ### Inference
 
