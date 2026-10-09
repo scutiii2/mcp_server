@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from src import agent_files, discovery, instance as instance_module, models, storage, window
+from src import add_dialog, agent_files, config, discovery, instance as instance_module, models, runtimes, specs, storage, window
 
 
 _PY_RUN_BAT = (
@@ -47,17 +47,236 @@ class ExtraProjectRootTests(unittest.TestCase):
 
         self.assertEqual(template.display_name, "Main tool")
 
-    def test_server_registry_round_trips_and_a_bad_file_is_empty(self) -> None:
+    def test_saved_specs_round_trip_and_a_bad_copy_is_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "servers.json"
-            with patch.object(storage, "_SERVERS_PATH", path):
-                storage._save_servers(models.ServerRegistry([Path(directory) / "tool"]))
-                loaded = storage._load_servers()
-                path.write_text("{not json", encoding="utf-8")
-                broken = storage._load_servers()
+            projects = Path(directory) / "projects"
+            with patch.object(storage, "_PROJECTS_DIR", projects):
+                good = models.LaunchSpec(
+                    Path(directory) / "tool", "Tool", "d", "python", "tool", "src.run", "T_PORT", 9000, {"A": "1"}, True, "bat",
+                )
+                storage._save_spec(good)
+                (projects / "broken").mkdir()
+                (projects / "broken" / specs.SPEC_FILE_NAME).write_text("{not json", encoding="utf-8")
+                loaded = storage._load_saved_specs()
+                storage._delete_saved_spec("tool")
+                after = storage._load_saved_specs()
 
-        self.assertEqual(loaded.projects, [Path(directory) / "tool"])
-        self.assertEqual(broken.projects, [])
+        self.assertEqual(loaded, [good])
+        self.assertEqual(after, [])
+
+
+class SpecFileTests(unittest.TestCase):
+    def _project(self, root: Path, name: str, spec: object = None, bat: bool = False) -> Path:
+        folder = root / name
+        folder.mkdir()
+        if spec is not None:
+            (folder / specs.SPEC_FILE_NAME).write_text(spec if isinstance(spec, str) else json.dumps(spec), encoding="utf-8")
+        if bat:
+            (folder / "run.bat").write_text(
+                _PY_RUN_BAT.format(label="From bat", port_var="X_PORT", port=1111, venv=name), encoding="utf-8"
+            )
+        return folder
+
+    def test_run_srvlnchr_is_read_and_wins_over_run_bat(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = self._project(
+                Path(directory), "tool",
+                {"label": "From file", "venv": "tool", "module": "src.run", "port": 9000, "port_env_var": "T_PORT", "env": {"mode": "dev"}},
+                bat=True,
+            )
+            spec = discovery.read_project_spec(folder)
+
+        self.assertEqual(
+            (spec.label, spec.source, spec.port, spec.port_env_var, spec.env),
+            ("From file", "srvlnchr", 9000, "T_PORT", {"MODE": "dev"}),
+        )
+
+    def test_a_bad_run_srvlnchr_names_the_problem_and_skip_leaves_the_project_out(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases = (
+                ("notjson", "{nope"), ("novenv", {"module": "m"}), ("badport", {"venv": "x", "module": "m", "port": "80"}),
+                ("nopkg", {"runtime": "node", "module": "dev"}),
+            )
+            for name, content in cases:
+                with self.subTest(name=name), self.assertRaises(specs.SpecError):
+                    discovery.read_project_spec(self._project(root, name, content))
+            self.assertIsNone(discovery.read_project_spec(self._project(root, "skipped", {"skip": True}, bat=True)))
+            self.assertIsNone(discovery.read_project_spec(self._project(root, "nothing")))
+
+    def test_saved_spec_still_runs_after_the_project_file_is_erased(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = self._project(Path(directory), "tool", bat=True)
+            saved = discovery.read_project_spec(folder)
+            (folder / "run.bat").unlink()
+
+            self.assertEqual(discovery.refreshed_spec(saved), saved)
+            (folder / "run.bat").write_text(
+                _PY_RUN_BAT.format(label="Renamed", port_var="X_PORT", port=1111, venv="tool"), encoding="utf-8"
+            )
+            self.assertEqual(discovery.refreshed_spec(saved).label, "Renamed")
+            manual = models.LaunchSpec(folder, "Mine", module="m", venv="v", source="manual")
+            self.assertEqual(discovery.refreshed_spec(manual), manual)
+
+    def test_manual_spec_is_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            spec = specs.build_manual_spec(folder, " ", "python", "v", "src.run", "", "8123", "A=1\n\nb = 2", True)
+            self.assertEqual(
+                (spec.label, spec.port_env_var, spec.port, spec.env, spec.supports_args, spec.source),
+                (folder.name, f"{folder.name.upper()}_PORT", 8123, {"A": "1", "B": "2"}, True, "manual"),
+            )
+            bad_values = (
+                ("python", "", "m", "", "8000", ""), ("python", "v", "m", "", "x", ""),
+                ("python", "v", "m", "", "8000", "oops"), ("node", "", "dev", "", "8000", ""),
+            )
+            for runtime, venv, module, port_var, port, env in bad_values:
+                with self.subTest(runtime=runtime, venv=venv, port=port, env=env), self.assertRaises(specs.SpecError):
+                    specs.build_manual_spec(folder, "", runtime, venv, module, port_var, port, env, False)
+
+
+class AddDialogTests(unittest.TestCase):
+    def _bat_project(self, root: Path, name: str) -> Path:
+        (root / name).mkdir()
+        (root / name / "run.bat").write_text(
+            _PY_RUN_BAT.format(label=name, port_var="X_PORT", port=9000, venv=name), encoding="utf-8"
+        )
+        return root / name
+
+    def test_check_folder_accepts_a_launchable_project_and_names_why_not(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tool = self._bat_project(root, "tool")
+            (root / "empty").mkdir()
+            (root / "bad").mkdir()
+            (root / "bad" / specs.SPEC_FILE_NAME).write_text("{nope", encoding="utf-8")
+
+            spec, error = add_dialog.check_folder(tool, set())
+            self.assertEqual((spec.key, error), ("tool", None))
+            spec, error = add_dialog.check_folder(root / "empty", set())
+            self.assertIsNone(spec)
+            self.assertIn("no launchable", error)
+            spec, error = add_dialog.check_folder(root / "bad", set())
+            self.assertIn("not valid JSON", error)
+            spec, error = add_dialog.check_folder(tool, {"tool"})
+            self.assertIn("already in the list", error)
+
+    def test_add_folder_lists_valid_folders_once_and_confirm_returns_the_specs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("a", "b"):
+                self._bat_project(root, name)
+            (root / "bad").mkdir()
+            dialog = object.__new__(add_dialog.AddServersDialog)
+            dialog._taken, dialog._specs, dialog._list, dialog.dialog = set(), [], Mock(), Mock()
+            dialog._on_add = Mock()
+            manual = models.LaunchSpec(root / "m", "Manual", module="x", venv="v", source="manual")
+            with patch.object(add_dialog.messagebox, "showerror") as error:
+                results = [dialog.add_folder(root / name) for name in ("a", "b", "a", "bad")]
+                results += [dialog.add_spec(manual), dialog.add_spec(manual)]
+                dialog._confirm()
+
+        self.assertEqual(results, [True, True, False, False, True, False])
+        self.assertEqual(error.call_count, 2)
+        [sent] = dialog._on_add.call_args.args
+        self.assertEqual([spec.key for spec in sent], ["a", "b", "m"])
+
+    def test_add_servers_saves_each_spec_lists_them_and_selects_the_first(self) -> None:
+        a = SimpleNamespace(key="a", working_dir=Path("/p/a").resolve())
+        b = SimpleNamespace(key="b", working_dir=Path("/p/b").resolve())
+        launcher = object.__new__(window.LauncherWindow)
+        launcher.status, launcher.templates = Mock(), []
+        launcher._render_sidebar = launcher._render_server_detail = Mock()
+        launcher._discover = lambda: [a, b]
+        new = [models.LaunchSpec(Path("/p/a"), "A"), models.LaunchSpec(Path("/p/b"), "B")]
+        with patch.object(window, "_save_spec") as save:
+            launcher._add_servers(new)
+
+        self.assertEqual([call.args[0] for call in save.call_args_list], new)
+        self.assertIs(launcher.selected_template, a)
+
+
+class DataDirTests(unittest.TestCase):
+    def test_default_is_appdata_scuti_server_launcher(self) -> None:
+        self.assertEqual(config.resolve_data_dir([], {"APPDATA": r"C:\Users\me\AppData\Roaming"}),
+                         Path(r"C:\Users\me\AppData\Roaming") / "scuti_server_launcher")
+
+    def test_flag_beats_env_beats_location_file_beats_default(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            appdata = Path(directory)
+            default = appdata / "scuti_server_launcher"
+            default.mkdir()
+            (default / "data_location.txt").write_text(f"{directory}/from_file\nignored\n", encoding="utf-8")
+            env = {"APPDATA": directory, "SCUTI_SERVER_LAUNCHER_DATA": f"{directory}/from_env"}
+
+            self.assertEqual(config.resolve_data_dir(["--data-dir", f"{directory}/from_flag"], env), Path(f"{directory}/from_flag"))
+            self.assertEqual(config.resolve_data_dir([f"--data-dir={directory}/from_eq"], env), Path(f"{directory}/from_eq"))
+            self.assertEqual(config.resolve_data_dir([], env), Path(f"{directory}/from_env"))
+            self.assertEqual(config.resolve_data_dir([], {"APPDATA": directory}), Path(f"{directory}/from_file"))
+            (default / "data_location.txt").write_text("  \n", encoding="utf-8")
+            self.assertEqual(config.resolve_data_dir(["--data-dir"], {"APPDATA": directory}), default)
+
+    def test_legacy_groups_and_presets_are_copied_once_and_never_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            legacy, data = Path(directory) / "old", Path(directory) / "new"
+            legacy.mkdir()
+            (legacy / "groups.json").write_text("{\"old\": 1}", encoding="utf-8")
+            (legacy / "presets.json").write_text("{}", encoding="utf-8")
+            data.mkdir()
+            (data / "presets.json").write_text("{\"kept\": 1}", encoding="utf-8")
+            with patch.object(storage, "_GROUPS_PATH", data / "groups.json"), patch.object(storage, "_PRESETS_PATH", data / "presets.json"):
+                storage._migrate_legacy_data(legacy)
+                storage._migrate_legacy_data(legacy)
+            self.assertEqual((data / "groups.json").read_text(encoding="utf-8"), "{\"old\": 1}")
+            self.assertEqual((data / "presets.json").read_text(encoding="utf-8"), "{\"kept\": 1}")
+
+
+class RuntimeWarningTests(unittest.TestCase):
+    def setUp(self) -> None:
+        for finder in (runtimes.find_python, runtimes.find_node):
+            finder.cache_clear()
+            self.addCleanup(finder.cache_clear)
+
+    def _template(self, runtime: str, venv_python: Path | None = None) -> SimpleNamespace:
+        return SimpleNamespace(runtime=runtime, venv_python=venv_python)
+
+    def test_python_project_warns_only_when_it_has_no_venv_and_no_python(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            venv = Path(directory) / "python.exe"
+            with patch.object(runtimes, "find_python", return_value=None):
+                self.assertIn("python.org", runtimes.runtime_warning(self._template("python", venv)))
+                venv.write_text("", encoding="utf-8")
+                self.assertIsNone(runtimes.runtime_warning(self._template("python", venv)))
+            with patch.object(runtimes, "find_python", return_value=["py", "-3"]):
+                venv.unlink()
+                self.assertIsNone(runtimes.runtime_warning(self._template("python", venv)))
+
+    def test_node_project_warns_when_node_or_npm_is_missing(self) -> None:
+        for found, warned in ((True, False), (False, True)):
+            with self.subTest(found=found), patch.object(runtimes, "find_node", return_value=found):
+                warning = runtimes.runtime_warning(self._template("node"))
+                self.assertEqual(warning is not None, warned)
+                if warned:
+                    self.assertIn("nodejs.org", warning)
+
+    def test_find_python_runs_each_candidate_so_a_store_stub_is_not_taken_for_python(self) -> None:
+        results = {"py": 9009, "python": 0}
+
+        def run(command, **kwargs):
+            return SimpleNamespace(returncode=results[command[0]])
+
+        with patch.object(runtimes.shutil, "which", side_effect=lambda name: name if name in results else None), \
+                patch.object(runtimes.subprocess, "run", side_effect=run):
+            self.assertEqual(runtimes.find_python(), ["python"])
+            runtimes.find_python.cache_clear()
+            results["python"] = 1  # too old, or the Store stub
+            self.assertIsNone(runtimes.find_python())
+
+    def test_find_node_needs_both_node_and_npm(self) -> None:
+        for present, expected in (({"node", "npm"}, True), ({"node"}, False), (set(), False)):
+            runtimes.find_node.cache_clear()
+            with self.subTest(present=present), patch.object(runtimes.shutil, "which", side_effect=lambda n: n if n in present else None):
+                self.assertEqual(runtimes.find_node(), expected)
 
 
 _SUPERVISOR_RUN_BAT = "\n".join([
@@ -184,7 +403,8 @@ class AgentFileTests(unittest.TestCase):
         launcher.templates = [template]
         group = models.ServerGroup("Stack", [models.GroupMember("ai_agent", 8000)])
 
-        with patch.object(window, "_port_in_use", side_effect=lambda port: port == 9100):
+        with patch.object(window, "_port_in_use", side_effect=lambda port: port == 9100), \
+                patch.object(window, "runtime_warning", return_value=None):
             issues = launcher._group_start_issues(group)
 
         self.assertEqual(issues, ["Port 9100 is already in use for AI Agent."])
@@ -292,30 +512,24 @@ class GroupTabTests(unittest.TestCase):
             if tab in ("servers", "instances"):
                 launcher._refresh_button.pack.assert_called_once()  # refresh stays visible on both tabs
 
-    def _server_launcher(self, templates, registry) -> "window.LauncherWindow":
-        launcher = object.__new__(window.LauncherWindow)
-        launcher.registry, launcher.templates, launcher.status = registry, templates, Mock()
-        launcher.root = launcher._render_sidebar = launcher._render_server_detail = Mock()
-        launcher._discover = lambda: [t for t in templates if t.working_dir in {p.resolve() for p in registry.projects}]
-        return launcher
-
-    def test_remove_forgets_the_added_folder_and_does_nothing_when_declined_or_unselected(self) -> None:
+    def test_remove_forgets_the_saved_copy_and_does_nothing_when_declined_or_unselected(self) -> None:
         added = SimpleNamespace(key="tool", display_name="Tool", working_dir=Path("/elsewhere/tool").resolve())
-        registry = models.ServerRegistry([Path("/elsewhere/tool")])
-        launcher = self._server_launcher([added], registry)
-        with patch.object(window, "_save_servers") as save, patch.object(window.messagebox, "askyesno", return_value=False):
+        launcher = object.__new__(window.LauncherWindow)
+        launcher.templates, launcher.status = [added], Mock()
+        launcher.root = launcher._render_sidebar = launcher._render_server_detail = Mock()
+        launcher._discover = lambda: []
+        with patch.object(window, "_delete_saved_spec") as delete, patch.object(window.messagebox, "askyesno", return_value=False):
             launcher.selected_template = None
             launcher._remove_server()
             launcher.selected_template = added
             launcher._remove_server()
-        save.assert_not_called()
-        self.assertEqual(registry.projects, [Path("/elsewhere/tool")])
+        delete.assert_not_called()
 
-        with patch.object(window, "_save_servers") as save, patch.object(window.messagebox, "askyesno", return_value=True):
+        with patch.object(window, "_delete_saved_spec") as delete, patch.object(window.messagebox, "askyesno", return_value=True):
             launcher._remove_server()
 
-        self.assertEqual(registry.projects, [])
-        save.assert_called_once()
+        delete.assert_called_once_with("tool")
+        self.assertEqual(launcher.templates, [])
         self.assertIsNone(launcher.selected_template)
 
     def test_select_group_sets_selection_and_renders_detail(self) -> None:
@@ -451,6 +665,11 @@ class GroupManagementTests(unittest.TestCase):
 
 
 class GroupStartTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = patch.object(window, "runtime_warning", return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_multi_member_preflight_blocks_every_launch_for_invalid_or_conflicting_members(self) -> None:
         for second_member in (
             models.GroupMember("ai_agent", 9101, None),

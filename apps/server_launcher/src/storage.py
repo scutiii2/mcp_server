@@ -3,10 +3,26 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
-from .config import _GROUPS_PATH, _KEPT_RUNNING_PATH, _PRESETS_PATH, _SERVERS_PATH
-from .models import GroupMember, Preset, ServerGroup, ServerRegistry
+from .config import _GROUPS_PATH, _KEPT_RUNNING_PATH, _PRESETS_PATH, _PROJECTS_DIR, LEGACY_DATA_DIR
+from .models import GroupMember, LaunchSpec, Preset, ServerGroup
+from .specs import SPEC_FILE_NAME, read_saved_spec, spec_to_dict
+
+
+def _migrate_legacy_data(legacy_dir: Path = LEGACY_DATA_DIR) -> None:
+    """Copies groups and presets from the old in-tree data folder into the data
+    folder, once: only files the data folder does not have yet are copied, and
+    the old ones are left where they are."""
+    for target in (_GROUPS_PATH, _PRESETS_PATH):
+        source = legacy_dir / target.name
+        if source.is_file() and source.parent != target.parent and not target.exists():
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+            except OSError:
+                pass  # the launcher still starts; the groups/presets just begin empty
 
 
 def _load_groups() -> dict[str, ServerGroup]:
@@ -95,20 +111,21 @@ def _save_presets(presets: dict[str, list[Preset]]) -> None:
     _PRESETS_PATH.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 
-def _load_servers() -> ServerRegistry:
-    """Added project folders; a missing or malformed file is an empty registry."""
-    try:
-        raw = json.loads(_SERVERS_PATH.read_text(encoding="utf-8"))
-        projects = [Path(p) for p in raw.get("projects", []) if isinstance(p, str)]
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
-        return ServerRegistry()
-    return ServerRegistry(projects)
+def _load_saved_specs() -> list[LaunchSpec]:
+    """The launcher's saved copy of every listed server, by folder name; a copy that cannot be read is left out."""
+    specs = (read_saved_spec(path) for path in sorted(_PROJECTS_DIR.glob(f"*/{SPEC_FILE_NAME}")))
+    return [spec for spec in specs if spec is not None]
 
 
-def _save_servers(registry: ServerRegistry) -> None:
-    _SERVERS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    raw = {"projects": [str(p) for p in registry.projects]}
-    _SERVERS_PATH.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+def _save_spec(spec: LaunchSpec) -> None:
+    path = _PROJECTS_DIR / spec.key / SPEC_FILE_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(spec_to_dict(spec, saved=True), indent=2), encoding="utf-8")
+
+
+def _delete_saved_spec(key: str) -> None:
+    """Forget a listed server. Only the launcher's own copy is removed."""
+    shutil.rmtree(_PROJECTS_DIR / key, ignore_errors=True)
 
 
 def _load_and_clear_kept_running() -> list[tuple[str, int]]:

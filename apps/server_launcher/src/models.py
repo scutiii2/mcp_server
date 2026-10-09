@@ -7,10 +7,25 @@ from pathlib import Path
 
 
 @dataclass
-class ServerRegistry:
-    """The server list: the project folders the user added (each holds a run.bat)."""
+class LaunchSpec:
+    """How to start one project: read from its run.srvlnchr or run.bat, or typed
+    in by hand. The launcher saves one per listed server in its own data folder."""
 
-    projects: list[Path] = field(default_factory=list)
+    project_dir: Path
+    label: str
+    description: str = ""
+    runtime: str = "python"  # "python" (.venv_<venv> + -m <module>) or "node" (npm run <module>)
+    venv: str = ""
+    module: str = ""
+    port_env_var: str = ""
+    port: int = 8000
+    env: dict[str, str] = field(default_factory=dict)
+    supports_args: bool = False  # the project forwards extra arguments to the process it runs
+    source: str = "manual"  # where it was read from: "srvlnchr", "bat" or "manual"
+
+    @property
+    def key(self) -> str:
+        return self.project_dir.name
 
 
 @dataclass

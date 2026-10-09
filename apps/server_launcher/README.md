@@ -15,26 +15,76 @@ Tests: `cd server_launcher && .venv_launcher\Scripts\python -m pytest`.
 
 ## What it does
 
-Lists only the project folders you add with the Servers tab's **Add**
-button; nothing is scanned at startup. When you pick a folder, its `run.bat`
-is read for the venv-folder and `py -m <module>` lines (or `npm run <script>`),
-and the project runs directly as
-`<project>/.venv_<id>/Scripts/python.exe -m <module>`. That gives a real
-`Popen` handle with piped stdout, which is what makes the in-app log viewer
-and programmatic stop/restart possible. A missing venv is bootstrapped the
-same way the bat does (`py -m venv`, `pip install -e .[dev]`).
-`REM LABEL:` / `REM DESCRIPTION:` lines in a bat set its display name/blurb.
-A `REM LAUNCHER: skip` line leaves the project out (chat_cli uses it: it is an
-interactive terminal program, not a server).
-This launcher's own folder is skipped by discovery.
+Lists only the projects you add with the Servers tab's **Add** button; nothing
+is scanned at startup. A project can be added three ways:
+
+1. **Its `run.bat`**: the launcher reads the venv-folder and `py -m <module>`
+   lines (or `npm run <script>`), `set` lines, and the `REM` lines below.
+2. **Its `run.srvlnchr`**: a JSON file made for this launcher (below). If a
+   folder has both, `run.srvlnchr` wins.
+3. **Manual setup**: for a project with neither file. Pick one folder and type
+   the fields into a form.
+
+Whichever way, the launcher saves its own copy of the spec in
+`projects/<folder name>/run.srvlnchr` in the data folder (with the project path and where it
+came from), and lists servers from those copies only. A project's own file is
+re-read on each start and refresh, so edits to it are picked up; if the file is
+erased or unreadable, the saved copy keeps the server working. A manual spec
+has no file to follow. The project folder and its venv must still exist.
+
+The launcher runs each project directly as
+`<project>/.venv_<id>/Scripts/python.exe -m <module>` (or `npm run <script>`).
+That gives a real `Popen` handle with piped stdout, which is what makes the
+in-app log viewer and programmatic stop/restart possible. A missing venv is
+bootstrapped the same way the bat does (`py -m venv`, `pip install -e .[dev]`).
+
+`run.srvlnchr` (every key optional except `module`, and `venv` for python):
+
+```json
+{
+  "label": "PDF Merger",
+  "description": "Merges PDFs",
+  "runtime": "python",
+  "venv": "pdf_merger",
+  "module": "src.run",
+  "port_env_var": "PDF_MERGER_PORT",
+  "port": 8040,
+  "env": {"MODE": "dev"},
+  "supports_args": false
+}
+```
+
+`"runtime": "node"` runs `npm run <module>` and needs a `package.json`.
+`"skip": true` leaves the project out. In a `run.bat`, `REM LABEL:` /
+`REM DESCRIPTION:` set the display name/blurb and `REM LAUNCHER: skip` leaves
+it out (chat_cli uses it: it is an interactive terminal program, not a
+server). This launcher's own folder is never listed.
+
+Python and node are checked per project, not for the whole app. A python project
+with no venv yet needs Python 3.11+ to build it; a node project needs `node` and
+`npm`. If the one it needs is missing, its page shows a red warning (install it
+and put it in the environment variables), Start is refused, and Start all on a
+group names it. Each candidate (`py -3`, `python`, `python3`) is run to check
+its version, so the Microsoft Store's stub `python.exe` is not taken for Python.
+Found once per run: install, then close and reopen the launcher.
+
+Every file the launcher creates at run time (groups, presets, the saved server
+specs, the kept-running handoff) lives in one data folder, by default
+`%APPDATA%\scuti_server_launcher`. To use another folder, set the first of
+these that applies: `--data-dir <path>` on the command line, the
+`SCUTI_SERVER_LAUNCHER_DATA` environment variable, or a `data_location.txt`
+whose first line is the path, kept in the default folder. On first start,
+`groups.json` and `presets.json` from the old in-tree `.data/` are copied over
+if the new folder does not have them (the old folder is left alone).
 
 Sidebar tabs:
 - **Servers**: every added project; flags (port, `set NAME=value` env
   lines, Extra args when the bat forwards `%*`), saved Presets, Start. A taken
   port auto-bumps to the next free one.
-  **Add** picks a project folder with a launchable `run.bat` and lists it;
-  **Remove** forgets the selected one. Project files are never touched. The
-  list is saved in `.data/servers.json` (gitignored, per machine).
+  **Add** opens a dialog where you list any number of projects: `Add folder…`
+  per project (checked as you go), `Manual setup…` for one without a run file,
+  then `Add all`. **Remove** forgets the selected one (deletes the launcher's
+  copy); project files are never touched.
 - **Agent projects** (a bat that runs `src.supervisor` next to an `agents/`
   folder, i.e. ai_agent): the Servers page shows the agent files read-only
   (id, port, provider and model, entry agent, disabled ones dimmed) instead of
@@ -77,15 +127,18 @@ default port, or a port kept via "keep running in background" on close).
 | `src/window.py` | `LauncherWindow`: tabs, sidebar, detail panes, lifecycle |
 | `src/instance.py` | `Instance`: launch, log capture, stop/restart, adoption |
 | `src/processes.py` | Port/PID helpers, venv bootstrap, spawn |
-| `src/discovery.py` | `discover_templates()` reads the added folders' run.bat |
+| `src/add_dialog.py` | `AddServersDialog` (collect several projects, then add them at once), `ManualSetupDialog` |
+| `src/runtimes.py` | Finds python / node on PATH, words the per-project warning |
+| `src/specs.py` | `run.srvlnchr` JSON: read, validate, write; manual-form validation |
+| `src/discovery.py` | Reads a folder's `run.srvlnchr` / `run.bat` into a spec; builds templates from specs |
 | `src/agent_files.py` | Read-only agent files of a supervisor project; entry port, start refusal |
 | `src/group_editor.py` | `GroupEditor`: inline edit/add/remove of a group's members |
-| `src/storage.py` | Load/save groups, presets, added servers, kept-running handoff |
+| `src/storage.py` | Load/save groups, presets, saved server specs, kept-running handoff |
 | `src/models.py` | `ServerTemplate`, `AgentInfo`, `Preset`, `GroupMember`, `ServerGroup` |
 | `src/widgets.py`, `src/theme.py` | Rounded hover widgets, member card, panel, scroll frame, dark scrollbar; ember colors and radius scale |
-| `src/config.py` | Paths, run.bat regexes, timing constants |
+| `src/config.py` | Paths and data folder resolution, run.bat regexes, timing constants |
 | `src/assets/` | Empty-state image |
-| `.data/` | `groups.json`, `presets.json`, `servers.json`, `kept_running.json` (all gitignored, per-machine) |
+| data folder | `groups.json`, `presets.json`, `projects/<name>/run.srvlnchr`, `kept_running.json`, `data_location.txt` (see above; never in the repo) |
 | `tests/` | pytest suite |
 
 No `configs/` or `secrets/`: the launcher has neither.

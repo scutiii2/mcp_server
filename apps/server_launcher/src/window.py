@@ -7,18 +7,20 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog
+from tkinter import messagebox, simpledialog
 
+from .add_dialog import AddServersDialog
 from .agent_files import launch_port, start_refusal
 from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ASSETS_DIR, REPO_ROOT
-from .discovery import discover_templates
+from .discovery import refreshed_spec, templates_from_specs
 from .group_editor import GroupEditor
 from .instance import Instance
-from .models import GroupMember, Preset, ServerGroup, ServerTemplate
+from .models import GroupMember, LaunchSpec, Preset, ServerGroup, ServerTemplate
 from .processes import _find_free_port, _find_pid_on_port, _kill_pid_tree, _port_in_use, _spawn_detached
+from .runtimes import runtime_warning
 from .storage import (
-    _load_and_clear_kept_running, _load_groups, _load_presets, _load_servers, _save_groups, _save_kept_running,
-    _save_presets, _save_servers,
+    _load_and_clear_kept_running, _delete_saved_spec, _load_groups, _load_presets, _load_saved_specs, _save_groups,
+    _save_kept_running, _save_presets, _save_spec,
 )
 from .theme import (
     _ACCENT, _ACCENT_CONTRAST, _BG, _BORDER, _DANGER, _DANGER_BORDER, _DIM_FG, _ERROR_FG, _FG, _FIELD_BG, _RADIUS_SM, _ROW_BG,
@@ -43,7 +45,6 @@ class LauncherWindow:
         # root.after loop, ever reads it or touches a widget.
         self._status_queue: queue.Queue[tuple[str, str]] = queue.Queue()
 
-        self.registry = _load_servers()
         self.templates = self._discover()
         self.instances: dict[str, Instance] = {}
         self._adopt_running_instances()
@@ -251,30 +252,28 @@ class LauncherWindow:
     # ---- servers tab -----------------------------------------------------
 
     def _discover(self) -> list[ServerTemplate]:
-        return discover_templates(self.registry.projects)
+        """The listed servers, from the launcher's saved specs. A spec whose
+        project file still exists is refreshed from it; otherwise the saved copy runs."""
+        specs = []
+        for saved in _load_saved_specs():
+            spec = refreshed_spec(saved)
+            if spec != saved:
+                _save_spec(spec)
+            specs.append(spec)
+        return templates_from_specs(specs)
 
     def _add_server(self) -> None:
-        """Add button: pick a project folder, read its run.bat and list it."""
-        chosen = filedialog.askdirectory(
-            parent=self.root, title="Choose a project folder with a run.bat", initialdir=REPO_ROOT.parent,
-        )
-        if not chosen:
-            return
-        folder = Path(chosen).resolve()
-        found = discover_templates([folder])
-        if not found:
-            messagebox.showerror(
-                "Add server", f"{folder.name} has no launchable run.bat (it must start a python module or an npm script).",
-                parent=self.root,
-            )
-            return
-        key = found[0].key
-        if any(t.key == key for t in self.templates):
-            messagebox.showinfo("Add server", f"{found[0].display_name} is already in the list.", parent=self.root)
-            return
-        self.registry.projects.append(folder)
-        self._apply_registry(found[0].display_name, "Added")
-        self.selected_template = next((t for t in self.templates if t.key == key), None)
+        """Add button: collect projects in a dialog, then list them all."""
+        AddServersDialog(self.root, {t.key for t in self.templates}, self._add_servers, initialdir=REPO_ROOT.parent)
+
+    def _add_servers(self, specs: list[LaunchSpec]) -> None:
+        """Save the specs the Add dialog returned, list them and select the first."""
+        for spec in specs:
+            _save_spec(spec)
+        self.templates = self._discover()
+        self.status.config(text=f"Added {len(specs)} server{'s' if len(specs) != 1 else ''}.")
+        added = {spec.project_dir.resolve() for spec in specs}
+        self.selected_template = next((t for t in self.templates if t.working_dir in added), None)
         self._render_sidebar()
         self._render_server_detail(self.selected_template)
 
@@ -291,17 +290,12 @@ class LauncherWindow:
             parent=self.root,
         ):
             return
-        self.registry.projects = [p for p in self.registry.projects if p.resolve() != template.working_dir]
-        self._apply_registry(template.display_name, "Removed")
+        _delete_saved_spec(template.key)
+        self.templates = self._discover()
+        self.status.config(text=f"Removed {template.display_name}.")
         self.selected_template = None
         self._render_sidebar()
         self._render_server_detail(None)
-
-    def _apply_registry(self, name: str, verb: str) -> None:
-        """Save the registry and rebuild the template list after an Add or Remove."""
-        _save_servers(self.registry)
-        self.templates = self._discover()
-        self.status.config(text=f"{verb} {name}.")
 
     def _select_template(self, template: ServerTemplate) -> None:
         self.selected_template = template
@@ -455,6 +449,8 @@ class LauncherWindow:
             template = templates.get(member.template_key)
             if template is None:
                 issues.append(f"Missing server template: {member.template_key}.")
+            elif warning := runtime_warning(template):
+                issues.append(f"{template.display_name}: {warning}")
             elif _port_in_use(port := launch_port(template, member.port)):
                 issues.append(
                     f"Port {port} is already in use for {template.display_name}."
@@ -578,13 +574,19 @@ class LauncherWindow:
                 anchor="w", padx=16, pady=(0, 12)
             )
 
+        warning = runtime_warning(template)
+        if warning:
+            tk.Label(
+                self.main, text=warning, bg=_BG, fg=_ERROR_FG, wraplength=560, justify="left", font=("Segoe UI", 10, "bold"),
+            ).pack(anchor="w", padx=16, pady=(0, 12))
+
         field_vars: dict[str, tk.StringVar] = {}
         port_var = tk.StringVar(value=str(template.default_port))
         args_var = tk.StringVar(value="")
         applied_preset_name: str | None = None
 
         def start() -> None:
-            refusal = start_refusal(template, _port_in_use)
+            refusal = runtime_warning(template) or start_refusal(template, _port_in_use)
             if refusal:
                 self.status.config(text=refusal)
                 messagebox.showerror("Start", refusal, parent=self.root)

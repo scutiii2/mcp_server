@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from .models import ServerTemplate
+from .runtimes import find_python
 
 
 def _port_in_use(port: int) -> bool:
@@ -117,9 +118,13 @@ def _ensure_venv(template: ServerTemplate, log: collections.deque) -> bool:
     it directly instead of through this tool. Returns False on failure."""
     if template.venv_python.exists():
         return True
+    python = find_python()
+    if python is None:
+        log.append("Python 3.11+ not found on PATH - install it from python.org, then restart the launcher.")
+        return False
     venv_dir = template.venv_python.parent.parent
     log.append(f"Creating virtual environment {venv_dir.name} ...")
-    if _run_and_log(["py", "-m", "venv", str(venv_dir)], template.working_dir, log) != 0:
+    if _run_and_log([*python, "-m", "venv", str(venv_dir)], template.working_dir, log) != 0:
         log.append("Failed to create the virtual environment.")
         return False
     log.append(f"Installing {template.working_dir.name} in editable mode ...")

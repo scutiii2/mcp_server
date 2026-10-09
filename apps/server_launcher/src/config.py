@@ -2,19 +2,58 @@
 
 from __future__ import annotations
 
+import os
 import re
+import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = PROJECT_DIR.parent
 SELF_DIR_NAME = PROJECT_DIR.name  # discovery must not list the launcher itself
 ASSETS_DIR = PROJECT_DIR / "src" / "assets"
-DATA_DIR = PROJECT_DIR / ".data"
+
+
+APP_DIR_NAME = "scuti_server_launcher"
+DATA_DIR_ENV = "SCUTI_SERVER_LAUNCHER_DATA"
+DATA_DIR_FLAG = "--data-dir"
+LOCATION_FILE_NAME = "data_location.txt"
+LEGACY_DATA_DIR = PROJECT_DIR / ".data"  # where a source checkout kept its files before the AppData default
+
+
+def default_data_dir(environ: Mapping[str, str]) -> Path:
+    """%APPDATA%\\scuti_server_launcher (the roaming app-data folder on Windows)."""
+    base = environ.get("APPDATA")
+    return (Path(base) if base else Path.home() / "AppData" / "Roaming") / APP_DIR_NAME
+
+
+def resolve_data_dir(argv: Sequence[str], environ: Mapping[str, str]) -> Path:
+    """Where every file the launcher creates at run time goes (groups, presets,
+    saved server specs, the kept-running handoff). The first one set wins:
+    ``--data-dir <path>``, the SCUTI_SERVER_LAUNCHER_DATA variable, the first
+    line of ``data_location.txt`` in the default folder, then the default
+    folder itself."""
+    for index, arg in enumerate(argv):
+        if arg == DATA_DIR_FLAG and index + 1 < len(argv) and argv[index + 1].strip():
+            return Path(argv[index + 1]).expanduser()
+        if arg.startswith(DATA_DIR_FLAG + "=") and arg[len(DATA_DIR_FLAG) + 1:].strip():
+            return Path(arg[len(DATA_DIR_FLAG) + 1:]).expanduser()
+    if environ.get(DATA_DIR_ENV, "").strip():
+        return Path(environ[DATA_DIR_ENV]).expanduser()
+    default = default_data_dir(environ)
+    try:
+        lines = (default / LOCATION_FILE_NAME).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return default
+    return Path(lines[0].strip()).expanduser() if lines and lines[0].strip() else default
+
+
+DATA_DIR = resolve_data_dir(sys.argv[1:], os.environ)
 _PRESETS_PATH = DATA_DIR / "presets.json"
 _GROUPS_PATH = DATA_DIR / "groups.json"
-# The project folders the Servers tab's Add button picked (Remove forgets one).
-# Per machine (absolute paths), so gitignored.
-_SERVERS_PATH = DATA_DIR / "servers.json"
+# One folder per listed server, each holding the launcher's own saved copy of its
+# run.srvlnchr (see specs.py). Per machine (absolute paths), so gitignored.
+_PROJECTS_DIR = DATA_DIR / "projects"
 # Written on close only when the user chooses to leave running instances in
 # the background instead of stopping them - the (template, port) pairs to
 # re-adopt on the next launch. Consumed (deleted) as soon as it's read, so
