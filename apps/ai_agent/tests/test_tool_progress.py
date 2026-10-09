@@ -4,11 +4,13 @@ through the tool_progress ContextVar, before the step finishes."""
 from __future__ import annotations
 
 import asyncio
+import threading
 from unittest.mock import AsyncMock, patch
 
 from src.mcp_client import mcp_upstream, tool_progress
 from src.llm.base_provider import dispatch_with_progress
 from src.mcp_client.registry import McpClientRegistry
+from src.agents import agent_events
 
 
 def test_dispatch_with_progress_emits_step_progress_events_in_order():
@@ -42,6 +44,35 @@ def test_dispatch_with_progress_without_on_event_is_a_plain_call():
 
     assert asyncio.run(dispatch_with_progress(dispatch, None, "s", "t")) == "t"
     assert seen == [None]
+
+
+def test_deadline_drops_events_from_a_worker_that_finishes_late():
+    release = threading.Event()
+    finished = threading.Event()
+    events = []
+    async def on_event(event):
+        events.append(event)
+    def dispatch():
+        release.wait(1)
+        tool_progress.current()("late progress")
+        agent_events.emit({"type": "agent_start", "agent_id": "late"})
+        finished.set()
+        return "late result"
+    async def run():
+        try:
+            async with asyncio.timeout(0.02):
+                await dispatch_with_progress(dispatch, on_event, "late-step")
+        except TimeoutError:
+            pass
+        release.set()
+        for _ in range(100):
+            if finished.is_set():
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0)
+        assert finished.is_set()
+        assert events == []
+    asyncio.run(run())
 
 
 def test_mcp_upstream_call_tool_passes_the_bound_sink_to_the_client():

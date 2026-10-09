@@ -52,6 +52,12 @@ class LlmOptions:
     def max_tool_rounds(self, default: int) -> int:
         return self._llm.max_tool_rounds or default
 
+    def turn_guard(self):
+        """A fresh budget and call history for each turn, never cached."""
+        from src.llm.turn_guard import TurnGuard
+
+        return TurnGuard(self._llm.max_turn_tokens or 100_000, self._llm.max_turn_seconds or 300)
+
     def _effort(self) -> str:
         return _effort_override.get() or self._llm.reasoning_effort
 

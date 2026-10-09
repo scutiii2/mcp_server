@@ -28,6 +28,8 @@ URL, token or key.
   message as its placeholder; Tab fills it in. Switch: Settings > Chat >
   Suggest next prompt (saved to the account, off means no model call).
 - Stop button (takes effect at the agent's next round).
+- A live task plan panel shows each agent's checklist with Pending, In progress,
+  and Done labels. It resumes after a reconnect and clears when the turn ends.
 - A running clock under the answer being written (`12.4 s`, then `1 min 03 s`),
   and beside "Running command ...". It counts from when you sent the question; for a
   chat you reopen while it is still answering it counts from the reopen.

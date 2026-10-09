@@ -7,6 +7,7 @@ import type {
   PendingQuestion,
   QuestionAnswer,
   ToolStep,
+  TurnPlan,
 } from "../api/types";
 import type { CommandInfo } from "../api/CommandsClient";
 import { agentLabelFor } from "../utils/agentLabels";
@@ -21,6 +22,7 @@ import DownloadCards from "./DownloadCards.vue";
 import ElapsedTime from "./ElapsedTime.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import QuestionCard from "./QuestionCard.vue";
+import PlanPanel from "./PlanPanel.vue";
 import SaveButton from "./SaveButton.vue";
 import ToolSteps from "./ToolSteps.vue";
 import UsageChip from "./UsageChip.vue";
@@ -32,6 +34,7 @@ const props = defineProps<{
   activity: string;
   /** The tools the answer being written ran so far. */
   steps: ToolStep[];
+  plans?: TurnPlan[];
   busy: boolean;
   /** Messages may be edited or the last answer redone (nothing is running). */
   canChange?: boolean;
@@ -384,6 +387,7 @@ onBeforeUnmount(() => {
       </template>
 
       <div v-if="busy" class="assistant live">
+        <PlanPanel :plans="plans ?? []" />
         <ToolSteps v-if="steps.length" :steps="steps" live />
         <!-- A tool the agent wants to run waits here; nothing runs until the
              user answers (or a few minutes pass, which counts as no). What is

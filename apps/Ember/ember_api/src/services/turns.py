@@ -140,6 +140,7 @@ class Turn:
     pending_approvals: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Questions waiting for the user's answer, by step id: {id, questions}.
     pending_questions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    plans: dict[str, dict[str, Any]] = field(default_factory=dict)
     sequence: int = 0
     events: deque = field(default_factory=lambda: deque(maxlen=EVENT_BUFFER))
     condition: asyncio.Condition = field(default_factory=asyncio.Condition)
@@ -156,6 +157,7 @@ class Turn:
             "steps": [dict(s) for s in self.steps],
             "approvals": [dict(a) for a in self.pending_approvals.values()],
             "questions": [dict(q) for q in self.pending_questions.values()],
+            "plans": [dict(p) for p in self.plans.values()],
             "active_agents": [dict(a) for a in self.active_agents],
             "sequence": self.sequence,
         }
@@ -180,6 +182,17 @@ class Turn:
         if not step_id:
             return
         self.pending_questions[step_id] = {"id": step_id, "questions": event.get("questions") or []}
+
+    def record_plan(self, event: dict[str, Any]) -> None:
+        """Keep each agent's latest checklist for a reconnect, only this turn."""
+        agent_id = str(event.get("agent_id") or "")
+        if not event.get("items"):
+            self.plans.pop(agent_id, None)
+        elif agent_id in self.plans or len(self.plans) < MAX_AGENT_USAGE_ROWS:
+            self.plans[agent_id] = {
+                "agent_id": agent_id, "agent_label": str(event.get("agent_label") or "")[:AGENT_LABEL_MAX],
+                "items": event["items"],
+            }
 
     def record_agent(self, event: dict[str, Any]) -> None:
         """Folds agent_start / agent_end into the stack of working agents."""
@@ -405,6 +418,8 @@ class TurnRegistry:
                 turn.pending_questions.pop(str(event.get("id") or ""), None)
             elif kind in ("agent_start", "agent_end"):
                 turn.record_agent(event)
+            elif kind == "plan_update":
+                turn.record_plan(event)
             elif kind == "approval_request":
                 turn.activity = "waiting for your approval"
                 turn.record_approval(event)
@@ -480,7 +495,7 @@ class TurnRegistry:
             if event.get("type") in (
                 "token", "token_reset", "step_start", "step_progress", "step_end", "usage",
                 "approval_request", "approval_resolved", "question_request", "question_resolved",
-                "agent_start", "agent_end", "agent_token",
+                "agent_start", "agent_end", "agent_token", "plan_update",
             ):
                 await self._publish(turn, _clamped(event))
 
@@ -644,6 +659,15 @@ def _clamped(event: dict[str, Any]) -> dict[str, Any]:
         return {**event, "text": event["text"][:AGENT_TEXT_MAX]}
     if kind == "question_request":
         return {**event, "questions": question_answers.clamp_questions(event.get("questions"))}
+    if kind == "plan_update":
+        raw = event.get("items")
+        items = [
+            {"text": item["text"][:300], "status": item["status"]}
+            for item in (raw[:50] if isinstance(raw, list) else [])
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+            and item.get("status") in ("pending", "in_progress", "done")
+        ]
+        return {**event, "items": items}
     return event
 
 

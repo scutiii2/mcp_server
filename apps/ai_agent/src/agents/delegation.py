@@ -13,11 +13,10 @@ Isolated from both provider files so neither anthropic_provider.py nor
 openai_provider.py duplicates the tool-schema/dispatch logic - each just
 calls tool_description()/tool_parameters()/call() from here.
 
-Cancellation is NOT propagated into a delegated call: chat_app's Stop
-button only knows the top-level agent's request_id/URL, with no
-visibility into a nested delegate call. A delegated call always passes
-request_id=None (cancellation.py already treats a falsy id as
-"uncancellable") - a documented limitation, not a bug.
+Each delegated call receives a unique child request ID linked to its
+parent in cancellation.py. While the peer runs, this process forwards a
+parent cancellation to the peer's cancel tool; nested peers do the same.
+Cancellation remains cooperative, checked between provider rounds.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from uuid import uuid4
 from contextvars import ContextVar, Token
 from typing import Any
 
@@ -36,6 +36,7 @@ from src.agents import agent_events, agent_registry, agent_spec
 from src.core import approvals, internal_auth, tool_filter
 from src.core.catalog import catalog
 from src.agents.agent_spec import REASONING_EFFORTS, TIERS, RosterEntry
+from src.llm import cancellation
 
 TOOL_NAME = "delegate_to_agent"
 
@@ -158,6 +159,25 @@ async def _call_tool(url: str, name: str, arguments: dict[str, Any], on_progress
     return result.structuredContent or {}
 
 
+async def _ask_linked(url: str, arguments: dict[str, Any], on_progress: Any) -> dict[str, Any]:
+    """Forward Stop across processes while keeping the ask connection alive."""
+    request_id = arguments["request_id"]
+    if not request_id:
+        return await _call_tool(url, "ask", arguments, on_progress=on_progress)
+    task = asyncio.create_task(_call_tool(url, "ask", arguments, on_progress=on_progress))
+    try:
+        while not task.done():
+            if cancellation.is_cancelled(request_id):
+                await _call_tool(url, "cancel", {"request_id": request_id})
+                break
+            await asyncio.wait({task}, timeout=0.1)
+        return await task
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 def _progress_forwarder(sink: agent_events.Sink | None, step_id: str | None) -> Any:
     """An MCP progress callback that re-emits the specialist's live events
     (JSON in each progress message - see server.ask) into this agent's
@@ -214,12 +234,16 @@ def call(
         "question": question, "step_id": step_id, "at": agent_events.now_iso(),
     })
     ok = False
+    parent_id = cancellation.current_request_id()
+    child_id = uuid4().hex if parent_id else None
+    if parent_id and child_id:
+        cancellation.link(parent_id, child_id)
     try:
         arguments: dict[str, Any] = {
             "question": question,
             "history": [],
             "enabled_extensions": [],
-            "request_id": None,
+            "request_id": child_id,
             "depth": depth + 1,
             "approval_mode": approval_mode,
             "delegated_by": me,
@@ -235,15 +259,15 @@ def call(
             if not status.get("tool_filter_all"):
                 raise PermissionError("The delegated agent cannot block all tools; update and restart it")
         result = asyncio.run(
-            _call_tool(
+            _ask_linked(
                 agent["url"],
-                "ask",
                 arguments,
                 on_progress=_progress_forwarder(sink, step_id),
             )
         )
         ok = True
     finally:
+        cancellation.clear(child_id)
         agent_events.emit({
             "type": "agent_end", "agent_id": agent_id, "agent_label": label,
             "ok": ok, "step_id": step_id, "at": agent_events.now_iso(),

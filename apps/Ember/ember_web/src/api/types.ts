@@ -124,8 +124,15 @@ export interface TurnNotice {
 
 /** Events of a turn ember_api runs, as its /events stream sends them. The
  * token/step ones are ai_agent's own, relayed. */
+export interface TurnPlan {
+  agent_id?: string;
+  agent_label?: string;
+  items: { text: string; status: "pending" | "in_progress" | "done" }[];
+}
+
 export type TurnEvent = { sequence: number } & (
-  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[]; approvals?: PendingApproval[]; questions?: PendingQuestion[]; active_agents?: ActiveAgent[] }
+  | { type: "snapshot"; text: string; activity: string; steps?: ToolStep[]; approvals?: PendingApproval[]; questions?: PendingQuestion[]; active_agents?: ActiveAgent[]; plans?: TurnPlan[] }
+  | ({ type: "plan_update" } & TurnPlan)
   | { type: "token"; text: string }
   | { type: "token_reset" }
   | { type: "step_start"; id: string; tool: string; label?: string; arguments: unknown; agent_id?: string; agent_label?: string }

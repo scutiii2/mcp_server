@@ -16,6 +16,7 @@ import type {
   ToolStep,
   TurnEvent,
   TurnNotice,
+  TurnPlan,
 } from "../api/types";
 import {
   LegacyLocalChats,
@@ -147,6 +148,7 @@ export const useChatStore = defineStore("chat", () => {
   const streaming = ref(""); // the open chat's answer, as it arrives
   const activity = ref(""); // its current tool step, if any
   const liveSteps = ref<ToolStep[]>([]); // the tools it ran so far
+  const livePlans = ref<TurnPlan[]>([]);
   const activeAgents = ref<ActiveAgent[]>([]); // delegated agents working on the answer, outermost first
   const agentText = ref<Record<string, string>>({}); // a delegated agent's streamed text, by stepKey(that agent, delegate step id)
   const liveStepIndex = new Map<string, number>(); // by stepKey: two agents may reuse a step id
@@ -457,11 +459,16 @@ export const useChatStore = defineStore("chat", () => {
         });
         pendingApprovals.value = event.approvals ?? [];
         pendingQuestions.value = event.questions ?? [];
+        livePlans.value = event.plans ?? [];
         activeAgents.value = event.active_agents ?? [];
         agentText.value = {};
         break;
       case "token":
         streaming.value += event.text;
+        break;
+      case "plan_update":
+        livePlans.value = livePlans.value.filter((p) => p.agent_id !== event.agent_id);
+        if (event.items.length) livePlans.value.push({ agent_id: event.agent_id, agent_label: event.agent_label, items: event.items });
         break;
       case "token_reset":
         streaming.value = "";
@@ -542,11 +549,13 @@ export const useChatStore = defineStore("chat", () => {
         }
         break;
       case "final":
+        livePlans.value = [];
         activeAgents.value = [];
         agentText.value = {};
         turnOutcome = event.cancelled ? "stopped" : "answered";
         break;
       case "error":
+        livePlans.value = [];
         activeAgents.value = [];
         agentText.value = {};
         turnOutcome = "failed";
@@ -580,6 +589,7 @@ export const useChatStore = defineStore("chat", () => {
     activity.value = "";
     clockStart.value = null;
     liveSteps.value = [];
+    livePlans.value = [];
     activeAgents.value = [];
     agentText.value = {};
     liveStepIndex.clear();
@@ -1189,6 +1199,7 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   return {
+    livePlans,
     activeId,
     active,
     sortedConversations,

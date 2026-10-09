@@ -87,6 +87,18 @@ beforeEach(() => {
 });
 
 describe("live agent activity", () => {
+  it("replaces per-agent plans and restores them from a reconnect snapshot", async () => {
+    const { chat, emit } = await runningTurn();
+    emit({ type: "plan_update", agent_id: "main", agent_label: "Ember", items: [{ text: "Inspect", status: "pending" }] });
+    emit({ type: "plan_update", agent_id: "calc", agent_label: "Calculator", items: [{ text: "Compute", status: "done" }] });
+    emit({ type: "plan_update", agent_id: "main", items: [] });
+    expect(chat.livePlans.map((p) => p.agent_id)).toEqual(["calc"]);
+    emit({ type: "snapshot", text: "", activity: "", plans: [{ agent_id: "main", items: [{ text: "Restored", status: "in_progress" }] }] });
+    expect(chat.livePlans[0]?.items[0]?.text).toBe("Restored");
+    emit({ type: "final", message: { role: "assistant", content: "done" }, cancelled: false });
+    expect(chat.livePlans).toEqual([]);
+  });
+
   it("tracks who is working from agent_start / agent_end", async () => {
     const { chat, emit } = await runningTurn();
 

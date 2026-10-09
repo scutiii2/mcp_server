@@ -42,7 +42,8 @@ from anthropic import (
     RateLimitError,
 )
 
-from src.agents import agent_routing, ask_user, delegation
+from src.llm.turn_guard import TurnStopped
+from src.agents import agent_routing, ask_user, delegation, plan
 
 from src.core import approvals, questions
 from src.core.chat_history import validate_history
@@ -260,6 +261,12 @@ def _tool_schemas(
                 "display_label": None,
             }
         )
+    schemas.append({
+        "name": plan.TOOL_NAME,
+        "description": plan.tool_description(),
+        "input_schema": plan.tool_parameters(),
+        "display_label": "Plan",
+    })
     return schemas
 
 
@@ -298,6 +305,9 @@ async def run_chat(
     output_tokens = 0
     meter = LiveUsage(on_event)
     options = llm_options.for_provider(PROVIDER_ID)
+    guard = options.turn_guard()
+    checklist = plan.Checklist()
+    stop_message = 'Reached maximum tool-call rounds without a final answer.'
     # The full prompt just sent (all resent history + this round's tool
     # results), not a sum across rounds like total_tokens - this is what
     # the usage bar and the phase-5 auto-trigger need to know how close
@@ -306,103 +316,115 @@ async def run_chat(
     context_tokens = 0
 
     try:
-        for _ in range(options.max_tool_rounds(token_limits.max_tool_rounds(PROVIDER_ID))):
-            if cancellation.is_cancelled(request_id):
-                raise ChatCancelled()
-            token_limits.enforce_context_limit(PROVIDER_ID, [system_prompt, *messages])
-            # Every round is streamed, so text appears as the model writes
-            # it. A round that ends in tool_use may still have streamed some
-            # text first; "token_reset" tells the client to drop it, since
-            # the real answer is the text of the final (non-tool) round.
-            while True:
-                text_parts: list[str] = []
-                try:
-                    async with client.messages.stream(
+        async with guard.timeout():
+            for _ in range(options.max_tool_rounds(token_limits.max_tool_rounds(PROVIDER_ID))):
+                if cancellation.is_cancelled(request_id):
+                    raise ChatCancelled()
+                token_limits.enforce_context_limit(PROVIDER_ID, [system_prompt, *messages])
+                # Every round is streamed, so text appears as the model writes
+                # it. A round that ends in tool_use may still have streamed some
+                # text first; "token_reset" tells the client to drop it, since
+                # the real answer is the text of the final (non-tool) round.
+                while True:
+                    text_parts: list[str] = []
+                    try:
+                        async with client.messages.stream(
+                            model=model_name,
+                            max_tokens=options.max_tokens(token_limits.max_output_tokens(PROVIDER_ID)),
+                            system=system_prompt,
+                            messages=messages,
+                            tools=schemas,
+                            **options.extra_kwargs(model_name),
+                        ) as stream:
+                            async for chunk in stream.text_stream:
+                                text_parts.append(chunk)
+                                if on_event:
+                                    await on_event(step_event("token", text=chunk))
+                                await meter.chars(len(chunk))
+                            response = await stream.get_final_message()
+                        break
+                    except BadRequestError as error:
+                        # A rejected per-agent option fails before any text
+                        # streams; drop it and retry this round once without it.
+                        if text_parts or not options.drop_rejected(str(error), model_name):
+                            raise
+                total_tokens += response.usage.input_tokens + response.usage.output_tokens
+                input_tokens += response.usage.input_tokens
+                output_tokens += response.usage.output_tokens
+                await meter.round_done(response.usage.input_tokens + response.usage.output_tokens)
+                context_tokens = response.usage.input_tokens
+                guard.check_tokens(total_tokens)
+
+                if response.stop_reason != "tool_use":
+                    return ChatResult(
+                        response="".join(text_parts),
+                        tools_used=tools_used,
+                        tool_calls=tool_calls,
+                        provider_id=PROVIDER_ID,
                         model=model_name,
-                        max_tokens=options.max_tokens(token_limits.max_output_tokens(PROVIDER_ID)),
-                        system=system_prompt,
-                        messages=messages,
-                        tools=schemas,
-                        **options.extra_kwargs(model_name),
-                    ) as stream:
-                        async for chunk in stream.text_stream:
-                            text_parts.append(chunk)
-                            if on_event:
-                                await on_event(step_event("token", text=chunk))
-                            await meter.chars(len(chunk))
-                        response = await stream.get_final_message()
-                    break
-                except BadRequestError as error:
-                    # A rejected per-agent option fails before any text
-                    # streams; drop it and retry this round once without it.
-                    if text_parts or not options.drop_rejected(str(error), model_name):
-                        raise
-            total_tokens += response.usage.input_tokens + response.usage.output_tokens
-            input_tokens += response.usage.input_tokens
-            output_tokens += response.usage.output_tokens
-            await meter.round_done(response.usage.input_tokens + response.usage.output_tokens)
-            context_tokens = response.usage.input_tokens
-
-            if response.stop_reason != "tool_use":
-                return ChatResult(
-                    response="".join(text_parts),
-                    tools_used=tools_used,
-                    tool_calls=tool_calls,
-                    provider_id=PROVIDER_ID,
-                    model=model_name,
-                    total_tokens=total_tokens,
-                    context_tokens=context_tokens,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
-
-            if text_parts and on_event:
-                await on_event(step_event("token_reset"))
-            messages.append({"role": "assistant", "content": response.content})
-
-            tool_results: list[dict[str, Any]] = []
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-                tools_used.append(block.name)
-                step_id = block.id
-                if on_event:
-                    await on_event(step_event(
-                        "step_start", id=step_id, tool=block.name, label=labels.get(block.name), arguments=block.input,
-                    ))
-                # ask_user waits for the user's answers, not for an approval: it
-                # is not gated by tool approval and never reaches _dispatch.
-                asked = await questions.handle(block.name, request_id, step_id, block.input, on_event)
-                if asked is not None:
-                    result_text, ok = asked
-                else:
-                    # With approvals on, the user answers before anything runs; a
-                    # refusal is handed to the model as this step's result.
-                    declined = await approvals.review(
-                        request_id, step_id, block.name, labels.get(block.name), block.input, on_event
+                        total_tokens=total_tokens,
+                        context_tokens=context_tokens,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
                     )
-                    if declined is not None:
-                        result_text, ok = declined, False
-                    else:
-                        try:
-                            result_text = await dispatch_with_progress(_dispatch, on_event, step_id, block.name, block.input, depth)
-                            ok = True
-                        except Exception as error:
-                            result_text = f"Tool '{block.name}' failed: {error}"
-                            ok = False
-                if on_event:
-                    await on_event(step_event("step_end", id=step_id, ok=ok, result=result_text))
-                tool_calls.append(ToolCallRecord(name=block.name, arguments=block.input, result=result_text))
-                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text})
 
-            messages.append({"role": "user", "content": tool_results})
+                if text_parts and on_event:
+                    await on_event(step_event("token_reset"))
+                messages.append({"role": "assistant", "content": response.content})
+
+                tool_results: list[dict[str, Any]] = []
+                for block in response.content:
+                    if block.type != "tool_use":
+                        continue
+                    guard.check_call(block.name, block.input)
+                    tools_used.append(block.name)
+                    step_id = block.id
+                    if on_event:
+                        await on_event(step_event(
+                            "step_start", id=step_id, tool=block.name, label=labels.get(block.name), arguments=block.input,
+                        ))
+                    # Local planning and questions do not run external tools or need approval.
+                    asked = await checklist.handle(block.name, block.input, on_event)
+                    if asked is None:
+                        asked = await questions.handle(block.name, request_id, step_id, block.input, on_event)
+                    if asked is not None:
+                        result_text, ok = asked
+                    else:
+                        # With approvals on, the user answers before anything runs; a
+                        # refusal is handed to the model as this step's result.
+                        declined = await approvals.review(
+                            request_id, step_id, block.name, labels.get(block.name), block.input, on_event
+                        )
+                        if declined is not None:
+                            result_text, ok = declined, False
+                        else:
+                            try:
+                                result_text = await dispatch_with_progress(_dispatch, on_event, step_id, block.name, block.input, depth)
+                                ok = True
+                            except Exception as error:
+                                result_text = f"Tool '{block.name}' failed: {error}"
+                                ok = False
+                    if on_event:
+                        await on_event(step_event("step_end", id=step_id, ok=ok, result=result_text))
+                    tool_calls.append(ToolCallRecord(name=block.name, arguments=block.input, result=result_text))
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text})
+
+                messages.append({"role": "user", "content": tool_results})
+    except TurnStopped as error:
+        stop_message = str(error)
+    except TimeoutError:
+        cancellation.cancel(request_id)
+        stop_message = guard.time_message()
     except RateLimitError as error:
         seconds = cooldown.extract_retry_after_seconds(error) or cooldown.DEFAULT_COOLDOWN_SECONDS
         cooldown.start_cooldown(PROVIDER_ID, seconds)
         raise
 
+    if on_event:
+        await on_event(step_event("token_reset"))
+        await on_event(step_event("token", text=stop_message))
     return ChatResult(
-        response="Reached maximum tool-call rounds without a final answer.",
+        response=stop_message,
         tools_used=tools_used,
         tool_calls=tool_calls,
         provider_id=PROVIDER_ID,

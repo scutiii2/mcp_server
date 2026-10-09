@@ -75,6 +75,7 @@ def test_tool_schemas_use_input_schema_shape():
     with patch("src.llm.anthropic_provider.list_tools", return_value=[_fake_tool()]):
         schemas = anthropic_provider._tool_schemas()
 
+    schemas = [s for s in schemas if s["name"] != "update_plan"]
     assert schemas == [
         {
             "name": "get_status_tool",
@@ -90,6 +91,7 @@ def test_tool_schemas_includes_delegate_tool_when_available():
          patch("src.llm.anthropic_provider.delegation.tool_description", return_value="delegate away"):
         schemas = anthropic_provider._tool_schemas(roster=ROSTER)
 
+    schemas = [s for s in schemas if s["name"] != "update_plan"]
     assert schemas == [
         {
             "name": "delegate_to_agent",
@@ -104,6 +106,7 @@ def test_tool_schemas_excludes_delegate_tool_when_unavailable():
     with patch("src.llm.anthropic_provider.list_tools", return_value=[]):
         schemas = anthropic_provider._tool_schemas()
 
+    schemas = [s for s in schemas if s["name"] != "update_plan"]
     assert schemas == []
 
 
