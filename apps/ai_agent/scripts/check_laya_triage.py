@@ -22,9 +22,13 @@ TRIAGE_QUESTIONS = {
         },
     },
     "severity": {
-        "type": "score",
+        "type": "choice",
         "instructions": "How severe is the issue described? Do not assume unstated impact.",
-        "criteria": ["informational", "warning", "critical"],
+        "criteria": {
+            "informational": "Normal operation or an informational event without a problem.",
+            "warning": "An error or degraded operation without evidence of a critical incident.",
+            "critical": "An explicit service outage, data loss, security breach or complete failure.",
+        },
     },
     "needs_investigation": {
         "type": "noul",
