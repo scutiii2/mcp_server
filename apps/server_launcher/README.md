@@ -15,9 +15,10 @@ Tests: `cd server_launcher && .venv_launcher\Scripts\python -m pytest`.
 
 ## What it does
 
-Autodetects every `<project>/run.bat` at the repo root (`mcp_server`,
-`catalog_service`, `ai_agent`) by parsing its venv-folder and
-`py -m <module>` lines, and runs each directly as
+Lists only the project folders you add with the Servers tab's **Add**
+button; nothing is scanned at startup. When you pick a folder, its `run.bat`
+is read for the venv-folder and `py -m <module>` lines (or `npm run <script>`),
+and the project runs directly as
 `<project>/.venv_<id>/Scripts/python.exe -m <module>`. That gives a real
 `Popen` handle with piped stdout, which is what makes the in-app log viewer
 and programmatic stop/restart possible. A missing venv is bootstrapped the
@@ -28,14 +29,12 @@ interactive terminal program, not a server).
 This launcher's own folder is skipped by discovery.
 
 Sidebar tabs:
-- **Servers**: every detected template; flags (port, `set NAME=value` env
+- **Servers**: every added project; flags (port, `set NAME=value` env
   lines, Extra args when the bat forwards `%*`), saved Presets, Start. A taken
   port auto-bumps to the next free one.
   **Add** picks a project folder with a launchable `run.bat` and lists it;
-  **Remove** drops the selected server from the list (a folder added by hand
-  is forgotten, a detected one is hidden; Add its folder to bring it back).
-  Project files are never touched. Both are saved in `.data/servers.json`
-  (gitignored, per machine).
+  **Remove** forgets the selected one. Project files are never touched. The
+  list is saved in `.data/servers.json` (gitignored, per machine).
 - **Agent projects** (a bat that runs `src.supervisor` next to an `agents/`
   folder, i.e. ai_agent): the Servers page shows the agent files read-only
   (id, port, provider and model, entry agent, disabled ones dimmed) instead of
@@ -51,7 +50,7 @@ Sidebar tabs:
   args or preset, remove members, or add a server from the template list.
   Save is refused for a bad port, a port used twice, or an empty group; Cancel
   discards the changes. Agent projects keep their entry-agent port, and a
-  member whose template is no longer detected can only be removed.
+  member whose server is no longer in the list can only be removed.
 
 The sidebar list and the group member list scroll when they overflow; the
 scrollbar appears only then.
@@ -78,15 +77,15 @@ default port, or a port kept via "keep running in background" on close).
 | `src/window.py` | `LauncherWindow`: tabs, sidebar, detail panes, lifecycle |
 | `src/instance.py` | `Instance`: launch, log capture, stop/restart, adoption |
 | `src/processes.py` | Port/PID helpers, venv bootstrap, spawn |
-| `src/discovery.py` | `discover_templates()` from run.bat files |
+| `src/discovery.py` | `discover_templates()` reads the added folders' run.bat |
 | `src/agent_files.py` | Read-only agent files of a supervisor project; entry port, start refusal |
 | `src/group_editor.py` | `GroupEditor`: inline edit/add/remove of a group's members |
-| `src/storage.py` | Load/save groups, presets, added/hidden servers, kept-running handoff |
+| `src/storage.py` | Load/save groups, presets, added servers, kept-running handoff |
 | `src/models.py` | `ServerTemplate`, `AgentInfo`, `Preset`, `GroupMember`, `ServerGroup` |
 | `src/widgets.py`, `src/theme.py` | Rounded hover widgets, member card, panel, scroll frame, dark scrollbar; ember colors and radius scale |
 | `src/config.py` | Paths, run.bat regexes, timing constants |
 | `src/assets/` | Empty-state image |
-| `.data/` | `groups.json`, `extra_roots.json`, `presets.json`, `servers.json`, `kept_running.json` (all gitignored, per-machine) |
+| `.data/` | `groups.json`, `presets.json`, `servers.json`, `kept_running.json` (all gitignored, per-machine) |
 | `tests/` | pytest suite |
 
 No `configs/` or `secrets/`: the launcher has neither.

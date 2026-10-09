@@ -1,47 +1,24 @@
-"""Autodetects launchable servers from each project's run.bat."""
+"""Reads a launchable server from each added project folder's run.bat."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from .config import (
-    _DESCRIPTION_RE, _EXTRA_ROOTS_PATH, _LABEL_RE, _MODULE_RE, _NPM_SCRIPT_RE, _PROJECT_PORT_ENV, _SET_VAR_RE,
-    _SKIP_RE, _VENV_RE, REPO_ROOT, SELF_DIR_NAME,
+    _DESCRIPTION_RE, _LABEL_RE, _MODULE_RE, _NPM_SCRIPT_RE, _PROJECT_PORT_ENV, _SET_VAR_RE, _SKIP_RE, _VENV_RE,
+    SELF_DIR_NAME,
 )
 from .agent_files import AGENTS_DIR_NAME, entry_port, is_agent_project, read_agent_files
 from .models import ServerTemplate
 
 
-def project_roots(base: Path = REPO_ROOT, extra_roots_path: Path = _EXTRA_ROOTS_PATH) -> list[Path]:
-    """This repo's root, then each existing folder listed in extra_roots.json
-    (paths relative to ``base``). A missing or malformed file just means no
-    extra roots - the launcher must still start."""
-    roots = [base]
-    try:
-        raw = json.loads(extra_roots_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return roots
-    if not isinstance(raw, list):
-        return roots
-    for entry in raw:
-        if isinstance(entry, str):
-            root = (base / entry).resolve()
-            if root.is_dir() and root not in roots:
-                roots.append(root)
-    return roots
-
-
-def discover_templates(
-    roots: list[Path] | None = None, projects: list[Path] | None = None, hidden: set[str] | None = None,
-) -> list[ServerTemplate]:
-    """One template per */run.bat in each root, then one per folder in
-    ``projects`` (project folders added by hand). Template keys are folder
-    names, so the first to have a folder name wins; keys in ``hidden`` are left out."""
+def discover_templates(projects: list[Path]) -> list[ServerTemplate]:
+    """One template per project folder in ``projects`` (the folders the user
+    added) that holds a launchable run.bat. Template keys are folder names, so
+    the first to have a folder name wins."""
     templates: list[ServerTemplate] = []
-    seen: set[str] = set(hidden or ())
-    bat_paths = [bat for root in (roots if roots is not None else project_roots()) for bat in sorted(root.glob("*/run.bat"))]
-    bat_paths += [project / "run.bat" for project in projects or () if (project / "run.bat").is_file()]
+    seen: set[str] = set()
+    bat_paths = [project / "run.bat" for project in projects if (project / "run.bat").is_file()]
     for bat_path in bat_paths:
         if bat_path.parent.name == SELF_DIR_NAME:
             continue  # this launcher's own run.bat is not a server to launch

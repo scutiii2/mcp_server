@@ -96,19 +96,18 @@ def _save_presets(presets: dict[str, list[Preset]]) -> None:
 
 
 def _load_servers() -> ServerRegistry:
-    """Added project folders and hidden keys; a missing or malformed file is an empty registry."""
+    """Added project folders; a missing or malformed file is an empty registry."""
     try:
         raw = json.loads(_SERVERS_PATH.read_text(encoding="utf-8"))
         projects = [Path(p) for p in raw.get("projects", []) if isinstance(p, str)]
-        hidden = {k for k in raw.get("hidden", []) if isinstance(k, str)}
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
         return ServerRegistry()
-    return ServerRegistry(projects, hidden)
+    return ServerRegistry(projects)
 
 
 def _save_servers(registry: ServerRegistry) -> None:
     _SERVERS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    raw = {"projects": [str(p) for p in registry.projects], "hidden": sorted(registry.hidden)}
+    raw = {"projects": [str(p) for p in registry.projects]}
     _SERVERS_PATH.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 

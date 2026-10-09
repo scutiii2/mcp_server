@@ -251,18 +251,17 @@ class LauncherWindow:
     # ---- servers tab -----------------------------------------------------
 
     def _discover(self) -> list[ServerTemplate]:
-        return discover_templates(projects=self.registry.projects, hidden=self.registry.hidden)
+        return discover_templates(self.registry.projects)
 
     def _add_server(self) -> None:
-        """Add button: pick a project folder holding a run.bat and list it. A
-        detected server hidden earlier comes back instead of being added twice."""
+        """Add button: pick a project folder, read its run.bat and list it."""
         chosen = filedialog.askdirectory(
             parent=self.root, title="Choose a project folder with a run.bat", initialdir=REPO_ROOT.parent,
         )
         if not chosen:
             return
         folder = Path(chosen).resolve()
-        found = discover_templates(roots=[], projects=[folder])
+        found = discover_templates([folder])
         if not found:
             messagebox.showerror(
                 "Add server", f"{folder.name} has no launchable run.bat (it must start a python module or an npm script).",
@@ -270,39 +269,29 @@ class LauncherWindow:
             )
             return
         key = found[0].key
-        if key in self.registry.hidden:
-            self.registry.hidden.discard(key)
-        elif any(t.key == key for t in self.templates):
+        if any(t.key == key for t in self.templates):
             messagebox.showinfo("Add server", f"{found[0].display_name} is already in the list.", parent=self.root)
             return
-        else:
-            self.registry.projects.append(folder)
+        self.registry.projects.append(folder)
         self._apply_registry(found[0].display_name, "Added")
         self.selected_template = next((t for t in self.templates if t.key == key), None)
         self._render_sidebar()
         self._render_server_detail(self.selected_template)
 
     def _remove_server(self) -> None:
-        """Remove button: drop the selected server from the list. A folder added
-        by hand is forgotten; a detected one is hidden (Add its folder to restore
-        it). The project's files are never touched."""
+        """Remove button: drop the selected server from the list. The project's
+        files are never touched; Add its folder to bring it back."""
         template = self.selected_template
         if template is None:
             self.status.config(text="Select a server to remove.")
             return
-        added = template.working_dir in {p.resolve() for p in self.registry.projects}
-        verb = "Remove" if added else "Hide"
-        hint = "" if added else " Use Add and pick its folder to bring it back."
         if not messagebox.askyesno(
-            f"{verb} server",
-            f"{verb} {template.display_name} from the launcher?\nThe project's files are not touched.{hint}",
+            "Remove server",
+            f"Remove {template.display_name} from the launcher?\nThe project's files are not touched.",
             parent=self.root,
         ):
             return
-        if added:
-            self.registry.projects = [p for p in self.registry.projects if p.resolve() != template.working_dir]
-        else:
-            self.registry.hidden.add(template.key)
+        self.registry.projects = [p for p in self.registry.projects if p.resolve() != template.working_dir]
         self._apply_registry(template.display_name, "Removed")
         self.selected_template = None
         self._render_sidebar()

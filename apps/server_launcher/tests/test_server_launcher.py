@@ -23,78 +23,41 @@ class ExtraProjectRootTests(unittest.TestCase):
             _PY_RUN_BAT.format(label=label, port_var=f"{name.upper()}_PORT", port=port, venv=name), encoding="utf-8"
         )
 
-    def test_projects_in_extra_roots_are_discovered(self) -> None:
+    def test_only_the_given_project_folders_are_discovered(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             main, extra = Path(directory) / "MCPServer", Path(directory) / "PDFMerger"
             self._make_project(main, "mcp_server", "MCP Server", 8010)
+            self._make_project(main, "unlisted", "Unlisted", 8011)
             self._make_project(extra, "pdf_merger", "PDF Merger", 8040)
 
-            templates = discovery.discover_templates(roots=[main, extra])
+            templates = discovery.discover_templates([main / "mcp_server", extra / "pdf_merger", extra / "nope"])
 
         by_key = {t.key: t for t in templates}
         self.assertEqual(set(by_key), {"mcp_server", "pdf_merger"})
         self.assertEqual(by_key["pdf_merger"].display_name, "PDF Merger")
         self.assertEqual(by_key["pdf_merger"].default_port, 8040)
 
-    def test_first_root_wins_when_two_projects_share_a_folder_name(self) -> None:
+    def test_first_folder_wins_when_two_projects_share_a_folder_name(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             main, extra = Path(directory) / "a", Path(directory) / "b"
             self._make_project(main, "tool", "Main tool", 1000)
             self._make_project(extra, "tool", "Other tool", 2000)
 
-            [template] = discovery.discover_templates(roots=[main, extra])
+            [template] = discovery.discover_templates([main / "tool", extra / "tool"])
 
         self.assertEqual(template.display_name, "Main tool")
-
-    def test_extra_roots_file_is_resolved_against_the_repo_root(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory) / "MCPServer"
-            (base.parent / "PDFMerger").mkdir(parents=True)
-            base.mkdir()
-            roots_file = base / "extra_roots.json"
-            roots_file.write_text(json.dumps(["../PDFMerger", "../Missing"]), encoding="utf-8")
-
-            roots = discovery.project_roots(base=base, extra_roots_path=roots_file)
-
-        self.assertEqual(roots, [base, (base.parent / "PDFMerger").resolve()])
-
-    def test_missing_or_invalid_extra_roots_file_means_repo_root_only(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory)
-            bad = base / "extra_roots.json"
-            self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
-            bad.write_text("{not json", encoding="utf-8")
-            self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
-            bad.write_text(json.dumps({"roots": ["x"]}), encoding="utf-8")
-            self.assertEqual(discovery.project_roots(base=base, extra_roots_path=bad), [base])
-
-
-    def test_added_project_folders_are_discovered_and_hidden_keys_left_out(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            main, elsewhere = Path(directory) / "main", Path(directory) / "elsewhere"
-            self._make_project(main, "mcp_server", "MCP Server", 8010)
-            self._make_project(elsewhere, "tool", "Tool", 9000)
-
-            templates = discovery.discover_templates(roots=[main], projects=[elsewhere / "tool"])
-            hidden = discovery.discover_templates(roots=[main], projects=[elsewhere / "tool"], hidden={"mcp_server"})
-            only_project = discovery.discover_templates(roots=[], projects=[elsewhere / "tool", elsewhere / "nope"])
-
-        self.assertEqual([t.key for t in templates], ["mcp_server", "tool"])
-        self.assertEqual([t.key for t in hidden], ["tool"])
-        self.assertEqual([t.key for t in only_project], ["tool"])
 
     def test_server_registry_round_trips_and_a_bad_file_is_empty(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "servers.json"
             with patch.object(storage, "_SERVERS_PATH", path):
-                storage._save_servers(models.ServerRegistry([Path(directory) / "tool"], {"b", "a"}))
+                storage._save_servers(models.ServerRegistry([Path(directory) / "tool"]))
                 loaded = storage._load_servers()
                 path.write_text("{not json", encoding="utf-8")
                 broken = storage._load_servers()
 
         self.assertEqual(loaded.projects, [Path(directory) / "tool"])
-        self.assertEqual(loaded.hidden, {"a", "b"})
-        self.assertEqual((broken.projects, broken.hidden), ([], set()))
+        self.assertEqual(broken.projects, [])
 
 
 _SUPERVISOR_RUN_BAT = "\n".join([
@@ -165,7 +128,7 @@ class AgentFileTests(unittest.TestCase):
             _write_agent(agents, "ember", port=9100, entry=True)
             _write_agent(agents, "server-ops", port=9103)
 
-            (template,) = discovery.discover_templates(roots=[root])
+            (template,) = discovery.discover_templates([root / "ai_agent"])
 
         self.assertEqual(template.key, "ai_agent")
         self.assertEqual([a.id for a in template.agents], ["ember", "server-ops"])
@@ -180,7 +143,7 @@ class AgentFileTests(unittest.TestCase):
                     extra + _PY_RUN_BAT.format(label=name, port_var="X_PORT", port=8010, venv=name),
                     encoding="utf-8",
                 )
-            templates = discovery.discover_templates(roots=[root])
+            templates = discovery.discover_templates([root / "mcp_server", root / "chat_cli"])
 
         self.assertEqual([t.key for t in templates], ["mcp_server"])
 
@@ -191,7 +154,7 @@ class AgentFileTests(unittest.TestCase):
             (root / "mcp_server" / "run.bat").write_text(
                 _PY_RUN_BAT.format(label="MCP", port_var="MCP_PORT", port=8010, venv="mcp"), encoding="utf-8"
             )
-            (template,) = discovery.discover_templates(roots=[root])
+            (template,) = discovery.discover_templates([root / "mcp_server"])
 
         self.assertEqual(template.agents, [])
         self.assertEqual(template.default_port, 8010)
@@ -333,37 +296,27 @@ class GroupTabTests(unittest.TestCase):
         launcher = object.__new__(window.LauncherWindow)
         launcher.registry, launcher.templates, launcher.status = registry, templates, Mock()
         launcher.root = launcher._render_sidebar = launcher._render_server_detail = Mock()
-        launcher._discover = lambda: [t for t in templates if t.key not in registry.hidden]
+        launcher._discover = lambda: [t for t in templates if t.working_dir in {p.resolve() for p in registry.projects}]
         return launcher
 
-    def test_remove_hides_a_detected_server_and_forgets_an_added_one(self) -> None:
-        detected = SimpleNamespace(key="mcp_server", display_name="MCP", working_dir=Path("/repo/mcp_server").resolve())
+    def test_remove_forgets_the_added_folder_and_does_nothing_when_declined_or_unselected(self) -> None:
         added = SimpleNamespace(key="tool", display_name="Tool", working_dir=Path("/elsewhere/tool").resolve())
         registry = models.ServerRegistry([Path("/elsewhere/tool")])
-        launcher = self._server_launcher([detected, added], registry)
-        with patch.object(window, "_save_servers") as save, patch.object(window.messagebox, "askyesno", return_value=True):
-            launcher.selected_template = detected
-            launcher._remove_server()
-            launcher.selected_template = added
-            launcher._remove_server()
-
-        self.assertEqual(registry.hidden, {"mcp_server"})
-        self.assertEqual(registry.projects, [])
-        self.assertEqual(save.call_count, 2)
-        self.assertIsNone(launcher.selected_template)
-
-    def test_remove_does_nothing_when_declined_or_nothing_is_selected(self) -> None:
-        detected = SimpleNamespace(key="mcp_server", display_name="MCP", working_dir=Path("/repo/mcp_server").resolve())
-        registry = models.ServerRegistry()
-        launcher = self._server_launcher([detected], registry)
+        launcher = self._server_launcher([added], registry)
         with patch.object(window, "_save_servers") as save, patch.object(window.messagebox, "askyesno", return_value=False):
             launcher.selected_template = None
             launcher._remove_server()
-            launcher.selected_template = detected
+            launcher.selected_template = added
+            launcher._remove_server()
+        save.assert_not_called()
+        self.assertEqual(registry.projects, [Path("/elsewhere/tool")])
+
+        with patch.object(window, "_save_servers") as save, patch.object(window.messagebox, "askyesno", return_value=True):
             launcher._remove_server()
 
-        self.assertEqual(registry.hidden, set())
-        save.assert_not_called()
+        self.assertEqual(registry.projects, [])
+        save.assert_called_once()
+        self.assertIsNone(launcher.selected_template)
 
     def test_select_group_sets_selection_and_renders_detail(self) -> None:
         """Catches a group click that leaves detail state out of sync."""
