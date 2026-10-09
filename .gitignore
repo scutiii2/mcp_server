@@ -26,12 +26,13 @@ __pycache__/
 /apps/ai_agent/.env
 /apps/ai_agent/configs/*
 !/apps/ai_agent/configs/*.example
+!/apps/ai_agent/configs/README.md
 # ai_agent's real agent definitions (the templates below are committed)
 # and its per-agent token usage log.
 /apps/ai_agent/agents/*
 !/apps/ai_agent/agents/agents.json.template
 !/apps/ai_agent/agents/triage-assistant.json.template
-/apps/ai_agent/data/
+/apps/ai_agent/.data/
 
 # mcp_server's real SMTP-account addresses. The equivalent data lived in the old root-level config.json,
 # which was gitignored outright - these carry the same real deployment
@@ -66,7 +67,6 @@ __pycache__/
 # "logs/") - unanchored, this also matched chat_app's SOURCE blueprint at
 # pages/logs/, silently excluding it from version control entirely.
 /apps/chat_app/logs/
-/apps/ai_agent/data/token_usage.json
 
 zip_versions/
 

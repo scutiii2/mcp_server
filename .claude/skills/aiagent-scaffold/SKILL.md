@@ -21,7 +21,7 @@ file, not code - except a new provider.
 The retired pieces: roles in `prompts.json` and a hand-run
 instance per `AI_AGENT_PROVIDER`/`AI_AGENT_PORT` still work for a lone
 `python -m src.server` run but are not how agents are added now. Don't
-hand-edit `data/agent_registry.json` - it is the runtime registry the children
+hand-edit `.data/agent_registry.json` - it is the runtime registry the children
 write (atomic temp file + `os.replace`); ember_api reads it.
 
 `apps/ai_agent/README.md` ("Agents", "Orchestrator and routing", "Usage log") is
@@ -162,11 +162,12 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
      `agent_usage` per account and owns the caps (chat_app, now retired,
      did the same with its `usage.db`).
      Only the per-request `max_output_tokens`/`max_context_tokens`/`max_tool_rounds` in
-     `configs/config_limits.json` live here.
-     (Startup config is one file per concern - `config_limits.json`
-     (`token_limits`), `config_servers.json` (`servers`),
-     `config_tool_selection.json` (`tool_selection`) - read via
-     `src/core/config_files.py`'s `read_section`.
+     `configs/config_tuning.json` live here.
+     (`config_tuning.json` holds `token_limits` and `tool_selection`;
+     `config_servers.json` holds `servers`. Both are read via
+     `src/core/config_files.py`'s `read_section`. On first read, tuning
+     preserves sections from legacy `config_limits.json` and
+     `config_tool_selection.json`; retained legacy files are backups.
      Credentials live in a single `apps/ai_agent/.env`, seeded from `.env.example`;
      there is no `secrets/` folder.)
    - Wrap rate-limit errors into `cooldown.start_cooldown(PROVIDER_ID, seconds)`
@@ -203,7 +204,7 @@ Don't import another project's `logging_setup` (separate venvs, no shared
 deps) or bolt a one-off logger onto one agent. The one durable output is the
 usage log: each completed `ask` appends its `agent_usage` row (agent id and
 label, provider, gateway, model, tokens, `started_at`/`finished_at`,
-`delegated_by`, `request_id`, `depth`) to `data/usage/YYYY-MM-DD.<agent id>.jsonl`
+`delegated_by`, `request_id`, `depth`) to `.data/usage/YYYY-MM-DD.<agent id>.jsonl`
 (`AI_AGENT_USAGE_DIR` overrides; a write failure warns and never fails the
 turn). A new provider fills those fields from its `ChatResult`; it does not
 write the file itself. ember_api owns usage limits and the usage reports.
@@ -212,7 +213,7 @@ write the file itself. ember_api owns usage limits and the usage reports.
 
 - **Agent file**: start `run.bat`. A bad file, a shared port or a wrong number
   of entry agents stops the supervisor with the file and field named. Then
-  `[<id>]` lines appear and the agent is listed in `data/agent_registry.json`;
+  `[<id>]` lines appear and the agent is listed in `.data/agent_registry.json`;
   `GET /api/agent` on ember_api names the entry agent. Stop with Ctrl+C and
   confirm no child is left running and the entry leaves the registry.
 - **Orchestrator / routing**: ask the entry agent something that fits a

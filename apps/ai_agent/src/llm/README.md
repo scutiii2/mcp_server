@@ -25,7 +25,7 @@ Originally adapted from the retired chat_app's LLM layer.
   parameter the API rejects with a 400 is dropped for the rest of the
   process, with one warning.
 - **`token_limits.py`** - per-request output/context/tool-round caps from
-  `../../configs/config_limits.json`; an agent file can lower its own.
+  `../../configs/config_tuning.json`; an agent file can lower its own.
 - **`llm_config.py`** - loads `../../configs/config_gateways.json`'s
   per-gateway `base_url`/`model` presets; resolves `"{ENV_VAR_NAME}"`
   placeholders against the process environment, never a literal secret.

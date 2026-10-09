@@ -2,7 +2,7 @@
 local model) can shortlist the MCP tools most relevant to the question, so the
 model is offered fewer tool schemas.
 
-Settings come from configs/config_tool_selection.json. Off by default - Laya
+Settings come from configs/config_tuning.json. Off by default - Laya
 needs torch and a one-time ~1.6GB weight download. Shortlisting never blocks a
 turn: any failure (Laya missing, model load error) offers the full tool list.
 """
@@ -16,9 +16,9 @@ from typing import Any, Iterable, Protocol
 import anyio.to_thread
 
 from src.core.catalog import catalog
-from src.core.config_files import TOOL_SELECTION_PATH, read_section
+from src.core.config_files import TUNING_PATH, read_section
 
-_CONFIG_PATH = TOOL_SELECTION_PATH
+_CONFIG_PATH = TUNING_PATH
 _config: dict[str, Any] | None = None
 
 
@@ -28,13 +28,13 @@ def _load_config() -> dict[str, Any]:
         return _config
     raw = read_section(_CONFIG_PATH, "tool_selection", {})
     if not isinstance(raw, dict):
-        raise ValueError("config_tool_selection.json tool_selection must be an object")
+        raise ValueError("config_tuning.json tool_selection must be an object")
     enabled = raw.get("enabled", False)
     if not isinstance(enabled, bool):
-        raise ValueError("config_tool_selection.json tool_selection enabled must be true or false")
+        raise ValueError("config_tuning.json tool_selection enabled must be true or false")
     top_k = raw.get("top_k", 20)
     if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
-        raise ValueError("config_tool_selection.json tool_selection top_k must be a positive integer")
+        raise ValueError("config_tuning.json tool_selection top_k must be a positive integer")
     _config = {"enabled": enabled, "top_k": top_k}
     return _config
 

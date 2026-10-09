@@ -35,5 +35,5 @@ def _isolated_agent_registry(monkeypatch, tmp_path):
 import tempfile  # noqa: E402
 
 # server.ask() appends every turn to the usage log; keep test turns out of
-# the real ai_agent/data/usage/.
+# the real ai_agent/.data/usage/.
 os.environ.setdefault("AI_AGENT_USAGE_DIR", tempfile.mkdtemp(prefix="ai_agent_usage_"))

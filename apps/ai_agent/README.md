@@ -138,10 +138,10 @@ agent file that uses the `openai` provider and the same id.
 ## Running on another machine
 
 ember_api finds agents through the registry. On the same machine it reads
-`data/agent_registry.json`; from another machine it fetches `GET /registry`
+`.data/agent_registry.json`; from another machine it fetches `GET /registry`
 (served by every instance, same JSON, behind `INTERNAL_API_TOKEN` like
 `/mcp`). Both also carry `defined`: every agent in `agents/`, running or not
-(the supervisor writes `data/agent_definitions.json` at start), so the Agents
+(the supervisor writes `.data/agent_definitions.json` at start), so the Agents
 page can show an agent that is stopped or disabled. On the ai_agent machine:
 
 - `AI_AGENT_HOST=0.0.0.0` so it accepts outside connections.
@@ -234,7 +234,7 @@ collide with the orchestrator's, so consumers key on `(agent_id, id)`.
 ## Usage log
 
 Every completed `ask` appends one JSON line to
-`data/usage/YYYY-MM-DD.<agent id>.jsonl` (UTC date; one file per agent per
+`.data/usage/YYYY-MM-DD.<agent id>.jsonl` (UTC date; one file per agent per
 day, so no two processes write the same file). Each line is the `agent_usage`
 row the `ask` result carries, plus `request_id` and `depth`:
 
@@ -247,7 +247,7 @@ row the `ask` result carries, plus `request_id` and `depth`:
 
 Set `AI_AGENT_USAGE_DIR` to write somewhere else. A cancelled turn writes no
 line; only completed asks do. A write failure logs a warning and never fails
-the turn. `data/usage/` is gitignored.
+the turn. `.data/usage/` is gitignored.
 
 ## Tools the user switched off
 

@@ -30,7 +30,7 @@ Entry points stay at the package root; everything else is grouped by concern.
   orchestrators delegate to specialists only. Bounded by a depth cap (2 hops) so a
   delegation chain can't run away. `agent_registry.py`'s
   `register()`/`deregister()` also upsert/remove this instance's own
-  `{id, label, url}` in `../data/agent_registry.json` (runtime state,
+  `{id, label, url}` in `../.data/agent_registry.json` (runtime state,
   gitignored) on startup/clean shutdown; ember_api reads it.
 - `llm/model_tiers.py` - which model strength tiers an agent offers and how a requested tier resolves (clamped to the agent's min_tier/max_tier).
 - `llm/reasoning_effort.py` - the reasoning effort (off/low/medium/high) an orchestrator may request of an agent; a request above the agent's `llm.max_effort` runs at the cap. Applied per turn through `llm_options.bind_effort`.
@@ -77,7 +77,7 @@ to sit alongside the modules that write to them:
 - **`../.env`** - credential values (provider, gateway, role, API keys,
   `INTERNAL_API_TOKEN`), gitignored; `../.env.example` is the committed twin.
 
-- **`../data/`** - state the program writes, gitignored:
+- **`../.data/`** - state the program writes, gitignored:
   `agent_registry.json` (the running agents, see `agents/agent_registry.py`),
   `agent_definitions.json` (every agent file, enabled or not; the supervisor
   writes it at start) and `usage/YYYY-MM-DD.<agent id>.jsonl` (one usage row per finished `ask`,
@@ -86,6 +86,6 @@ to sit alongside the modules that write to them:
 There is no `logs/` folder and no database: output goes to the console
 (the supervisor prefixes each line with `[<agent id>] `), and
 `ask`/`status`/`cancel` keep no state beyond the in-process registries
-above and the registry and usage log in `data/`.
+above and the registry and usage log in `.data/`.
 
 See the root [`../README.md`](../README.md) for setup instructions.

@@ -137,7 +137,7 @@ class Settings:
     # False: an account works without verifying its email, and registration
     # sends no code. Verifying stays available (resend, the verify page).
     require_email_verification: bool = True
-    agents_registry_path: Path = PROJECT_DIR.parent.parent / "ai_agent" / "data" / "agent_registry.json"
+    agents_registry_path: Path = PROJECT_DIR.parent.parent / "ai_agent" / ".data" / "agent_registry.json"
     # ai_agent's GET /registry, for an ai_agent in another directory or on
     # another machine. Wins over agents_registry_path when set.
     agents_registry_url: str | None = None
@@ -165,6 +165,10 @@ def load_settings() -> Settings:
     raw = load_json_config(CONFIGS_DIR / "config_app.json")
     ensure_env_file(ENV_PATH, ENV_PATH.with_name(".env.example"), LEGACY_SECRETS_DIR)
     database_path = _project_path(raw.get("database_path", "data/ember_api.db"))
+    registry_path = raw.get("agents_registry_path", "../../ai_agent/.data/agent_registry.json")
+    # Preserve the standard registry location in configs predating the data-folder rename.
+    if registry_path == "../../ai_agent/data/agent_registry.json":
+        registry_path = "../../ai_agent/.data/agent_registry.json"
     return Settings(
         host=os.getenv("EMBER_API_HOST") or raw.get("host", "127.0.0.1"),
         port=int(os.getenv("EMBER_API_PORT") or raw.get("port", 8030)),
@@ -175,9 +179,7 @@ def load_settings() -> Settings:
         env_path=ENV_PATH,
         default_role=raw.get("default_role") or "Member",
         require_email_verification=bool(raw.get("require_email_verification", True)),
-        agents_registry_path=_project_path(
-            raw.get("agents_registry_path", "../../ai_agent/data/agent_registry.json")
-        ),
+        agents_registry_path=_project_path(registry_path),
         agents_registry_url=raw.get("agents_registry_url") or None,
         mcp_server_url=raw.get("mcp_server_url") or "http://127.0.0.1:8010/mcp",
         security=SecuritySettings.from_config(raw.get("security", {})),

@@ -13,7 +13,7 @@ from src.mcp_client import tool_selection
 
 @pytest.fixture
 def config_path(tmp_path, monkeypatch):
-    path = tmp_path / "config_tool_selection.json"
+    path = tmp_path / "config_tuning.json"
     monkeypatch.setattr(tool_selection, "_CONFIG_PATH", path)
     tool_selection.reset_cache()
     yield path
@@ -40,7 +40,7 @@ def test_missing_file_is_seeded_from_example(config_path):
     # tmp_path has no .example sibling, so point at the real one via the shipped file.
     real = Path(tool_selection.__file__).resolve().parent.parent.parent / "configs"
     config_path.with_name(config_path.name + ".example").write_text(
-        (real / "config_tool_selection.json.example").read_text(encoding="utf-8"), encoding="utf-8"
+        (real / "config_tuning.json.example").read_text(encoding="utf-8"), encoding="utf-8"
     )
     assert tool_selection.is_enabled() is False
     assert config_path.exists()

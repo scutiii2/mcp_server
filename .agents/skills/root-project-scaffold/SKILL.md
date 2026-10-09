@@ -32,7 +32,7 @@ pre-create empty ones "for consistency":
 
 | Path | When to add it |
 |---|---|
-| `data/` | Persists runtime data to disk (mcp_server, ember_api have it; ai_agent only writes its usage JSONL under `data/usage/`; chat_cli keeps nothing, ember_api stores its chats) |
+| `data/` | Persists runtime data to disk (mcp_server, ember_api have it; ai_agent keeps its registry and usage JSONL under `.data/`; chat_cli keeps nothing, ember_api stores its chats) |
 | `docs/` | Documentation beyond the README is substantial enough to split out |
 | `migrations/`, `scripts/` | ember_api only: Alembic revisions and its CLIs (`migrate_db`, `backup_db`, `import_chat_app`). A new project with a database may follow it; otherwise use `src/` |
 | `logs/` | The project writes its own log files (needs a `logging_setup.py`-style module in `src/`, not an ad-hoc log call) |

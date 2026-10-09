@@ -185,7 +185,7 @@ async def ask(
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Ask this agent a question. Runs its own tool-calling loop against
-    mcp_server (up to max_tool_rounds from config_limits.json) before returning a final answer.
+    mcp_server (up to max_tool_rounds from config_tuning.json) before returning a final answer.
     request_id, if given, can be passed to cancel() to stop this turn
     cooperatively before its next round. depth is set only by a
     delegating peer's own delegate_to_agent call (see delegation.py) -
@@ -288,7 +288,7 @@ async def ask(
 
 @mcp.custom_route("/registry", methods=["GET"])
 async def registry(_request: Request) -> JSONResponse:
-    """The agent registry (the same JSON as data/agent_registry.json), so
+    """The agent registry (the same JSON as .data/agent_registry.json), so
     ember_api can find agents by URL instead of by file path, plus `defined`:
     every agent in agents/ (running or not, from agent_definitions.json). Behind the
     internal token like /mcp (see internal_auth.PROTECTED_PATHS)."""

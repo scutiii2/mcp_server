@@ -88,7 +88,7 @@ class Settings:
     # Folders the read-only capabilities look at, relative to apps/mcp_server/.
     # usage_report: ai_agent's usage log. vault: the Obsidian vault.
     # repo_reader: the folder that holds the project repos.
-    usage_dir: Path = Path(_env("MCP_USAGE_DIR", "../ai_agent/data/usage"))
+    usage_dir: Path = Path(_env("MCP_USAGE_DIR", "../ai_agent/.data/usage"))
     vault_dir: Path = Path(_env("MCP_VAULT_DIR", "../../../../Brain"))
     workspace_dir: Path = Path(_env("MCP_WORKSPACE_DIR", "../../../.."))
 

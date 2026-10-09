@@ -2,9 +2,9 @@
 
 Deferred items — not scheduled, revisit when the trigger condition below is met.
 
-## Merge the small configs; clean up legacy secrets (deferred 2026-09-21, rewritten 2026-10-07)
+## Legacy config cleanup (ai_agent tuning merge completed 2026-10-09)
 
-**Context**: Secrets are done: every project (ai_agent, mcp_server, ember_api) now has one `.env` plus `.env.example`. What is left is the legacy cleanup and merging the small config files. Catalog item descriptions (older item) were already built and were removed from this file on 2026-10-07.
+**Context**: Secrets are done: every project (ai_agent, mcp_server, ember_api) now has one `.env` plus `.env.example`. The ai_agent tuning merge is done (2026-10-09); the legacy config checks below remain. Catalog item descriptions (older item) were already built and were removed from this file on 2026-10-07.
 
 **Secrets (done, checked 2026-10-07)**
 - **mcp_server**: `.secrets/secret_*.env` merged into `apps/mcp_server/.env`; `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). The 4 legacy `.secrets/secret_*.env` files were deleted 2026-10-07; the empty `.secrets/` folder is left.
@@ -14,19 +14,11 @@ Deferred items — not scheduled, revisit when the trigger condition below is me
 
 **Configs: stay in `configs/`; which ones can merge**
 - **mcp_server** (decided 2026-10-05: no merge): `config_capabilities.json` (42 B) and `config_extensions.json` stay separate. Merging needs wrapper keys and rewrites of the loaders and savers in `app_config.py` plus four test files, and `config_extensions.json` is deleted by the extensions-proxy item below, leaving `config_capabilities.json` alone. Both savers are synchronous read-modify-write, so one process cannot interleave them (no shared writer needed). `config_email.json` (example only, gitignored by path unlike the other two) looks dead: `Settings.email_config_path` has no caller in `src/`, `load_email_config` is used only by tests, and nothing loads the `EmailConfig` that `services/email.py` takes. Check `watcher` / `email` before removing it.
-- **ai_agent**: `config_limits.json` and `config_tool_selection.json` are both small runtime tuning (token limits, tool shortlist) and can merge into one file (name to decide, for example `config_tuning.json`).
-- **Keep separate**: `apps/ai_agent/configs/config_gateways.json` (3 KB, provider endpoints), `prompts.json` (persona text), `config_servers.json` (the MCP server list, reworked by the extensions item below), and `apps/ai_agent/data/agent_registry.json` (runtime registry, lives in `data/`, not a config).
+- **ai_agent (done 2026-10-09)**: `config_tuning.json` now holds `token_limits` and `tool_selection`. On first read it preserves existing sections from the old files, which remain as backups; both loaders use the merged file. The combined `.example`, tests, README and scaffold skill are updated.
+- **Keep separate**: `apps/ai_agent/configs/config_gateways.json` (3 KB, provider endpoints), `prompts.json` (persona text), `config_servers.json` (the MCP server list, reworked by the extensions item below), and `apps/ai_agent/.data/agent_registry.json` (runtime registry, lives in `.data/`, not a config).
 - **Nothing to merge**: ember_api already has the single `configs/config_app.json`; `apps/chat_cli/configs/` has one file. `apps/catalog_service/configs/` not checked.
 
-**Work involved (configs only)**:
-- Merge `config_limits.json` and `config_tool_selection.json` in ai_agent: update the loaders, the `.example` twins, `.gitignore` entries and any first-run copy step.
-- Update `apps/ember_api/src/services/config_validation.py` per-file checkers, tests, READMEs and the scaffold skills. Edit the skills under `.agents/skills/`, then sync to `.claude/skills/`; the pre-commit check enforces the match.
-
-**Trade-off**: one typo in a merged file can break several settings at once.
-
-**Why not built now**: small gain; not approved.
-
-**Revisit when**: user wants this built. Only the ai_agent config merge is left.
+**Remaining**: check `watcher` / `email` before removing any legacy mcp_server config. No further ai_agent config merge is planned.
 
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 
@@ -107,7 +99,7 @@ Ideas from the "what more can we add" discussion; none designed yet.
 - **Compose file**: one `docker-compose.yml` with a fixed `container_name` per app (these are the names `/server start <name>` uses).
 - **Networking**: configs hard-code `127.0.0.1` (`ai_agent/configs/config_servers.json`, `ember_api/configs/config_app.json` `mcp_server_url`, `mcp_server/configs/config_extensions.json`). In containers these become service names such as `http://mcp_server:8010/mcp`, and each service must bind `0.0.0.0`. Use env overrides or a docker config variant.
 - **Docker socket**: mount `/var/run/docker.sock` into the `mcp_server` container. This gives it root-equivalent control of the host. Dev PC needs Docker Desktop with WSL2.
-- **Data**: volumes for `ember_api/data` and `ai_agent/data`.
+- **Data**: volumes for `ember_api/data` and `ai_agent/.data`.
 - **Self-stop**: `/server stop mcp-server` kills the server running the tool; expected, but it cannot be restarted from the same chat.
 - `server_launcher` stays as the local-process manager; containers are a second way to run the apps.
 

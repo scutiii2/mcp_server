@@ -2,7 +2,7 @@
 local JSONL copy of it so usage is visible even for callers that never go
 through ember (chat_cli, direct MCP calls, tests).
 
-One file per agent per UTC day (data/usage/YYYY-MM-DD.<agent id>.jsonl),
+One file per agent per UTC day (.data/usage/YYYY-MM-DD.<agent id>.jsonl),
 so two agent processes never write the same file. Writing never fails a
 turn: an error is logged and the turn carries on.
 """
@@ -20,7 +20,7 @@ import anyio.to_thread
 
 from src.llm.base_provider import ChatResult
 
-_DEFAULT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "usage"
+_DEFAULT_DIR = Path(__file__).resolve().parent.parent.parent / ".data" / "usage"
 _log = logging.getLogger(__name__)
 # Serializes appends within this process. A threading lock, not an
 # asyncio one: writes run on worker threads, and tests use many loops.

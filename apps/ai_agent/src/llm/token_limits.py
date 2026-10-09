@@ -12,9 +12,9 @@ import math
 from typing import Any
 
 from src.core.catalog import catalog
-from src.core.config_files import LIMITS_PATH, read_section
+from src.core.config_files import TUNING_PATH, read_section
 
-_CONFIG_PATH = LIMITS_PATH
+_CONFIG_PATH = TUNING_PATH
 _REQUIRED_FIELDS = (
     "max_output_tokens",
     "max_context_tokens",
@@ -33,36 +33,36 @@ def _load_config() -> dict[str, dict[str, Any]]:
         return _config
     raw = read_section(_CONFIG_PATH, "token_limits")
     if not isinstance(raw, dict) or not isinstance(raw.get("default"), dict):
-        raise ValueError("config_limits.json token_limits must contain a 'default' object")
+        raise ValueError("config_tuning.json token_limits must contain a 'default' object")
     default = raw["default"]
     for field in _REQUIRED_FIELDS:
         if not isinstance(default.get(field), int) or default[field] <= 0:
-            raise ValueError(f"config_limits.json token_limits default.{field} must be a positive integer")
+            raise ValueError(f"config_tuning.json token_limits default.{field} must be a positive integer")
     parsed: dict[str, dict[str, Any]] = {"default": dict(default)}
     for provider_id, override in raw.items():
         if provider_id == "default":
             continue
         if not isinstance(override, dict):
-            raise ValueError(f"config_limits.json token_limits {provider_id} must be an object")
+            raise ValueError(f"config_tuning.json token_limits {provider_id} must be an object")
         parsed[provider_id] = dict(override)
         for field, value in override.items():
             if field == "gateways":
                 if not isinstance(value, dict):
-                    raise ValueError(f"config_limits.json token_limits {provider_id}.gateways must be an object")
+                    raise ValueError(f"config_tuning.json token_limits {provider_id}.gateways must be an object")
                 for gateway_id, gateway_override in value.items():
                     if not isinstance(gateway_override, dict):
                         raise ValueError(
-                            f"config_limits.json token_limits {provider_id}.gateways.{gateway_id} must be an object"
+                            f"config_tuning.json token_limits {provider_id}.gateways.{gateway_id} must be an object"
                         )
                     for gateway_field, gateway_value in gateway_override.items():
                         if gateway_field not in _REQUIRED_FIELDS or not isinstance(gateway_value, int) or gateway_value <= 0:
                             raise ValueError(
-                                f"config_limits.json token_limits {provider_id}.gateways.{gateway_id}.{gateway_field} "
+                                f"config_tuning.json token_limits {provider_id}.gateways.{gateway_id}.{gateway_field} "
                                 "must be a positive known integer"
                             )
                 continue
             if field not in _REQUIRED_FIELDS or not isinstance(value, int) or value <= 0:
-                raise ValueError(f"config_limits.json token_limits {provider_id}.{field} must be a positive known integer")
+                raise ValueError(f"config_tuning.json token_limits {provider_id}.{field} must be a positive known integer")
     _config = parsed
     return parsed
 

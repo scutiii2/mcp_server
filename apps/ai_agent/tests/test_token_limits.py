@@ -11,7 +11,7 @@ from src.llm import token_limits
 
 @pytest.fixture
 def configured_limits(tmp_path, monkeypatch):
-    config_path = tmp_path / "config_limits.json"
+    config_path = tmp_path / "config_tuning.json"
     config_path.write_text(json.dumps({"token_limits": {
         "default": {
             "max_output_tokens": 20,

@@ -176,7 +176,7 @@ send it too (`identity_headers()` in `services/mcp_session.py` does).
   permissions go in `services/permissions.py`; the Administrator role gets
   them on the next start.
 - Agent discovery is ember_api's `GET /api/agent` (the entry agent; reads ai_agent's
-  `data/agent_registry.json` through `AgentDirectory`: `entry`, `orchestrator`,
+  `.data/agent_registry.json` through `AgentDirectory`: `entry`, `orchestrator`,
   `focus`); don't add a tool for it. **There is no agent picker**: every turn goes
   to the entry agent, a browser-sent `agent_id` is ignored, and the entry agent
   delegates to specialists itself. The chat store tracks who is working from

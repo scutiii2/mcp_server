@@ -1,8 +1,8 @@
 """Sibling ai_agent instances this instance can delegate a sub-question to
 (see delegation.py) - read once at import time from the runtime registry
-data/agent_registry.json, then kept live by register()/deregister()
+.data/agent_registry.json, then kept live by register()/deregister()
 below. The file is written by the running instances, never edited by hand,
-so it lives under data/ (gitignored runtime state) rather than configs/.
+so it lives under .data/ (gitignored runtime state) rather than configs/.
 Includes this instance's own entry, but an agent never lists itself in
 its roster (see agent_routing.specialists()): orchestrators delegate to
 specialists only.
@@ -22,7 +22,7 @@ from typing import Any, Iterable
 from src.agents import agent_spec
 from src.llm import model_tiers
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "agent_registry.json"
+_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / ".data" / "agent_registry.json"
 
 # "claude"/"openai" rather than this instance's own AI_AGENT_PROVIDER
 # ("anthropic"/"openai" - see agent_config.py) for the id prefix: the
@@ -178,7 +178,7 @@ def register(
     def _upsert(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [a for a in agents if a["id"] != agent_id] + [record]
 
-    # data/ is gitignored runtime state, so a fresh checkout has no such
+    # .data/ is gitignored runtime state, so a fresh checkout has no such
     # folder yet.
     try:
         _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
