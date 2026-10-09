@@ -3,18 +3,18 @@
   "azure_endpoint": "{AZURE_OPENAI_ENDPOINT}",
   "api_version": "{AZURE_OPENAI_API_VERSION}",
   "api_key": "{AZURE_OPENAI_API_KEY}",
-  "model": "{AZURE_OPENAI_DEPLOYMENT}",
+  "model": "{AZURE_OPENAI_DEPLOYMENT_DEFAULT}",
   "models": {
     "light": {
-      "id": "{AZURE_OPENAI_DEPLOYMENT}",
+      "id": "{AZURE_OPENAI_DEPLOYMENT_LIGHT}",
       "use_for": "lookups, extraction, short rewrites, simple formatting"
     },
     "standard": {
-      "id": "{AZURE_OPENAI_DEPLOYMENT}",
+      "id": "{AZURE_OPENAI_DEPLOYMENT_STANDARD}",
       "use_for": "most tasks"
     },
     "heavy": {
-      "id": "{AZURE_OPENAI_DEPLOYMENT}",
+      "id": "{AZURE_OPENAI_DEPLOYMENT_HEAVY}",
       "use_for": "multi-step reasoning, hard code or data analysis"
     }
   }

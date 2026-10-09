@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+.venv/
+.venv_*/
+*.egg-info/
+.pytest_cache/
+.vscode
+*.zip
+
+# Real config/secrets and runtime state. Only the .example twins are tracked.
+config_*.json
+/.env
+/pdf_merger/.data/
+/pdf_merger/.logs/
+
+# Claude Code scratch (worktrees, SDD workspaces, local launch config).
+.claude/*
+!.claude/skills/
+.worktrees/
+.superpowers/

@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.venv/
+.venv_*/
+*.egg-info/
+.pytest_cache/
+.vscode
+*.zip
+node_modules/
+dist/
+
+# Real config/secrets and runtime state. Only the .example twins are tracked.
+config_*.json
+/.env
+/video_downloader/.data/
+/video_downloader/.logs/
+
+# Claude Code scratch.
+.claude/*
+!.claude/skills/
+.worktrees/
+.superpowers/

@@ -1,0 +1,13 @@
+{
+  "file_ttl_hours": 6,
+  "sweep_interval_minutes": 10,
+  "download_link_minutes": 60,
+  "limits": {
+    "max_file_mb": 500,
+    "max_duration_minutes": 120,
+    "max_session_mb": 2048,
+    "max_concurrent_downloads": 2,
+    "max_queued_downloads": 8,
+    "job_timeout_minutes": 30
+  }
+}
