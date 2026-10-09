@@ -11,6 +11,8 @@ __pycache__/
 
 # server_launcher's local settings and runtime state - per-machine, not source.
 /apps/server_launcher/.data/
+/apps/server_launcher/build/
+/apps/server_launcher/dist/
 
 # mcp_server's real config/secrets/runtime-state. config_*.json holds
 # structure (committed) with ${VAR} placeholders for anything sensitive;

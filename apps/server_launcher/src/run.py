@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tkinter as tk
 
+from .storage import _migrate_legacy_data
 from .window import LauncherWindow
 
 
@@ -30,6 +31,7 @@ def _hide_console_window() -> None:
 
 def main() -> None:
     _hide_console_window()
+    _migrate_legacy_data()
     root = tk.Tk()
     LauncherWindow(root)
     root.mainloop()

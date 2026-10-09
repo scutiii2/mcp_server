@@ -8,6 +8,8 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Only needed to build the standalone exe (build.bat installs it).
+build = ["pyinstaller>=6.0"]
 
 [tool.setuptools]
 packages = ["src"]
