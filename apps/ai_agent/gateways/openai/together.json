@@ -1,0 +1,20 @@
+{
+  "label": "Together AI",
+  "base_url": "https://api.together.xyz/v1",
+  "api_key": "{TOGETHER_API_KEY}",
+  "model": "meta-llama/Llama-4-Maverick",
+  "models": {
+    "light": {
+      "id": "meta-llama/Llama-4-Maverick",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "meta-llama/Llama-4-Maverick",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "meta-llama/Llama-4-Maverick",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

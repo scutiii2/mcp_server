@@ -1,0 +1,19 @@
+{
+  "label": "Claude",
+  "api_key": "{CLAUDE_API_KEY}",
+  "model": "claude-sonnet-5",
+  "models": {
+    "light": {
+      "id": "claude-haiku-5-5",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "claude-sonnet-5-5",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "claude-opus-5-5",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

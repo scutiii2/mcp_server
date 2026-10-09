@@ -1,6 +1,6 @@
 # gateways/
 
-One local gateway preset per `gateways/<provider>/<gateway>.json`, beside
+One tracked gateway preset per `gateways/<provider>/<gateway>.json`, beside
 `agents/`. The directory name is the provider protocol (`anthropic` or
 `openai`); the filename without `.json` is the gateway id used by an agent's
 `llm.gateway`. A gateway supporting both protocols can have a file in each
@@ -31,15 +31,17 @@ On first read, `src/llm/llm_config.py` splits an existing
 `../configs/config_gateways.json` into individual files, preserving custom
 gateways and leaving existing individual files untouched. It validates the
 complete legacy configuration before publishing files, and retains the old
-file as an unused rollback backup. Existing installations keep their gateway
-set; migration does not add the example gateways.
+file as an unused rollback backup. Individual files take precedence over the old configuration; legacy-only
+gateways are added without overwriting the tracked presets.
 
-With no legacy configuration, first read seeds the committed `.json.example`
-files into local `.json` files. Initialization writes `.initialized` only
-after all files are published. Keep this marker: it prevents later startups
-from rereading the backup or recreating gateways you deliberately removed.
-To add a gateway after initialization, create its `.json` file or copy an
-example yourself. Local `.json` files and the marker are gitignored.
+Gateway JSON files are committed directly and read without seeding or
+`.example` copies. Adding, removing, or editing a preset produces a Git
+change. Keep literal credentials out of these files.
+
+Initialization writes the ignored `.initialized` marker only after legacy
+migration completes. Keep this marker: it prevents later startups from
+rereading the backup or recreating gateways you deliberately removed.
+Temporary migration files are also ignored.
 
 The gateway loader and admin catalog share these definitions and cache them
 for the process lifetime. Restart the agent processes and supervisor after

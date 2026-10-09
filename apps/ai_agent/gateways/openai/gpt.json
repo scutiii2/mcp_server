@@ -1,0 +1,19 @@
+{
+  "label": "GPT",
+  "api_key": "{GPT_API_KEY}",
+  "model": "gpt-5.6-sol",
+  "models": {
+    "light": {
+      "id": "gpt-5.6-sol",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "gpt-5.6-sol",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "gpt-5.6-sol",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

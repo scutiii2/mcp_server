@@ -100,14 +100,14 @@ def test_individual_gateway_files_keep_provider_scopes_and_resolve_env(gateway_f
     assert llm_config.gateway("openai", "shared") == {"model": "gpt"}
 
 
-def test_fresh_checkout_seeds_examples_without_replacing_existing_files(gateway_files):
+def test_tracked_files_load_without_seeding_examples(gateway_files):
     directory, _ = gateway_files
-    _write(directory / "anthropic" / "claude.json.example", {"model": "default"})
     _write(directory / "anthropic" / "claude.json", {"model": "custom"})
-    _write(directory / "openai" / "gpt.json.example", {"model": "gpt"})
+    _write(directory / "openai" / "gpt.json.example", {"model": "obsolete"})
     assert llm_config.gateway("anthropic", "claude")["model"] == "custom"
-    assert llm_config.gateway("openai", "gpt")["model"] == "gpt"
-    assert (directory / "openai" / "gpt.json").is_file()
+    with pytest.raises(KeyError):
+        llm_config.gateway("openai", "gpt")
+    assert not (directory / "openai" / "gpt.json").exists()
 
 
 def test_legacy_migration_preserves_custom_settings_and_backup(gateway_files):

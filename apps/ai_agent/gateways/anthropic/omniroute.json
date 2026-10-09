@@ -1,0 +1,20 @@
+{
+  "label": "OmniRoute",
+  "base_url": "{OMNIROUTE_BASE_URL}",
+  "api_key": "{OMNIROUTE_API_KEY}",
+  "model": "auto/best-free",
+  "models": {
+    "light": {
+      "id": "auto/best-free",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "auto/best-free",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "auto/best-free",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

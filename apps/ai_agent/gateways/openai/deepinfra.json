@@ -1,0 +1,20 @@
+{
+  "label": "DeepInfra",
+  "base_url": "https://api.deepinfra.com/v1/openai",
+  "api_key": "{DEEPINFRA_API_KEY}",
+  "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+  "models": {
+    "light": {
+      "id": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

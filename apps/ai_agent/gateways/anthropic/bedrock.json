@@ -1,0 +1,21 @@
+{
+  "label": "AWS Bedrock",
+  "aws_region": "{AWS_REGION}",
+  "aws_access_key_id": "{AWS_ACCESS_KEY_ID}",
+  "aws_secret_access_key": "{AWS_SECRET_ACCESS_KEY}",
+  "model": "anthropic.claude-sonnet-5-v1:0",
+  "models": {
+    "light": {
+      "id": "anthropic.claude-sonnet-5-v1:0",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "anthropic.claude-sonnet-5-v1:0",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "anthropic.claude-sonnet-5-v1:0",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

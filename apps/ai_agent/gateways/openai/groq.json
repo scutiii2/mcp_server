@@ -1,0 +1,20 @@
+{
+  "label": "Groq",
+  "base_url": "https://api.groq.com/openai/v1",
+  "api_key": "{GROQ_API_KEY}",
+  "model": "llama-3.3-70b-versatile",
+  "models": {
+    "light": {
+      "id": "llama-3.3-70b-versatile",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "llama-3.3-70b-versatile",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "llama-3.3-70b-versatile",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

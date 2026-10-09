@@ -71,7 +71,7 @@ the default model.
 - New catalog function `llm_config.tiers(provider, gateway_name) ->
   dict[str, TierModel]` (`TierModel`: `id`, `use_for`), in ladder order. A
   gateway without `models` returns `{}`.
-- `gateways/anthropic/claude.json.example` (the seed copy) gets the same
+- `gateways/anthropic/claude.json` (the tracked preset) gets the same
   addition. Other gateways keep one `model` and gain `models` only when wanted.
   Gateways without `models` offer no choice.
 
@@ -182,7 +182,7 @@ caps in the repo's agent files (starting point, adjustable):
 
 (`ember` itself and Laya triage get no caps.)
 
-**Note:** `agents/*.json` are gitignored; the caps are applied to each machine's local files by hand, and only `agents/agents.json.template` shows the keys. Applying the caps and the gateway `models` to the local files is done after this branch merges (adding `llm.max_tier`/`llm.min_tier` earlier would make an older `agent_spec` reject the unknown field).
+**Note:** `agents/*.json` and `gateways/<provider>/*.json` are tracked directly. Agent caps and gateway models are edited in those files; the admin UI writes the same agent definitions.
 
 ## Data flow
 
@@ -227,7 +227,7 @@ caps in the repo's agent files (starting point, adjustable):
 
 ## Files touched
 
-`gateways/<provider>/<gateway>.json`(+`.example`), `src/llm/llm_config.py`,
+`gateways/<provider>/<gateway>.json`, `src/llm/llm_config.py`,
 `src/llm/model_tiers.py` (new), `src/agents/agent_spec.py`,
 `src/agents/agent_registry.py`, `src/agents/agent_routing.py`,
 `src/agents/delegation.py`, `src/agents/agent_config.py`, `src/server.py`,

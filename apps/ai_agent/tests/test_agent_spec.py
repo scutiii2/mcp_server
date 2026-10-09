@@ -306,3 +306,8 @@ def test_url_is_normalised(tmp_path, given, expected):
 def test_bad_url_is_refused(tmp_path, bad):
     with pytest.raises(AgentSpecError, match="url"):
         agent_spec.load_file(_write(tmp_path, "calc", {"port": 9103, "url": bad, "llm": {"provider": "anthropic"}}))
+
+
+def test_repository_agent_roster_is_valid():
+    specs = agent_spec.load_dir(agent_spec.AGENTS_DIR)
+    assert any(spec.entry and spec.enabled for spec in specs)

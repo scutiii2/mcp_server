@@ -32,8 +32,8 @@ and an MCP *client* (to `mcp_server`, via a persistent connection - see
 
 Each ai_agent instance is defined by one file, `agents/<id>.json`. The file
 name stem is the agent id (`^[a-z0-9][a-z0-9-]{0,62}$`). `agents/` is
-gitignored except `agents/agents.json.template`, a committed starting point:
-copy it to `agents/<id>.json` and edit. Nothing is seeded automatically. Unknown keys are an error, so
+tracked in Git, including edits made through the admin UI. Create or copy an
+agent file and edit it directly. Unknown keys are an error, so
 typos are caught at startup.
 
 ```json
@@ -97,7 +97,7 @@ An orchestrator file adds the routing block:
 }
 ```
 
-`agents/agents.json.template` shows every field. Name an agent for its job,
+The example above shows the available fields. Name an agent for its job,
 not its model (`ember`, `server-ops`, `reviewer`). Exactly one enabled file
 sets `entry: true`. Add
 more specialists as extra files.
@@ -158,11 +158,11 @@ Then set `agents_registry_url` in `apps/Ember/ember_api/configs/config_app.json`
 
 ## Laya-only Triage Assistant
 
-`agents/triage-assistant.json.template` defines a local specialist that uses
-only Laya's typed decisions. Copy it to `agents/triage-assistant.json`, choose
-an unused port (the template uses 9110), and install the existing optional
-dependency with `pip install -e ".[laya]"`. Restart the supervisor to include
-it. It appears in Ember's Agents cards and the orchestrator's specialist
+`agents/triage-assistant.json` defines a local specialist that uses
+only Laya's typed decisions. It is part of the tracked roster. Install the
+optional dependency with `pip install -e ".[laya]"`, or set `enabled: false`
+if this installation should not run it. Restart the supervisor after changing
+the roster. It appears in Ember's Agents cards and the orchestrator's specialist
 roster, with provider `laya`, gateway `local`, and model
 `convaiinnovations/laya`. No cloud model or API key is used for its inference.
 
@@ -372,9 +372,10 @@ Agent files give each instance its own id, so any number of same-provider agents
 
 ## Project layout
 
-- **`gateways/<provider>/*.json`** - individual gateway presets, gitignored;
-  seeded from committed `.json.example` files or migrated from the old
-  combined config. See [`gateways/README.md`](gateways/README.md).
+- **`agents/*.json`** - tracked agent definitions; admin UI changes appear
+  in Git. See [`agents/README.md`](agents/README.md).
+- **`gateways/<provider>/*.json`** - tracked individual gateway presets,
+  read directly. See [`gateways/README.md`](gateways/README.md).
 - **`configs/*.json`** - structured settings, mostly gitignored. See
   [`configs/README.md`](configs/README.md).
 - **`.env`** - the one credentials file (provider, gateway, role, API

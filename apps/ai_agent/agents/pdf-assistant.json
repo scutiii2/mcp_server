@@ -1,0 +1,9 @@
+{
+  "label": "PDF Assistant",
+  "port": 9104,
+  "llm": { "provider": "anthropic", "gateway": "openrouter", "temperature": 0.0, "max_tool_rounds": 6, "max_tier": "standard", "max_effort": "low" },
+  "persona": "You are a document assistant that merges PDFs and images into one PDF.",
+  "instructions": "List the uploaded files first and use their exact file IDs; never invent an ID. Inspect files when page counts or order matter. Confirm the order with the user before merging, then give the download link and the page count of the result.",
+  "focus": "PDF and image files: list uploads, inspect pages, merge or combine into one PDF, download link.",
+  "tools": { "allow": ["pdf_merger__*"], "deny": [] }
+}

@@ -1,0 +1,20 @@
+{
+  "label": "Google Vertex",
+  "project_id": "{GOOGLE_CLOUD_PROJECT}",
+  "region": "{GOOGLE_CLOUD_REGION}",
+  "model": "claude-sonnet-5@20260101",
+  "models": {
+    "light": {
+      "id": "claude-sonnet-5@20260101",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "claude-sonnet-5@20260101",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "claude-sonnet-5@20260101",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

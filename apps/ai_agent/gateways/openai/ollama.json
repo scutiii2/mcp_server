@@ -1,18 +1,19 @@
 {
-  "label": "Claude",
-  "api_key": "{CLAUDE_API_KEY}",
-  "model": "claude-sonnet-5",
+  "label": "Ollama",
+  "base_url": "{OLLAMA_BASE_URL}",
+  "api_key": "{OLLAMA_API_KEY}",
+  "model": "qwen3.5:4b",
   "models": {
     "light": {
-      "id": "claude-haiku-4-5",
+      "id": "qwen3.5:4b",
       "use_for": "lookups, extraction, short rewrites, simple formatting"
     },
     "standard": {
-      "id": "claude-sonnet-5",
+      "id": "qwen3.5:4b",
       "use_for": "most tasks"
     },
     "heavy": {
-      "id": "claude-opus-5",
+      "id": "qwen3.5:4b",
       "use_for": "multi-step reasoning, hard code or data analysis"
     }
   }

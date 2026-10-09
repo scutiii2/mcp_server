@@ -27,14 +27,10 @@ __pycache__/
 /apps/ai_agent/configs/*
 !/apps/ai_agent/configs/*.example
 !/apps/ai_agent/configs/README.md
-# ai_agent's real agent definitions (the templates below are committed)
-# and its per-agent token usage log.
-/apps/ai_agent/agents/*
-!/apps/ai_agent/agents/agents.json.template
-!/apps/ai_agent/agents/triage-assistant.json.template
+# Agent definitions and gateway presets are tracked; runtime state is not.
 /apps/ai_agent/.data/
-# Local gateway presets and migration state; examples remain tracked.
-/apps/ai_agent/gateways/*/*.json
+# Temporary agent writes and gateway migration state remain local.
+/apps/ai_agent/agents/*.tmp
 /apps/ai_agent/gateways/.initialized
 /apps/ai_agent/gateways/*/*.tmp
 /apps/ai_agent/gateways/*.tmp

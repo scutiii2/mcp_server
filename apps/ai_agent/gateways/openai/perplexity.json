@@ -1,0 +1,20 @@
+{
+  "label": "Perplexity",
+  "base_url": "https://api.perplexity.ai",
+  "api_key": "{PERPLEXITY_API_KEY}",
+  "model": "sonar",
+  "models": {
+    "light": {
+      "id": "sonar",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "sonar",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "sonar",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

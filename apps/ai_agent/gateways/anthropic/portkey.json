@@ -1,0 +1,20 @@
+{
+  "label": "Portkey",
+  "base_url": "https://api.portkey.ai/v1",
+  "api_key": "{PORTKEY_API_KEY}",
+  "model": "claude-sonnet-5",
+  "models": {
+    "light": {
+      "id": "claude-sonnet-5",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "claude-sonnet-5",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "claude-sonnet-5",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

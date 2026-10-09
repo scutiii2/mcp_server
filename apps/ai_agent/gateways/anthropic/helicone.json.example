@@ -1,6 +1,0 @@
-{
-  "label": "Helicone",
-  "base_url": "https://anthropic.helicone.ai",
-  "api_key": "{CLAUDE_API_KEY}",
-  "model": "claude-sonnet-5"
-}

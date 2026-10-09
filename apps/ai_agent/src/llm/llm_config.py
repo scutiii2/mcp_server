@@ -33,7 +33,7 @@ _config: dict[str, Any] | None = None
 def load_gateways() -> dict[str, Any]:
     """Raw gateway blocks grouped by provider, cached until process restart.
 
-    First read migrates legacy settings or seeds committed examples. Existing
+    First read migrates legacy settings. Existing
     individual files win; the legacy file remains an unused rollback backup.
     """
     global _config
@@ -74,9 +74,6 @@ def _initialize() -> None:
                 if not _NAME.fullmatch(name) or not isinstance(block, dict):
                     raise ValueError(f"{_LEGACY_PATH}: invalid gateway {provider}.{name}")
                 pending[GATEWAYS_DIR / provider / f"{name}.json"] = block
-    else:
-        for example in sorted(GATEWAYS_DIR.glob("*/*.json.example")):
-            pending[example.with_suffix("")] = _read_block(example)
     for path, block in pending.items():
         _publish_missing(path, json.dumps(block, indent=2) + "\n")
     # Mark only a completed initialization, so interrupted migrations can retry.

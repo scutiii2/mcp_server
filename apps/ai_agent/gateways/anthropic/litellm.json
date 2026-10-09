@@ -1,0 +1,20 @@
+{
+  "label": "LiteLLM",
+  "base_url": "{LITELLM_BASE_URL}",
+  "api_key": "{LITELLM_API_KEY}",
+  "model": "claude-sonnet-5",
+  "models": {
+    "light": {
+      "id": "claude-sonnet-5",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "claude-sonnet-5",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "claude-sonnet-5",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

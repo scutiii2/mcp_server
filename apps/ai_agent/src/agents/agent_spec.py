@@ -332,7 +332,7 @@ def load_dir(directory: Path) -> list[AgentSpec]:
     enabled agents need distinct ports and exactly one entry agent."""
     paths = sorted(directory.glob("*.json"))
     if not paths:
-        raise AgentSpecError(f"{directory}: no agent files found (copy agents.json.template to <id>.json)")
+        raise AgentSpecError(f"{directory}: no agent files found (create <id>.json)")
     specs = [load_file(path) for path in paths]
     enabled = [s for s in specs if s.enabled]
 

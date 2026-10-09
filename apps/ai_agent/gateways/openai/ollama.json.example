@@ -1,6 +1,0 @@
-{
-  "label": "Ollama",
-  "base_url": "{OLLAMA_BASE_URL}",
-  "api_key": "{OLLAMA_API_KEY}",
-  "model": "llama3.1"
-}

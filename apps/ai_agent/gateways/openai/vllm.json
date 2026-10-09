@@ -1,0 +1,20 @@
+{
+  "label": "vLLM",
+  "base_url": "{VLLM_BASE_URL}",
+  "api_key": "{VLLM_API_KEY}",
+  "model": "{VLLM_MODEL}",
+  "models": {
+    "light": {
+      "id": "{VLLM_MODEL}",
+      "use_for": "lookups, extraction, short rewrites, simple formatting"
+    },
+    "standard": {
+      "id": "{VLLM_MODEL}",
+      "use_for": "most tasks"
+    },
+    "heavy": {
+      "id": "{VLLM_MODEL}",
+      "use_for": "multi-step reasoning, hard code or data analysis"
+    }
+  }
+}

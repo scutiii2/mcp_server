@@ -1,6 +1,6 @@
 {
   "label": "Triage Assistant",
-  "port": 9110,
+  "port": 9111,
   "enabled": true,
   "entry": false,
   "llm": {
@@ -10,6 +10,11 @@
   },
   "persona": "",
   "focus": "Classify short technical issue descriptions and log excerpts by category, severity and whether investigation is needed. Returns fixed classifications and uncertainty; does not explain causes, fetch logs, call tools or perform actions.",
-  "tools": { "allow": [], "deny": ["*"] },
+  "tools": {
+    "allow": [],
+    "deny": [
+      "*"
+    ]
+  },
   "orchestrator": false
 }

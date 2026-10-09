@@ -53,7 +53,7 @@ block before designing the interface from scratch.
    ```
 
    Fields (full table in the README): `label`, `port` (required, unique across
-   enabled files; the template uses 9103), `enabled`,
+   enabled files), `enabled`,
    `entry`, `llm.{provider,gateway,model,temperature,reasoning_effort,max_tokens,max_tool_rounds}`,
    `persona`, `focus`, `tools.{allow,deny}` (fnmatch on tool names without the
    `main__` prefix; empty allow = all; deny wins), `orchestrator`,
@@ -61,8 +61,9 @@ block before designing the interface from scratch.
 2. Write `focus` as one concrete line (what it is good at, with the nouns a
    question would use). The orchestrator's roster and Laya routing use it; a
    specialist without one is invisible to `"auto"` and to the shortlist.
-3. Keep `agents/agents.json.template` in step when a new field is added
-   (`agents/*.json` is gitignored; only the template is committed).
+3. Agent definitions in `agents/*.json` and presets in
+   `gateways/<provider>/*.json` are tracked directly. Keep the README field
+   table in step when adding a field; admin UI edits produce Git changes.
 4. Restart `run.bat` (the supervisor validates **every** file before starting
    anything and names the file and field on error; it also refuses a shared port
    among enabled agents or anything but exactly one `entry: true`).
@@ -100,12 +101,12 @@ Use this only when the model family genuinely isn't reachable through
 the existing Anthropic Messages API or OpenAI-compatible Responses API
 shims — most "new" model needs are actually a new **gateway block**
 under the existing `openai` or `anthropic` provider in
-`config_gateways.json` (see below), not a new provider module. Check that
+`gateways/<provider>/<gateway>.json` (see below), not a new provider module. Check that
 first: `openrouter`, `bedrock`, `vertex`, `litellm`, `groq`,
 `fireworks`, `together`, `ollama`, `vllm`, `azure`, `deepinfra`,
 `perplexity` are already wired as gateways, each just a `base_url`/
-`api_key` swap in `configs/config_gateways.json` under the matching
-provider — no new module needed for any of those.
+`api_key` configuration in `gateways/<provider>/<gateway>.json`
+under the matching provider — no new module needed for any of those.
 
 If you do need a real new provider (a structurally different API, e.g.
 Google's native SDK rather than an OpenAI-compatible endpoint):
@@ -114,7 +115,7 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
    (the smaller of the two — `openai_provider.py`'s Responses API loop
    is more involved). It must define, at minimum:
    - A `_<Name>(BaseProvider)` class with `PROVIDER_ID`, `DEFAULT_MODEL_FALLBACK`,
-     and `has_api_key()` (check whatever `config_gateways.json`/env shape this
+     and `has_api_key()` (check whatever gateway JSON/env shape this
      provider's secrets take — see `llm_config.gateway()`).
    - Module-level `PROVIDER_ID`, `DEFAULT_MODEL`, `VENDOR_LABEL`,
      `has_api_key`, `is_available` (mirrors every existing provider
@@ -183,9 +184,11 @@ Google's native SDK rather than an OpenAI-compatible endpoint):
    This is the single point that makes `AI_AGENT_PROVIDER=<provider_id>`
    a valid value — an id missing from this dict fails loudly at startup
    with the list of valid alternatives, by design (no silent fallback).
-3. Add a top-level block for it in both `configs/config_gateways.json` and
-   `.json.example`, following the existing shape — a default gateway
-   (e.g. `"<provider_id>": {"<default_gateway>": {"label": ..., "api_key": "{<PROVIDER>_API_KEY}", "model": ...}}}`).
+3. Add a tracked `gateways/<provider_id>/<default_gateway>.json` with the
+   gateway block directly: `{ "label": "...",
+   "api_key": "{<PROVIDER>_API_KEY}", "model": "..." }`. No wrapper keys or
+   example copies are needed. Existing individual files take precedence
+   over legacy combined gateway configuration during migration.
 4. Add the real secret var name to `.env.example`
    (and your own gitignored `.env`) — whatever `{PLACEHOLDER}`
    you referenced in step 3.

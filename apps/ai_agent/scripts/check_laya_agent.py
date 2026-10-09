@@ -22,7 +22,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 async def check() -> None:
     with tempfile.TemporaryDirectory(prefix="laya-triage-check-") as directory:
         spec_path = Path(directory) / "triage-assistant.json"
-        spec_path.write_text((PROJECT / "agents" / "triage-assistant.json.template").read_text(encoding="utf-8"), encoding="utf-8")
+        spec_path.write_text((PROJECT / "agents" / "triage-assistant.json").read_text(encoding="utf-8"), encoding="utf-8")
         env = {key: value for key, value in os.environ.items()
                if key not in ("AI_AGENT_PROVIDER", "AI_AGENT_MODEL", "AI_AGENT_GATEWAY", "CLAUDE_API_KEY", "GPT_API_KEY")}
         env["AI_AGENT_FILE"] = str(spec_path)
