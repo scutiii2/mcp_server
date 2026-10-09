@@ -39,7 +39,7 @@ from typing import Any, Sequence
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, BadRequestError, OpenAI, RateLimitError
 
-from src.agents import agent_routing, agent_spec, ask_user, delegation
+from src.agents import agent_routing, ask_user, delegation
 
 from src.core import approvals, questions
 
@@ -220,13 +220,12 @@ def _tool_schemas(
     ]
     # Only an orchestrator has a roster, so only it can delegate.
     if roster:
-        allow_auto = agent_spec.current().routing.allow_auto
         schemas.append(
             {
                 "type": "function",
                 "name": delegation.TOOL_NAME,
-                "description": delegation.tool_description(list(roster), allow_auto),
-                "parameters": delegation.tool_parameters(list(roster), allow_auto),
+                "description": delegation.tool_description(list(roster)),
+                "parameters": delegation.tool_parameters(list(roster)),
                 "display_label": None,
             }
         )
@@ -287,7 +286,7 @@ async def run_chat(
     client = _get_client()
     model_name = model or DEFAULT_MODEL
     history = token_limits.trim_history_to_fit(history, PROVIDER_ID, _limit_gateway())
-    roster = await agent_routing.roster_for(question)
+    roster = await agent_routing.roster_for()
     messages: list[Any] = [{"role": "system", "content": system_prompt_for(caveman, roster)}, *history]
     messages.append({"role": "user", "content": question})
     tools_used: list[str] = []

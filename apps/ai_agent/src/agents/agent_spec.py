@@ -5,7 +5,7 @@ Pure on purpose (stdlib only, no provider imports): server.py loads the
 file and calls apply_to_environ() BEFORE importing agent_config, because
 the provider modules resolve their gateway/default model from env vars at
 their own import time (see agent_config.py's long comment). Everything
-read later - persona, tool scope, LLM knobs, orchestrator/routing - comes
+read later - persona, tool scope, LLM knobs, orchestrator - comes
 from current().
 
 The supervisor (supervisor.py) validates every file with load_dir() before
@@ -39,10 +39,9 @@ _DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt", "laya": "local"}
 _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-_TOP_KEYS = {"label", "port", "url", "enabled", "entry", "llm", "identity", "persona", "instructions", "focus", "tools", "orchestrator", "routing"}
+_TOP_KEYS = {"label", "port", "url", "enabled", "entry", "llm", "identity", "persona", "instructions", "focus", "tools", "orchestrator"}
 _LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "min_tier", "max_tier", "max_effort"}
 _TOOLS_KEYS = {"allow", "deny"}
-_ROUTING_KEYS = {"laya", "top_k", "allow_auto", "min_score"}
 
 
 def default_gateway(provider: str) -> str | None:
@@ -91,13 +90,6 @@ class ToolScope:
         return [glob for glob in (*self.allow, *self.deny) if not any(fnmatchcase(n, glob) for n in names)]
 
 
-@dataclass(frozen=True)
-class RoutingSpec:
-    laya: bool = False
-    top_k: int = 3
-    allow_auto: bool = False
-    min_score: float | None = None
-
 
 @dataclass(frozen=True)
 class TierInfo:
@@ -136,7 +128,6 @@ class AgentSpec:
     focus: str = ""
     tools: ToolScope = field(default_factory=ToolScope)
     orchestrator: bool = False
-    routing: RoutingSpec = field(default_factory=RoutingSpec)
     # Address peers and ember_api reach this agent at (what it registers);
     # None = derived from the host and port it listens on.
     url: str | None = None
@@ -297,16 +288,6 @@ def load_file(path: Path) -> AgentSpec:
             raise check.fail("llm.model", "Laya triage only supports convaiinnovations/laya")
         if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds", "min_tier", "max_tier", "max_effort")) or effort != "off":
             raise check.fail("llm", "Laya triage does not accept generation or tool-loop settings")
-    if "routing" in data and not orchestrator:
-        raise check.fail("routing", "is only allowed when orchestrator is true")
-    routing_data = check.section(data, "routing")
-    check.keys(routing_data, _ROUTING_KEYS, "routing.")
-    routing = RoutingSpec(
-        laya=check.boolean(routing_data, "laya", False, "routing."),
-        top_k=check.integer(routing_data, "top_k", 3, 1, 50, "routing."),
-        allow_auto=check.boolean(routing_data, "allow_auto", False, "routing."),
-        min_score=check.number(routing_data, "min_score", -1.0, 1.0, "routing."),
-    )
 
     return AgentSpec(
         id=agent_id,
@@ -322,7 +303,6 @@ def load_file(path: Path) -> AgentSpec:
         focus=check.text(data, "focus", "") or "",
         tools=tools,
         orchestrator=orchestrator,
-        routing=routing,
         source=path,
     )
 

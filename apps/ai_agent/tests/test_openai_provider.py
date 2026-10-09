@@ -120,7 +120,7 @@ def test_tool_schemas_includes_delegate_tool_when_available():
             "type": "function",
             "name": "delegate_to_agent",
             "description": "delegate away",
-            "parameters": openai_provider.delegation.tool_parameters(ROSTER, False),
+            "parameters": openai_provider.delegation.tool_parameters(ROSTER),
             "display_label": None,
         }
     ]

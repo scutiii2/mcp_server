@@ -33,7 +33,6 @@ def test_load_file_applies_defaults(tmp_path):
     assert spec.tools == ToolScope()
     assert spec.llm.provider == "anthropic"
     assert spec.llm.reasoning_effort == "off"
-    assert spec.routing.top_k == 3
     assert spec.source == tmp_path / "calc.json"
 
 
@@ -76,7 +75,6 @@ def test_load_file_reads_every_field(tmp_path):
         "focus": "Everything.",
         "tools": {"allow": ["calc_*"], "deny": ["calc_secret"]},
         "orchestrator": True,
-        "routing": {"laya": True, "top_k": 2, "allow_auto": True, "min_score": 0.3},
     }
     spec = agent_spec.load_file(_write(tmp_path, "orchestrator", data))
 
@@ -85,8 +83,6 @@ def test_load_file_reads_every_field(tmp_path):
     assert spec.llm.temperature == 0.2
     assert spec.llm.max_tool_rounds == 8
     assert spec.tools == ToolScope(allow=("calc_*",), deny=("calc_secret",))
-    assert spec.routing.laya is True
-    assert spec.routing.min_score == 0.3
 
 
 @pytest.mark.parametrize(
@@ -104,18 +100,13 @@ def test_load_file_reads_every_field(tmp_path):
         ({"port": 9100, "llm": {"provider": "anthropic", "reasoning_effort": "max"}}, "llm.reasoning_effort"),
         ({"port": 9100, "llm": {"provider": "anthropic", "max_tokens": 0}}, "llm.max_tokens"),
         ({"port": 9100, "llm": {"provider": "anthropic"}, "tools": {"allow": "calc_*"}}, "tools.allow"),
-        ({"port": 9100, "llm": {"provider": "anthropic"}, "routing": {"laya": True}}, "routing"),
-        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"top_k": 0}}, "routing.top_k"),
-        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"min_score": 2}}, "routing.min_score"),
+        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"laya": True}}, "routing"),
         ({"port": 9100, "llm": {"provider": "anthropic"}, "entry": "yes"}, "entry"),
         ({"port": None, "llm": {"provider": "anthropic"}}, "port"),
         ({"port": 9100, "llm": {"provider": "anthropic"}, "enabled": None}, "enabled"),
         ({"port": 9100, "llm": {"provider": "anthropic"}, "entry": None}, "entry"),
         ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": None}, "orchestrator"),
         ({"port": 9100, "llm": {"provider": "anthropic", "reasoning_effort": None}}, "llm.reasoning_effort"),
-        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"top_k": None}}, "routing.top_k"),
-        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"laya": None}}, "routing.laya"),
-        ({"port": 9100, "llm": {"provider": "anthropic"}, "orchestrator": True, "routing": {"allow_auto": None}}, "routing.allow_auto"),
     ],
 )
 def test_load_file_rejects_bad_fields(tmp_path, data, message):

@@ -42,7 +42,7 @@ from anthropic import (
     RateLimitError,
 )
 
-from src.agents import agent_routing, agent_spec, ask_user, delegation
+from src.agents import agent_routing, ask_user, delegation
 
 from src.core import approvals, questions
 from src.core.chat_history import validate_history
@@ -243,12 +243,11 @@ def _tool_schemas(
     ]
     # Only an orchestrator has a roster, so only it can delegate.
     if roster:
-        allow_auto = agent_spec.current().routing.allow_auto
         schemas.append(
             {
                 "name": delegation.TOOL_NAME,
-                "description": delegation.tool_description(list(roster), allow_auto),
-                "input_schema": delegation.tool_parameters(list(roster), allow_auto),
+                "description": delegation.tool_description(list(roster)),
+                "input_schema": delegation.tool_parameters(list(roster)),
                 "display_label": None,
             }
         )
@@ -277,7 +276,7 @@ async def run_chat(
 ) -> ChatResult:
     history = validate_history(history)
     client = _get_client()
-    roster = await agent_routing.roster_for(question)
+    roster = await agent_routing.roster_for()
     system_prompt = system_prompt_for(caveman, roster)
     model_name = model or DEFAULT_MODEL
     history = token_limits.trim_history_to_fit(history, PROVIDER_ID)

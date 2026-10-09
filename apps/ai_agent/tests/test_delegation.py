@@ -24,33 +24,15 @@ def _configure_agents(monkeypatch, agents):
 
 
 def test_tool_parameters_enumerate_the_roster():
-    params = delegation.tool_parameters(ROSTER, allow_auto=False)
+    params = delegation.tool_parameters(ROSTER)
     assert params["properties"]["agent_id"]["enum"] == ["calc", "explainer"]
     assert params["required"] == ["agent_id", "question"]
 
 
-def test_tool_parameters_offer_auto_when_allowed():
-    params = delegation.tool_parameters(ROSTER, allow_auto=True)
-    assert params["properties"]["agent_id"]["enum"] == ["calc", "explainer", "auto"]
-
-
-def test_tool_description_lists_the_roster_and_auto():
-    description = delegation.tool_description(ROSTER, allow_auto=True)
+def test_tool_description_lists_the_roster():
+    description = delegation.tool_description(ROSTER)
     assert "calc (Calculator): Arithmetic." in description
-    assert '"auto"' in description
-
-
-def test_call_resolves_auto_through_routing(monkeypatch):
-    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://c/mcp"}])
-    monkeypatch.setattr("src.agents.delegation.agent_routing.resolve_auto", lambda question: ROSTER[0])
-
-    async def _fake_call_tool(url, name, arguments, on_progress=None):
-        return {"response": "4"}
-
-    with patch("src.agents.delegation._call_tool", side_effect=_fake_call_tool):
-        result = delegation.call("auto", "2+2?", depth=0)
-
-    assert result == "Delegated to calc (Calculator).\n\n4"
+    assert '"auto"' not in description
 
 
 def test_call_raises_at_the_depth_cap_without_any_network_call(monkeypatch):
@@ -213,22 +195,22 @@ TIERED = [
 
 
 def test_tool_parameters_have_no_model_tier_when_nobody_offers_a_choice():
-    assert "model_tier" not in delegation.tool_parameters(ROSTER, allow_auto=False)["properties"]
-    assert "model_tier" not in delegation.tool_parameters(TIERED[1:], allow_auto=False)["properties"]
+    assert "model_tier" not in delegation.tool_parameters(ROSTER)["properties"]
+    assert "model_tier" not in delegation.tool_parameters(TIERED[1:])["properties"]
 
 
 def test_tool_parameters_offer_model_tier_when_a_specialist_has_a_choice():
-    prop = delegation.tool_parameters(TIERED, allow_auto=False)["properties"]["model_tier"]
+    prop = delegation.tool_parameters(TIERED)["properties"]["model_tier"]
     assert prop["enum"] == ["light", "standard", "heavy", "extreme"]
 
 
 def test_tool_description_lists_tiers_only_for_specialists_with_a_choice():
-    description = delegation.tool_description(TIERED, allow_auto=False)
+    description = delegation.tool_description(TIERED)
     assert "calc (Calculator): Arithmetic. [model_tier: light = quick sums, heavy = proofs]" in description
     assert "fixed (Fixed): One model." in description
     assert "fixed (Fixed): One model. [" not in description
     assert "lightest model_tier" in description
-    assert "lightest model_tier" not in delegation.tool_description(ROSTER, allow_auto=False)
+    assert "lightest model_tier" not in delegation.tool_description(ROSTER)
 
 
 def test_call_passes_model_tier_to_ask(monkeypatch):
@@ -298,20 +280,3 @@ def test_attachment_references_survive_rewritten_delegation_and_reset(monkeypatc
         delegation.reset_attachments(token)
     assert delegation._attachments.get() == ""
 
-
-def test_attachment_metadata_does_not_change_auto_routing(monkeypatch):
-    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://calc/mcp"}])
-    routed = []
-    def route(question):
-        routed.append(question)
-        return ROSTER[0]
-    monkeypatch.setattr(delegation.agent_routing, "resolve_auto", route)
-    token = delegation._attachments.set("scan.pdf: [PDFMerger file_id: f_scan]")
-    async def fake(url, name, arguments, on_progress=None):
-        return {"response": "4"}
-    try:
-        with patch("src.agents.delegation._call_tool", side_effect=fake):
-            delegation.call("auto", "2+2?", 0)
-        assert routed == ["2+2?"]
-    finally:
-        delegation.reset_attachments(token)
