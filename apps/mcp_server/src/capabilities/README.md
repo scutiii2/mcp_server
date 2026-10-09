@@ -1,9 +1,18 @@
 # src/capabilities/
 
-One folder per tool, self-contained. One capability exists today - see
-its own README for what it does:
+One folder per tool, self-contained. See each folder's own README for
+what it does:
 
-- `server_manager/` - start/stop/restart/list managed apps (`/server ...`).
+- `server_manager/` - start/stop/restart/list Docker containers and app logs (`/server ...`).
+- `generator/` - passwords, passphrases, PINs, TOTP (`/gen ...`).
+- `web_research/` - web search and page read through Tavily (`/web ...`).
+- `firecrawl/` - scrape and crawl through Firecrawl (`/scrape ...`).
+- `usage_report/` - token usage per agent, model or day (`/usage ...`).
+- `vault/` - read-only notes vault (`/vault ...`).
+- `repo_reader/` - read-only git history and code (`/repo ...`).
+- `tables/` - questions about an attached CSV or Excel file (`/data ...`).
+- `watchers/` - background up/down watchers with one email (`/watch ...`).
+- `email/` - shared outgoing email and threaded replies (`/email ...`).
 
 ## Shape of a capability
 
@@ -137,24 +146,21 @@ widget set.
 
 A tool call's return value is a Pydantic model, and FastMCP serializes
 that to indented JSON as the wire content - readable to a machine, not
-to a person reading chat_app's Chat page or Capabilities page. Neither
-page shows that raw JSON: `chat_app/src/services/command_formatting.py`'s
-`format_command_result()` renders it as Markdown instead, and both
-surfaces that can invoke a tool directly use it -
+to a person reading ember's chat or tool pages. Neither shows that raw
+JSON: ember_web's `src/utils/toolResultFormat.ts` (`formatToolResult()`, a
+port of the retired chat_app formatter) renders
+it as Markdown instead, and both surfaces that show a tool's result use it -
 
-- **Chat's "/" commands** (`services/commands.py`'s `execute_command()`)
-  - the reply bubble is the Markdown rendering, not the JSON (see
-  `Chat/script.js`'s `renderMarkdown()`).
-- **Capabilities page's "try it" console** (`Capabilities/__index__.py`'s
-  `try_tool()`/`read_resource_route()`) - the same Markdown rendering is
-  the default view of a result, with a "Show raw JSON" toggle underneath
-  for the untouched wire response.
+- **Chat's "/" commands** - the reply bubble is the Markdown rendering, not
+  the JSON.
+- **The tool "try it" form** (`ToolRunForm.vue`, `ToolResultPanel.vue`) - the
+  same Markdown rendering is the default view of a result.
 
 An LLM-routed chat turn (no leading `/`) never goes through this at all -
 the model gets the raw JSON tool result and writes its own prose reply,
 which is the right place for that path to differ.
 
-`format_command_result()` is generic - it walks whatever JSON object
+`formatToolResult()` is generic - it walks whatever JSON object
 comes back rather than needing a per-tool-name entry (see its docstring
 for why: `tool_titles.py`/`tool_capabilities.py` have both gone stale
 that way before). It understands two result shapes, and every contract
@@ -183,9 +189,9 @@ readout worth a fixed layout; shape 1 is the default, and is enough for
 nearly everything - a good `message` field is most of what makes a
 result read well.
 
-## Form inputs (how Chat renders a tool parameter)
+## Form inputs (how the command form renders a tool parameter)
 
-Chat's command form builds each input from the tool's JSON schema, so a
+The command form (`ToolRunForm.vue` in ember_web) builds each input from the tool's JSON schema, so a
 tool param controls its widget with plain schema keys plus two hints set
 through `Field(json_schema_extra={...})`:
 
@@ -195,12 +201,12 @@ through `Field(json_schema_extra={...})`:
 - `options_url` - a plain path on this server (e.g.
   `"/system/check-capabilities"`) returning the select's options as a JSON
   list of strings, a list of `{"value", "label"}`, or a `{value: label}`
-  object. Chat fetches it when it loads the command list. If it fails the
+  object. The form fetches it through ember_api's `GET /api/commands/options`. If it fails the
   form falls back to a text box.
 - `depends_on` - another param whose value fills a `{placeholder}` in
   `options_url` (e.g. `"/apps/options?kind={kind}"`);
   the select stays disabled until that param has a value and reloads when
-  it changes. Chat fetches these through `/chat/api/param-options`, which
+  it changes. The form fetches these through `GET /api/commands/options`, which
   only accepts an `options_url` some command really declares.
 - `sets` - `{other_param: option_field}`: choosing an option also fills
   those params from extra fields on the option (so a job's `job_count`
@@ -308,7 +314,7 @@ through `Field(json_schema_extra={...})`:
    `services/capability_meta.py`'s docstring for exactly who reads `META`
    next: the loader (`services/capability_loader.py`), every `@command` in this capability's
    `tool.py` (no `capability=` argument needed on any of them - they
-   infer it from here automatically), and chat_app's Capabilities page,
+   infer it from here automatically), and ember_admin's Capabilities page,
    via `GET /capabilities`'s `label`/`tools` fields.
 
 8. Create the folder with its `__init__.py` (`META`) and `tool.py`. Press

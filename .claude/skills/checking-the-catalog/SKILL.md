@@ -10,8 +10,8 @@ description: Use when about to write a new reusable function, class, config load
 `catalog_service` (repo root, port 8020) indexes every `@catalog`-tagged
 function/class across mcp_server and ai_agent — two
 independent codebases with **no cross-imports between them** (a
-documented architectural invariant, see
-`docs/System_Overview_Documentation.md`). So checking the catalog never
+documented architectural invariant:
+projects never import each other). So checking the catalog never
 lets you *import* someone else's code — it lets you find an
 already-solved interface/behavior before you re-derive one from
 scratch or by grepping around for prior art.

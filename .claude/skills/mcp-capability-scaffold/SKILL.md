@@ -5,7 +5,7 @@ description: Scaffold a new capability (tool) in mcp_server, or add a tool/comma
 
 # mcp_server capability scaffolding
 
-`mcp_server` (this repo's MCP tool server — see [apps/mcp_server/src/capabilities/README.md](../../../apps/mcp_server/src/capabilities/README.md), the source of truth this skill compresses) organizes every tool as a self-contained folder under `apps/mcp_server/src/capabilities/`. The folder shape itself is domain-agnostic — the one capability in this checkout today is `server_manager` (start/stop/restart/list managed apps), but nothing about `contract.py`/`domain.py`/`tool.py`/`capability_meta` requires that; the same shape fits a capability wrapping any external system, API, or piece of internal logic. Follow it exactly regardless of domain — a new capability that deviates breaks the generic `format_command_result()` rendering, the `/capabilities` toggle, and the `/<id> help` command, all of which walk every capability the same way rather than special-casing by name.
+`mcp_server` (this repo's MCP tool server — see [apps/mcp_server/src/capabilities/README.md](../../../apps/mcp_server/src/capabilities/README.md), the source of truth this skill compresses) organizes every tool as a self-contained folder under `apps/mcp_server/src/capabilities/`. The folder shape itself is domain-agnostic — this checkout has `server_manager` (start/stop/restart/list managed apps), `generator`, `web_research`, `usage_report`, `vault`, `repo_reader`, `firecrawl`, `tables`, `watchers` and `email`, but nothing about `contract.py`/`domain.py`/`tool.py`/`capability_meta` requires that; the same shape fits a capability wrapping any external system, API, or piece of internal logic. Follow it exactly regardless of domain — a new capability that deviates breaks the generic `formatToolResult()` (ember_web) rendering, the `/capabilities` toggle, and the `/<id> help` command, all of which walk every capability the same way rather than special-casing by name.
 
 Read one existing capability end to end first if you haven't seen this codebase's pattern before — `server_manager/` is the reference; its `tool.py` shows every mechanical convention below in one file, even though its domain (managed apps) won't match what you're building.
 
@@ -24,7 +24,7 @@ the interface from scratch.
 
 Every capability is `contract.py` + `domain.py` + `tool.py`, each with one job:
 
-1. **`contract.py`** — Pydantic request/result models only. No logic. Every result model should end with a `message: str` field (human-readable summary) — that's what `format_command_result()` pulls out and shows first in chat_app. Scalar fields render as bullet lines; a `list[dict]`/`list[BaseModel]` field with uniform keys renders as a Markdown table. Only reach for the alternate `status` + `report: str` shape when the output is genuinely a fixed-width status readout — it's the exception, not the default.
+1. **`contract.py`** — Pydantic request/result models only. No logic. Every result model should end with a `message: str` field (human-readable summary) — that's what `formatToolResult()` (ember_web) pulls out and shows first in ember (`apps/Ember/ember_web/src/utils/toolResultFormat.ts`). Scalar fields render as bullet lines; a `list[dict]`/`list[BaseModel]` field with uniform keys renders as a Markdown table. Only reach for the alternate `status` + `report: str` shape when the output is genuinely a fixed-width status readout — it's the exception, not the default.
 2. **`domain.py`** — the real logic, typed in and typed out. Imports **only** `src/services/*` (ssh, email, app_config, pending_requests) — never `mcp`, never anything MCP-protocol-specific, never `tool.py`. This is what makes `domain.py` unit-testable without spinning up a server, and it's the file `pytest` actually exercises. If you catch yourself importing `@mcp` here, the logic belongs in `tool.py` instead.
 3. **`tool.py`** — thin glue only: load config from `settings`, call the one matching `domain.py` function, return its result. `@mcp.tool()` appears here and nowhere else in the capability. Each tool function also gets `@command(name=..., description=...)` (unless it's meant to be agent-only — see the "MCP-only tools" note below) and `@offload` (existing capabilities always do; it's what keeps blocking work off the request-handling thread).
 
@@ -41,10 +41,10 @@ If the capability creates any dot-folder or `static/` subfolder, `STATIC-GUIDELI
 
 ## Tool function conventions (copy from `server_manager/tool.py`)
 
-- Parameter typing via `Annotated[type, Field(description=...)]` — every parameter needs a `description`, since that's the schema an MCP client (and chat_app's "/" command help) shows the caller.
+- Parameter typing via `Annotated[type, Field(description=...)]` — every parameter needs a `description`, since that's the schema an MCP client (and ember's "/" command help) shows the caller.
 - If the tool targets one of several configured external systems/environments, give it a labeled-target parameter built from a `known_*` helper computed once at import time (not per-call), with `examples=` populated from it (add `json_schema_extra={"input": "select", "options_url": ...}` for a server-fed dropdown - see "Chat form inputs"), resolving the label through a small config loader in `services/app_config.py`.
-- If the tool needs to know who called it (for an audit trail), do NOT add it as a tool parameter — a declared parameter is something any MCP caller, including an LLM deciding its own tool arguments, could set, which defeats the point of an audit trail. Instead call `current_username()`/`current_email()` from `src/services/identity_context.py` wherever the audit row gets written; chat_app's command layer attaches the real value as an `X-Requester-Username`/`X-Requester-Email` HTTP header on the underlying MCP call (see `_IDENTITY_INJECTED_TOOLS` in `chat_app/src/services/commands.py`), which `IdentityContextMiddleware` reads into a per-request contextvar server-side. Absent (a different MCP client, or the LLM Q&A/ai_agent path, which doesn't thread end-user identity today) just gets `""` back, never an error.
-- `@mcp.tool(meta={"keywords": [...], "display_label": "..."})` - `keywords` are lowercase terms a user might type or search for, for tool discovery. `display_label` is a short present-tense phrase ("Checking app status", not the tool name) shown wherever a caller renders live tool-call progress - chat_app's Chat trace UI (`step_start`/`step_end` SSE events). **`display_label` is mandatory on every tool**, enforced by `apps/mcp_server/tests/test_tool_display_labels.py`.
+- If the tool needs to know who called it (for an audit trail), do NOT add it as a tool parameter — a declared parameter is something any MCP caller, including an LLM deciding its own tool arguments, could set, which defeats the point of an audit trail. Instead call `current_username()`/`current_email()` from `src/services/identity_context.py` wherever the audit row gets written; ember_api attaches the real value as an `X-Requester-Username`/`X-Requester-Email` HTTP header on the MCP call (`identity_headers` in `apps/Ember/ember_api/src/services/mcp_session.py`), and `IdentityContextMiddleware` reads it into a per-request contextvar server-side; a client that cannot set headers can send `_meta.requester` on the `tools/call` request instead (`src/services/identity_context.py`). Absent (a client that sends neither) just gets `""` back, never an error.
+- `@mcp.tool(meta={"keywords": [...], "display_label": "..."})` - `keywords` are lowercase terms a user might type or search for, for tool discovery. `display_label` is a short present-tense phrase ("Checking app status", not the tool name) shown wherever a caller renders live tool-call progress (ai_agent passes it along with the tool schema). **`display_label` is mandatory on every tool**, enforced by `apps/mcp_server/tests/test_tool_display_labels.py`.
 - **Tools never call an AI.** A tool is deterministic: it reads/computes and returns a result. If the result needs interpreting (a judgment call, a plain-language explanation), add `"ai_explain_result": True` to the meta. ai_agent (`src/mcp_client/mcp_upstream.py`'s `tool_description()`) then appends an explain-the-result note to that tool's description, so the assistant that ran it explains the result to the user. The old `needs_ai_review` meta, `pending_ai_review`/`ai_instructions` result fields and `ai_required` in help.json are gone - do not reintroduce them, and do not import an LLM client into `domain.py`/`tool.py`. Classify what is unresolved deterministically instead (e.g. return an `unclassified` bucket).
 - **Tool naming: `tool_<alias>_<camelTask>`** - the function name IS the tool name (FastMCP), e.g. `tool_srv_listApps`. Alias example: `srv` (server manager). A tool with a `@command` gets a matching slash command `/<id> <snake_task>` (id = `capability_meta` id, e.g. `server`), e.g. `/server list`; `@command` records `tool_name=fn.__name__`.
 - **A capability with an audit trail or watchers carries tool-only tools (no `@command`)** for them: `tool_<alias>_getAuditLog`, `tool_<alias>_listWatchers`.
@@ -53,18 +53,18 @@ If the capability creates any dot-folder or `static/` subfolder, `STATIC-GUIDELI
 - Docstrings matter: they're what an LLM-routed chat turn sees when deciding whether/how to call the tool. State what it reads, what it computes deterministically vs. what's left to the caller, and what tool to run before/after it in a multi-step workflow.
 - **MCP-only tools** (no `@command`): skip the `@command` decorator when a parameter's shape can't be expressed in a slash command's `key=value` syntax — e.g. a `list[SomeModel]` parameter. Leave a comment above the function explaining why.
 
-## Chat form inputs (how a tool parameter renders)
+## Command form inputs (how a tool parameter renders)
 
-chat_app's command form is built from the tool's JSON schema - **never add per-command or per-capability JS branches to
-`chat_app/src/pages/Chat/command_form_modal.js`**. Control the widget from the tool parameter instead:
+ember's command form (`apps/Ember/ember_web/src/components/ToolRunForm.vue`, schema parsing in `src/utils/toolSchema.ts`; ember_admin carries the same files) is built from the tool's JSON schema - **never add per-command or per-capability branches to
+them**. Control the widget from the tool parameter instead:
 
 - Standard schema keys: `Literal[...]`/`enum` -> dropdown (enforced by the server), `examples=` -> dropdown of non-binding
   suggestions, `Field(ge=, le=)` -> min/max, `max_length`, `pattern`, `format="file"` -> file picker.
 - Hints via `Field(json_schema_extra={...})`: `input` (`text`, `textarea`, `password`, `number`, `range`, `date`, `select`,
   `hidden`), `options_url` (a plain path on mcp_server returning a list of strings, a list of `{"value", "label", ...}` or a
-  `{value: label}` object - chat_app resolves it into `options` in `/chat/api/commands`), `depends_on` (another param whose
+  `{value: label}` object; the form fetches it through ember_api's `GET /api/commands/options`), `depends_on` (another param whose
   value fills a `{placeholder}` in `options_url`; the select stays disabled until it has a value; fetched through
-  `/chat/api/param-options`, which only accepts an `options_url` some command declares), `sets` (`{other_param: option_field}`:
+  `GET /api/commands/options`, which only accepts an `options_url` some tool declares), `sets` (`{other_param: option_field}`:
   choosing an option also fills those params - pair with `"input": "hidden"` on the filled param), `shows`
   (`{label: option_field}`: read-only lines under the select, e.g. an option's description) and `initial` (text-box prefill;
   `{timestamp}` becomes `YYYYMMDDHHMMSS`).
@@ -129,15 +129,9 @@ Do these in order — each step depends on the last:
 
    `commands[].name` is the bare sub-command (`"list"`, not `"/server list"`) — the capability id prefix is added at render time. A manual, human-only workflow step uses the literal string `"(manual - no tool)"` for `tool`.
 
-5. Add a toggle entry to both `apps/mcp_server/configs/config_capabilities.json` **and** `config_capabilities.json.example` (the real file is auto-created from the example only when missing, so an existing one needs the entry added by hand):
+5. The toggle entry in `apps/mcp_server/configs/config_capabilities.json` is written by the loader the first time the capability is switched online or offline, so add nothing by hand. A folder with no entry starts offline. Add `{ "<id>": { "enabled": true } }` to `config_capabilities.json.example` only if it should be on in a fresh install (`<id>` is the short id from step 6, e.g. `server`, not necessarily the folder name).
 
-   ```json
-   { "<id>": { "enabled": true } }
-   ```
-
-   `<id>` is the short id from step 6 (e.g. `server`), not necessarily the folder name.
-
-6. In `<name>/__init__.py`, register the capability's chat-facing id and label — **once, here, nowhere else** (chat_app's suggestion bar and welcome card read the label from mcp_server via `/chat/api/capability-labels`, so nothing to add there):
+6. In `<name>/__init__.py`, register the capability's chat-facing id and label — **once, here, nowhere else** (clients read the label from mcp_server via `GET /capabilities`, so nothing to add there):
 
    ```python
    from src.services import capability_meta
@@ -147,16 +141,9 @@ Do these in order — each step depends on the last:
 
    `<id>` is what chat users type as `/<id> ...` and what `PATCH /capabilities/{id}` toggles. Every `@command` in this capability's `tool.py` infers its capability from `META` automatically — no `capability=` argument needed on any of them.
 
-7. In `apps/mcp_server/src/run.py`, follow the existing capabilities' pattern exactly:
+7. **No `run.py` edit.** `services/capability_loader.py` scans `src/capabilities/` at startup (`run.py` only builds the `CapabilityLoader`). Load the new folder without a restart: press Refresh on ember_admin's Capabilities page (or `POST /capabilities/refresh`); it appears offline, then switch it online. After editing its code, switch it offline and online again to reload it. Shared modules outside the folder (`src/services/...`) are not reloaded: restart for those. Do not reload a capability that keeps background state (watchers) while that state is in use.
 
-   ```python
-   from src.capabilities import <name>
-
-   with capability_registry.capturing(mcp, <name>.META.id, label=<name>.META.label):
-       from src.capabilities.<name> import tool as <name>_tool
-   ```
-
-   The bare `from src.capabilities import <name>` only runs `__init__.py` (cheap, no tools registered yet). Importing `tool` inside `capturing()` is what actually runs the `@mcp.tool()` decorators and lets the capability be disabled/re-enabled live via chat_app's Capabilities page, without a server restart.
+   On every online the loader imports `tool.py` inside `capability_registry.capturing()` (so the capability can be switched off later), removes the old tools, `@command` entries and `META`, deletes the folder's cached bytecode and imports it fresh. An import that raises leaves the capability offline and keeps the error as `load_error`; one broken capability never takes down the others.
 
 8. If the capability wraps a client-readable URI resource (not just a callable tool), have the capability import the resource's `domain.py` — never the reverse — so deleting the capability wrapper leaves the resource untouched. See `apps/mcp_server/src/resources/README.md`.
 
@@ -164,5 +151,5 @@ Do these in order — each step depends on the last:
 
 - `pytest` from `apps/mcp_server/` — `domain.py`'s pure functions should have unit tests that don't need a live external system (mock the `services/` clients); this run also covers `test_tool_display_labels.py`, so a missing `display_label` fails here rather than silently at runtime.
 - Grep the capability for `pending_ai_review`, `ai_instructions`, `needs_ai_review`, `ai_required` and any LLM client import - none may exist. Confirm `tool_<alias>_getAuditLog`/`listWatchers`/`listSystems` are present and that a tool whose result needs explaining sets `ai_explain_result`.
-- Start the server (`apps/mcp_server/run.bat`) and confirm the new capability shows up in `GET /capabilities`, and that `/<id> help` in chat_app renders the `help.json` content correctly.
-- Sanity-check a result model renders well in chat_app: does it have a `message` field, and does any `list` field share uniform keys so it tables cleanly?
+- Start the server (`apps/mcp_server/run.bat`), refresh capabilities (`POST /capabilities/refresh`), switch the capability online and confirm it shows up in `GET /capabilities` with no `load_error`, and that `/<id> help` in chat renders the `help.json` content correctly.
+- Sanity-check a result model renders well in ember: does it have a `message` field, and does any `list` field share uniform keys so it tables cleanly?
