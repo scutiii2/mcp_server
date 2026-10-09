@@ -87,7 +87,12 @@ specs, the kept-running handoff) lives in one data folder, by default
 `%APPDATA%\scuti_server_launcher`. To use another folder, set the first of
 these that applies: `--data-dir <path>` on the command line, the
 `SCUTI_SERVER_LAUNCHER_DATA` environment variable, or a `data_location.txt`
-whose first line is the path, kept in the default folder. On first start,
+whose first line is the path, kept in the default folder. The **Data folder**
+button (top right) shows the folder in use and changes it: `Change…` picks a
+folder (and offers to copy your groups, presets and saved servers into it, never
+overwriting what is already there), `Use default` goes back. It saves the choice
+in `data_location.txt` and takes effect after a restart; a `--data-dir` or
+environment-variable override still wins, and the dialog says so. On first start,
 `groups.json` and `presets.json` from the old in-tree `.data/` are copied over
 if the new folder does not have them (the old folder is left alone).
 
@@ -142,6 +147,7 @@ default port, or a port kept via "keep running in background" on close).
 | `src/window.py` | `LauncherWindow`: tabs, sidebar, detail panes, lifecycle |
 | `src/instance.py` | `Instance`: launch, log capture, stop/restart, adoption |
 | `src/processes.py` | Port/PID helpers, venv bootstrap, spawn |
+| `src/data_folder_dialog.py` | `DataFolderDialog`: show and change the data folder |
 | `src/add_dialog.py` | `AddServersDialog` (collect several projects, then add them at once), `ManualSetupDialog` |
 | `src/runtimes.py` | Finds python / node on PATH, words the per-project warning |
 | `src/specs.py` | `run.srvlnchr` JSON: read, validate, write; manual-form validation |
