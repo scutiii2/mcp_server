@@ -30,7 +30,7 @@ PROVIDERS = ("anthropic", "openai", "laya")
 REASONING_EFFORTS = ("off", "low", "medium", "high")
 # Model strength, weakest to strongest. Fixed so min_tier/max_tier can be
 # compared and the orchestrator sees one vocabulary across every gateway.
-TIERS = ("light", "standard", "heavy")
+TIERS = ("light", "standard", "heavy", "extreme")
 # The gateway each provider uses when a file names none - pinned in the env
 # so .env's AI_AGENT_GATEWAY cannot silently re-point the agent.
 _DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt", "laya": "local"}

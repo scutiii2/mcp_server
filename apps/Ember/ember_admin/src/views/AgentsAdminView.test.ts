@@ -10,7 +10,7 @@ const CALC: AgentFile = {
   llm: { provider: "anthropic", gateway: "claude", temperature: 0.1 },
 } as AgentFile;
 const PROVIDERS = {
-  anthropic: [{ id: "claude", label: "Claude", model: "m", tiers: [{ tier: "light", id: "haiku" }, { tier: "standard", id: "sonnet" }, { tier: "heavy", id: "opus" }] }, { id: "openrouter", label: "OpenRouter", model: "m", tiers: [] }],
+  anthropic: [{ id: "claude", label: "Claude", model: "m", tiers: [{ tier: "light", id: "haiku" }, { tier: "standard", id: "sonnet" }, { tier: "heavy", id: "opus" }, { tier: "extreme", id: "fable" }] }, { id: "openrouter", label: "OpenRouter", model: "m", tiers: [] }],
   openai: [{ id: "gpt", label: "GPT", model: "m", tiers: [] }],
   laya: [{ id: "local", label: "Local", model: "m", tiers: [] }],
 };
@@ -154,7 +154,7 @@ describe("AgentsAdminView", () => {
     await wrapper.find("[data-id=calc] [data-test=edit]").trigger("click");
 
     const allowed = () => wrapper.findAll("[data-test=tier-preview] li:not(.off)").map((li) => li.attributes("data-tier"));
-    expect(allowed()).toEqual(["light", "standard", "heavy"]);
+    expect(allowed()).toEqual(["light", "standard", "heavy", "extreme"]);
     await wrapper.find("[data-test=min-tier]").setValue("standard");
     await wrapper.find("[data-test=max-tier]").setValue("standard");
     expect(allowed()).toEqual(["standard"]);

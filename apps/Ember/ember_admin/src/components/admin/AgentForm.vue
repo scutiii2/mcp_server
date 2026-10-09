@@ -22,7 +22,7 @@ const props = defineProps<{
 const emit = defineEmits<{ save: [id: string, config: AgentConfig]; preview: [id: string, config: AgentConfig, caveman: boolean]; close: [] }>();
 
 const EFFORTS = ["off", "low", "medium", "high"];
-const TIERS = ["light", "standard", "heavy"];
+const TIERS = ["light", "standard", "heavy", "extreme"];
 
 const editing = computed(() => props.initial !== null);
 const id = ref("");

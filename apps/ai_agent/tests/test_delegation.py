@@ -219,7 +219,7 @@ def test_tool_parameters_have_no_model_tier_when_nobody_offers_a_choice():
 
 def test_tool_parameters_offer_model_tier_when_a_specialist_has_a_choice():
     prop = delegation.tool_parameters(TIERED, allow_auto=False)["properties"]["model_tier"]
-    assert prop["enum"] == ["light", "standard", "heavy"]
+    assert prop["enum"] == ["light", "standard", "heavy", "extreme"]
 
 
 def test_tool_description_lists_tiers_only_for_specialists_with_a_choice():

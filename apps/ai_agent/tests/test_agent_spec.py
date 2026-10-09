@@ -255,7 +255,7 @@ def test_llm_tiers_default_to_unbounded(tmp_path):
 @pytest.mark.parametrize("key", ["min_tier", "max_tier"])
 def test_unknown_tier_name_is_rejected(tmp_path, key):
     path = _write(tmp_path, "calc", {"port": 9103, "llm": {"provider": "anthropic", key: "giant"}})
-    with pytest.raises(AgentSpecError, match=f"llm.{key} must be one of: light, standard, heavy"):
+    with pytest.raises(AgentSpecError, match=f"llm.{key} must be one of: light, standard, heavy, extreme"):
         agent_spec.load_file(path)
 
 

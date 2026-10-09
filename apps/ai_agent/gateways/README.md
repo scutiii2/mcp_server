@@ -24,7 +24,7 @@ wrapper keys. For example, `anthropic/claude.json`:
 Use `{ENV_VAR_NAME}` placeholders for credentials; the actual values belong
 in `../.env`. Files can also specify gateway-specific fields such as
 `base_url`, `auth_token`, `azure_endpoint`, or `aws_region`. Optional `models`
-defines the `light`, `standard`, and `heavy` tiers. Agent files keep their
+defines the `light`, `standard`, `heavy`, and `extreme` tiers. Agent files keep their
 existing `llm.provider` and `llm.gateway` values.
 
 On first read, `src/llm/llm_config.py` splits an existing

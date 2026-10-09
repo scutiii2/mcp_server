@@ -110,7 +110,7 @@ async def run_chat(
     (llm/reasoning_effort.py) and applies to this turn only; the result notes
     a change. None keeps the agent's own reasoning_effort.
 
-    model_tier: a strength tier ("light"/"standard"/"heavy") the caller asks
+    model_tier: a strength tier ("light"/"standard"/"heavy"/"extreme") the caller asks
     for (delegation.py). It is resolved against this agent's own tiers and
     cap (llm/model_tiers.py); a request outside the cap is clamped, with a
     note on the result. None keeps the pinned model.

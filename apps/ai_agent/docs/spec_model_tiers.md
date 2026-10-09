@@ -31,7 +31,7 @@ same model. The orchestrator (ember) picks which specialist handles a task
 
 ## Concepts
 
-**Tier ladder.** A fixed, ordered set of names: `light < standard < heavy`.
+**Tier ladder.** A fixed, ordered set of names: `light < standard < heavy < extreme`.
 Fixed names (not free-form) make `min_tier` / `max_tier` comparable and give
 the orchestrator one vocabulary across every gateway. A gateway defines any
 subset of the ladder.

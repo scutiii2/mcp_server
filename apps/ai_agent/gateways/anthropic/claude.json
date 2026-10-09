@@ -14,6 +14,10 @@
     "heavy": {
       "id": "claude-opus-5-5",
       "use_for": "multi-step reasoning, hard code or data analysis"
+    },
+    "extreme": {
+      "id": "claude-fable-5-1",
+      "use_for": "the hardest problems: deep research, large-scale refactors, long-horizon planning"
     }
   }
 }
