@@ -89,3 +89,19 @@ Optional follow-up features, not implemented:
 - **Scheduling**: recurring monitoring, alerts on every change, log/file patterns, other recipients (requires an allowed-domains rule), SMS or push.
 
 **Revisit when**: user wants the manual checks run or picks a follow-up feature.
+
+## Close the agentic-harness gaps in ai_agent (added 2026-10-09)
+
+**Context**: Review on 2026-10-09 found `apps/ai_agent` is a tool-calling agent runtime with delegation and approvals (tool loop in `src/llm/anthropic_provider.py` and `openai_provider.py`, `delegate_to_agent`, `approvals.review`, `ask_user`), not yet a full agentic harness. Missing pieces, easiest first. Do them together as one batch.
+
+1. **Budget and stuck-loop guard**: token and time caps beside `max_tool_rounds`; detect the same tool call with the same args repeating. Lives inside the provider loops; `LiveUsage` already counts tokens. Easy.
+2. **Cancel through delegation**: `delegate_to_agent` (`src/agents/delegation.py`) passes `request_id=None`, so Stop does not reach the delegate. Pass the id through and link parent and child in `src/llm/cancellation.py`. Easy to medium; touches two services.
+3. **Plan/todo tool**: built-in tool like `ask_user`, keeps a per-turn checklist and emits it as events. Needs a schema in each provider, an event type, and an `ember_web` panel. Medium.
+4. **Tool-activity persistence across turns**: `validate_history` (`src/core/chat_history.py`) accepts text only, so earlier tool calls are lost. Store calls and results in `ember_api` in a provider-neutral format, send them back, relax the validator. Medium.
+5. **Compaction/summarizing**: replace `token_limits.trim_history_to_fit` (drops old messages) with a summary; needs an extra LLM call, a trigger rule and a place to keep summaries. Works better after item 4. Medium to hard.
+6. **Persistent memory**: facts that outlive a chat; store, read/write tools, per-user scoping, forget rules. Retrieval quality is the hard part. Hard.
+7. **Sandboxed workspace (files and shell)**: isolated per-user directory and a limited command runner, fitted to the approval flow. Real security risk. Best as a new `mcp_server` capability, not inside `ai_agent`. Hardest.
+
+Items 1 to 3 are cheap; 4 and 5 fit together; 6 and 7 are separate projects.
+
+**Revisit when**: user wants to start; brainstorm a design, then take 1 to 3 first.
