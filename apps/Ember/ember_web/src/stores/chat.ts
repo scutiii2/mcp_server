@@ -22,6 +22,7 @@ import {
   ServerConversationStorage,
   type ConversationStorage,
 } from "../services/ConversationStorage";
+import { clearCompletionNotifications, notifyCompletion } from "../composables/useCompletionNotify";
 import { chimeIfAway } from "../composables/useNotify";
 import { SlashCommandRunner } from "../services/slashCommands";
 import { watchTurn } from "../services/turnStream";
@@ -162,6 +163,7 @@ export const useChatStore = defineStore("chat", () => {
   // A short chime when an answer arrives while the page is out of sight. On
   // by default; remembered per account.
   const chime = ref(true);
+  const browserNotifications = ref(false);
   // The predicted next question, for the chat box's placeholder (Tab takes it).
   // A new request number makes a slower, older answer harmless.
   const suggestion = ref<string | null>(null);
@@ -412,6 +414,7 @@ export const useChatStore = defineStore("chat", () => {
     () => (auth.hasPermission("chat.use") ? (auth.account?.id ?? null) : null),
     (accountId) => {
       unfollow();
+      clearCompletionNotifications();
       clearSuggestion();
       generation += 1;
       pending = [];
@@ -427,6 +430,7 @@ export const useChatStore = defineStore("chat", () => {
       caveman.value = accountId !== null && readPreference(cavemanKey(accountId)) === "1";
       askBeforeTools.value = accountId !== null && readPreference(askBeforeToolsKey(accountId)) === "1";
       chime.value = accountId === null || readPreference(chimeKey(accountId)) !== "0";
+      browserNotifications.value = accountId !== null && readPreference(`ember_web.notifications.${accountId}`) === "1";
       allowedTools.value = accountId !== null ? readAllowedTools(accountId) : {};
       forceToolApproval.value = false;
       if (accountId !== null) void refreshSettings();
@@ -596,9 +600,14 @@ export const useChatStore = defineStore("chat", () => {
     const started = generation;
     void watchTurn(id, after, onEvent, controller.signal)
       .then(async (end) => {
-        if (end === "aborted" || started !== generation) return;
+        if (end === "aborted" || controller.signal.aborted || started !== generation) return;
         const answered = end === "done" && turnOutcome === "answered";
         if (answered && chime.value) chimeIfAway();
+        if (answered) notifyCompletion(id, browserNotifications.value, () => {
+          if (started === generation && auth.hasPermission("chat.use")) {
+            window.location.assign(`/chat/${encodeURIComponent(id)}`);
+          }
+        });
         const conversation = find(id);
         if (conversation) conversation.running = false;
         if (watcher === controller) unfollow();
@@ -941,6 +950,7 @@ export const useChatStore = defineStore("chat", () => {
     const doomed = new Set(ids);
     if (activeId.value !== null && doomed.has(activeId.value)) {
       unfollow();
+      clearCompletionNotifications();
       clearSuggestion();
       jumpIndex.value = null;
       activeId.value = null;
@@ -968,6 +978,12 @@ export const useChatStore = defineStore("chat", () => {
     chime.value = on;
     const accountId = auth.account?.id;
     if (accountId !== undefined) writePreference(chimeKey(accountId), on ? "1" : "0");
+  }
+
+  function setBrowserNotifications(on: boolean): void {
+    browserNotifications.value = on;
+    const accountId = auth.account?.id;
+    if (accountId !== undefined) writePreference(`ember_web.notifications.${accountId}`, on ? "1" : "0");
   }
 
   function persistAllowedTools(): void {
@@ -1095,6 +1111,7 @@ export const useChatStore = defineStore("chat", () => {
     if (doomed.size === 0) return;
     if (activeId.value !== null && doomed.has(activeId.value)) {
       unfollow();
+      clearCompletionNotifications();
       clearSuggestion();
       jumpIndex.value = null;
       activeId.value = null;
@@ -1224,6 +1241,8 @@ export const useChatStore = defineStore("chat", () => {
     refreshSettings,
     setAskBeforeTools,
     chime,
+    browserNotifications,
+    setBrowserNotifications,
     suggestion,
     clearSuggestion,
     setChime,

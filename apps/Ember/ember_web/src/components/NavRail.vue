@@ -354,7 +354,7 @@ svg {
     flex-direction: row;
     width: 100%;
     height: var(--rail-height);
-    padding: 0 6px;
+    padding: 0 6px env(safe-area-inset-bottom, 0px);
     border-right: none;
     border-top: 1px solid var(--border);
   }

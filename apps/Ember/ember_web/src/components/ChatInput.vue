@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, ref, watch } from "vue";
 import { useAuthStore } from "../stores/auth";
 import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
 import type { JsonSchema } from "../api/types";
 import { BUILTIN_COMMANDS } from "../utils/builtinCommands";
-import { splitAttachments, TABLE_FILE, tableHeader, withAttachments } from "../utils/attachments";
+import { splitAttachments, PDF_FILE, TABLE_FILE, tableHeader, withAttachments } from "../utils/attachments";
 import { paramSuggestions } from "../utils/commandParams";
 import { errorMessage } from "../utils/errors";
 import { appendToDraft, filterTemplates, preview, templateQuery } from "../utils/templates";
 import { fieldsFromSchema, type ToolField } from "../utils/toolSchema";
 import TemplatePicker from "./TemplatePicker.vue";
+import type ListComposerInstance from "./ListComposer.vue";
+import { hasComposerList } from "../utils/composerLists";
+
+let listModule: Promise<typeof import("./ListComposer.vue")> | undefined;
+const loadListComposer = () => listModule ??= import("./ListComposer.vue");
+const ListComposer = defineAsyncComponent(loadListComposer);
 
 // busy: a turn is running - Send becomes Stop. commands: slash commands to
 // suggest while "/..." is being typed (empty without tools.view).
@@ -55,6 +61,23 @@ const flights = ref(0);
 // starts only from an empty box, so ↓ past the newest returns to empty.
 const recallIndex = ref<number | null>(null);
 const textarea = ref<HTMLTextAreaElement | null>(null);
+const listEditor = ref<InstanceType<typeof ListComposerInstance> | null>(null);
+const listMode = ref(false);
+const initialListCaret = ref<number | undefined>(undefined);
+watch(draft, async (value) => {
+  if (value === "") {
+    const wasEditing = document.activeElement?.closest(".list-composer") != null;
+    listMode.value = false;
+    if (wasEditing) void nextTick(() => textarea.value?.focus());
+  } else if (!listMode.value && hasComposerList(value)) {
+    // Keep the native field editable while the optional editor module loads.
+    await loadListComposer();
+    if (hasComposerList(draft.value)) {
+      initialListCaret.value = textarea.value?.selectionStart;
+      listMode.value = true;
+    }
+  }
+});
 const auth = useAuthStore();
 const fileInput = ref<HTMLInputElement | null>(null);
 const dragging = ref(false);
@@ -72,6 +95,7 @@ interface PendingAttachment {
   rows: number;
   columns: number;
   error: string;
+  pages?: number;
 }
 
 let nextAttachmentId = 1;
@@ -106,6 +130,17 @@ async function addFiles(files: FileList | File[] | null | undefined): Promise<vo
     };
     attachments.value.push(entry);
     const live = attachments.value[attachments.value.length - 1]!; // the reactive copy
+    if (PDF_FILE.test(file.name)) {
+      void attachmentsClient.pdf(file).then((result) => {
+        Object.assign(live, {
+          state: "ready",
+          text: `[PDFMerger file_id: ${result.file_id} | ${result.pages} pages | ${result.kind} | expires_at: ${result.expires_at} | use pdf_merger tools to inspect/merge this original; preserve this file_id when delegating to PDF Assistant]\n` +
+            (result.text || "[No text preview available; the original file is available for inspection and merging.]"),
+          chars: result.char_count, truncated: result.truncated, pages: result.pages,
+        });
+      }).catch((err: unknown) => Object.assign(live, { state: "error", error: errorMessage(err) }));
+      continue;
+    }
     // A .csv / .xlsx is also uploaded whole, so the data tools can read every
     // row; the text preview stays as the fallback if that upload fails.
     const wantsTable = TABLE_FILE.test(file.name);
@@ -272,7 +307,7 @@ function complete(suggestion: Suggestion): void {
     // "key=" stays open for its value; a finished "key=value" is followed by a space.
     draft.value = `${draft.value.slice(0, suggestion.replaceFrom)}${suggestion.text}${suggestion.text.endsWith("=") ? "" : " "}`;
     void nextTick(() => {
-      textarea.value?.focus();
+      focus();
       autoGrow();
     });
     return;
@@ -283,7 +318,7 @@ function complete(suggestion: Suggestion): void {
   }
   draft.value = `${suggestion.text} `;
   void nextTick(() => {
-    textarea.value?.focus();
+    focus();
     autoGrow();
   });
   if (suggestion.command) emit("form", suggestion.command);
@@ -293,13 +328,14 @@ function complete(suggestion: Suggestion): void {
 function setDraft(text: string): void {
   draft.value = text;
   void nextTick(() => {
-    textarea.value?.focus();
+    focus();
     autoGrow();
   });
 }
 
 function focus(): void {
-  textarea.value?.focus();
+  if (listMode.value) listEditor.value?.focus();
+  else textarea.value?.focus();
 }
 
 /** Adds text to the box: alone in an empty one, else on a new line. */
@@ -335,7 +371,9 @@ function recall(event: KeyboardEvent): boolean {
   } else {
     const el = event.target as HTMLTextAreaElement;
     const caret = el.selectionStart ?? 0;
-    const atEdge = up ? !el.value.slice(0, caret).includes("\n") : !el.value.slice(el.selectionEnd ?? caret).includes("\n");
+    const atEdge = listMode.value
+      ? (listEditor.value?.atHistoryEdge(up) ?? false)
+      : up ? !el.value.slice(0, caret).includes("\n") : !el.value.slice(el.selectionEnd ?? caret).includes("\n");
     if (!atEdge) return false;
     if (up) show(Math.max(0, index - 1));
     else if (index < entries.length - 1) show(index + 1);
@@ -367,6 +405,7 @@ watch(
 
 /** Grow with the content; CSS max-height caps it, then it scrolls. */
 function autoGrow(): void {
+  if (listMode.value) return;
   const el = textarea.value;
   if (!el) return;
   el.style.height = "auto";
@@ -406,7 +445,8 @@ function onKeydown(event: KeyboardEvent): void {
     void nextTick(() => {
       autoGrow();
       const end = draft.value.length;
-      textarea.value?.setSelectionRange(end, end);
+      if (listMode.value) listEditor.value?.focusEnd();
+      else textarea.value?.setSelectionRange(end, end);
     });
     return;
   }
@@ -460,6 +500,7 @@ function onKeydown(event: KeyboardEvent): void {
         <span class="name">
           {{ a.state === "reading" ? `Reading ${a.filename} …` : a.state === "error" ? `${a.filename}: ${a.error}` : a.filename }}
           <small v-if="a.state === 'ready' && a.truncated">(cut to {{ a.chars.toLocaleString() }} characters)</small>
+          <small v-if="a.state === 'ready' && a.pages">({{ a.pages }} pages · available for PDF tools)</small>
           <small v-if="a.state === 'ready' && a.rows">({{ a.rows.toLocaleString() }} rows, {{ a.columns }} columns)</small>
         </span>
         <button type="button" :aria-label="`Remove ${a.filename}`" @click="removeAttachment(a.id)">×</button>
@@ -471,7 +512,18 @@ function onKeydown(event: KeyboardEvent): void {
     </p>
     <div :class="['box', { dragging }]">
       <input ref="fileInput" type="file" multiple hidden @change="onPick" />
+      <ListComposer
+        v-if="listMode"
+        ref="listEditor"
+        v-model="draft"
+        :initial-caret="initialListCaret"
+        :placeholder="placeholder"
+        @input="onInput"
+        @keydown="onKeydown"
+        @paste="onPaste"
+      />
       <textarea
+        v-else
         ref="textarea"
         v-model="draft"
         rows="1"
@@ -531,7 +583,7 @@ function onKeydown(event: KeyboardEvent): void {
         </span>
       </div>
     </div>
-    <p class="keys">Enter to send · Shift+Enter for a new line</p>
+    <p class="keys">Enter to send · Shift+Enter for a new line or next list item</p>
   </form>
 </template>
 

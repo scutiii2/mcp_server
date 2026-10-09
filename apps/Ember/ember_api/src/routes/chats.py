@@ -342,6 +342,7 @@ class SnippetOut(BaseModel):
 
 class SearchHitOut(BaseModel):
     id: str
+    folder_id: int | None
     title: str
     updated_at: datetime
     # Where the query sits in the title, if it does.
@@ -361,6 +362,7 @@ class SearchHitOut(BaseModel):
         )
         return cls(
             id=hit.chat.chat_id,
+            folder_id=hit.chat.folder_id,
             title=hit.chat.title,
             updated_at=hit.chat.updated_at,
             title_match=title,

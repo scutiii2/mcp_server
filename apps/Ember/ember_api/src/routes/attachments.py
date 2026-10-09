@@ -1,6 +1,7 @@
 """/api/attachments: text from a file attached to a chat question
-(chat.use). The browser folds the text into the question it sends; the
-file itself is read here and discarded, never stored or passed on.
+(files.upload). The browser folds the text into the question it sends; the
+originals for PDF/image attachments are stored in PDFMerger under the account;
+other text attachments are read and discarded.
 
 The file comes base64-encoded in JSON: every POST to ember_api is JSON
 (see json_only.py), which keeps cross-site form posts out."""
@@ -110,4 +111,54 @@ async def attachment_table(
         columns=[str(name) for name in table.get("columns", [])],
         sheet=table.get("sheet"),
         notes=[str(note) for note in table.get("notes", [])],
+    )
+
+
+class AttachmentPdfOut(AttachmentTextOut):
+    file_id: str
+    pages: int
+    kind: str
+    expires_at: float
+
+
+@router.post("/pdf")
+async def attachment_pdf(
+    body: AttachmentIn,
+    account: Account = Depends(require_chat),
+    info: McpServerInfo = Depends(get_server_info),
+    logs: LogWriter = Depends(get_log_writer),
+) -> AttachmentPdfOut:
+    """Keep originals for PDF tools; extracted text is an optional preview."""
+    filename = body.filename.replace("\\", "/").rsplit("/", 1)[-1]
+    if not filename.lower().endswith((".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".gif", ".heic")):
+        raise HTTPException(400, "Upload a PDF or supported image")
+    try:
+        content = base64.b64decode(body.data, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise HTTPException(400, "data must be base64") from error
+    if len(content) > MAX_FILE_BYTES:
+        raise HTTPException(413, "The file is larger than 15 MB")
+    try:
+        uploaded = await info.upload_pdf(account, filename, content)
+    except McpServerUnavailable as error:
+        raise HTTPException(502, "PDF upload is unavailable; check the pdf_merger extension") from error
+    except McpServerRefused as error:
+        raise HTTPException(502 if error.status in (401, 403) else 400, str(error)) from error
+    text, chars, truncated = "", 0, False
+    if filename.lower().endswith(".pdf"):
+        try:
+            extracted = await extract_text_async(filename, content)
+            text, chars, truncated = extracted.text, extracted.char_count, extracted.truncated
+        except ExtractionError:
+            pass  # Scans and blank pages remain valid inputs for inspect/merge.
+    await logs.action(account, "attachments.pdf", f"Attached '{filename}' ({len(content):,} bytes) for PDF tools")
+    return AttachmentPdfOut(
+        filename=filename,
+        file_id=uploaded["file_id"],
+        pages=uploaded["pages"],
+        kind=uploaded["kind"],
+        expires_at=uploaded["expires_at"],
+        text=text,
+        char_count=chars,
+        truncated=truncated,
     )

@@ -1,3 +1,4 @@
+import { requestCompletionPermission } from "../composables/useCompletionNotify";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { reactive } from "vue";
@@ -19,13 +20,17 @@ const chat = reactive({
   caveman: false,
   askBeforeTools: false,
   chime: true,
+  browserNotifications: false,
   forceToolApproval: false,
   setCaveman: vi.fn((on: boolean) => (chat.caveman = on)),
   setAskBeforeTools: vi.fn((on: boolean) => (chat.askBeforeTools = on)),
   setChime: vi.fn((on: boolean) => (chat.chime = on)),
+  setBrowserNotifications: vi.fn((on: boolean) => (chat.browserNotifications = on)),
   refreshSettings: vi.fn(() => Promise.resolve()),
 });
 vi.mock("../stores/chat", () => ({ useChatStore: () => chat }));
+
+vi.mock("../composables/useCompletionNotify", () => ({ requestCompletionPermission: vi.fn(async () => "") }));
 
 const client = vi.mocked(settingsClient);
 
@@ -61,6 +66,7 @@ beforeEach(() => {
   chat.caveman = false;
   chat.askBeforeTools = false;
   chat.chime = true;
+  chat.browserNotifications = false;
   chat.forceToolApproval = false;
   document.documentElement.style.colorScheme = "";
 });
@@ -122,7 +128,7 @@ describe("SettingsView", () => {
     const w = await mountView();
 
     expect(w.findAll("h3").map((h) => h.text())).toEqual(["Chat", "Appearance", "Sidebar"]);
-    expect(rowIds(w)).toEqual(["chat-terse", "chat-ask-tools", "chat-chime", "chat-suggestions", "appearance-theme", "sidebar-pages"]);
+    expect(rowIds(w)).toEqual(["chat-terse", "chat-ask-tools", "chat-chime", "chat-notifications", "chat-suggestions", "appearance-theme", "sidebar-pages"]);
     expect(w.text()).not.toContain("Tool approval");
   });
 
@@ -215,7 +221,7 @@ describe("modified filter", () => {
   it("is a pill that shows only the changed settings, and toggles back", async () => {
     chat.caveman = true;
     const w = await mountView();
-    expect(rowIds(w)).toHaveLength(6);
+    expect(rowIds(w)).toHaveLength(7);
     expect(w.get(".badge").attributes("aria-pressed")).toBe("false");
 
     await w.get(".badge").trigger("click");
@@ -225,7 +231,7 @@ describe("modified filter", () => {
     expect(w.get(".badge").attributes("aria-pressed")).toBe("true");
 
     await w.get(".badge").trigger("click");
-    expect(rowIds(w)).toHaveLength(6);
+    expect(rowIds(w)).toHaveLength(7);
   });
 
   it("drops the filter once nothing is modified any more", async () => {
@@ -236,7 +242,7 @@ describe("modified filter", () => {
     await row(w, "chat-terse").get("button.reset").trigger("click");
 
     expect(w.find(".badge").exists()).toBe(false);
-    expect(rowIds(w)).toHaveLength(6);
+    expect(rowIds(w)).toHaveLength(7);
   });
 });
 
@@ -267,7 +273,7 @@ describe("search", () => {
     expect(w.text()).toContain('No settings match "zzz"');
     expect(rowIds(w)).toEqual([]);
     await w.get("button.link").trigger("click");
-    expect(rowIds(w)).toHaveLength(6);
+    expect(rowIds(w)).toHaveLength(7);
     expect((search(w).element as HTMLInputElement).value).toBe("");
   });
 
@@ -280,7 +286,7 @@ describe("search", () => {
 
     await search(w).trigger("keydown", { key: "Escape" });
     expect((search(w).element as HTMLInputElement).value).toBe("");
-    expect(rowIds(w)).toHaveLength(6);
+    expect(rowIds(w)).toHaveLength(7);
   });
 });
 
@@ -288,7 +294,7 @@ it("keeps workspace tool approval in Ember Admin", async () => {
   const w = await mountView(ADMIN);
   expect(w.text()).not.toContain("Tool approval");
   expect(w.text()).not.toContain("Applies to all accounts");
-  expect(rowIds(w)).toHaveLength(6);
+  expect(rowIds(w)).toHaveLength(7);
 });
 
 it("reverts chat, theme and sidebar drafts without persisting anything", async () => {
@@ -331,4 +337,24 @@ it("keeps unsaved settings after a sidebar save fails, and supports retry", asyn
   await flushPromises();
   expect(w.find(".settings-save-bar").exists()).toBe(false);
   expect(chat.setCaveman).toHaveBeenCalledWith(true);
+});
+
+it("requests notification permission on enabling and persists only on Save", async () => {
+  const w = await mountView();
+  await row(w, "chat-notifications").get("input").setValue(true);
+  await flushPromises();
+  expect(requestCompletionPermission).toHaveBeenCalledOnce();
+  expect(chat.browserNotifications).toBe(false);
+  await w.get("button.save").trigger("click");
+  await flushPromises();
+  expect(chat.setBrowserNotifications).toHaveBeenCalledWith(true);
+});
+it("explains blocked notifications and leaves the setting off", async () => {
+  vi.mocked(requestCompletionPermission).mockResolvedValueOnce("Notifications are blocked.");
+  const w = await mountView();
+  await row(w, "chat-notifications").get("input").setValue(true);
+  await flushPromises();
+  expect(w.get('[role="status"]').text()).toBe("Notifications are blocked.");
+  expect((row(w, "chat-notifications").get("input").element as HTMLInputElement).checked).toBe(false);
+  expect(chat.setBrowserNotifications).not.toHaveBeenCalled();
 });

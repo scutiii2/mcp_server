@@ -85,6 +85,20 @@ class FolderService:
         await self._session.commit()
         return folder
 
+    async def move(self, folder_id: int, direction: str) -> ChatFolder:
+        """Move one place in display order, normalizing ties in one transaction."""
+        folder = await self._get(folder_id)
+        ordered = [row.folder for row in await self.list()]
+        index = next(i for i, item in enumerate(ordered) if item.id == folder.id)
+        target = index + (-1 if direction == "up" else 1)
+        if not 0 <= target < len(ordered):
+            return folder
+        ordered[index], ordered[target] = ordered[target], ordered[index]
+        for position, item in enumerate(ordered):
+            item.position = position
+        await self._session.commit()
+        return folder
+
     async def delete(self, folder_id: int, running: set[str]) -> tuple[str, int]:
         """Deletes the folder and every chat in it, with those chats' share
         links, in one transaction. `running` holds this account's chat ids

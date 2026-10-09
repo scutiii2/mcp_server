@@ -62,7 +62,7 @@ test("an admin refreshes, sees a failed load, then brings a fixed capability onl
   expect(state.unexpected).toEqual([]);
 });
 
-test("capability and extension cards open their tools and run a schema form", async ({ page }) => {
+test("capability and extension cards open their tools and run a schema form", async ({ page }, testInfo) => {
   const state = newState();
   await installFakeApi(page, state);
   await page.route('**/api/extensions', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ id: 'notes', label: 'Notes', description: 'Shared notes', status: 'connected', error: null, tools: ['notes__add'] }]) }));
@@ -84,6 +84,7 @@ test("capability and extension cards open their tools and run a schema form", as
   const capability = page.getByRole('dialog', { name: 'Vault', exact: true });
   await expect(capability).toBeVisible();
   await expect(capability.locator(".summary-description")).toContainText("Explore the tools provided by Vault.");
+  await expect(capability.locator(".tool-list")).toBeVisible();
   const scrollAreas = await page.evaluate<{ outer: string; list: string }>(`(() => {
     const dialog = document.querySelector('.integration-modal');
     const style = (selector) => getComputedStyle(dialog.querySelector(selector));
@@ -98,7 +99,7 @@ test("capability and extension cards open their tools and run a schema form", as
   await expect(capability.locator('.tester')).toHaveCSS('overflow-y', 'auto');
   expect((await capability.boundingBox())!.height).toBe(initialHeight);
   await expect(capability.getByRole('searchbox', { name: 'Find a tool' })).toBeVisible();
-  await page.screenshot({ path: 'C:/Users/User/.codex/visualizations/2026/10/08/01a11ae9-61e7-7880-a756-0bfaebed99a6/ember-tool-modal-desktop.png', animations: 'disabled' });
+  await page.screenshot({ path: testInfo.outputPath('ember-tool-modal-desktop.png'), animations: 'disabled' });
   expect(calls[0]).toEqual({ name: 'tool_vault_run', arguments: { text: 'hello' } });
   await capability.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('link', { name: 'Extensions', exact: true }).click();
@@ -112,7 +113,7 @@ test("capability and extension cards open their tools and run a schema form", as
   await extension.getByRole('textbox', { name: /^Text/ }).fill('note');
   await extension.getByRole('button', { name: 'Run tool', exact: true }).click();
   await expect(extension.locator('.result')).toContainText('Completed successfully');
-  await page.screenshot({ path: 'C:/Users/User/.codex/visualizations/2026/10/08/01a11ae9-61e7-7880-a756-0bfaebed99a6/ember-tool-modal-mobile.png', animations: 'disabled' });
+  await page.screenshot({ path: testInfo.outputPath('ember-tool-modal-mobile.png'), animations: 'disabled' });
   expect(calls[1]).toEqual({ name: 'notes__add', arguments: { text: 'note' } });
   expect(await page.evaluate<boolean>("document.documentElement.scrollWidth <= window.innerWidth")).toBe(true);
   expect(state.unexpected).toEqual([]);

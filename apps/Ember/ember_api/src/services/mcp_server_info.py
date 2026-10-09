@@ -155,6 +155,18 @@ class McpServerInfo:
             raise McpServerUnavailable("mcp_server's upload answered without a path")
         return path
 
+    async def upload_pdf(self, account: Account, filename: str, content: bytes) -> dict[str, Any]:
+        body = await self._request("POST", "/upload/pdf", account, files={"file": (filename, content)}, timeout=120)
+        if (
+            not isinstance(body, dict)
+            or not isinstance(body.get("file_id"), str)
+            or not isinstance(body.get("pages"), int)
+            or not isinstance(body.get("kind"), str)
+            or not isinstance(body.get("expires_at"), (int, float))
+        ):
+            raise McpServerUnavailable("Invalid PDF upload response")
+        return body
+
     async def upload_table(self, account: Account, filename: str, content: bytes) -> dict[str, Any]:
         """Hands a CSV/XLSX to mcp_server's /upload/table, which keeps it as an
         in-memory table for the data tools; returns

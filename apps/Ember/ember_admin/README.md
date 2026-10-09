@@ -176,3 +176,35 @@ Capabilities and extensions can be searched by their names and contributed tool 
 Overview uses the same permission-filtered page list as the main sidebar. Permission and account-state switches use native change events so their appearance follows the draft or confirmed server state.
 
 The Roles page keeps its heading fixed while the role list and permission options scroll independently. On mobile, the role picker scrolls horizontally above the permission panel.
+
+## Mobile and installation
+
+Phone layouts use bottom navigation, touch controls, safe-area padding for notches
+and the home indicator, and the dynamic viewport for browser chrome and keyboards.
+Ember and Ember Admin install separately, each from its own origin.
+
+Build with `npm run build`, then serve `dist/` over HTTPS (localhost also works).
+For phone layout testing on the same Wi-Fi, run `npm run preview -- --host 0.0.0.0`
+and open this computer's LAN address and preview port; use an HTTPS reverse proxy
+for installation and offline testing on a phone.
+The browser can install the app from its menu; when an install prompt is available,
+an **Install app** button appears. On iPhone/iPad, use Safari → Share → Add to Home Screen.
+The PWA service worker is enabled in production builds, including `npm run preview`,
+and is disabled in the Vite development server so it does not interfere with HMR.
+An HTTP LAN address can serve the mobile layout, but installation/offline support
+requires HTTPS. Keep the existing same-origin `/api` proxy and SPA route fallback.
+Serve `sw.js` and `index.html` with revalidation (`Cache-Control: no-cache`), hashed
+`assets/` with immutable caching, and the manifest as `application/manifest+json`.
+
+After one connected visit, static HTML, JavaScript, CSS and app icons are available
+offline. An offline banner explains that chat, sign-in and administration actions
+need a connection; use **Retry** once connected. The service worker never caches
+API responses, transcripts, account data or generated downloads, and never queues
+or replays writes. A cold offline start cannot restore the server session.
+New builds show **Reload to update** / **Later**; save drafts first. There is no
+automatic update reload during a chat or an administration edit.
+
+App icons: `public/icons/`. Regenerate both sets from their SVG logos with
+`node ../scripts/generate-pwa-icons.mjs` (from either app; uses local Chrome).
+Production browser tests cover phone layouts, installation metadata, offline shell
+loading, API cache exclusion and reconnection.

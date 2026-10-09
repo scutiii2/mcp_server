@@ -131,7 +131,7 @@ svg {
     flex-direction: row;
     width: 100%;
     height: var(--rail-height);
-    padding: 0 4px;
+    padding: 0 4px env(safe-area-inset-bottom, 0px);
     gap: 4px;
     border-right: none;
     border-top: 1px solid var(--border);
@@ -139,7 +139,7 @@ svg {
   .wordmark { width: 28px; height: 28px; flex-shrink: 0; }
   .pages { flex: 1; min-width: 0; margin: 0; flex-direction: row; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; gap: 0; }
   .bottom { flex-direction: row; flex-shrink: 0; margin: 0; gap: 0; }
-  .pages a, .bottom a, button { width: 36px; height: 40px; flex-shrink: 0; }
+  .pages a, .bottom a, button { width: 44px; height: 44px; flex-shrink: 0; }
   a[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--accent); }
   [data-label]:hover::after, [data-label]:focus-visible::after {
     left: 50%; top: auto; bottom: calc(100% + 8px); transform: translateX(-50%);

@@ -1,3 +1,4 @@
+import { notifyCompletion, clearCompletionNotifications } from "../composables/useCompletionNotify";
 import { accountCapabilitiesClient } from "../api/AccountCapabilitiesClient";
 import { flushPromises } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
@@ -41,6 +42,8 @@ vi.mock("../services/slashCommands", () => ({
     schemaFor = vi.fn(async () => null);
   },
 }));
+
+vi.mock("../composables/useCompletionNotify", () => ({ notifyCompletion: vi.fn(), clearCompletionNotifications: vi.fn() }));
 
 const client = vi.mocked(chatsClient);
 const watch = vi.mocked(watchTurn);
@@ -185,6 +188,7 @@ describe("chiming when an answer ends", () => {
     await flushPromises();
 
     expect(chime).not.toHaveBeenCalled();
+    expect(notifyCompletion).not.toHaveBeenCalled();
   });
 
   it("does not chime for an answer the user stopped", async () => {
@@ -195,6 +199,7 @@ describe("chiming when an answer ends", () => {
     await flushPromises();
 
     expect(chime).not.toHaveBeenCalled();
+    expect(notifyCompletion).not.toHaveBeenCalled();
   });
 
   it("does not chime for a failed answer", async () => {
@@ -205,6 +210,7 @@ describe("chiming when an answer ends", () => {
     await flushPromises();
 
     expect(chime).not.toHaveBeenCalled();
+    expect(notifyCompletion).not.toHaveBeenCalled();
   });
 
   it("does not chime when the watch was cut off", async () => {
@@ -215,6 +221,7 @@ describe("chiming when an answer ends", () => {
     await flushPromises();
 
     expect(chime).not.toHaveBeenCalled();
+    expect(notifyCompletion).not.toHaveBeenCalled();
   });
 
   it("does not chime when there was no turn to watch", async () => {
@@ -224,6 +231,7 @@ describe("chiming when an answer ends", () => {
     await flushPromises();
 
     expect(chime).not.toHaveBeenCalled();
+    expect(notifyCompletion).not.toHaveBeenCalled();
   });
 
   it("does not chime when the stream ends without a turn, even after a final event", async () => {
@@ -234,6 +242,7 @@ describe("chiming when an answer ends", () => {
     await flushPromises();
 
     expect(chime).not.toHaveBeenCalled();
+    expect(notifyCompletion).not.toHaveBeenCalled();
   });
 
   it("does not chime when muted", async () => {
@@ -245,6 +254,7 @@ describe("chiming when an answer ends", () => {
     await flushPromises();
 
     expect(chime).not.toHaveBeenCalled();
+    expect(notifyCompletion).toHaveBeenCalledOnce();
   });
 
   it("does not carry one answer's outcome over to the next", async () => {
@@ -411,5 +421,35 @@ describe("a slash command", () => {
     expect(chat.sendError).toContain("tools.execute");
     expect(chat.clockStart).toBeNull();
     expect(runCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe("desktop notification preference", () => {
+  it("is off by default, saved per account, and reset on logout", async () => {
+    const chat = await storeWith({ c1: TWO });
+    expect(chat.browserNotifications).toBe(false);
+    chat.setBrowserNotifications(true);
+    expect(localStorage.getItem("ember_web.notifications.1")).toBe("1");
+    useAuthStore().account = null;
+    await flushPromises();
+    expect(chat.browserNotifications).toBe(false);
+    expect(clearCompletionNotifications).toHaveBeenCalled();
+  });
+  it("notifies once using the saved preference on a successful answer", async () => {
+    localStorage.setItem("ember_web.notifications.1", "1");
+    await running();
+    fire(finalEvent());
+    endStream("done");
+    await flushPromises();
+    expect(notifyCompletion).toHaveBeenCalledExactlyOnceWith("c1", true, expect.any(Function));
+  });
+  it("does not notify when an old account's stream completes", async () => {
+    await running();
+    fire(finalEvent());
+    useAuthStore().account = null;
+    await flushPromises();
+    endStream("done");
+    await flushPromises();
+    expect(notifyCompletion).not.toHaveBeenCalled();
   });
 });

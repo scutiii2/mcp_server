@@ -1,4 +1,5 @@
 import vue from '@vitejs/plugin-vue'
+import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
 
 // ember_admin: everything under /api goes to ember_api, so the browser sees one origin:
@@ -27,7 +28,35 @@ const contentSecurityPolicy = [
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), VitePWA({
+    registerType: 'prompt',
+    injectRegister: null,
+    includeAssets: ['favicon.svg', 'icons/*.png'],
+    manifest: {
+      id: '/',
+      name: 'Ember Admin',
+      short_name: 'Ember Admin',
+      description: 'Manage your Ember workspace.',
+      start_url: '/admin',
+      scope: '/',
+      display: 'standalone',
+      background_color: '#17171a',
+      theme_color: '#e8590c',
+      icons: [
+        { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    },
+    workbox: {
+      // Cache only versioned UI files. Account data, API calls, and downloads stay on the network.
+      globPatterns: ['**/*.{js,css,html}'],
+      navigateFallback: '/index.html',
+      navigateFallbackDenylist: [/^\/api(?:\/|$)/],
+      runtimeCaching: [],
+      cleanupOutdatedCaches: true,
+    },
+  })],
   build: {
     // style.css colors are light-dark() tokens (the theme toggle sets
     // color-scheme). Below these versions the CSS minifier rewrites them into

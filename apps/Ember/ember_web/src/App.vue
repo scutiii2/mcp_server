@@ -3,6 +3,7 @@ import { storeToRefs } from "pinia";
 import { watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import NavRail from "./components/NavRail.vue";
+import PwaStatus from "./components/PwaStatus.vue";
 import { useAuthStore } from "./stores/auth";
 
 const auth = useAuthStore();
@@ -18,6 +19,7 @@ watch(account, (now) => {
 </script>
 
 <template>
+  <PwaStatus app-name="Ember" offline-message="Reconnect to send messages and use server tools." />
   <div class="shell">
     <NavRail />
     <main class="page" :class="{ 'has-tabs': account && !auth.needsVerification }">

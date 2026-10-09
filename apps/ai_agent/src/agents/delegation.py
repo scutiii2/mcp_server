@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from contextvars import ContextVar, Token
 from typing import Any
 
@@ -33,6 +34,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from src.agents import agent_events, agent_registry, agent_routing, agent_spec
 
 from src.core import approvals, internal_auth, tool_filter
+from src.core.catalog import catalog
 from src.agents.agent_spec import REASONING_EFFORTS, TIERS, RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
@@ -52,6 +54,24 @@ def bind_usage() -> tuple[list[dict[str, Any]], Token]:
 
 def reset_usage(token: Token) -> None:
     _usage_sink.reset(token)
+
+_attachments: ContextVar[str] = ContextVar("delegation_pdf_attachments", default="")
+
+
+@catalog(description="Preserve uploaded PDF file references across specialist delegations")
+def bind_attachments(question: str, history: list[dict[str, Any]]) -> Token:
+    # Carry only file metadata, never the extracted document text or unrelated history.
+    sources = [str(item.get("content", "")) for item in history if item.get("role") == "user"] + [question]
+    pattern = r'\[\[ATTACHMENT filename="([^"]*)" chars="\d+" truncated="(?:true|false)"\]\]\n(\[PDFMerger file_id:[^\n]*\])'
+    references = list(dict.fromkeys(f"{name}: {header}" for source in sources for name, header in re.findall(pattern, source)))
+    # Nested delegates inherit the references appended by the preceding hop.
+    references += [f"{name}: {header}" for source in sources for name, header in re.findall(r'^([^\n]+): (\[PDFMerger file_id:[^\n]*\])$', source, re.MULTILINE)]
+    return _attachments.set("\n".join(dict.fromkeys(references)))
+
+
+def reset_attachments(token: Token) -> None:
+    _attachments.reset(token)
+
 
 # Each hop is itself a full up-to-6-round ask() call, so this bounds a
 # worst case that's real but not tiny. 2 hops makes a genuine multi-step
@@ -74,7 +94,7 @@ def tool_parameters(roster: list[RosterEntry], allow_auto: bool) -> dict[str, An
     ids = [r.id for r in roster] + ([AUTO_AGENT_ID] if allow_auto else [])
     properties: dict[str, Any] = {
         "agent_id": {"type": "string", "enum": ids, "description": "Which specialist to delegate to."},
-        "question": {"type": "string", "description": "The focused sub-question to ask it."},
+        "question": {"type": "string", "description": "The focused sub-question to ask it. Include exact attachment file_id/table_id values, filenames and requested file order from the user question; specialists do not receive the chat history."},
     }
     if _offers_choice(roster):
         properties["model_tier"] = {
@@ -178,6 +198,10 @@ def call(
         chosen = agent_routing.resolve_auto(question)
         agent_id = chosen.id
         prefix = f"Delegated to {chosen.id} ({chosen.label}).\n\n"
+
+    references = _attachments.get()
+    if references and references not in question:
+        question += "\n\nUploaded PDF file references (original attachment order):\n" + references
 
     # Specialists start and stop on their own - read the current registry.
     agent_registry.reload()

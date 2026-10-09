@@ -3,6 +3,7 @@ import { storeToRefs } from "pinia";
 import { watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import AdminNav from "./components/AdminNav.vue";
+import PwaStatus from "../../ember_web/src/components/PwaStatus.vue";
 import { useAuthStore } from "./stores/auth";
 
 const auth = useAuthStore();
@@ -18,6 +19,7 @@ watch(account, (now) => {
 </script>
 
 <template>
+  <PwaStatus app-name="Ember Admin" offline-message="Reconnect to load workspace data and make administration changes." />
   <div class="shell">
     <AdminNav />
     <main class="page"><RouterView :key="account?.id ?? 'guest'" /></main>

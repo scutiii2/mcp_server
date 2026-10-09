@@ -52,7 +52,7 @@
 
   /* Height of the bottom nav bar on narrow screens; sheets pinned to the
      bottom of the page sit above it, not under it. */
-  --rail-height: 52px;
+  --rail-height: calc(52px + env(safe-area-inset-bottom, 0px));
 
   color-scheme: light dark;
   font: 15px/1.55 var(--sans);
@@ -104,4 +104,20 @@ input {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* The visible viewport follows mobile browser chrome and the keyboard. */
+#app {
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+@media (max-width: 767px) {
+  /* 16px prevents iOS zooming the page when focusing a form. */
+  #app input, #app textarea, #app select { font-size: max(1em, 16px); }
+}
+@media (pointer: coarse) {
+  button, a, input, select { touch-action: manipulation; }
+  button { min-height: 44px; }
 }

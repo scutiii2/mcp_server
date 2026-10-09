@@ -2,29 +2,11 @@
 
 Deferred items — not scheduled, revisit when the trigger condition below is met.
 
-## Legacy config cleanup (ai_agent tuning merge completed 2026-10-09)
-
-**Context**: Secrets are done: every project (ai_agent, mcp_server, ember_api) now has one `.env` plus `.env.example`. The ai_agent tuning merge is done (2026-10-09); the legacy config checks below remain. Catalog item descriptions (older item) were already built and were removed from this file on 2026-10-07.
-
-**Secrets (done, checked 2026-10-07)**
-- **mcp_server**: `.secrets/secret_*.env` merged into `apps/mcp_server/.env`; `run.py` builds `.env` from an old `.secrets/` folder on first start (`src/utils/env_file.py`). The 4 legacy `.secrets/secret_*.env` files were deleted 2026-10-07; the empty `.secrets/` folder is left.
-- **ember_api**: merged into `apps/ember_api/.env` with a `.env.example`; the legacy `secrets/` folder is gone. Nothing left.
-- **ai_agent**: stale comments in `.env.example` are fixed.
-- `INTERNAL_API_TOKEN` stays in each project's own `.env` and must match across ember_api, ai_agent and mcp_server. Do not share one file across projects (each project stays self-contained).
-
-**Configs: stay in `configs/`; which ones can merge**
-- **mcp_server** (decided 2026-10-05: no merge): `config_capabilities.json` (42 B) and `config_extensions.json` stay separate. Merging needs wrapper keys and rewrites of the loaders and savers in `app_config.py` plus four test files, and `config_extensions.json` is deleted by the extensions-proxy item below, leaving `config_capabilities.json` alone. Both savers are synchronous read-modify-write, so one process cannot interleave them (no shared writer needed). `config_email.json` (example only, gitignored by path unlike the other two) looks dead: `Settings.email_config_path` has no caller in `src/`, `load_email_config` is used only by tests, and nothing loads the `EmailConfig` that `services/email.py` takes. Check `watcher` / `email` before removing it.
-- **ai_agent (done 2026-10-09)**: `config_tuning.json` now holds `token_limits` and `tool_selection`. On first read it preserves existing sections from the old files, which remain as backups; both loaders use the merged file. The combined `.example`, tests, README and scaffold skill are updated.
-- **Keep separate**: `apps/ai_agent/configs/config_gateways.json` (3 KB, provider endpoints), `prompts.json` (persona text), `config_servers.json` (the MCP server list, reworked by the extensions item below), and `apps/ai_agent/.data/agent_registry.json` (runtime registry, lives in `.data/`, not a config).
-- **Nothing to merge**: ember_api already has the single `configs/config_app.json`; `apps/chat_cli/configs/` has one file. `apps/catalog_service/configs/` not checked.
-
-**Remaining**: check `watcher` / `email` before removing any legacy mcp_server config. No further ai_agent config merge is planned.
-
 ## Treat mcp_server as a normal MCP, drop the "extensions" proxy (deferred 2026-09-21, rewritten 2026-10-05)
 
 **Note**: chat_app was removed; ember_api now owns the MCP side the old text called "chat_app".
 
-**Context**: Today mcp_server is a hub. External MCPs are added as "extensions" (`apps/mcp_server/configs/config_extensions.json`, `apps/mcp_server/src/extension_routes.py`, `/extensions` endpoint) and their tools arrive proxied as `{ext_id}__{tool}`. The file currently holds one live entry, `pdf_merger`. ember_api reaches mcp_server through one URL (`mcp_server_url` in `apps/ember_api/configs/config_app.json`, used by `apps/ember_api/src/services/mcp_proxy.py`) and passes extensions through (`apps/ember_api/src/routes/server_info.py`, `apps/ember_api/src/services/mcp_server_info.py`: list, add, remove). Each chat turn carries `enabled_extensions` from ember_api (`routes/chats.py`, `services/turns.py`, `services/agent_gateway.py`) to ai_agent (`apps/ai_agent/src/server.py`, `agents/agent_config.py`). `ai_agent` already has a multi-server registry (`configs/config_servers.json`, `McpClientRegistry`, tools namespaced `<server>__<tool>`), but it holds only the `main` entry (mcp_server). Goal: mcp_server is just one MCP entry among several, with no proxying.
+**Context**: Today mcp_server is a hub. External MCPs are added as "extensions" (`apps/mcp_server/configs/config_extensions.json`, `apps/mcp_server/src/extension_routes.py`, `/extensions` endpoint) and their tools arrive proxied as `{ext_id}__{tool}`. The file currently holds one live entry, `pdf_merger`. ember_api reaches mcp_server through one URL (`mcp_server_url` in `apps/Ember/ember_api/configs/config_app.json`, used by `apps/Ember/ember_api/src/services/mcp_proxy.py`) and passes extensions through (`apps/Ember/ember_api/src/routes/server_info.py`, `apps/Ember/ember_api/src/services/mcp_server_info.py`: list, add, remove). Each chat turn carries `enabled_extensions` from ember_api (`routes/chats.py`, `services/turns.py`, `services/agent_gateway.py`) to ai_agent (`apps/ai_agent/src/server.py`, `agents/agent_config.py`). `ai_agent` already has a multi-server registry (`configs/config_servers.json`, `McpClientRegistry`, tools namespaced `<server>__<tool>`), but it holds only the `main` entry (mcp_server). Goal: mcp_server is just one MCP entry among several, with no proxying.
 
 **Target design**: ember_api and ai_agent connect to N MCP servers side by side (mcp_server, pdf_merger, github MCP, others). mcp_server exposes only its own capabilities.
 
@@ -44,29 +26,14 @@ Deferred items — not scheduled, revisit when the trigger condition below is me
 - mcp_server: routes and config above.
 - Docs and the scaffold skills that mention extensions.
 
-Overlaps with the config-consolidation item above: `config_extensions.json` would be deleted rather than merged.
-
 **Why not built now**: user asked to log it instead of implementing.
 
 **Revisit when**: user wants this built. Start with step 1.
-
-## Chat folders: reordering and folder names in search (added 2026-10-06)
-
-**Context**: Chat folders, pins and drag and drop are merged to `main` (spec: `docs/superpowers/specs/2026-10-05-chat-folders-pins-design.md`). Two parts were left out on purpose; each needs its own design.
-
-- **Folder reordering UI**: the API already supports it (`PATCH /api/chat-folders/{id}` with `position`, and `foldersClient.reorder` / the folders store `reorder` exist). Missing: a way to reorder in the sidebar (drag a folder header, or Move up / Move down in the folder "..." menu).
-- **Folder names in search hits**: search results are a flat list and do not say which folder a chat is in. Show the folder name on each hit (needs `folder_id` in the search hit rows from ember_api, or a lookup in the store).
-
-**Revisit when**: user wants these built.
 
 ## More Ember ideas (added 2026-10-06)
 
 Ideas from the "what more can we add" discussion; none designed yet.
 
-- **Attachments with the pdf-assistant**: attachments exist (`ember_web/src/api/AttachmentsClient.ts`, `ember_api/src/routes/attachments.py`) as of 2026-10-07; unchecked whether the pdf-assistant reads them. Verify, then drop this bullet.
-- **Per-user quotas**: limit usage per account (builds on the existing usage gauges).
-- **Notifications when a long answer finishes**: for example a browser notification or a title badge when the tab is in the background.
-- **Mobile and PWA support**: installable app, touch layout, offline shell.
 
 **Revisit when**: user picks one; start with brainstorming a design.
 
@@ -80,15 +47,12 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 **Revisit when**: user wants it built.
 
-## Firecrawl web scraping (added 2026-10-07)
+## Verify Firecrawl against the live API (added 2026-10-07)
 
-**Status**: built 2026-10-07 as the `firecrawl` capability in mcp_server (id `scrape`, label "Web Scraping"; `apps/mcp_server/src/capabilities/firecrawl/`). Untested against the real Firecrawl API: unit tests mock the HTTP calls.
+The capability exists at `apps/mcp_server/src/capabilities/firecrawl/`, but its tests mock HTTP calls. Live verification remains:
 
-**Decided**: a capability that calls the Firecrawl REST API (`/v2/scrape`, `/v2/map`, `/v2/crawl`), the same endpoints https://github.com/firecrawl/firecrawl-mcp-server wraps; not an extension, so it does not depend on the extensions-proxy item above. Three tools: `/scrape page`, `/scrape map`, `/scrape crawl` (limit 25 pages, waits up to 60 s). Kept beside `web_research` (Tavily): Tavily for search and quick reads, Firecrawl for JavaScript-heavy pages and whole sites. Config: `FIRECRAWL_API_KEY` and optional `FIRECRAWL_API_URL` (self-hosted) in `apps/mcp_server/.env`.
-
-**Left out on purpose**: Firecrawl's search (`web_research` does it) and its LLM-based extract.
-
-**Still to do**: add `FIRECRAWL_API_KEY` to the real `.env`, then try `/scrape page` on a real URL. Check the v2 response shapes (map links, crawl `data`) against the live API.
+- Configure `FIRECRAWL_API_KEY` if needed, or use `FIRECRAWL_API_URL` for self-hosted Firecrawl.
+- Try `/scrape page` on a real URL, then check map links and crawl `data` against the v2 response shapes.
 
 ## Run apps in Docker to test the server_manager tools (added 2026-10-07)
 
@@ -105,25 +69,23 @@ Ideas from the "what more can we add" discussion; none designed yet.
 
 **Smallest first step**: compose with `mcp_server` plus one app (for example `pdf_merger`), enough to test `list`, `restart` and `logs`.
 
-**Side issue** (still open 2026-10-07, security): `apps/mcp_server/zima_host.yaml` line 16 has an SMTP password in plain text, checked into the repo. Move it to a gitignored env file and rotate the password. Worth doing before the Docker work.
+**SMTP credential rotation (repository cleaned 2026-10-09)**: `zima_host.yaml` now loads credentials from the deployment's gitignored `.env`; the inline password is removed. Still required: revoke the exposed password at the mail provider, put a replacement `SMTP_PASSWORD` in the deployment `.env`, recreate the container and verify email delivery. The old password remains in Git history until revoked.
 
 **Revisit when**: user wants it built (Docker Desktop installed first).
 
-## More ai_agent agents: Email, Data Analyst, Scheduler (added 2026-10-07)
+## Verify specialist agents and consider follow-up features (added 2026-10-07)
 
-**Context**: Planner, Log Analyst, Researcher, Usage Analyst, Vault Librarian, Repo Helper, Email Assistant, Data Analyst and Scheduler are built (agent files in `apps/ai_agent/agents/`, tools in `apps/mcp_server/src/capabilities/`). No agents from the original list are left out. Add an agent file with the `aiagent-scaffold` skill and a tool with `mcp-capability-scaffold`.
+The agents are implemented. These manual checks remain unverified:
 
-- **Email Assistant** (built 2026-10-07 as `agents/email-assistant.json`, port 9112): pasted-text only, no tools, no mailbox, no send. Untested: paste an email and check summary, triage and draft. Ember and planner instructions mention it.
-  - **Later, if wanted**: a mailbox capability (IMAP read-only, then save drafts). `services/email.py` is send-only SMTP used by watchers, so IMAP would be new code; `Settings.email_config_path` still has no caller in `src/`. Decide credentials in `.env`, and treat mail content as untrusted (prompt injection).
-- **Data Analyst** (built 2026-10-07 as `agents/data-analyst.json`, port 9113, plus the `tables` capability in mcp_server, `POST /api/attachments/table` in ember_api and the table upload in `ChatInput`): fixed read-only tools over the whole attached CSV/XLSX, no code execution. Spec and plan in `docs/superpowers/`. Untested by hand: attach a CSV, ask for a total and a top 5.
-  - **Later, if wanted**: a sandboxed run-code tool for what the fixed tools cannot express; `.xls` files; charts or a downloadable result file.
-- **Scheduler / Watcher agent** (built 2026-10-07 as `agents/scheduler.json`, port 9114, plus the `watch` capability in mcp_server): one-shot "tell me when X is up/down" for a URL, a managed app or a TCP port; one email to the requester's own address plus the Watchers page. Spec and plan in `docs/superpowers/`. Untested by hand: watch a local URL that is down, bring it up, expect the email. For the email to work, copy `apps/mcp_server/configs/config_email.json.example` to `config_email.json`, set `from`, and put `SMTP_PASSWORD` in `.env`.
-  - **Later, if wanted**: recurring monitoring and alert-on-every-change, log or file patterns, recipients other than the creator (needs an allowed-domains rule), SMS or push.
+- **Email Assistant** (`email-assistant`, port 9112): paste an email and check its summary, triage and draft reply.
+- **Data Analyst** (`data-analyst`, port 9113): attach a CSV, ask for a total and a top 5, and check the results.
+- **Scheduler** (`scheduler`, port 9114): watch a local URL that is down, bring it up, and check that the requester receives one email and the Watchers page records the outcome. Configure `config_email.json` and `SMTP_PASSWORD` if needed.
+- **Ember routing**: check delegation across the specialist roster with Laya routing enabled.
 
-**Also to check once the new agents run**: with 11 agents Ember may route badly. `"routing": {"laya": true}` is already set in `agents/ember.json` (2026-10-07).
+Optional follow-up features, not implemented:
 
-**Revisit when**: user picks one; start with its open decisions.
+- **Email**: read-only IMAP mailbox access, then saved drafts. Decide credentials in `.env` and treat mail content as untrusted. The existing email service provides SMTP sending for watchers.
+- **Data analysis**: sandboxed code execution, `.xls` support, charts and downloadable results.
+- **Scheduling**: recurring monitoring, alerts on every change, log/file patterns, other recipients (requires an allowed-domains rule), SMS or push.
 
-## Video downloader app
-
-Built on 2026-10-06 as `Python/VideoDownloader` (service `video_downloader` plus web app `video_downloader_web`). See its README and `_TODO.md` for deferred features.
+**Revisit when**: user wants the manual checks run or picks a follow-up feature.

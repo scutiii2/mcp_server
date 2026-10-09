@@ -68,6 +68,8 @@ export interface MatchSpan {
 /** A chat found by search: its title and/or the first matching message. */
 export interface ChatSearchHit {
   id: string;
+  /** Current folder; absent from an older API. */
+  folder_id?: number | null;
   title: string;
   updated_at: string;
   title_match: MatchSpan | null;

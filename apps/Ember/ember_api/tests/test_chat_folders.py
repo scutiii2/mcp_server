@@ -320,3 +320,53 @@ def test_deleting_a_folder_writes_an_audit_entry(client: TestClient) -> None:
     client.delete(f"/api/chat-folders/{folder_id}")
 
     assert 'Deleted folder "Audit me" and its 2 chat(s)' in messages(client, "action", my_id(client))
+
+
+
+def test_adjacent_moves_handle_tied_positions_and_boundaries(client: TestClient) -> None:
+    as_admin(client)
+    ids = [new_folder(client, name).json()["id"] for name in ["a", "b", "c"]]
+    for folder_id in ids:
+        assert client.patch(f"/api/chat-folders/{folder_id}", json={"position": 10}).status_code == 200
+    response = client.patch(f"/api/chat-folders/{ids[1]}", json={"direction": "up"})
+    assert response.status_code == 200, response.text
+    assert [f["id"] for f in folders(client)] == [ids[1], ids[0], ids[2]]
+    assert len({f["position"] for f in folders(client)}) == 3
+    assert client.patch(f"/api/chat-folders/{ids[1]}", json={"direction": "up"}).status_code == 200
+    assert [f["id"] for f in folders(client)] == [ids[1], ids[0], ids[2]]
+    assert client.patch(f"/api/chat-folders/{ids[1]}", json={"direction": "down"}).status_code == 200
+    assert [f["id"] for f in folders(client)] == ids
+    assert client.patch(f"/api/chat-folders/{ids[-1]}", json={"direction": "down"}).status_code == 200
+    assert [f["id"] for f in folders(client)] == ids
+
+
+def test_invalid_move_requests_do_not_change_order(client: TestClient) -> None:
+    as_admin(client)
+    folder_id = new_folder(client).json()["id"]
+    for body in [{"direction": "sideways"}, {"direction": "up", "position": 3},
+                 {"direction": "up", "name": "Renamed"}]:
+        assert client.patch(f"/api/chat-folders/{folder_id}", json=body).status_code == 422
+    assert folders(client)[0]["name"] == "Work"
+
+
+def test_adjacent_move_cannot_access_another_accounts_folder(client: TestClient, email: FakeEmailSender) -> None:
+    as_admin(client)
+    folder_id = new_folder(client, "Private").json()["id"]
+    client.post("/api/auth/logout", json={})
+    make_member(client, email)
+    login(client, "alice")
+    assert client.patch(f"/api/chat-folders/{folder_id}", json={"direction": "up"}).status_code == 404
+
+
+def test_search_reports_current_folder_for_filed_and_unfiled_chats(client: TestClient) -> None:
+    as_admin(client)
+    folder_id = new_folder(client).json()["id"]
+    filed = make_chat(client, "Needle filed")
+    unfiled = make_chat(client, "Needle unfiled")
+    client.patch(f"/api/chats/{filed}", json={"folder_id": folder_id})
+    results = {hit["id"]: hit for hit in client.get("/api/chats/search", params={"q": "Needle"}).json()}
+    assert results[filed]["folder_id"] == folder_id
+    assert results[unfiled]["folder_id"] is None
+    client.patch(f"/api/chats/{filed}", json={"folder_id": None})
+    results = {hit["id"]: hit for hit in client.get("/api/chats/search", params={"q": "Needle"}).json()}
+    assert results[filed]["folder_id"] is None

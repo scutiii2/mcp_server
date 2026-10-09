@@ -105,3 +105,32 @@ pytest
 ## Docker
 
 See `zima_host.yaml` for a ZimaOS "customized app" Docker Compose recipe.
+
+
+The recipe loads credentials from the host file
+`/media/HDD320-1/MCPArchitecture/mcp_server/.env` (the same project `.env`
+used by local startup, already gitignored). Place the file at that path
+before starting the customized app; Compose does not upload it for you.
+Keep `SMTP_PASSWORD` there and restrict the file's permissions to the
+account managing the deployment. Keep the host path in `env_file` and the
+volume mount in step if you move the deployment.
+
+The SMTP password previously embedded in this recipe must be revoked at
+the mail provider. Put a replacement password in the deployment `.env`,
+then recreate the container and verify watcher email delivery. Removing
+it from the recipe does not remove it from Git history or rotate it.
+
+
+### PDF chat attachments
+
+`POST /upload/pdf` accepts a multipart `file` (PDF, PNG, JPEG, WebP, TIFF,
+GIF or HEIC; at most 15 MB). It requires this server's `X-Internal-Token`
+and an authenticated `X-Requester-Username` supplied by Ember's API.
+The configured `pdf_merger` extension must use HTTP, an internal token in
+its headers, and `forward_requester: true`. The route resolves only that
+extension's configuration and sends original bytes to its `/api/files`
+endpoint under the same requester used by the proxied PDF tools. Browser
+session fallback is rejected before uploading when the PDFMerger token is wrong.
+The response contains PDFMerger's opaque file ID, metadata and expiry.
+Originals remain in PDFMerger's store until its configured TTL expires.
+No document bytes, extension credentials or internal URLs are sent to the model.

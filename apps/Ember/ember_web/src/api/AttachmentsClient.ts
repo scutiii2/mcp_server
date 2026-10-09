@@ -17,6 +17,13 @@ export interface AttachmentTable {
   notes: string[];
 }
 
+export interface AttachmentPdf extends AttachmentText {
+  file_id: string;
+  pages: number;
+  kind: string;
+  expires_at: number;
+}
+
 /** Same limit ember_api enforces; checked here first to skip the upload. */
 export const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
@@ -34,6 +41,12 @@ export function toBase64(file: File): Promise<string> {
 }
 
 export const attachmentsClient = {
+  async pdf(file: File): Promise<AttachmentPdf> {
+    if (file.size > MAX_ATTACHMENT_BYTES) throw new Error("Too large - the limit is 15 MB");
+    return apiRequest<AttachmentPdf>("POST", "/api/attachments/pdf", {
+      filename: file.name, data: await toBase64(file),
+    });
+  },
   /** Text ember_api extracted from the file; the file itself isn't kept. */
   async text(file: File): Promise<AttachmentText> {
     if (file.size > MAX_ATTACHMENT_BYTES) {

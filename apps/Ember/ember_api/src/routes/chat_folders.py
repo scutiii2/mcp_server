@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +54,7 @@ class CreateFolderRequest(BaseModel):
 class UpdateFolderRequest(BaseModel):
     name: str | None = Field(default=None, max_length=NAME_MAX)
     position: int | None = Field(default=None, ge=0, le=100_000)
+    direction: Literal["up", "down"] | None = None
 
     @field_validator("name")
     @classmethod
@@ -60,8 +63,10 @@ class UpdateFolderRequest(BaseModel):
 
     @model_validator(mode="after")
     def something_to_change(self) -> UpdateFolderRequest:
-        if self.name is None and self.position is None:
-            raise ValueError("send a name or a position")
+        if self.name is None and self.position is None and self.direction is None:
+            raise ValueError("send a name, a position or a direction")
+        if self.direction is not None and (self.name is not None or self.position is not None):
+            raise ValueError("send direction on its own")
         return self
 
 
@@ -124,6 +129,9 @@ async def update_folder(
             await logs.action(account, "chat_folder.rename", f'Renamed a folder to "{folder.name}"')
         if body.position is not None:
             folder = await folders.reorder(folder_id, body.position)
+        if body.direction is not None:
+            folder = await folders.move(folder_id, body.direction)
+            await logs.action(account, "chat_folder.move", f'Moved folder "{folder.name}" {body.direction}')
     except FolderNotFound as error:
         raise _not_found() from error
     except FolderNameTaken as error:

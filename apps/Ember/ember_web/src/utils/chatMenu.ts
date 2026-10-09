@@ -36,8 +36,11 @@ export function chatMenuItems(chat: Conversation, folders: ChatFolder[], answeri
 
 /** The menu of a folder header. `deleteDisabled`: the chats are still loading,
  * so the count a delete would report is not known yet. */
-export function folderMenuItems(deleteDisabled: boolean): MenuItem[] {
+export function folderMenuItems(deleteDisabled: boolean, index = 0, count = 1, moving = false): MenuItem[] {
   return [
+    { id: "move-up", label: "Move up", disabled: moving || index <= 0 },
+    { id: "move-down", label: "Move down", disabled: moving || index < 0 || index >= count - 1 },
+    separator("sep-folder-edit"),
     { id: "rename", label: "Rename" },
     { id: "delete", label: "Delete", danger: true, disabled: deleteDisabled },
   ];

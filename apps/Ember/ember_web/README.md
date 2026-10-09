@@ -31,6 +31,15 @@ URL, token or key.
 - A running clock under the answer being written (`12.4 s`, then `1 min 03 s`),
   and beside "Running command ...". It counts from when you sent the question; for a
   chat you reopen while it is still answering it counts from the reopen.
+- Completion alerts for the watched answer: while the page is hidden or unfocused,
+  the tab title shows an unread "Answer ready" count, cleared when you return.
+  Settings → Chat → Desktop notifications enables optional browser notifications
+  (off by default, remembered per account on this device). Enabling requests browser
+  permission; denied or unsupported browsers show an explanation. Click a notification
+  to open its chat. Notifications contain no chat title or answer text. Requires
+  browser support and a secure context (HTTPS or localhost); the tab indicator works
+  even if desktop notifications are blocked. The page must remain open and watching
+  the turn; stopped, failed and abandoned streams do not notify.
 - "Chime when done" (on by default, remembered per account): a short chime
   when an answer arrives while this tab is hidden or not focused. A stopped
   or failed answer does not chime, and neither does a chat you are not
@@ -86,10 +95,25 @@ URL, token or key.
   `/clear`, `/compact` (Summarize), `/export` and `/share`. Only the bare
   command counts ("/clear now" is sent as a normal message), the chat needs
   messages, and `/clear` and `/compact` wait for the current answer to finish.
+- Lists format in the typing box: begin a line with `- `, `* `, `+ ` or
+  a number followed by `. `. Bullets and numbers have automatic left
+  indentation, including wrapped lines. Enter sends; Shift+Enter continues
+  the next item, or exits an empty item. Tab/Shift+Tab indent/outdent list
+  items. Questions are sent as Markdown; sent user bubbles continue to show
+  the original Markdown text. The list editor loads when needed; ordinary
+  text, command suggestions, attachments and saved prompts use the same composer.
 - Attach files to a question (paperclip, paste, or drag and drop anywhere on
-  the input area): text and code files, PDF, Word and Excel. ember_api extracts their text (up to 20,000
-  characters each), which goes into the question; the chat shows each file
-  collapsed under what you typed.
+  the input area): text and code files, PDF, Word, Excel and supported images.
+  Text previews (up to 20,000 characters each) go into the question; the chat
+  shows each file collapsed under what you typed. PDF/image originals are also
+  stored in PDFMerger under your account so PDF Assistant can inspect and merge
+  them using their uploaded IDs, including scans without readable text. IDs are
+  retained when delegating to specialists. Uploads are limited to 15 MB each.
+  PDFMerger must be running and configured as the `pdf_merger` HTTP extension
+  with a valid internal token and `forward_requester: true`. Stored files expire
+  according to PDFMerger's TTL; upload again if an ID expires. Removing a chip
+  removes it from the question; its stored original expires through that TTL.
+  Images can be inspected for metadata and merged; this integration adds no OCR.
 - Summarize (condense the history into a summary the agent keeps) and Clear
   (start afresh); earlier messages stay readable as a collapsed log. A chat
   is also summarized automatically once its context is 60% full. A
@@ -114,6 +138,8 @@ URL, token or key.
   rename (double-click or pencil), export to Markdown, clear, delete, delete all.
   "Select" ticks several chats (click a row or its box, or "All") and deletes
   them together after a confirmation; searching leaves select mode.
+  Folder menus offer Move up / Move down; the order follows the account
+  across browsers. End-of-list moves and moves during a save are disabled.
 - Every chat has its own address, `/chat/<id>`: bookmark it, reload it, or use
   the browser's back and forward buttons to move between chats you opened. An
   id that is not one of your chats goes back to `/` with a notice. A new chat
@@ -123,7 +149,8 @@ URL, token or key.
   numbers and when the oldest tokens stop counting. They refresh when an
   answer ends. The Usage page has the detail.
   The sidebar search (2+ characters) looks through titles and message text
-  (not attached files) and highlights the match; opening a result scrolls to
+  (not attached files), highlights the match and shows the current folder
+  name on filed chats; opening a result scrolls to
   the first matching message and flashes it.
 - Capabilities page (the old Tools and Capabilities pages in one; `/tools` redirects here): only what the account has added is listed. Each capability is a
   collapsed card, opened by clicking it or while a filter is typed. Its tools run in place from forms generated from their
@@ -155,7 +182,7 @@ URL, token or key.
 - "Terse replies" toggle in the chat header (ai_agent's `caveman`
   option), remembered per account.
 - Settings page (`/settings`, `chat.use`): your preferences in one place, grouped by task: Chat (terse
-  replies, ask before tools, chime), Appearance (theme), Sidebar (see below). Workspace tool approval is configured in ember_admin.
+  replies, ask before tools, chime, desktop notifications), Appearance (theme), Sidebar (see below). Workspace tool approval is configured in ember_admin.
   A search box filters them as you type (label, description and extra keywords; Enter focuses the first
   match, Esc clears it). A setting that differs from its default shows an accent dot and a reset
   button ("Back to default"), and the header counts how many are changed. Chat and theme apply instantly and
@@ -369,7 +396,7 @@ src/
                 turnStream (watching a running answer), slashCommands
   stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, accountCapabilities, configIssues
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
-                useElapsed (running clock), useNotify (chime), useSidebarCollapse (chat list),
+                useElapsed (running clock), useNotify (chime), useCompletionNotify (completion alerts), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
   views/        pages: Overview, Chat, Capabilities, Agents, Watchers, Usage, Settings, ConfigIssues,
                 Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
@@ -432,3 +459,35 @@ Content pages share heading typography, description typography, and horizontal s
 Capabilities uses compact cards matching Ember Admin. Selecting a card opens a fixed-height tool workspace with a searchable tool sidebar, parameter form and results. Resources are readable inside the modal; private extensions remain available only in chats. Account switches and custom page links remain on the cards.
 
 Settings edits are drafts until Save. A fixed bottom Save/Revert bar covers chat preferences, theme and sidebar arrangement, with error retry and unsaved-change protection.
+
+## Mobile and installation
+
+Phone layouts use bottom navigation, touch controls, safe-area padding for notches
+and the home indicator, and the dynamic viewport for browser chrome and keyboards.
+Ember and Ember Admin install separately, each from its own origin.
+
+Build with `npm run build`, then serve `dist/` over HTTPS (localhost also works).
+For phone layout testing on the same Wi-Fi, run `npm run preview -- --host 0.0.0.0`
+and open this computer's LAN address and preview port; use an HTTPS reverse proxy
+for installation and offline testing on a phone.
+The browser can install the app from its menu; when an install prompt is available,
+an **Install app** button appears. On iPhone/iPad, use Safari → Share → Add to Home Screen.
+The PWA service worker is enabled in production builds, including `npm run preview`,
+and is disabled in the Vite development server so it does not interfere with HMR.
+An HTTP LAN address can serve the mobile layout, but installation/offline support
+requires HTTPS. Keep the existing same-origin `/api` proxy and SPA route fallback.
+Serve `sw.js` and `index.html` with revalidation (`Cache-Control: no-cache`), hashed
+`assets/` with immutable caching, and the manifest as `application/manifest+json`.
+
+After one connected visit, static HTML, JavaScript, CSS and app icons are available
+offline. An offline banner explains that chat, sign-in and administration actions
+need a connection; use **Retry** once connected. The service worker never caches
+API responses, transcripts, account data or generated downloads, and never queues
+or replays writes. A cold offline start cannot restore the server session.
+New builds show **Reload to update** / **Later**; save drafts first. There is no
+automatic update reload during a chat or an administration edit.
+
+App icons: `public/icons/`. Regenerate both sets from their SVG logos with
+`node ../scripts/generate-pwa-icons.mjs` (from either app; uses local Chrome).
+Production browser tests cover phone layouts, installation metadata, offline shell
+loading, API cache exclusion and reconnection.

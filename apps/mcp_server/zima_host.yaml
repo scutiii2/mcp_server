@@ -10,8 +10,10 @@ services:
     restart: always
     ports:
       - "8010:8010"
+    # Host-side credentials file; use the same .env as local startup.
+    env_file:
+      - "/media/HDD320-1/MCPArchitecture/mcp_server/.env"
     environment:
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "8010"
-      SMTP_PASSWORD: "@98paFne1jK23"
       SSH_HOST_KEY_POLICY: "reject"

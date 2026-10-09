@@ -29,6 +29,7 @@ import { agentLabelFor } from "../utils/agentLabels";
 import { builtinCommand, type BuiltinCommand } from "../utils/builtinCommands";
 import { questionHistory } from "../utils/attachments";
 import { conversationToMarkdown, downloadText, exportFileName } from "../utils/chatExport";
+import { errorMessage } from "../utils/errors";
 
 const auth = useAuthStore();
 const chat = useChatStore();
@@ -76,6 +77,15 @@ onMounted(() => void chat.loadCommands());
 // delete dialogs the sidebar's menus open.
 const folderStore = useFoldersStore();
 const folderCollapse = useFolderCollapse();
+const folderMoveError = ref("");
+async function moveFolder(folder: ChatFolder, direction: "up" | "down"): Promise<void> {
+  folderMoveError.value = "";
+  try {
+    await folderStore.move(folder.id, direction);
+  } catch (error) {
+    folderMoveError.value = errorMessage(error);
+  }
+}
 const folderDialogs = ref<InstanceType<typeof FolderDialogs> | null>(null);
 onMounted(() => void folderStore.ensureLoaded());
 
@@ -313,13 +323,16 @@ useChatShortcuts({
       @delete-many="chat.deleteChats"
       :folders="folderStore.folders"
       :folder-error="folderStore.loadError"
+      :folder-move-error="folderMoveError"
+      :folders-moving="folderStore.moving"
+      @move-folder="moveFolder"
       :collapsed-folders="folderCollapse.collapsed.value"
       @pin="chat.setChatPinned"
       @move="chat.setChatFolder"
       @move-new="moveToNewFolder"
       @toggle-folder="folderCollapse.toggle"
       @new-folder="folderDialogs?.openCreate()"
-      @retry-folders="folderStore.ensureLoaded()"
+      @retry-folders="folderStore.reload()"
       @rename-folder="(f: ChatFolder) => folderDialogs?.openRename(f)"
       @delete-folder="(f: ChatFolder) => folderDialogs?.openDelete(f, chatsIn(f))"
     />

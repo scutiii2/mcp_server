@@ -9,6 +9,7 @@ import SettingRow from "../components/SettingRow.vue";
 import SidebarEditor from "../components/SidebarEditor.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
+import { requestCompletionPermission } from "../composables/useCompletionNotify";
 import { DEFAULT_THEME, useTheme, type Theme } from "../composables/useTheme";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
@@ -70,6 +71,13 @@ const DEFS: SettingDef[] = [
     keywords: ["sound", "notification", "audio"],
   },
   {
+    id: "chat-notifications",
+    group: "chat",
+    label: "Desktop notifications",
+    description: "Show a notification when an answer finishes while this tab is in the background.",
+    keywords: ["completion", "browser", "notification", "answer ready"],
+  },
+  {
     id: "chat-suggestions",
     group: "chat",
     label: "Suggest next prompt",
@@ -125,12 +133,30 @@ const noMatches = computed(() => shown.value.size === 0);
 
 const saved = computed(() => ({
   caveman: chat.caveman, askBeforeTools: chat.askBeforeTools, chime: chat.chime,
+  browserNotifications: chat.browserNotifications,
   suggestions: auth.promptSuggestions, theme: theme.value,
   sidebar: { order: [...navPrefs.prefs.order], pinned: [...navPrefs.prefs.pinned], hidden: [...navPrefs.prefs.hidden] },
 }));
 const draft = ref(structuredClone(saved.value));
 const saving = ref(false);
 const saveError = ref("");
+const notificationMessage = ref("");
+const requestingNotifications = ref(false);
+async function changeNotifications(event: Event): Promise<void> {
+  const on = checked(event);
+  // Keep the switch off until the browser grants permission.
+  (event.target as HTMLInputElement).checked = draft.value.browserNotifications;
+  notificationMessage.value = "";
+  if (!on) { draft.value.browserNotifications = false; return; }
+  const accountId = auth.account?.id;
+  requestingNotifications.value = true;
+  try {
+    const message = await requestCompletionPermission();
+    if (accountId !== auth.account?.id) return;
+    notificationMessage.value = message;
+    draft.value.browserNotifications = !message;
+  } finally { requestingNotifications.value = false; }
+}
 const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(saved.value));
 watch(saved, (next, previous) => {
   if (saving.value) return;
@@ -143,7 +169,7 @@ watch(saved, (next, previous) => {
 watch(() => auth.account?.id, () => { draft.value = structuredClone(saved.value); saveError.value = ""; });
 function revert(): void { draft.value = structuredClone(saved.value); saveError.value = ""; }
 async function save(): Promise<void> {
-  if (saving.value || !dirty.value) return;
+  if (saving.value || requestingNotifications.value || !dirty.value) return;
   saving.value = true;
   saveError.value = "";
   const accountId = auth.account?.id;
@@ -161,6 +187,7 @@ async function save(): Promise<void> {
     if (!chat.forceToolApproval) chat.setAskBeforeTools(next.askBeforeTools);
     else draft.value.askBeforeTools = chat.askBeforeTools;
     chat.setChime(next.chime);
+    chat.setBrowserNotifications(next.browserNotifications);
     setTheme(next.theme);
   } catch (err) { if (accountId === auth.account?.id) saveError.value = errorMessage(err); }
   finally { saving.value = false; }
@@ -190,6 +217,7 @@ const modified = computed(() => ({
   "chat-terse": draft.value.caveman !== false,
   "chat-ask-tools": draft.value.askBeforeTools !== false,
   "chat-chime": draft.value.chime !== true,
+  "chat-notifications": draft.value.browserNotifications === true,
   "chat-suggestions": !draft.value.suggestions,
   "appearance-theme": draft.value.theme !== DEFAULT_THEME,
   "sidebar-pages": !isDefault(draft.value.sidebar),
@@ -308,6 +336,17 @@ onMounted(() => {
             <ToggleSwitch small aria-label="Chime when done" :checked="draft.chime" @change="draft.chime = checked($event)" />
           </SettingRow>
           <SettingRow
+            v-if="shown.has('chat-notifications')"
+            setting-id="chat-notifications"
+            label="Desktop notifications"
+            description="Show a notification when an answer finishes while this tab is in the background. Click it to open the chat."
+            :modified="modified['chat-notifications']"
+            @reset="draft.browserNotifications = false"
+          >
+            <ToggleSwitch small aria-label="Desktop notifications" :checked="draft.browserNotifications" :disabled="requestingNotifications" @change="changeNotifications" />
+          </SettingRow>
+          <p v-if="notificationMessage && shown.has('chat-notifications')" role="status" class="muted">{{ notificationMessage }}</p>
+          <SettingRow
             v-if="shown.has('chat-suggestions')"
             setting-id="chat-suggestions"
             label="Suggest next prompt"
@@ -345,8 +384,8 @@ onMounted(() => {
     </div>
     <div v-if="dirty || saving" class="settings-save-bar" role="group" aria-label="Unsaved settings" :aria-busy="saving">
       <div><span>Unsaved changes</span><p v-if="saveError" class="save-error" role="alert">{{ saveError }}</p></div>
-      <button type="button" class="revert" :disabled="saving" @click="revert">Revert</button>
-      <button type="button" class="save" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+      <button type="button" class="revert" :disabled="saving || requestingNotifications" @click="revert">Revert</button>
+      <button type="button" class="save" :disabled="saving || requestingNotifications" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
     </div>
     <ConfirmModal v-if="discardOpen" :open="discardOpen" title="Discard unsaved settings?" message="Your settings changes have not been saved." confirm-label="Discard changes" @confirm="answerDiscard(true)" @close="answerDiscard(false)" />
   </section>

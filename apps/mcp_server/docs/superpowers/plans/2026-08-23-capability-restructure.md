@@ -1691,7 +1691,7 @@ MCP_PUBLIC_BASE_URL=http://127.0.0.1:8010
 `mcp_server/src/secrets/secret_smtp.env` (real value):
 
 ```
-SMTP_PASSWORD = @98paFne1jK23
+SMTP_PASSWORD = ${SMTP_PASSWORD}
 ```
 
 `mcp_server/src/secrets/secret_smtp.env.example`:

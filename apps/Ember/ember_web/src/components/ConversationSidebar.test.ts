@@ -1129,3 +1129,39 @@ describe("folder load error", () => {
     expect(searching([hit("1")], { folderError: "offline" }).find(".folder-error").exists()).toBe(false);
   });
 });
+
+
+describe("folder improvements", () => {
+  it("offers adjacent moves and disables the ends", async () => {
+    const list = [folder(1, "Work"), folder(2, "Home"), folder(3, "Notes")];
+    const wrapper = mountSidebar({ conversations: [], folders: list });
+    await wrapper.findAll("header button.more")[0]!.trigger("click");
+    expect(menuItem("Move up")?.getAttribute("aria-disabled")).toBe("true");
+    menuItem("Move down")!.click();
+    await flushPromises();
+    expect(wrapper.emitted("moveFolder")).toEqual([[list[0], "down"]]);
+    await wrapper.findAll("header button.more")[2]!.trigger("click");
+    expect(menuItem("Move down")?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("disables moves while a save is pending", async () => {
+    const wrapper = mountSidebar({ conversations: [], folders: [folder(1), folder(2)], foldersMoving: true });
+    await wrapper.findAll("header button.more")[0]!.trigger("click");
+    expect(menuItem("Move up")?.getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("Move down")?.getAttribute("aria-disabled")).toBe("true");
+    menuItem("Move down")!.click();
+    await flushPromises();
+    expect(wrapper.emitted("moveFolder")).toBeUndefined();
+  });
+
+  it("shows current folder names on search hits and follows a rename", async () => {
+    const wrapper = searching([hit("1", { folder_id: 7 }), hit("2", { folder_id: null })],
+      { folders: [folder(7, "Work")] });
+    expect(wrapper.findAll(".hit")[0]!.get(".folder-label").text()).toBe("Work");
+    expect(wrapper.findAll(".hit")[1]!.find(".folder-label").exists()).toBe(false);
+    await wrapper.setProps({ folders: [folder(7, "Office")] });
+    expect(wrapper.findAll(".hit")[0]!.get(".folder-label").text()).toBe("Office");
+    await wrapper.setProps({ folders: [] });
+    expect(wrapper.find(".folder-label").exists()).toBe(false);
+  });
+});

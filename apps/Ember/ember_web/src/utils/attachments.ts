@@ -24,6 +24,8 @@ export function attachmentBlock(a: AttachmentBlock): string {
 export const FILE_ONLY_QUESTION = "Please review the attached file(s).";
 
 /** Files whose whole content the agent's data tools can read. */
+export const PDF_FILE = /\.(pdf|png|jpe?g|webp|tiff?|gif|heic)$/i;
+
 export const TABLE_FILE = /\.(csv|xlsx)$/i;
 
 const MAX_LISTED_COLUMNS = 30;

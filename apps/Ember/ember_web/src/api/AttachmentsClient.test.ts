@@ -29,3 +29,19 @@ describe("attachmentsClient.table", () => {
     expect(request).not.toHaveBeenCalled();
   });
 });
+
+
+describe("attachmentsClient.pdf", () => {
+  it("uploads originals as base64 to the PDF endpoint", async () => {
+    await attachmentsClient.pdf(new File(["%PDF-original"], "scan.pdf"));
+    expect(request).toHaveBeenCalledExactlyOnceWith("POST", "/api/attachments/pdf", {
+      filename: "scan.pdf", data: btoa("%PDF-original"),
+    });
+  });
+  it("rejects oversized originals before uploading", async () => {
+    const big = new File(["x"], "scan.pdf");
+    Object.defineProperty(big, "size", { value: 16 * 1024 * 1024 });
+    await expect(attachmentsClient.pdf(big)).rejects.toThrow("Too large");
+    expect(request).not.toHaveBeenCalled();
+  });
+});

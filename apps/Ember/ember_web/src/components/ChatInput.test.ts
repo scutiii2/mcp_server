@@ -9,9 +9,10 @@ import ChatInput from "./ChatInput.vue";
 import inputSource from "./ChatInput.vue?raw";
 import menuSource from "./ChatSettingsMenu.vue?raw";
 
-vi.mock("../api/AttachmentsClient", () => ({ attachmentsClient: { text: vi.fn(), table: vi.fn() } }));
+vi.mock("../api/AttachmentsClient", () => ({ attachmentsClient: { text: vi.fn(), table: vi.fn(), pdf: vi.fn() } }));
 
 const text = vi.mocked(attachmentsClient.text);
+const pdf = vi.mocked(attachmentsClient.pdf);
 const table = vi.mocked(attachmentsClient.table);
 
 function mountInput(props: Record<string, unknown> = {}) {
@@ -29,6 +30,7 @@ const drag = (types: string[], files: File[] = []) => ({ types, files });
 beforeEach(() => {
   setActivePinia(createPinia());
   useAuthStore().account = { id: 1, username: "admin", email: "a@example.com", email_verified: true, roles: [], permissions: ["files.upload"] };
+  pdf.mockResolvedValue({ filename: "scan.pdf", file_id: "file-1", pages: 2, kind: "pdf", expires_at: 2000000000, text: "", char_count: 0, truncated: false });
   text.mockResolvedValue({ text: "extracted", char_count: 9, truncated: false } as never);
   table.mockResolvedValue({ table_id: "tbl-1", filename: "sales.csv", rows: 1200, columns: ["region", "units"], sheet: null, notes: [] });
 });
@@ -81,7 +83,7 @@ describe("pasting files", () => {
     await textarea.trigger("paste", { clipboardData: clipboard([pasted]) });
     await flushPromises();
 
-    expect(text).toHaveBeenCalledExactlyOnceWith(pasted);
+    expect(pdf).toHaveBeenCalledExactlyOnceWith(pasted);
     expect(wrapper.find(".attachments li").text()).toContain("screenshot.png");
     expect((textarea.element as HTMLTextAreaElement).value).toBe("");
   });
@@ -119,7 +121,7 @@ describe("pasting files", () => {
   });
 
   it("shows a file ember_api could not read as an error chip", async () => {
-    text.mockRejectedValue(new Error("Unsupported file type"));
+    pdf.mockRejectedValue(new Error("Unsupported file type"));
     const wrapper = mountInput();
 
     await wrapper.find("textarea").trigger("paste", { clipboardData: clipboard([file("pic.png")]) });
@@ -821,5 +823,31 @@ describe("the suggested next prompt", () => {
 
     expect(valueOf(wrapper)).toBe("");
     expect(wrapper.emitted("suggestionUsed")).toBeUndefined();
+  });
+});
+
+
+describe("original PDF attachments", () => {
+  it("sends stored IDs in attachment order even without a text preview", async () => {
+    const wrapper = mountInput();
+    pdf.mockResolvedValueOnce({ filename: "scan.pdf", file_id: "first", pages: 2, kind: "pdf", expires_at: 2000000000, text: "", char_count: 0, truncated: false });
+    pdf.mockResolvedValueOnce({ filename: "photo.png", file_id: "second", pages: 1, kind: "image", expires_at: 2000000000, text: "", char_count: 0, truncated: false });
+    await wrapper.find("textarea").trigger("paste", { clipboardData: clipboard([file("scan.pdf"), file("photo.png")]) });
+    await flushPromises();
+    await wrapper.find("form").trigger("submit");
+    const sent = wrapper.emitted("send")![0]![0] as string;
+    expect(sent.indexOf("file_id: first")).toBeLessThan(sent.indexOf("file_id: second"));
+    expect(sent).toContain("No text preview available");
+    expect(text).not.toHaveBeenCalled();
+  });
+  it("shows storage errors instead of sending a misleading text-only PDF", async () => {
+    pdf.mockRejectedValue(new Error("PDFMerger is unavailable"));
+    const wrapper = mountInput();
+    await wrapper.find("textarea").trigger("paste", { clipboardData: clipboard([file("scan.pdf")]) });
+    await flushPromises();
+    expect(wrapper.find(".attachments li").classes()).toContain("error");
+    expect(wrapper.find(".attachments li").text()).toContain("PDFMerger is unavailable");
+    await wrapper.find("form").trigger("submit");
+    expect(wrapper.emitted("send")).toBeUndefined();
   });
 });

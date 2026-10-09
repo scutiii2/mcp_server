@@ -18,6 +18,7 @@ export const useFoldersStore = defineStore("folders", () => {
 
   const items = ref<ChatFolder[]>([]);
   const loading = ref(false);
+  const moving = ref(false);
   const loadError = ref("");
   let loaded = false;
   // The load in progress, so a second ask waits for it instead of returning early.
@@ -37,6 +38,7 @@ export const useFoldersStore = defineStore("folders", () => {
       loaded = false;
       inflight = null;
       loading.value = false;
+      moving.value = false;
       loadError.value = "";
     },
   );
@@ -95,6 +97,19 @@ export const useFoldersStore = defineStore("folders", () => {
     return folder;
   }
 
+  /** Reload every position after the server saves an adjacent move. */
+  async function move(id: number, direction: "up" | "down"): Promise<void> {
+    if (moving.value) return;
+    const started = generation;
+    moving.value = true;
+    try {
+      await foldersClient.move(id, direction);
+      if (started === generation) await reload();
+    } finally {
+      if (started === generation) moving.value = false;
+    }
+  }
+
   /** Deletes the folder and, on the server, every chat in it; the chat store
    * then drops those chats from the screen. A folder that is already gone
    * (404, another tab) is treated as deleted. A 409 (a chat in it is
@@ -111,5 +126,5 @@ export const useFoldersStore = defineStore("folders", () => {
     useChatStore().forgetFolder(id);
   }
 
-  return { folders, loading, loadError, ensureLoaded, reload, create, rename, reorder, remove };
+  return { folders, loading, moving, loadError, ensureLoaded, reload, create, rename, reorder, move, remove };
 });

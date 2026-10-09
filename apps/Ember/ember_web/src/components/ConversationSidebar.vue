@@ -34,6 +34,8 @@ const props = withDefaults(
     folders?: ChatFolder[];
     /** Why the folder list could not be loaded; empty when it could. */
     folderError?: string;
+    foldersMoving?: boolean;
+    folderMoveError?: string;
     /** Ids of the folders shown folded. */
     collapsedFolders?: number[];
   }>(),
@@ -46,6 +48,8 @@ const props = withDefaults(
     searchError: "",
     folders: () => [],
     folderError: "",
+    foldersMoving: false,
+    folderMoveError: "",
     collapsedFolders: () => [],
   },
 );
@@ -67,6 +71,7 @@ const emit = defineEmits<{
   newFolder: [];
   retryFolders: [];
   renameFolder: [folder: ChatFolder];
+  moveFolder: [folder: ChatFolder, direction: "up" | "down"];
   deleteFolder: [folder: ChatFolder];
 }>();
 
@@ -78,6 +83,14 @@ function parts(text: string, span: MatchSpan | null): { before: string; match: s
     match: text.slice(span.start, span.start + span.length),
     after: text.slice(span.start + span.length),
   };
+}
+
+const folderNames = computed(() => new Map(props.folders.map((folder) => [folder.id, folder.name])));
+function folderName(hit: ChatSearchHit): string | undefined {
+  const id = hit.folder_id === undefined
+    ? props.conversations.find((chat) => chat.id === hit.id)?.folderId
+    : hit.folder_id;
+  return id == null ? undefined : folderNames.value.get(id);
 }
 
 // The row being renamed (its draft text lives in the row).
@@ -197,7 +210,9 @@ const menuKey = computed(() => (menu.value ? `${menu.value.kind}:${menu.value.id
 const menuItems = computed(() => {
   const owner = menuOwner.value;
   if (!owner) return [];
-  return owner.kind === "chat" ? chatMenuItems(owner.chat, props.folders, answering(owner.chat)) : folderMenuItems(props.loading);
+  return owner.kind === "chat"
+    ? chatMenuItems(owner.chat, props.folders, answering(owner.chat))
+    : folderMenuItems(props.loading, props.folders.findIndex((f) => f.id === owner.folder.id), props.folders.length, props.foldersMoving);
 });
 
 // A press on the "..." button of the menu that is open closes it (the button
@@ -222,12 +237,19 @@ async function dismissMenu(): Promise<void> {
 }
 
 async function chooseFromMenu(id: string): Promise<void> {
+  if (menuItems.value.find((item) => item.id === id)?.disabled) return;
+  const trigger = menu.value?.trigger;
   const open = menuOwner.value;
   menu.value = null; // a choice hands focus on (a rename box, a dialog), so it is not given back
   if (!open) return;
   if (open.kind === "folder") {
     if (id === "rename") emit("renameFolder", open.folder);
     else if (id === "delete") emit("deleteFolder", open.folder);
+    else if (id === "move-up" || id === "move-down") {
+      emit("moveFolder", open.folder, id === "move-up" ? "up" : "down");
+      await nextTick();
+      trigger?.focus();
+    }
     return;
   }
   const choice = parseChatChoice(id);
@@ -426,6 +448,7 @@ watch(
             <span class="title">
               {{ parts(h.title, h.title_match).before }}<mark v-if="h.title_match">{{ parts(h.title, h.title_match).match }}</mark>{{ parts(h.title, h.title_match).after }}
             </span>
+            <span v-if="folderName(h)" class="folder-label" :title="folderName(h)">{{ folderName(h) }}</span>
             <span v-if="h.snippet" class="snippet">
               {{ parts(h.snippet.text, h.snippet).before }}<mark>{{ parts(h.snippet.text, h.snippet).match }}</mark>{{ parts(h.snippet.text, h.snippet).after }}
             </span>
@@ -476,6 +499,9 @@ watch(
         />
       </ChatSection>
     </div>
+    <p v-if="folderMoveError && !searchActive" class="empty error" role="alert">
+      Could not move folder: {{ folderMoveError }}
+    </p>
     <p v-if="folderError && !searchActive" class="empty error folder-error" role="alert">
       Folders failed to load: {{ folderError }}
       <button type="button" class="link" @click="emit('retryFolders')">Retry</button>
@@ -626,6 +652,13 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.folder-label {
+  color: var(--muted);
+  font-size: 0.8em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .snippet {
   overflow: hidden;

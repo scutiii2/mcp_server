@@ -151,6 +151,7 @@ async def run_chat(
     effort = effort_limits.resolve(reasoning_effort, agent_spec.current().llm.max_effort, agent_spec.current().id)
     cancellation.register(request_id)
     delegated_usage, usage_token = delegation.bind_usage()
+    attachment_token = delegation.bind_attachments(question, history)
     approval_token = approvals.bind(policy)
     question_token = questions.bind(questions.QuestionPolicy(ask_user and depth == 0))
     filter_token = tool_filter.bind(disabled_tools or ())
@@ -194,6 +195,7 @@ async def run_chat(
         tool_filter.reset(filter_token)
         questions.reset(question_token)
         approvals.reset(approval_token)
+        delegation.reset_attachments(attachment_token)
         delegation.reset_usage(usage_token)
         cancellation.clear(request_id)
 

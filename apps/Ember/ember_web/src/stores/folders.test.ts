@@ -9,7 +9,7 @@ import { useFoldersStore } from "./folders";
 
 vi.mock("../api/FoldersClient", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/FoldersClient")>()),
-  foldersClient: { list: vi.fn(), create: vi.fn(), rename: vi.fn(), reorder: vi.fn(), remove: vi.fn() },
+  foldersClient: { list: vi.fn(), create: vi.fn(), rename: vi.fn(), reorder: vi.fn(), move: vi.fn(), remove: vi.fn() },
 }));
 // The chat store is only asked to forget a deleted folder's chats here.
 vi.mock("./chat", () => ({ useChatStore: vi.fn() }));
@@ -180,5 +180,28 @@ describe("remove", () => {
 
     expect(store.folders.map((f) => f.id)).toEqual([1, 2]);
     expect(forgetFolder).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("adjacent moves", () => {
+  it("reloads all positions after moving and persists server order", async () => {
+    const { store } = setup();
+    await store.ensureLoaded();
+    client.move.mockResolvedValue(folder(2, 0));
+    client.list.mockResolvedValue([folder(2, 0), folder(1, 1)]);
+    await store.move(2, "up");
+    expect(client.move).toHaveBeenCalledExactlyOnceWith(2, "up");
+    expect(store.folders.map((f) => f.id)).toEqual([2, 1]);
+    expect(store.moving).toBe(false);
+  });
+
+  it("preserves order and clears the busy flag when a save fails", async () => {
+    const { store } = setup();
+    await store.ensureLoaded();
+    client.move.mockRejectedValue(new Error("offline"));
+    await expect(store.move(2, "up")).rejects.toThrow("offline");
+    expect(store.folders.map((f) => f.id)).toEqual([1, 2]);
+    expect(store.moving).toBe(false);
   });
 });

@@ -274,3 +274,44 @@ def test_dispatch_ignores_a_non_string_model_tier():
 
     assert fake_call.call_args.args == ("calc", "q", 1)
     assert fake_call.call_args.kwargs == {}
+
+
+def test_attachment_references_survive_rewritten_delegation_and_reset(monkeypatch):
+    _configure_agents(monkeypatch, [{"id": "pdf-assistant", "label": "PDF Assistant", "url": "http://pdf/mcp"}])
+    question = 'Merge these\n[[ATTACHMENT filename="scan.pdf" chars="0" truncated="false"]]\n[PDFMerger file_id: f_scan | 2 pages]\nsecret preview text\n[[/ATTACHMENT]]'
+    token = delegation.bind_attachments(question, [])
+    captured = []
+    async def fake(url, name, arguments, on_progress=None):
+        captured.append(arguments["question"])
+        return {"response": "ok"}
+    try:
+        with patch("src.agents.delegation._call_tool", side_effect=fake):
+            delegation.call("pdf-assistant", "Merge the uploaded files", 0)
+        assert "f_scan" in captured[0] and "scan.pdf" in captured[0]
+        assert "secret preview text" not in captured[0]
+        nested = delegation.bind_attachments(captured[0], [])
+        try:
+            assert "f_scan" in delegation._attachments.get()
+        finally:
+            delegation.reset_attachments(nested)
+    finally:
+        delegation.reset_attachments(token)
+    assert delegation._attachments.get() == ""
+
+
+def test_attachment_metadata_does_not_change_auto_routing(monkeypatch):
+    _configure_agents(monkeypatch, [{"id": "calc", "label": "Calculator", "url": "http://calc/mcp"}])
+    routed = []
+    def route(question):
+        routed.append(question)
+        return ROSTER[0]
+    monkeypatch.setattr(delegation.agent_routing, "resolve_auto", route)
+    token = delegation._attachments.set("scan.pdf: [PDFMerger file_id: f_scan]")
+    async def fake(url, name, arguments, on_progress=None):
+        return {"response": "4"}
+    try:
+        with patch("src.agents.delegation._call_tool", side_effect=fake):
+            delegation.call("auto", "2+2?", 0)
+        assert routed == ["2+2?"]
+    finally:
+        delegation.reset_attachments(token)
