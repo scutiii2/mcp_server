@@ -13,6 +13,11 @@ server_launcher\run.bat
 First run creates `.venv_launcher` and installs the project editable.
 Tests: `cd server_launcher && .venv_launcher\Scripts\python -m pytest`.
 
+Only one launcher can run at a time in a Windows desktop session (per user on
+other platforms). Launching it again exits quietly, including when mixing
+source runs and the standalone exe or choosing a different data folder.
+Closing the launcher or terminating its process allows it to open again.
+
 ## Standalone exe
 
 ```
@@ -26,6 +31,11 @@ venv) or Node, per project; see the warnings below. Needs Python 3.11+ on the
 build machine only. Run it from a double-click; first build downloads
 PyInstaller into `.venv_launcher`. Settings and saved servers live in the data
 folder, not next to the exe (see below).
+
+After a successful build, `build.bat` removes the temporary `build/pyinstaller/`
+folder and generated `build/scuti_server_launcher.spec`, and removes `build/`
+if it is empty. It keeps `dist/scuti_server_launcher.exe` and `.venv_launcher`
+for future runs/builds. Failed builds keep their work files for troubleshooting.
 
 ## What it does
 
