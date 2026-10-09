@@ -179,15 +179,15 @@ question, a JSON string:
   optional (default 0.70, `MIN_CONFIDENCE` in `src/llm/laya_provider.py`).
   Text after the JSON object is ignored.
 
-The top-level `uncertain` is true if ANY answer is uncertain, so callers that
-mix question types should read the per-answer `uncertain` flags (score
-questions in particular tend to have lower confidence).
-
 The response is JSON: `{"answers": {id: {...}}, "uncertain": bool}`. Each
 answer has `type`, the result (`choice`/`score`/`noul`), `answer_confidence`
 and `uncertain` (confidence below `min_confidence`). A request with an unknown
 field, type, or out-of-range size is rejected before inference with an
 "Invalid Laya request" error.
+
+The top-level `uncertain` is true if ANY answer is uncertain, so callers that
+mix question types should read the per-answer `uncertain` flags (score
+questions in particular tend to have lower confidence).
 
 The English checkpoint has a 512-token limit including the question heads, so
 keep texts and criteria short. Input Laya reports as truncated is rejected

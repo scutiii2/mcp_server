@@ -90,7 +90,6 @@ class ToolScope:
         return [glob for glob in (*self.allow, *self.deny) if not any(fnmatchcase(n, glob) for n in names)]
 
 
-
 @dataclass(frozen=True)
 class TierInfo:
     """One model strength an agent may run on, as the orchestrator sees it."""

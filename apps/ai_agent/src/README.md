@@ -16,10 +16,10 @@ Entry points stay at the package root; everything else is grouped by concern.
   spawns one `src.server` child per enabled agent file, relays output,
   restarts crashed children with backoff.
 
-### [`agents/`](agents/) - agent identity, routing, delegation
+### [`agents/`](agents/) - agent identity, delegation
 
 - `agent_spec.py` - loads and validates one `agents/<id>.json` (identity,
-  port, `llm`, `orchestrator`, `routing`) into the process-wide
+  port, `llm`, `orchestrator`) into the process-wide
   `AgentSpec` the other modules read.
 - `agent_config.py` - resolves the pinned provider+model from
   `.env` once at startup; fails loudly on a bad

@@ -176,8 +176,12 @@ class LayaQuestions:
         request = parse_request(raw)
         with self._lock:
             prediction = self._load().predict(request.text, request.questions, max_len=CONTEXT_WINDOW)
-        usage = prediction.get("usage", {})
-        if usage.get("truncated") or usage.get("state_tokens_dropped", 0):
+        try:
+            usage = prediction.get("usage", {})
+            incomplete = usage.get("truncated") or usage.get("state_tokens_dropped", 0)
+        except AttributeError as error:
+            raise ValueError("Laya returned an invalid result; no answers were returned.") from error
+        if incomplete:
             raise ValueError(
                 "Laya could not read the complete input. Send a shorter text or fewer, shorter questions; "
                 "no answers were returned."

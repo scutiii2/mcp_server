@@ -183,6 +183,13 @@ def test_malformed_model_results_are_rejected(engine, qid, field, value):
         ask()
 
 
+@pytest.mark.parametrize("usage", [None, []])
+def test_a_non_dict_usage_is_rejected(engine, usage):
+    engine.result["usage"] = usage
+    with pytest.raises(ValueError, match="Laya returned"):
+        ask()
+
+
 def test_a_missing_answer_is_rejected(engine):
     del engine.result["answers"]["problem"]
     with pytest.raises(ValueError, match="Laya returned"):
