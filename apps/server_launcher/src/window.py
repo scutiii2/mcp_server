@@ -574,15 +574,19 @@ class LauncherWindow:
         header.pack(fill="x", padx=16, pady=(16, 8))
         tk.Label(header, text=template.display_name, bg=_BG, fg=_FG, font=("Segoe UI", 14, "bold")).pack(side="left")
 
+        detail_scroll = ScrollableFrame(self.main, bg=_BG)
+        detail_scroll.pack(fill="both", expand=True, pady=(0, 16))
+        content = detail_scroll.body
+
         if template.description:
-            tk.Label(self.main, text=template.description, bg=_BG, fg=_DIM_FG, wraplength=560, justify="left").pack(
+            tk.Label(content, text=template.description, bg=_BG, fg=_DIM_FG, wraplength=560, justify="left").pack(
                 anchor="w", padx=16, pady=(0, 12)
             )
 
         warning = runtime_warning(template)
         if warning:
             tk.Label(
-                self.main, text=warning, bg=_BG, fg=_ERROR_FG, wraplength=560, justify="left", font=("Segoe UI", 10, "bold"),
+                content, text=warning, bg=_BG, fg=_ERROR_FG, wraplength=560, justify="left", font=("Segoe UI", 10, "bold"),
             ).pack(anchor="w", padx=16, pady=(0, 12))
 
         field_vars: dict[str, tk.StringVar] = {}
@@ -640,7 +644,7 @@ class LauncherWindow:
                 header, "Add as preset", command=add_preset, bg=_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
             ).pack(side="right", padx=(0, 6))
 
-        panel = RoundedPanel(self.main, bg=_BG, fill=_ROW_BG, outline=_BORDER)
+        panel = RoundedPanel(content, bg=_BG, fill=_ROW_BG, outline=_BORDER)
         panel.pack(fill="x", padx=16)
         body = panel.body
 
@@ -692,7 +696,7 @@ class LauncherWindow:
                     bg=_ROW_BG, fill=_BG, outline=_BORDER, fg=_FG,
                 ).pack(side="left", padx=(0, 8), pady=(6, 2))
 
-        command_panel = RoundedPanel(self.main, bg=_BG, fill=_FIELD_BG, outline=_BORDER, pad=12)
+        command_panel = RoundedPanel(content, bg=_BG, fill=_FIELD_BG, outline=_BORDER, pad=12)
         command_panel.pack(fill="x", padx=16, pady=(12, 0))
         tk.Label(
             command_panel.body, text=f"{template.command_summary}\ncwd: {template.working_dir}",
