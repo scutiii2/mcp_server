@@ -8,11 +8,9 @@ from pathlib import Path
 
 @dataclass
 class ServerRegistry:
-    """The user's edits to the detected server list: project folders added by
-    hand (each holds a run.bat) and keys of detected servers to leave out."""
+    """The server list: the project folders the user added (each holds a run.bat)."""
 
     projects: list[Path] = field(default_factory=list)
-    hidden: set[str] = field(default_factory=set)
 
 
 @dataclass
