@@ -1,0 +1,24 @@
+# Execution ledger — plan: 2026-10-09-shared-email-capability.md
+
+- Branch: codex/shared-email-capability, existing isolated Codex worktree.
+- Pre-flight: transport returns Message-ID to delivery service; delivery returns the same ID to capability; Ember validates that result. Watcher uses internal owner argument for background audit identity.
+- Ruling: keep this compact ledger with the approved plan, using native PowerShell and pytest instead of Bash-only execution scripts on Windows. No commits or pushes without approval.
+- Catalog: localhost:8020 unavailable and cache absent; tagged source fallback confirms existing SMTP sender and capability registry for reuse.
+- Baseline: default Python lacks FastAPI; default pytest temporary directory is inaccessible. Use explicit workspace basetemp and seek installed project Python before declaring a code failure.
+- Baseline resolved: existing MCP and Ember virtual environments are available. Asyncio hangs under Windows sandbox's socket restrictions; approved test escalation runs mocked suites normally. Existing MCP email/watcher baseline: 26 passed. Ember sender/registration baseline: 18 passed.
+- Task 1: complete — transport RED 12 failures, GREEN 31 passed.
+- Task 2: complete — missing application service confirmed RED; delivery/transport GREEN 39 passed, including concurrent metadata audit and privacy checks.
+- Task 3: complete — absent capability confirmed RED; send/reply, help, reload and live authenticated wire tests GREEN 4 passed; loader/help broader checks exercised.
+- Task 4: complete — watcher RED 6 failures, watcher/domain/token/capability GREEN 49 passed.
+- Task 5: complete — missing adapter confirmed RED; sender/account regression GREEN 63 passed. Config diagnostic RED 2 failures, GREEN 5 passed.
+- Task 6: in progress — full suites running. MCP full run exposed missing keywords on hidden audit tool (709 passed, one failure); fixed tool metadata in response to this repository contract test.
+- Ruling: use direct FastMCP calls plus a real localhost authenticated MCP round trip for integration; SMTP remains mocked. Existing token tests cover middleware independently. No production server or real mailbox was contacted.
+- Final review: independent read-only reviewer found no Critical/Important issues. Completed the planned watcher README change after reviewer noted its stale transport/setup description. No deferred review findings.
+- Final validation refinement: null control characters in Message-IDs reproduced RED in MCP (2 failures) and Ember (1 failure), fixed in one pass; focused GREEN 33 MCP transport tests and 13 Ember sender tests.
+- Final MCP full suite: 713 passed, 1 skipped, 5 dependency/deprecation warnings in 29.23s. Final Ember full suite still running; preceding full suite passed 1051 tests before the last narrow validation change.
+- Git diff --check: clean under repository line-ending settings. The sandbox restricts linked Git metadata; approved escalation verified the requested codex/shared-email-capability branch. Temporary per-command core.autocrlf override was discarded because it showed irrelevant CRLF differences; no Git config or unrelated file was changed.
+- Task 6: verification complete with a baseline limitation — final Ember full suite: 1051 passed, 1 failed (`test_questions.py::test_skipping_needs_no_answers`, missing `question_resolved` event). This test passed alone; question module rerun showed the same failure (20 passed, 1 failed).
+- Baseline proof: loaded original `src.app`, `email_service`, and `config_validation` from HEAD in memory without touching workspace files. Question module then also missed `question_resolved`, in `test_a_valid_answer_reaches_the_agent_and_lets_the_turn_finish` (20 passed, 1 failed). The earlier unchanged full-suite run passed 1051 tests. This is an existing intermittent question-event problem, not an email-delivery regression.
+- Ruling: do not change question-event implementation/tests in the email branch; report both failure names and baseline evidence. All email/account/config checks and complete MCP suite pass, but final Ember suite is not wholly green.
+- Final state: implementation complete, independent review has no blocking findings; branch stays codex/shared-email-capability, uncommitted and unpushed. No real email, deployment, credential edits or frontend changes performed.
+- Integration requested: user explicitly authorized committing and merging to main after the above verification limitation was reported. Main has unrelated launcher shortcut/executable changes, which do not overlap with this feature and will be preserved. No push requested.

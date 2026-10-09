@@ -1,0 +1,34 @@
+{
+  "summary": "Send emails and threaded replies through MCP's shared SMTP delivery service.",
+  "tools": [
+    {"name": "tool_email_sendEmail", "purpose": "Send an email and return its Message-ID", "connection": "SMTP", "commands": ["send"]},
+    {"name": "tool_email_replyEmail", "purpose": "Send a threaded reply", "connection": "SMTP", "commands": ["reply"]},
+    {"name": "tool_email_getAuditLog", "purpose": "MCP-only owner-scoped delivery metadata", "connection": "Local SQLite", "commands": []}
+  ],
+  "commands": [
+    {"name": "send", "tool": "tool_email_sendEmail", "params": [
+      {"name": "to", "required": true, "default": null, "description": "Comma-separated recipient addresses."},
+      {"name": "subject", "required": true, "default": null, "description": "Email subject."},
+      {"name": "body_text", "required": false, "default": null, "description": "Plain text; required without HTML."},
+      {"name": "body_html", "required": false, "default": null, "description": "Optional HTML; plain text is derived if body_text is omitted."},
+      {"name": "capability_alias", "required": false, "default": "email", "description": "Source in the subject prefix."},
+      {"name": "prefix_subject", "required": false, "default": true, "description": "Add the standard subject prefix."}
+    ]},
+    {"name": "reply", "tool": "tool_email_replyEmail", "params": [
+      {"name": "to", "required": true, "default": null, "description": "Comma-separated recipient addresses."},
+      {"name": "subject", "required": true, "default": null, "description": "Keep the original subject."},
+      {"name": "in_reply_to", "required": true, "default": null, "description": "Parent Message-ID."},
+      {"name": "body_text", "required": false, "default": null, "description": "Plain text; required without HTML."},
+      {"name": "body_html", "required": false, "default": null, "description": "Optional HTML body."},
+      {"name": "capability_alias", "required": false, "default": "email", "description": "Source in the subject prefix."},
+      {"name": "prefix_subject", "required": false, "default": true, "description": "Match the original prefix choice."},
+      {"name": "references", "required": false, "default": "", "description": "Space-separated ancestor Message-IDs."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "(manual - no tool)", "ai_only_step": false, "explanation": "Configure MCP SMTP and enable Email."},
+    {"sequence": "2", "tool": "tool_email_sendEmail", "ai_only_step": false, "explanation": "Send the initial message; retain its ID."},
+    {"sequence": "3", "tool": "tool_email_replyEmail", "ai_only_step": false, "explanation": "Send an update with the parent ID and optional ancestry."},
+    {"sequence": "4", "tool": "tool_email_getAuditLog", "ai_only_step": false, "explanation": "Inspect your delivery metadata."}
+  ]
+}

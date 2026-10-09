@@ -31,7 +31,9 @@ service is the main use); only a boolean and a status code come back.
 ## Notification
 
 One email to the creator's own address (`identity_context.current_email()`), never a tool argument, through
-`services/email.send_email` with the `notification` template. It needs `configs/config_email.json` (copy the
+the shared Email capability's `services/email_delivery.deliver_email` entry point with the `notification` template.
+Refresh capabilities and switch **Email** online before using watcher email notifications; switching Email offline
+records a skipped outcome without interrupting the watcher. It needs `configs/config_email.json` (copy the
 `.example`, set `from`) and `SMTP_PASSWORD` in `.env`. The outcome is stored in the watcher's `detail["email_result"]` (`detail["email"]` stays the address):
 `sent`, `skipped: <reason>` or `failed: <reason>`. A missing or invalid config never stops a watcher.
 

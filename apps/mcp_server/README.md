@@ -8,7 +8,7 @@ starting/stopping/restarting/listing managed apps. Built to be called by
 ## Requirements
 
 - Python >= 3.11
-- An SMTP account for outbound mail (watcher notifications)
+- An SMTP account for outbound mail (Email capability, watcher notifications, Ember invites and verification)
 
 
 ## Setup

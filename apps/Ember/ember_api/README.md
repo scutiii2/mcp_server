@@ -18,7 +18,7 @@ stored in the chat transcript.
 | Phase | What | State |
 |---|---|---|
 | 1 | Accounts, bootstrap admin, login/logout/me, sessions | done |
-| 2 | Registration with invite codes, email verification (SMTP) | done |
+| 2 | Registration with invite codes, email verification (MCP Email capability) | done |
 | 3 | MCP proxy to ai_agent / mcp_server with permission checks | done |
 | 4 | ember_web switches to ember_api (login pages, `/api` via Vite proxy) | done |
 | 5 | Cleanup: drop the old direct CORS on ai_agent / mcp_server | done |
@@ -278,10 +278,17 @@ addresses only, never loopback, link-local or cloud-metadata ones).
   15 minutes. Registration
   checks the invite before revealing whether a username is taken, and a
   failed registration leaves the invite unused.
-- **Email:** `SMTP_*` and `MAIL_FROM_ADDRESS` in `.env` (same keys as chat_app), sent on a
-  worker thread. If sending fails, registration still succeeds and
+- **Email:** invite and verification templates are delivered through MCP Server's
+  Email capability at `mcp_server_url`, with the existing internal token and service
+  identity `ember`. Configure SMTP only in MCP's `configs/config_email.json` and
+  enable **Email** in capability controls (refresh first on existing deployments).
+  Ember's old `SMTP_*` / `MAIL_FROM_ADDRESS` variables are no longer used.
+  Original subjects and template wording are preserved; MCP adds the notice once.
+  If MCP is unreachable, Email is disabled, or sending fails, registration still succeeds and
   `/verify-email/resend` retries; an invite's code is still returned to the
-  admin.
+  admin. Sends are not automatically retried because a lost response can follow
+  SMTP acceptance. Check delivery status before manually retrying. Config issues
+  no longer asks for local SMTP settings; it does not assert upstream mail readiness.
 
 - **MCP proxy:** the browser only ever talks to ember_api. Upstream URLs come
   from server-side config (`mcp_server_url`) and ai_agent's own registry file
@@ -458,13 +465,13 @@ migrations build, so a model edit without its migration is caught.
 
 ```
 configs/   config_app.json(.example)          host, port, db path, session/cookie settings
-.env       BOOTSTRAP_ADMIN_*, INTERNAL_API_TOKEN, SMTP_* (+ .env.example); secrets/ is the old layout, read once to build it
+.env       BOOTSTRAP_ADMIN_*, INTERNAL_API_TOKEN (+ .env.example); secrets/ is the old layout, read once to build it
 data/      ember_api.db (runtime, gitignored)
 src/
   run.py, app.py, config.py, db.py, deps.py, json_only.py, security.py, body_limit.py
   models/     Account, AppSetting, Role, Permission, LoginAttempt, AuthSession, InviteCode, EmailVerificationCode, Chat,
               UsageRecord, LogEntry, KnownDevice, PromptTemplate, SharedChat
-  services/   ChatAppImporter (chat_app_import), DatabaseBackup / BackupScheduler (backup_service), MigrationRunner (migrations), SettingsService (settings_service), AuthService, SessionService, OtpService, RegistrationService, EmailSender (SMTP),
+  services/   ChatAppImporter (chat_app_import), DatabaseBackup / BackupScheduler (backup_service), MigrationRunner (migrations), SettingsService (settings_service), AuthService, SessionService, OtpService, RegistrationService, EmailSender (MCP Email capability),
               AccountService, AdminService, AgentDirectory, AgentGateway, ChatService, ChatSearch, TemplateService, ShareService, PublicReadLimiter, TurnRegistry,
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,

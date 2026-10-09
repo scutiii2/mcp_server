@@ -21,10 +21,10 @@ def issues(client: TestClient) -> set[tuple[str, str, str]]:
 def test_reports_config_and_secret_problems(client: TestClient, tmp_path: Path) -> None:
     as_admin(client)
     found = issues(client)
-    # conftest's files: no config_app.json, an example.com admin, no SMTP settings.
+    # Local SMTP is no longer required; delivery is owned by MCP.
     assert ("config_app.json", "-", f"file not found ({tmp_path / 'config_app.json'})") in found
     assert (".env", "BOOTSTRAP_ADMIN_EMAIL", "is still a placeholder value") in found
-    assert (".env", "-", "email is not configured - invites and verification codes can't be sent") in found
+    assert not any("email is not configured" in message for _, _, message in found)
 
     (tmp_path / "config_app.json").write_text(
         json.dumps({**GOOD_CONFIG, "port": 99999, "mcp_server_url": "ftp://x", "usage": {"weekly_token_limit": -1}}),
@@ -51,8 +51,7 @@ def test_reports_config_and_secret_problems(client: TestClient, tmp_path: Path) 
         ("agents[1].id", "duplicate agent id"),
     }
     smtp = {i[1:] for i in found if i[0] == ".env"}
-    assert ("SMTP_HOST", "is empty but other SMTP settings are set") in smtp
-    assert ("SMTP_PORT", "must be a port number (1-65535)") in smtp
+    assert not any(key.startswith("SMTP_") or key == "MAIL_FROM_ADDRESS" for key, _ in smtp)
     # A secret's value never appears in a message.
     assert not any("hunter2" in part for issue in found for part in issue)
 
@@ -66,7 +65,7 @@ def test_issues_carry_a_severity(client: TestClient, tmp_path: Path) -> None:
     assert levels[("config_app.json", "port")] == "error"
     assert levels[("config_app.json", "backup.enabled")] == "warning"
     assert levels[(".env", "BOOTSTRAP_ADMIN_EMAIL")] == "warning"
-    assert levels[(".env", "-")] == "warning"  # SMTP unset
+    assert (".env", "-") not in levels  # No local SMTP setup warning.
 
 
 def test_config_issues_need_permission(client: TestClient, email: FakeEmailSender) -> None:

@@ -23,6 +23,9 @@
   "data": {
     "enabled": true
   },
+  "email": {
+    "enabled": true
+  },
   "watch": {
     "enabled": true
   }

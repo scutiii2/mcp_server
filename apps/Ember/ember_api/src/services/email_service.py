@@ -1,27 +1,24 @@
-"""Outgoing email for invite and verification codes.
-
-Routes depend on the EmailSender protocol; the app wires SmtpEmailSender
-(SMTP_* in .env), tests wire a fake.
-"""
+"""Invite and verification templates delivered through MCP's Email capability."""
 
 from __future__ import annotations
 
-import asyncio
-import smtplib
+import json
+import re
 from datetime import datetime
-from email.message import EmailMessage
 from pathlib import Path
 from string import Template
 from typing import Protocol
 
-from src.utils.config_loader import load_env_secrets
+import httpx
+
+from src.services.mcp_session import identity_headers, mcp_session
+from src.services.traffic import TrafficRecorder
 
 
 TEMPLATE_DIR = Path(__file__).parent / "email_templates"
 
-# Appended to every message so a recipient never mistakes it for a mailbox
-# somebody reads.
-AUTO_GENERATED_NOTICE = "This is an auto-generated message. Do not reply."
+_TIMEOUT = httpx.Timeout(30.0, read=60.0)
+_MESSAGE_ID = re.compile(r"<[^<>\s@\x00-\x1f\x7f]+@[^<>\s@\x00-\x1f\x7f]+>")
 
 
 def render_template(name: str, **values: str) -> str:
@@ -40,13 +37,13 @@ class EmailSender(Protocol):
     async def send_email_verification(self, to: str, code: str, expires_at: datetime) -> None: ...
 
 
-class SmtpEmailSender:
-    """smtplib is blocking, so each send runs on a worker thread. Settings
-    are re-read per send: fixing .env takes effect without a
-    restart."""
+class McpEmailSender:
+    """Use the shared MCP SMTP service; Ember owns templates, never credentials."""
 
-    def __init__(self, env_path: Path) -> None:
-        self._env_path = env_path
+    def __init__(self, url: str, internal_token: str | None, traffic: TrafficRecorder | None = None) -> None:
+        self._url = url
+        self._internal_token = internal_token
+        self._traffic = traffic or TrafficRecorder()
 
     async def send_invite(self, to: str, code: str, expires_at: datetime) -> None:
         await self._send(
@@ -63,40 +60,26 @@ class SmtpEmailSender:
         )
 
     async def _send(self, to: str, subject: str, body: str) -> None:
-        config = load_env_secrets(self._env_path)
-        host = config.get("SMTP_HOST")
-        sender = config.get("MAIL_FROM_ADDRESS") or config.get("SMTP_USERNAME")
-        if not host or not sender:
-            raise EmailDeliveryError("Email is not configured. Set SMTP_HOST and MAIL_FROM_ADDRESS in .env.")
-
-        message = EmailMessage()
-        message["From"] = sender
-        message["To"] = to
-        message["Subject"] = subject
-        message.set_content(f"{body}\n\n--\n{AUTO_GENERATED_NOTICE}")
-
-        await asyncio.to_thread(
-            _deliver,
-            message,
-            host,
-            int(config.get("SMTP_PORT") or 587),
-            config.get("SMTP_USERNAME") or None,
-            config.get("SMTP_PASSWORD") or None,
-            (config.get("SMTP_USE_TLS") or "true").lower() == "true",
-        )
-
-
-def _deliver(
-    message: EmailMessage, host: str, port: int, username: str | None, password: str | None, use_tls: bool
-) -> None:
-    try:
-        with smtplib.SMTP(host, port, timeout=20) as smtp:
-            if use_tls:
-                smtp.starttls()
-            if username and password:
-                smtp.login(username, password)
-            smtp.send_message(message)
-    except (smtplib.SMTPException, OSError) as error:
-        raise EmailDeliveryError(
-            "Email could not be sent. Check the SMTP settings in .env."
-        ) from error
+        headers = identity_headers("ember", "", self._internal_token)
+        # Account emails can precede login/verification; service identity is intentional.
+        with self._traffic.timed("mcp_server", "email.send"):
+            try:
+                async with mcp_session(self._url, headers, _TIMEOUT) as session:
+                    result = await session.call_tool("tool_email_sendEmail", {
+                        "to": to, "subject": subject, "body_text": body,
+                        "capability_alias": "ember", "prefix_subject": False,
+                    })
+                if getattr(result, "isError", None) is not False:
+                    raise ValueError("Email tool failed")
+                data = result.structuredContent
+                if data is None:
+                    data = json.loads("\n".join(getattr(block, "text", "") for block in result.content))
+                message_id = data.get("message_id") if isinstance(data, dict) else None
+                if not isinstance(message_id, str) or not _MESSAGE_ID.fullmatch(message_id):
+                    raise ValueError("Invalid email tool result")
+            except Exception:
+                # Upstream exceptions and tool content may contain verification codes.
+                # CancelledError propagates unchanged; no automatic retries.
+                raise EmailDeliveryError(
+                    "Email could not be sent. Check MCP Server connectivity, its Email capability and SMTP configuration; check delivery status before retrying."
+                ) from None

@@ -45,7 +45,7 @@ from src.services.auth_service import AuthService
 from src.services.backup_service import BackupScheduler, DatabaseBackup
 from src.services.migrations import MigrationRunner
 from src.services.chat_service import MAX_CHAT_BYTES
-from src.services.email_service import EmailSender, SmtpEmailSender
+from src.services.email_service import EmailSender, McpEmailSender
 from src.services.extension_probe import ExtensionProbe
 from src.services.log_service import LogWriter
 from src.services.mcp_proxy import McpProxy
@@ -81,7 +81,7 @@ def create_app(
     server_tools: ServerTools | None = None,
     traffic: TrafficRecorder | None = None,
 ) -> FastAPI:
-    """email_sender defaults to SMTP from .env,
+    """email_sender defaults to the MCP Email capability,
     upstream_transport to real HTTP, agent_gateway to a real MCP client for
     ai_agent and server_tools to one for mcp_server; tests pass fakes. traffic
     defaults to a recorder saving to the database; tests pass their own."""
@@ -116,7 +116,7 @@ def create_app(
 
         app.state.settings = settings
         app.state.database = database
-        app.state.email_sender = email_sender or SmtpEmailSender(settings.env_path)
+        app.state.email_sender = email_sender or McpEmailSender(settings.mcp_server_url, internal_token or None, recorder)
         app.state.upstream = upstream
         app.state.internal_token = internal_token or None
         app.state.secret_box = secret_box

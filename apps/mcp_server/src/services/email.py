@@ -37,6 +37,7 @@ from html import unescape
 
 from src.services.app_config import EmailConfig
 from src.utils.catalog import catalog
+from src.services.watcher_recipients import parse_recipients
 
 
 # Anything inside these is code, not prose, and would otherwise land in the
@@ -66,6 +67,31 @@ _LINE_BREAK = "\x00"
 AUTO_GENERATED_NOTICE = "This is an auto-generated message. Do not reply."
 
 SUBJECT_PREFIX = "EMBER"
+
+_MESSAGE_ID = re.compile(r"<[^<>\s@]+@[^<>\s@]+>")
+
+
+def validate_message_id(value: str) -> str:
+    """Require a single bracketed Message-ID, without embedded headers."""
+    _validate_header(value)
+    if not _MESSAGE_ID.fullmatch(value):
+        raise ValueError("Provide a bracketed Message-ID such as <id@example.com>.")
+    return value
+
+
+def _validate_header(value: str) -> None:
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise ValueError("Email headers must not contain control characters.")
+
+
+def _validate_address(value: str) -> None:
+    _validate_header(value)
+    try:
+        parsed = parse_recipients(value)
+    except ValueError:
+        raise ValueError("Provide a valid email address.") from None
+    if parsed != [value]:
+        raise ValueError("Provide one email address per recipient entry.")
 
 
 def format_subject(capability_alias: str, subject: str) -> str:
@@ -110,15 +136,23 @@ def send_email(
     config: EmailConfig,
     capability_alias: str,
     subject: str,
-    body_html: str,
+    body_html: str | None,
     *,
     to: list[str] | None = None,
     body_text: str | None = None,
-) -> None:
-    """Send one message as multipart/alternative (plain text + HTML).
+    in_reply_to: str | None = None,
+    references: list[str] | None = None,
+    prefix_subject: bool = True,
+) -> str:
+    """SMTP transport; application callers use ``email_delivery.deliver_email``.
+
+    Return the generated Message-ID after SMTP accepts every recipient. HTML
+    produces multipart/alternative; ``body_html=None`` sends plain text only.
+    Optional reply headers link this message to its parent and ancestry.
 
     The subject is sent as ``[EMBER | <capability_alias>] <subject>`` and an
-    auto-generated notice is appended to both parts; callers pass neither.
+    auto-generated notice is appended to each part; callers pass neither.
+    ``prefix_subject=False`` preserves the caller's subject for account emails.
     Build ``body_html`` with ``email_render.render_email_template`` for the
     standard layouts.
 
@@ -139,6 +173,19 @@ def send_email(
     if not recipients:
         raise ValueError("No recipients: pass to=[...] or set a non-empty 'to' list in config.json")
 
+    _validate_header(subject)
+    _validate_header(capability_alias)
+    _validate_address(config.from_address)
+    for recipient in recipients:
+        _validate_address(recipient)
+    ancestry = list(dict.fromkeys(validate_message_id(value) for value in references or []))
+    if in_reply_to is not None:
+        validate_message_id(in_reply_to)
+        if in_reply_to not in ancestry:
+            ancestry.append(in_reply_to)
+    if body_html is None and body_text is None:
+        raise ValueError("Provide a plain text or HTML email body.")
+
     if config.security not in ("ssl", "starttls", "none"):
         # Checked before opening a socket: a config that can't say how to
         # protect the connection must not get as far as offering a password
@@ -147,8 +194,10 @@ def send_email(
             f"Unknown email security mode {config.security!r}; expected one of ssl, starttls, none."
         )
 
-    message = MIMEMultipart("alternative")
-    message["Subject"] = format_subject(capability_alias, subject)
+    text_part = body_text if body_text is not None else _html_to_text(body_html or "")
+    plain = MIMEText(f"{text_part}\n\n{AUTO_GENERATED_NOTICE}", "plain")
+    message = MIMEMultipart("alternative") if body_html is not None else plain
+    message["Subject"] = format_subject(capability_alias, subject) if prefix_subject else subject
     message["From"] = config.from_address
     message["To"] = ", ".join(recipients)
     # Some receivers reject or penalize a message with no Date or
@@ -159,13 +208,18 @@ def send_email(
     # home server is something like "desktop.lan": it leaks internal naming
     # and doesn't match the From domain, which is itself a spam heuristic.
     message["Message-ID"] = make_msgid(domain=config.from_address.rpartition("@")[2] or None)
+    if in_reply_to is not None:
+        message["In-Reply-To"] = in_reply_to
+    if ancestry:
+        message["References"] = " ".join(ancestry)
 
     # Order is the protocol, not a preference: RFC 2046 says the last part
     # of a multipart/alternative is the one the client should prefer, so
     # plain text must come first for the HTML to win.
-    text_part = body_text if body_text is not None else _html_to_text(body_html)
-    message.attach(MIMEText(f"{text_part}\n\n{AUTO_GENERATED_NOTICE}", "plain"))
-    message.attach(MIMEText(f'{body_html}\n<p style="color:#888;font-size:12px;">{AUTO_GENERATED_NOTICE}</p>', "html"))
+    if body_html is not None:
+        message.attach(plain)
+        message.attach(MIMEText(f'{body_html}\n<p style="color:#888;font-size:12px;">{AUTO_GENERATED_NOTICE}</p>', "html"))
+    raw_message = message.as_string()
 
     # smtplib exposes implicit TLS as a separate class rather than a flag,
     # because the socket is wrapped before the greeting - there is no plain
@@ -183,4 +237,7 @@ def send_email(
             # Offering it anyway is not harmless: a server with no AUTH
             # extension answers with an error and the send fails.
             server.login(config.from_address, config.password)
-        server.sendmail(config.from_address, recipients, message.as_string())
+        refused = server.sendmail(config.from_address, recipients, raw_message)
+        if refused:
+            raise RuntimeError("Email delivery was incomplete: one or more recipients were refused.")
+    return str(message["Message-ID"])

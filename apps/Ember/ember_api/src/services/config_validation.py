@@ -3,7 +3,8 @@ page (port of chat_app/src/services/config_validation.py).
 
 ember_api refuses to start on a config it can't use at all, so this looks
 for what still lets it run but is wrong: mistyped values, a broken agent
-registry, secrets still set to a placeholder, half-configured SMTP.
+registry and secrets still set to a placeholder. SMTP configuration belongs
+to MCP Server's Email capability and is not checked locally.
 Messages name the file and key only, never a secret's value.
 
 Checks read the files fresh each call, so fixing one and reloading the page
@@ -180,38 +181,10 @@ def _check_bootstrap_admin(env: dict[str, str]) -> list[Problem]:
     return []
 
 
-def _smtp_in_use(env: dict[str, str]) -> bool:
-    return any(env.get(k) for k in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "MAIL_FROM_ADDRESS"))
-
-
-def _warn_smtp_unset(env: dict[str, str]) -> list[Problem]:
-    if _smtp_in_use(env):
-        return []
-    return [("-", "email is not configured - invites and verification codes can't be sent")]
-
-
-def _check_smtp(env: dict[str, str]) -> list[Problem]:
-    if not _smtp_in_use(env):
-        return []
-    problems: list[Problem] = []
-    if not env.get("SMTP_HOST"):
-        problems.append(("SMTP_HOST", "is empty but other SMTP settings are set"))
-    if not (env.get("MAIL_FROM_ADDRESS") or env.get("SMTP_USERNAME")):
-        problems.append(("MAIL_FROM_ADDRESS", "is empty and there is no SMTP_USERNAME to send from"))
-    port = env.get("SMTP_PORT", "587")
-    if not (port.isdigit() and 0 < int(port) < 65536):
-        problems.append(("SMTP_PORT", "must be a port number (1-65535)"))
-    if env.get("MAIL_FROM_ADDRESS") and "@" not in env["MAIL_FROM_ADDRESS"]:
-        problems.append(("MAIL_FROM_ADDRESS", "must be an email address"))
-    if env.get("SMTP_USE_TLS", "true").lower() not in ("true", "false"):
-        problems.append(("SMTP_USE_TLS", "must be true or false"))
-    return problems
-
-
-_ENV_CHECKS: tuple[Callable[[dict[str, str]], list[Problem]], ...] = (_check_bootstrap_admin, _check_smtp)
+_ENV_CHECKS: tuple[Callable[[dict[str, str]], list[Problem]], ...] = (_check_bootstrap_admin,)
 
 # What in .env only warrants a warning.
-_ENV_WARNINGS: tuple[Callable[[dict[str, str]], list[Problem]], ...] = (_check_internal_api, _warn_smtp_unset)
+_ENV_WARNINGS: tuple[Callable[[dict[str, str]], list[Problem]], ...] = (_check_internal_api,)
 
 
 def _read_json(path: Path, name: str, issues: list[ConfigIssue]) -> Any:
@@ -256,7 +229,7 @@ def collect_issues(settings: Settings) -> list[ConfigIssue]:
     issues.extend(
         ConfigIssue(env_name, key, "is still a placeholder value", WARNING)
         for key, value in env.items()
-        if value and _PLACEHOLDER.search(value)
+        if value and _PLACEHOLDER.search(value) and not key.startswith("SMTP_") and key != "MAIL_FROM_ADDRESS"
     )
     return issues
 

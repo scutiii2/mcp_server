@@ -30,6 +30,7 @@ def _smtp_mock():
     """Returns (patcher_target_mock, the server object callers interact with)."""
     smtp = MagicMock()
     server = smtp.return_value.__enter__.return_value
+    server.sendmail.return_value = {}
     return smtp, server
 
 
@@ -292,3 +293,75 @@ def test_render_template_rejects_unknown_name_and_missing_value():
         render_email_template("../email")
     with pytest.raises(KeyError):
         render_email_template("approval", title="t")
+
+
+def test_returned_message_ids_are_unique_and_match_the_wire():
+    smtp, server = _smtp_mock()
+    with patch("smtplib.SMTP", smtp):
+        first = send_email(CONFIG, "test", "Subject", "<p>Body</p>")
+        assert first == _sent_message(server)["Message-ID"]
+        second = send_email(CONFIG, "test", "Subject", "<p>Body</p>")
+    assert second != first
+
+
+def test_reply_links_parent_and_deduplicated_ancestry():
+    smtp, server = _smtp_mock()
+    with patch("smtplib.SMTP", smtp):
+        send_email(CONFIG, "test", "Subject", "<p>Update</p>",
+                   in_reply_to="<parent@example.com>",
+                   references=["<root@example.com>", "<root@example.com>"])
+    message = _sent_message(server)
+    assert message["In-Reply-To"] == "<parent@example.com>"
+    assert message["References"] == "<root@example.com> <parent@example.com>"
+
+
+def test_plain_only_email_preserves_ember_subject_and_one_footer():
+    smtp, server = _smtp_mock()
+    with patch("smtplib.SMTP", smtp):
+        send_email(CONFIG, "ember", "Your Ember invite code", None,
+                   body_text="Invite code: ABC123", prefix_subject=False)
+    message = _sent_message(server)
+    assert message["Subject"] == "Your Ember invite code"
+    assert message.get_content_type() == "text/plain"
+    body = message.get_payload(decode=True).decode()
+    assert "Invite code: ABC123" in body
+    assert body.count(AUTO_GENERATED_NOTICE) == 1
+
+
+@pytest.mark.parametrize("changes", [
+    {"subject": "Subject\r\nBcc: other@example.com"},
+    {"capability_alias": "test\nBcc: other@example.com"},
+    {"to": ["team@example.com\nother@example.com"]},
+    {"to": ["bad-address"]},
+    {"in_reply_to": "<parent@example.com>\nX-Foo: bar"},
+    {"in_reply_to": "not-a-message-id"},
+    {"in_reply_to": "<parent\x00@example.com>"},
+    {"references": ["<root\x00@example.com>"]},
+    {"references": ["<bad@example.com>\r\nX-Foo: bar"]},
+])
+def test_invalid_headers_fail_before_connecting(changes):
+    smtp, _ = _smtp_mock()
+    args = dict(config=CONFIG, capability_alias="test", subject="Subject", body_html="<p>Body</p>")
+    args.update(changes)
+    with patch("smtplib.SMTP", smtp):
+        with pytest.raises(ValueError):
+            send_email(**args)
+    smtp.assert_not_called()
+
+
+def test_invalid_sender_is_rejected_before_connecting():
+    smtp, _ = _smtp_mock()
+    config = EmailConfig(**{**CONFIG.__dict__, "from_address": "sender@example.com\nBcc: other@example.com"})
+    with patch("smtplib.SMTP", smtp):
+        with pytest.raises(ValueError):
+            send_email(config, "test", "Subject", "<p>Body</p>")
+    smtp.assert_not_called()
+
+
+def test_partial_recipient_refusal_is_not_reported_as_success():
+    smtp, server = _smtp_mock()
+    server.sendmail.return_value = {"team@example.com": (550, b"rejected")}
+    with patch("smtplib.SMTP", smtp):
+        with pytest.raises(RuntimeError, match="recipient"):
+            send_email(CONFIG, "test", "Subject", "<p>Body</p>")
+    assert server.sendmail.call_count == 1
