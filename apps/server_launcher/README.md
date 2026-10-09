@@ -13,6 +13,20 @@ server_launcher\run.bat
 First run creates `.venv_launcher` and installs the project editable.
 Tests: `cd server_launcher && .venv_launcher\Scripts\python -m pytest`.
 
+## Standalone exe
+
+```
+server_launcher\build.bat
+```
+
+Builds `dist\scuti_server_launcher.exe` with PyInstaller (one file, no console
+window). The exe carries its own Python, so the launcher itself runs on a
+machine without Python. The projects it starts still need Python (to build a
+venv) or Node, per project; see the warnings below. Needs Python 3.11+ on the
+build machine only. Run it from a double-click; first build downloads
+PyInstaller into `.venv_launcher`. Settings and saved servers live in the data
+folder, not next to the exe (see below).
+
 ## What it does
 
 Lists only the projects you add with the Servers tab's **Add** button; nothing
@@ -123,7 +137,8 @@ default port, or a port kept via "keep running in background" on close).
 
 | Path | Contents |
 |---|---|
-| `src/run.py` | Entry point (`py -m src.run`) |
+| `src/run.py` | Entry point (`py -m src.run`); `launcher.py` is the top-level script PyInstaller builds from |
+| `build.bat` | Builds the standalone exe |
 | `src/window.py` | `LauncherWindow`: tabs, sidebar, detail panes, lifecycle |
 | `src/instance.py` | `Instance`: launch, log capture, stop/restart, adoption |
 | `src/processes.py` | Port/PID helpers, venv bootstrap, spawn |

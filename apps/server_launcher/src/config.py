@@ -8,9 +8,12 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).resolve().parents[1]
+FROZEN = getattr(sys, "frozen", False)  # running as the PyInstaller exe
+PROJECT_DIR = Path(__file__).resolve().parents[1]  # the source folder; the unpacked bundle when frozen
 REPO_ROOT = PROJECT_DIR.parent
-SELF_DIR_NAME = PROJECT_DIR.name  # discovery must not list the launcher itself
+SELF_DIR_NAME = "server_launcher"  # discovery must not list the launcher itself
+# Where the Add dialog's folder picker starts: next to this repo from source, the user's home from the exe.
+ADD_START_DIR = Path.home() if FROZEN else REPO_ROOT.parent
 ASSETS_DIR = PROJECT_DIR / "src" / "assets"
 
 

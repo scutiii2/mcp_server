@@ -11,7 +11,7 @@ from tkinter import messagebox, simpledialog
 
 from .add_dialog import AddServersDialog
 from .agent_files import launch_port, start_refusal
-from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ASSETS_DIR, REPO_ROOT
+from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ADD_START_DIR, ASSETS_DIR
 from .discovery import refreshed_spec, templates_from_specs
 from .group_editor import GroupEditor
 from .instance import Instance
@@ -264,7 +264,7 @@ class LauncherWindow:
 
     def _add_server(self) -> None:
         """Add button: collect projects in a dialog, then list them all."""
-        AddServersDialog(self.root, {t.key for t in self.templates}, self._add_servers, initialdir=REPO_ROOT.parent)
+        AddServersDialog(self.root, {t.key for t in self.templates}, self._add_servers, initialdir=ADD_START_DIR)
 
     def _add_servers(self, specs: list[LaunchSpec]) -> None:
         """Save the specs the Add dialog returned, list them and select the first."""
