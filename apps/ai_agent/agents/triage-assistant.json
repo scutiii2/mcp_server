@@ -9,7 +9,7 @@
     "model": "convaiinnovations/laya"
   },
   "persona": "",
-  "focus": "Classify short technical issue descriptions and log excerpts by category, severity and whether investigation is needed. Returns fixed classifications and uncertainty; does not explain causes, fetch logs, call tools or perform actions.",
+  "focus": "Answers typed questions about a short text (at most 4000 characters) with a local model. Send the question as JSON: {\"text\": \"...\", \"questions\": {\"id\": {\"type\": \"choice|score|noul\", \"instructions\": \"...\", \"criteria\": ...}}}. choice criteria = {option: description}; score criteria = ordered list of level descriptions, lowest first; noul (yes/no) criteria optional {\"false\": \"...\", \"true\": \"...\"}. Returns JSON with an answer, answer_confidence and an uncertain flag per question; treat uncertain answers as provisional. Does not generate text, fetch data or call tools.",
   "tools": {
     "allow": [],
     "deny": [

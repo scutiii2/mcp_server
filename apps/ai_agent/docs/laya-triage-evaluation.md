@@ -1,5 +1,9 @@
 # Laya triage smoke evaluation — 2026-10-07
 
+> Note: this evaluation predates the 2026-10-09 refactor to caller-supplied typed
+> questions. The output format, the "unknown forces review" rule and the
+> `check_laya_triage.py` question set described below no longer match the code.
+
 Command: `python -m scripts.check_laya_triage` using the installed Laya package
 and `convaiinnovations/laya` English checkpoint. No cloud LLM was called.
 

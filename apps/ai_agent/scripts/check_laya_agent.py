@@ -16,6 +16,8 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from scripts.check_laya_triage import TRIAGE_QUESTIONS
+
 PROJECT = Path(__file__).resolve().parents[1]
 
 
@@ -39,13 +41,14 @@ async def check() -> None:
                 status_data = json.loads(status.content[0].text)
                 assert status_data["provider_id"] == "laya"
                 assert status_data["context_window"] == 512
-                result = await session.call_tool("ask", {"question": "SQLite database is locked; the SQL write failed."})
+                result = await session.call_tool("ask", {"question": json.dumps({"text": "SQLite database is locked; the SQL write failed.", "questions": TRIAGE_QUESTIONS})})
                 assert not result.isError, result.content
                 data = json.loads(result.content[0].text)
                 assert data["provider_id"] == "laya"
                 assert data["output_tokens"] == 0
                 assert data["tools_used"] == []
-                assert "Category: Database" in data["response"]
+                answers = json.loads(data["response"])["answers"]
+                assert answers["category"]["choice"] == "database", answers
                 assert data["agent_usage"][0]["agent_id"] == "triage-assistant"
                 assert data["agent_usage"][0]["gateway"] == "local"
                 print(json.dumps({"mcp_check": "passed", "provider": data["provider_id"],

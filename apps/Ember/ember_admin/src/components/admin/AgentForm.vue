@@ -43,10 +43,6 @@ const temperature = ref("");
 const maxTokens = ref("");
 const maxToolRounds = ref("");
 const maxEffort = ref("");
-const routingLaya = ref(false);
-const topK = ref("");
-const allowAuto = ref(false);
-const minScore = ref("");
 const previewCaveman = ref(false);
 const persona = ref("");
 const instructions = ref("");
@@ -101,11 +97,6 @@ watch(
     maxTokens.value = a?.llm?.max_tokens === undefined ? "" : String(a.llm.max_tokens);
     maxToolRounds.value = a?.llm?.max_tool_rounds === undefined ? "" : String(a.llm.max_tool_rounds);
     maxEffort.value = a?.llm?.max_effort ?? "";
-    const routing = (a?.routing ?? {}) as Record<string, unknown>;
-    routingLaya.value = routing.laya === true;
-    topK.value = routing.top_k === undefined ? "" : String(routing.top_k);
-    allowAuto.value = routing.allow_auto === true;
-    minScore.value = routing.min_score === undefined || routing.min_score === null ? "" : String(routing.min_score);
     previewCaveman.value = false;
     persona.value = a?.persona ?? "";
     instructions.value = a?.instructions ?? "";
@@ -165,9 +156,7 @@ function buildConfig(): AgentConfig | null {
     max_tokens: optionalNumber(maxTokens.value, "Max tokens", 1, 1_000_000, true),
     max_tool_rounds: optionalNumber(maxToolRounds.value, "Max tool rounds", 1, 100, true),
   };
-  const topKNumber = orchestrator.value ? optionalNumber(topK.value, "Top K", 1, 50, true) : undefined;
-  const minScoreNumber = orchestrator.value ? optionalNumber(minScore.value, "Min score", -1, 1, false) : undefined;
-  if (Object.values(numbers).includes(null as never) || topKNumber === null || minScoreNumber === null) return null;
+  if (Object.values(numbers).includes(null as never)) return null;
   if (isLaya.value) {
     // Laya triage runs locally and takes no generation or tier settings.
     for (const key of ["reasoning_effort", "max_tier", "min_tier", "max_effort", "temperature", "max_tokens", "max_tool_rounds"]) delete llm[key];
@@ -196,16 +185,7 @@ function buildConfig(): AgentConfig | null {
     focus: focus.value,
     tools: { allow: globs(allow.value), deny: globs(deny.value) },
   };
-  if (orchestrator.value) {
-    const routing: Record<string, unknown> = { ...((kept.routing ?? {}) as Record<string, unknown>), laya: routingLaya.value, allow_auto: allowAuto.value };
-    for (const [key, value] of [["top_k", topKNumber], ["min_score", minScoreNumber]] as const) {
-      if (value === undefined) delete routing[key];
-      else routing[key] = value;
-    }
-    config.routing = routing;
-  } else {
-    delete config.routing; // ai_agent allows routing only on an orchestrator
-  }
+  delete config.routing; // ai_agent rejects the retired routing option, also in files saved earlier
   for (const key of ["label", "url", "identity", "persona", "instructions", "focus"]) if (!config[key]) delete config[key];
   return config;
 }
@@ -291,16 +271,6 @@ function previewPrompt(): void {
           <label class="field grow"><span>Allowed tools</span><input v-model="allow" data-test="allow" type="text" autocomplete="off" placeholder="All tools, or e.g. calc_*, convert_*" /></label>
           <label class="field grow"><span>Denied tools</span><input v-model="deny" data-test="deny" type="text" autocomplete="off" placeholder="None" /></label>
         </div>
-      </fieldset>
-
-      <fieldset v-if="orchestrator">
-        <legend>Routing (how an orchestrator picks specialists)</legend>
-        <div class="row">
-          <label class="field grow"><span>Shortlist size (top K)</span><input v-model="topK" data-test="top-k" type="text" inputmode="numeric" autocomplete="off" placeholder="3" /></label>
-          <label class="field grow"><span>Minimum score (-1 to 1)</span><input v-model="minScore" data-test="min-score" type="text" inputmode="decimal" autocomplete="off" placeholder="None" /></label>
-        </div>
-        <ToggleSwitch :checked="routingLaya" data-test="routing-laya" @change="routingLaya = ($event.target as HTMLInputElement).checked">Use Laya triage to shortlist specialists</ToggleSwitch>
-        <ToggleSwitch :checked="allowAuto" data-test="routing-auto" @change="allowAuto = ($event.target as HTMLInputElement).checked">Let triage pick the specialist automatically</ToggleSwitch>
       </fieldset>
 
       <div class="switches">

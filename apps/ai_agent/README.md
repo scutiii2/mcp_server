@@ -65,7 +65,7 @@ typos are caught at startup.
 | `port` | yes | none | Port the child listens on. Unique across enabled files. |
 | `enabled` | no | `true` | `false`: not spawned, not registered. |
 | `entry` | no | `false` | The agent ember sends new turns to (Phase 2). Exactly one enabled file must set it. |
-| `llm.provider` | yes | none | `anthropic`, `openai`, or `laya` (local triage only). |
+| `llm.provider` | yes | none | `anthropic`, `openai`, or `laya` (local typed questions only). |
 | `llm.gateway` | no | provider default | A filename stem from `gateways/<provider>/<gateway>.json`. |
 | `llm.model` | no | gateway's `model` | Model id. |
 | `llm.temperature` | no | unset (provider default) | Float 0-2. |
@@ -74,30 +74,18 @@ typos are caught at startup.
 | `llm.max_tool_rounds` | no | `6` | Cap on the tool loop. |
 | `persona` | no | `""` | Persona text placed after the identity line in the system prompt. |
 | `instructions` | no | `""` (built-in default) | Tool-use instructions placed last in the system prompt. Empty uses `DEFAULT_INSTRUCTIONS` in `src/llm/agent_roles.py`. |
-| `focus` | no | `""` | One-line summary of what the agent is good at. Used for the orchestrator roster and for Laya routing. Should be concrete. |
+| `focus` | no | `""` | One-line summary of what the agent is good at. Used for the orchestrator roster. Should be concrete. |
 | `tools.allow` | no | `[]` (all) | fnmatch globs on mcp_server tool names without the `main__` prefix. Empty means all tools. |
 | `tools.deny` | no | `[]` | Globs removed after `allow`. Deny wins. |
 | `orchestrator` | no | `false` | Gets `delegate_to_agent` and the roster. |
-| `routing.laya` | no | `false` | Use Laya to shortlist the roster each turn. Orchestrators only. |
-| `routing.top_k` | no | `3` | Roster size after the Laya shortlist. |
-| `routing.allow_auto` | no | `false` | Offer `agent_id: "auto"` on `delegate_to_agent`. `"auto"` always uses Laya to pick, regardless of `routing.laya`. |
-| `routing.min_score` | no | unset | Signed cosine similarity (-1 to 1). `"auto"` returns a tool error when the best match scores below it. Skipped when Laya returns no scores (only one specialist). |
 
-The `routing.*` fields are only allowed when `orchestrator` is true; `agent_spec` rejects a file that sets them on a non-orchestrator.
-
-An orchestrator file adds the routing block:
+An orchestrator file:
 
 ```json
-{
-  "port": 9100,
-  "entry": true,
-  "llm": { "provider": "anthropic" },
-  "orchestrator": true,
-  "routing": { "laya": true, "top_k": 3, "allow_auto": true, "min_score": 0.2 }
-}
+{ "port": 9100, "entry": true, "llm": { "provider": "anthropic" }, "orchestrator": true }
 ```
 
-The example above shows the available fields. Name an agent for its job,
+Name an agent for its job,
 not its model (`ember`, `server-ops`, `reviewer`). Exactly one enabled file
 sets `entry: true`. Add
 more specialists as extra files.
@@ -156,44 +144,72 @@ page can show an agent that is stopped or disabled. On the ai_agent machine:
 Then set `agents_registry_url` in `apps/Ember/ember_api/configs/config_app.json` (see
 `apps/Ember/ember_api/configs/README.md`).
 
-## Laya-only Triage Assistant
+## Laya question agent
 
-`agents/triage-assistant.json` defines a local specialist that uses
-only Laya's typed decisions. It is part of the tracked roster. Install the
-optional dependency with `pip install -e ".[laya]"`, or set `enabled: false`
-if this installation should not run it. Restart the supervisor after changing
-the roster. It appears in Ember's Agents cards and the orchestrator's specialist
-roster, with provider `laya`, gateway `local`, and model
-`convaiinnovations/laya`. No cloud model or API key is used for its inference.
+`agents/triage-assistant.json` defines a local specialist backed by Laya, a
+small model that answers typed questions about a short text. It is part of the
+tracked roster. Install the optional dependency with `pip install -e ".[laya]"`,
+or set `enabled: false` if this installation should not run it. Restart the
+supervisor after changing the roster. Its provider is `laya`, gateway `local`,
+model `convaiinnovations/laya`; no cloud model or API key is used.
 
-Ember can pass a short issue description or log excerpt to it. It returns
-fixed text containing category (database, network, authentication,
-configuration, unknown), severity (informational, warning, critical), whether
-investigation is needed, model confidence, and an uncertainty flag. It never
-fetches logs, calls tools, delegates, executes actions, or generates prose.
-History is deliberately excluded: the caller must supply the issue's evidence
-in the current question. `interpret`/summarization is unsupported.
+Laya never generates text. The caller supplies the questions as the `ask`
+question, a JSON string:
 
-The English checkpoint has a 512-token limit including question heads. Inputs
-over 4,000 characters are rejected before inference; any input Laya reports as
-truncated is rejected instead of returning a classification from partial
-evidence. The model loads before the agent registers as running; the first
-load may download weights. Loading/inference errors propagate without an LLM
-fallback. Cancellation is checked before and after the local inference call.
+```json
+{
+  "text": "SQLite database is locked",
+  "min_confidence": 0.7,
+  "questions": {
+    "category": {"type": "choice", "instructions": "Which category?",
+                 "criteria": {"database": "SQL and storage", "network": "Connections"}},
+    "severity": {"type": "score", "instructions": "How severe?",
+                 "criteria": ["none", "minor", "major"]},
+    "problem":  {"type": "noul", "instructions": "Is there a problem?"}
+  }
+}
+```
 
-The initial confidence threshold is 0.70 (`MIN_CONFIDENCE` in
-`src/llm/laya_provider.py`). A category of unknown or any decision below this
-threshold is marked uncertain. This is an experimental review gate, **not a
-calibrated accuracy claim**; classifications are advisory even above it.
-Run `python -m scripts.check_laya_triage` for ten real-model smoke examples,
-then evaluate representative local inputs before relying on the decisions.
+- `choice`: `criteria` is `{option: description}`, 2 to 10 options.
+- `score`: `criteria` is a list of 2 to 10 level descriptions, lowest first.
+  The answer is the expected level (0 to n-1) with a `legend`.
+- `noul` (yes/no): `criteria` is optional `{"false": "...", "true": "..."}`.
+  The answer is P(true).
+- `text` is at most 4,000 characters; 1 to 8 questions; `min_confidence` is
+  optional (default 0.70, `MIN_CONFIDENCE` in `src/llm/laya_provider.py`).
+  Text after the JSON object is ignored.
+
+The response is JSON: `{"answers": {id: {...}}, "uncertain": bool}`. Each
+answer has `type`, the result (`choice`/`score`/`noul`), `answer_confidence`
+and `uncertain` (confidence below `min_confidence`). A request with an unknown
+field, type, or out-of-range size is rejected before inference with an
+"Invalid Laya request" error.
+
+The top-level `uncertain` is true if ANY answer is uncertain, so callers that
+mix question types should read the per-answer `uncertain` flags (score
+questions in particular tend to have lower confidence).
+
+The English checkpoint has a 512-token limit including the question heads, so
+keep texts and criteria short. Input Laya reports as truncated is rejected
+instead of answering from partial evidence. The model loads before the agent
+registers as running; the first load may download weights. Loading/inference
+errors propagate without an LLM fallback. History is deliberately excluded and
+`interpret`/summarization is unsupported. Cancellation is checked before and
+after inference.
+
+Escalating to a real LLM is the orchestrator's decision: when `uncertain` is
+true it can answer itself or delegate to another specialist. `0.70` is an
+experimental review gate, **not a calibrated accuracy claim**. Run
+`python -m scripts.check_laya_triage` for ten real-model smoke examples using
+a triage question set, then evaluate representative local inputs before
+relying on the answers.
 
 Usage reports the model's actual input-token work and zero generated output
-tokens. The fixed response text is formatted by Python. Laya is restricted to
-a specialist with the pinned checkpoint and local gateway; generation
-settings, an entry role, or an orchestrator role are rejected at startup.
+tokens. Laya is restricted to a specialist with the pinned checkpoint and
+local gateway; generation settings, an entry role, or an orchestrator role are
+rejected at startup.
 
-## Orchestrator and routing
+## Orchestrator
 
 An agent with `orchestrator: true` gets the `delegate_to_agent` tool;
 specialists never do. Each turn the orchestrator's roster is built from the
@@ -202,29 +218,6 @@ agent itself), as lines of `<id> - <label>: <focus>`. Because it is per turn,
 a specialist that starts or stops shows up without a restart. The
 `agent_id` argument of `delegate_to_agent` is an enum of the roster ids. An
 orchestrator may still answer directly when no specialist fits.
-
-Routing options (`routing.*`, orchestrators only):
-
-- `laya`: when true and there are more than `top_k` specialists with a
-  `focus`, Laya ranks them against the user's question at the start of each
-  turn and only the best `top_k` go into the roster. This flag only controls
-  whether the roster is shortlisted.
-- `top_k`: roster size after the shortlist (default 3).
-- `allow_auto`: adds `"auto"` to the `agent_id` enum. `agent_id: "auto"`
-  always uses Laya to choose the specialist for the sub-question, even when
-  `routing.laya` is false. The tool result begins with
-  `Delegated to <id> (<label>).`
-- `min_score`: signed cosine similarity (-1 to 1, unset by default). `"auto"`
-  returns a tool error when the best match scores below it, and the check is
-  skipped when Laya returns no scores (only one specialist).
-
-If Laya is not installed or fails, the roster falls back to every
-specialist and `"auto"` returns a tool error asking the model to pick an
-explicit id; a turn is never blocked. Laya is an optional extra:
-
-```
-pip install -e ".[laya]"
-```
 
 Specialist activity streams to the orchestrator's caller as `agent_start`,
 `agent_end` and `agent_token` events, and a specialist's own `step_*`
@@ -316,7 +309,7 @@ and closes, returning `{status, error, tools}`. A bad server returns
 
 `status()` reports `private_extensions: true` for supported providers, so
 ember_api can refuse an older agent that would ignore the argument. Laya
-agents report `false`: they have their own tool shortlist and do not support
+agents report `false`: they use no tools and do not support
 private extensions.
 
 ## Asking before tools run

@@ -31,14 +31,13 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from src.agents import agent_events, agent_registry, agent_routing, agent_spec
+from src.agents import agent_events, agent_registry, agent_spec
 
 from src.core import approvals, internal_auth, tool_filter
 from src.core.catalog import catalog
 from src.agents.agent_spec import REASONING_EFFORTS, TIERS, RosterEntry
 
 TOOL_NAME = "delegate_to_agent"
-AUTO_AGENT_ID = "auto"
 
 # Token usage of every agent this turn delegated to (including their own
 # nested delegations). agent_config.run_chat binds a fresh list per turn;
@@ -87,11 +86,11 @@ def _offers_effort(roster: list[RosterEntry]) -> bool:
     return any(len(r.efforts) > 1 for r in roster)
 
 
-def tool_parameters(roster: list[RosterEntry], allow_auto: bool) -> dict[str, Any]:
+def tool_parameters(roster: list[RosterEntry]) -> dict[str, Any]:
     """The delegate tool's input schema: agent_id limited to this turn's
-    roster (plus "auto" when Laya routing may choose), and model_tier when at
-    least one specialist offers a choice of model strength."""
-    ids = [r.id for r in roster] + ([AUTO_AGENT_ID] if allow_auto else [])
+    roster, and model_tier when at least one specialist offers a choice of
+    model strength."""
+    ids = [r.id for r in roster]
     properties: dict[str, Any] = {
         "agent_id": {"type": "string", "enum": ids, "description": "Which specialist to delegate to."},
         "question": {"type": "string", "description": "The focused sub-question to ask it. Include exact attachment file_id/table_id values, filenames and requested file order from the user question; specialists do not receive the chat history."},
@@ -123,9 +122,8 @@ def _roster_line(entry: RosterEntry) -> str:
     return line
 
 
-def tool_description(roster: list[RosterEntry], allow_auto: bool) -> str:
+def tool_description(roster: list[RosterEntry]) -> str:
     listing = "; ".join(_roster_line(r) for r in roster)
-    auto = ' Use agent_id "auto" to let routing pick the best specialist for the question.' if allow_auto else ""
     choice = (
         " Pick the lightest model_tier whose description fits the task; omit it when unsure."
         if _offers_choice(roster) else ""
@@ -135,7 +133,7 @@ def tool_description(roster: list[RosterEntry], allow_auto: bool) -> str:
         if _offers_effort(roster) else ""
     )
     return (
-        f"Hand a focused sub-question to a specialist agent and get its answer back. Specialists: {listing}.{auto}{choice}{effort} "
+        f"Hand a focused sub-question to a specialist agent and get its answer back. Specialists: {listing}.{choice}{effort} "
         "Sequential: each call adds latency, so delegate only what a specialist does better."
     )
 
@@ -192,12 +190,6 @@ def call(
     free to serve the nested ask() rather than blocked waiting on it."""
     if depth >= _MAX_DELEGATION_DEPTH:
         raise ValueError(f"max delegation depth ({_MAX_DELEGATION_DEPTH}) reached")
-
-    prefix = ""
-    if agent_id == AUTO_AGENT_ID:
-        chosen = agent_routing.resolve_auto(question)
-        agent_id = chosen.id
-        prefix = f"Delegated to {chosen.id} ({chosen.label}).\n\n"
 
     references = _attachments.get()
     if references and references not in question:
@@ -262,7 +254,7 @@ def call(
         usage_sink.extend(result.get("agent_usage") or [])
     notes = [n for n in (result.get("model_note"), result.get("effort_note")) if n]
     note_prefix = f"[{'; '.join(notes)}]\n\n" if notes else ""
-    return prefix + note_prefix + result.get("response", "")
+    return note_prefix + result.get("response", "")
 
 
 def dispatch(arguments: dict[str, Any], depth: int) -> str:

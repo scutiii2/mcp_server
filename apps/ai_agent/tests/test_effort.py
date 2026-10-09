@@ -312,18 +312,18 @@ def _configure_agents(monkeypatch, agents):
 
 
 def test_tool_parameters_offer_reasoning_effort_only_when_there_is_a_choice():
-    prop = delegation.tool_parameters(EFFORT_ROSTER, allow_auto=False)["properties"]["reasoning_effort"]
+    prop = delegation.tool_parameters(EFFORT_ROSTER)["properties"]["reasoning_effort"]
     assert prop["enum"] == ["off", "low", "medium", "high"]
-    assert "reasoning_effort" not in delegation.tool_parameters(NO_CHOICE, allow_auto=False)["properties"]
+    assert "reasoning_effort" not in delegation.tool_parameters(NO_CHOICE)["properties"]
 
 
 def test_tool_description_names_each_specialists_effort_limit():
-    description = delegation.tool_description(EFFORT_ROSTER, allow_auto=False)
+    description = delegation.tool_description(EFFORT_ROSTER)
     assert "calc (Calculator): Arithmetic. [reasoning_effort: up to low]" in description
     assert "poet (Poet): Poems." in description
     assert "poet (Poet): Poems. [" not in description
     assert "lowest reasoning_effort" in description
-    assert "lowest reasoning_effort" not in delegation.tool_description(NO_CHOICE, allow_auto=False)
+    assert "lowest reasoning_effort" not in delegation.tool_description(NO_CHOICE)
 
 
 def test_call_passes_reasoning_effort_to_ask(monkeypatch):

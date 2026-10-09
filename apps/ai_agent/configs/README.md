@@ -7,9 +7,7 @@ on first read. Never credentials
 lives under `../.data/` instead (see the end of this file).
 
 - **`config_tuning.json`** - `token_limits`: output/context/tool-round
-  caps, per provider and gateway (`src/llm/token_limits.py`);
-  `tool_selection`: Laya tool shortlist `enabled`/`top_k`
-  (`src/mcp_client/tool_selection.py`).
+  caps, per provider and gateway (`src/llm/token_limits.py`).
 - **`config_servers.json`** - `servers`: the MCP servers this agent
   connects to as a client (currently just `main`, this repo's
   `mcp_server`). Loaded by `src/mcp_client/config.py`'s `load_servers_config` into
@@ -34,13 +32,12 @@ real files are gitignored (`/apps/ai_agent/configs/*` and the root `config_*.jso
 rule), so a fresh checkout seeds each one from its `.example` twin on
 first read, same as `../.env`.
 
-On the first read of `config_tuning.json`, existing `config_limits.json`
-and `config_tool_selection.json` sections take precedence over example
-defaults. The old files are retained as backups and are no longer read
-once the merged file exists. Edit `config_tuning.json` and restart agents
+On the first read of `config_tuning.json`, an existing `config_limits.json`
+section takes precedence over example defaults. The old file is retained
+as a backup and is no longer read once the merged file exists. Edit `config_tuning.json` and restart agents
 to change tuning. A malformed legacy JSON file stops migration so settings
 are not silently replaced. To roll back, use the previous code with the
-retained files; copy back any settings changed after migration.
+retained file; copy back any settings changed after migration.
 
 ## Runtime state (not config)
 

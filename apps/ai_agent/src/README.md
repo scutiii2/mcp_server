@@ -16,10 +16,10 @@ Entry points stay at the package root; everything else is grouped by concern.
   spawns one `src.server` child per enabled agent file, relays output,
   restarts crashed children with backoff.
 
-### [`agents/`](agents/) - agent identity, routing, delegation
+### [`agents/`](agents/) - agent identity, delegation
 
 - `agent_spec.py` - loads and validates one `agents/<id>.json` (identity,
-  port, `llm`, `orchestrator`, `routing`) into the process-wide
+  port, `llm`, `orchestrator`) into the process-wide
   `AgentSpec` the other modules read.
 - `agent_config.py` - resolves the pinned provider+model from
   `.env` once at startup; fails loudly on a bad
@@ -34,8 +34,7 @@ Entry points stay at the package root; everything else is grouped by concern.
   gitignored) on startup/clean shutdown; ember_api reads it.
 - `llm/model_tiers.py` - which model strength tiers an agent offers and how a requested tier resolves (clamped to the agent's min_tier/max_tier).
 - `llm/reasoning_effort.py` - the reasoning effort (off/low/medium/high) an orchestrator may request of an agent; a request above the agent's `llm.max_effort` runs at the cap. Applied per turn through `llm_options.bind_effort`.
-- `agent_routing.py` - per-turn roster of specialists for an orchestrator
-  (optionally Laya-shortlisted) and the `agent_id="auto"` pick.
+- `agent_routing.py` - per-turn roster of specialists for an orchestrator.
 - `agent_events.py` - the progress events a specialist emits and an
   orchestrator re-emits upward (`agent_*`).
 
@@ -54,8 +53,7 @@ limits) resolved from the agent file.
   of reconnecting per call.
 - `mcp_upstream.py` - the only one adapted for this project's specific
   single-upstream, enabled-extensions-filtered use.
-- `tool_selection.py`, `tool_progress.py` - Laya tool shortlist and
-  per-tool progress reporting.
+- `tool_progress.py` - per-tool progress reporting.
 
 ### [`core/`](core/) - shared plumbing
 

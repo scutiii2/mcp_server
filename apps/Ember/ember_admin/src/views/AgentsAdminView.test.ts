@@ -176,7 +176,7 @@ describe("AgentsAdminView", () => {
     expect(wrapper.find("[data-test=form-error]").text()).toContain("weakest");
   });
 
-  it("saves the model settings, identity override and orchestrator routing", async () => {
+  it("saves the model settings, identity override and no routing for an orchestrator", async () => {
     const update = vi.spyOn(agentsAdminClient, "update").mockResolvedValue(EMBER);
     const wrapper = await mounted();
     await wrapper.find("[data-id=ember] [data-test=edit]").trigger("click");
@@ -186,9 +186,6 @@ describe("AgentsAdminView", () => {
     await wrapper.find("[data-test=max-tokens]").setValue("2048");
     await wrapper.find("[data-test=max-tool-rounds]").setValue("8");
     await wrapper.find("[data-test=max-effort]").setValue("medium");
-    await wrapper.find("[data-test=top-k]").setValue("5");
-    await wrapper.find("[data-test=min-score]").setValue("0.2");
-    await wrapper.find("[data-test=routing-auto]").setValue(true);
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
@@ -196,8 +193,8 @@ describe("AgentsAdminView", () => {
     expect(config).toMatchObject({
       identity: "You are Ember.",
       llm: { temperature: 0.3, max_tokens: 2048, max_tool_rounds: 8, max_effort: "medium" },
-      routing: { top_k: 5, min_score: 0.2, allow_auto: true, laya: false },
     });
+    expect(config).not.toHaveProperty("routing");
   });
 
   it("refuses a model setting that is out of range before calling the server", async () => {
@@ -208,12 +205,6 @@ describe("AgentsAdminView", () => {
     await wrapper.find("form").trigger("submit");
     expect(update).not.toHaveBeenCalled();
     expect(wrapper.find("[data-test=form-error]").text()).toContain("Temperature");
-  });
-
-  it("drops routing when the agent is not an orchestrator and shows no routing box", async () => {
-    const wrapper = await mounted();
-    await wrapper.find("[data-id=calc] [data-test=edit]").trigger("click");
-    expect(wrapper.find("[data-test=top-k]").exists()).toBe(false);
   });
 
   it("previews the assembled prompt for the draft and shows a refusal", async () => {

@@ -39,7 +39,6 @@ export interface AgentConfig {
   focus?: string;
   /** Replaces the shared identity line for this agent. */
   identity?: string;
-  routing?: { laya?: boolean; top_k?: number; allow_auto?: boolean; min_score?: number };
   tools?: { allow?: string[]; deny?: string[] };
   [key: string]: unknown;
 }

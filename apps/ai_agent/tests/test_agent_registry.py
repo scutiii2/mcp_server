@@ -269,7 +269,7 @@ def test_roster_and_specialists_survive_a_corrupt_registry_file(monkeypatch, tmp
     config_path.write_text("{", encoding="utf-8")
 
     assert [r.id for r in agent_routing.specialists()] == ["calc"]
-    assert [r.id for r in asyncio.run(agent_routing.roster_for("q"))] == ["calc"]
+    assert [r.id for r in asyncio.run(agent_routing.roster_for())] == ["calc"]
 
 
 def test_definitions_round_trip_and_include_disabled_agents(monkeypatch):
