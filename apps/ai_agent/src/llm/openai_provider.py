@@ -416,6 +416,7 @@ async def run_chat(
     except TurnStopped as error:
         stop_message = str(error)
     except TimeoutError:
+        cancellation.cancel(request_id)
         stop_message = guard.time_message()
     except RateLimitError as error:
         seconds = cooldown.extract_retry_after_seconds(error) or cooldown.DEFAULT_COOLDOWN_SECONDS

@@ -152,6 +152,7 @@ async def run_chat(
     )
     effort = effort_limits.resolve(reasoning_effort, agent_spec.current().llm.max_effort, agent_spec.current().id)
     cancellation.register(request_id)
+    request_token = cancellation.bind_request(request_id)
     delegated_usage, usage_token = delegation.bind_usage()
     attachment_token = delegation.bind_attachments(question, history)
     approval_token = approvals.bind(policy)
@@ -200,6 +201,7 @@ async def run_chat(
         delegation.reset_attachments(attachment_token)
         delegation.reset_usage(usage_token)
         cancellation.clear(request_id)
+        cancellation.reset_request(request_token)
 
 
 def run_interpret(text: str) -> ChatResult:

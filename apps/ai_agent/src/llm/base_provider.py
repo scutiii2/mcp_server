@@ -13,6 +13,7 @@ instead of a fixed string.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -55,20 +56,26 @@ async def dispatch_with_progress(
         return await anyio.to_thread.run_sync(dispatch, *args)
     loop = asyncio.get_running_loop()
     pending: list[Any] = []
+    pending_lock = threading.Lock()
+    closed = False
 
     def sink(message: str) -> None:
-        pending.append(
-            asyncio.run_coroutine_threadsafe(on_event(step_event("step_progress", id=step_id, message=message)), loop)
-        )
+        event_sink(step_event("step_progress", id=step_id, message=message))
 
     def event_sink(event: dict[str, Any]) -> None:
-        pending.append(asyncio.run_coroutine_threadsafe(on_event(event), loop))
+        with pending_lock:
+            if not closed:
+                pending.append(asyncio.run_coroutine_threadsafe(on_event(event), loop))
 
     token = tool_progress.bind(sink)
     events_token = agent_events.bind(event_sink, step_id)
     try:
         return await anyio.to_thread.run_sync(dispatch, *args)
     finally:
+        # A deadline may leave a worker finishing cooperatively; its late events
+        # must not reopen a finished turn or target a closed event loop.
+        with pending_lock:
+            closed = True
         agent_events.reset(events_token)
         tool_progress.reset(token)
         # Deliver every queued progress event before the caller's step_end.

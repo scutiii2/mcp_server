@@ -48,13 +48,21 @@ def test_provider_stops_before_executing_more_tools(monkeypatch, provider, reaso
     events = []
     async def emit(event):
         events.append(event)
+    if reason == "time":
+        from src.llm import cancellation
+        cancellation.link("budgeted-turn", "budgeted-child")
     try:
-        result = asyncio.run(provider.run_chat("go", [], on_event=emit))
+        result = asyncio.run(provider.run_chat("go", [], request_id="budgeted-turn", on_event=emit))
         assert len(executed) == (2 if reason == "repeat" else 0)
         assert {"tokens": "token budget", "repeat": "repeated", "time": "time budget"}[reason] in result.response.lower()
         assert events[-1] == {"type": "token", "text": result.response}
+        if reason == "time":
+            assert cancellation.is_cancelled("budgeted-child")
     finally:
         llm_options.reset_cache()
+        from src.llm import cancellation
+        cancellation.clear("budgeted-child")
+        cancellation.clear("budgeted-turn")
 
 
 def test_agent_accepts_turn_caps(tmp_path):
