@@ -12,6 +12,7 @@ from tkinter import messagebox, simpledialog
 from .add_dialog import AddServersDialog
 from .agent_files import launch_port, start_refusal
 from .config import _EXTRA_ARGS_HINTS, _POLL_MS, _RESTART_WAIT_SECONDS, ADD_START_DIR, ASSETS_DIR
+from .data_folder_dialog import DataFolderDialog
 from .discovery import refreshed_spec, templates_from_specs
 from .group_editor import GroupEditor
 from .instance import Instance
@@ -80,6 +81,10 @@ class LauncherWindow:
         self.instances_tab_btn.pack(side="left", padx=(0, 4))
         self.groups_tab_btn = self._make_tab(tabbar_inner, "Groups", "groups")
         self.groups_tab_btn.pack(side="left")
+        RoundedButton(
+            tabbar_inner, "Data folder", command=lambda: DataFolderDialog(self.root),
+            bg=_TABBAR_BG, fill=_ROW_BG, outline=_BORDER, fg=_FG,
+        ).pack(side="right")
         tk.Frame(tabbar, bg=_SEPARATOR, height=1).pack(fill="x")
 
         sidebar = tk.Frame(root, bg=_SIDEBAR_BG, width=_SIDEBAR_WIDTH)

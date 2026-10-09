@@ -6,7 +6,10 @@ import json
 import shutil
 from pathlib import Path
 
-from .config import _GROUPS_PATH, _KEPT_RUNNING_PATH, _PRESETS_PATH, _PROJECTS_DIR, LEGACY_DATA_DIR
+from .config import (
+    _GROUPS_PATH, _KEPT_RUNNING_PATH, _PRESETS_PATH, _PROJECTS_DIR, DATA_DIR, DEFAULT_DATA_DIR, LEGACY_DATA_DIR,
+    LOCATION_FILE_NAME,
+)
 from .models import GroupMember, LaunchSpec, Preset, ServerGroup
 from .specs import SPEC_FILE_NAME, read_saved_spec, spec_to_dict
 
@@ -23,6 +26,37 @@ def _migrate_legacy_data(legacy_dir: Path = LEGACY_DATA_DIR) -> None:
                 shutil.copyfile(source, target)
             except OSError:
                 pass  # the launcher still starts; the groups/presets just begin empty
+
+
+_MOVED_FILES = ("groups.json", "presets.json")
+
+
+def _data_folder_has_data(folder: Path) -> bool:
+    return any((folder / name).exists() for name in (*_MOVED_FILES, "projects"))
+
+
+def _set_data_location(
+    new_dir: Path | None, *, copy: bool, current_dir: Path = DATA_DIR, default_dir: Path = DEFAULT_DATA_DIR,
+) -> None:
+    """Use ``new_dir`` as the data folder from the next start (None, or the default
+    folder itself, goes back to the default). The choice is one line in
+    ``data_location.txt`` in the default folder. With ``copy``, the groups, presets
+    and saved servers of ``current_dir`` are copied across first; files the new
+    folder already has are never overwritten, and the old folder is left alone."""
+    pointer = default_dir / LOCATION_FILE_NAME
+    target = default_dir if new_dir is None else new_dir
+    if copy and target.resolve() != current_dir.resolve():
+        target.mkdir(parents=True, exist_ok=True)
+        for name in _MOVED_FILES:
+            if (current_dir / name).is_file() and not (target / name).exists():
+                shutil.copyfile(current_dir / name, target / name)
+        if (current_dir / "projects").is_dir() and not (target / "projects").exists():
+            shutil.copytree(current_dir / "projects", target / "projects")
+    if target.resolve() == default_dir.resolve():
+        pointer.unlink(missing_ok=True)
+        return
+    default_dir.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(str(target) + "\n", encoding="utf-8")
 
 
 def _load_groups() -> dict[str, ServerGroup]:

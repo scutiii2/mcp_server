@@ -231,6 +231,71 @@ class DataDirTests(unittest.TestCase):
             self.assertEqual((data / "presets.json").read_text(encoding="utf-8"), "{\"kept\": 1}")
 
 
+class DataFolderChangeTests(unittest.TestCase):
+    def _populate(self, folder: Path, tag: str) -> None:
+        (folder / "projects" / "tool").mkdir(parents=True)
+        (folder / "groups.json").write_text(tag, encoding="utf-8")
+        (folder / "presets.json").write_text(tag, encoding="utf-8")
+        (folder / "projects" / "tool" / "run.srvlnchr").write_text(tag, encoding="utf-8")
+
+    def test_source_names_what_chose_the_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            env = {"APPDATA": directory}
+            self.assertEqual(config.resolve_data_dir_and_source([], env)[1], "default")
+            self.assertEqual(config.resolve_data_dir_and_source(["--data-dir", "x"], env)[1], "flag")
+            self.assertEqual(config.resolve_data_dir_and_source([], {**env, "SCUTI_SERVER_LAUNCHER_DATA": "x"})[1], "env")
+            (Path(directory) / "scuti_server_launcher").mkdir()
+            (Path(directory) / "scuti_server_launcher" / "data_location.txt").write_text("x\n", encoding="utf-8")
+            self.assertEqual(config.resolve_data_dir_and_source([], env)[1], "file")
+
+    def test_change_copies_files_once_writes_the_pointer_and_never_overwrites(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            default, new = base / "default", base / "new"
+            self._populate(default, "old")
+            new.mkdir()
+            (new / "presets.json").write_text("keep", encoding="utf-8")
+
+            storage._set_data_location(new, copy=True, current_dir=default, default_dir=default)
+
+            self.assertEqual((default / "data_location.txt").read_text(encoding="utf-8").strip(), str(new))
+            self.assertEqual((new / "groups.json").read_text(encoding="utf-8"), "old")
+            self.assertEqual((new / "presets.json").read_text(encoding="utf-8"), "keep")
+            self.assertEqual((new / "projects" / "tool" / "run.srvlnchr").read_text(encoding="utf-8"), "old")
+            self.assertEqual((default / "groups.json").read_text(encoding="utf-8"), "old")  # old folder left alone
+
+    def test_change_without_copy_leaves_the_new_folder_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            default, new = base / "default", base / "new"
+            self._populate(default, "old")
+            storage._set_data_location(new, copy=False, current_dir=default, default_dir=default)
+
+            self.assertFalse(new.exists())
+            self.assertTrue((default / "data_location.txt").is_file())
+
+    def test_back_to_default_removes_the_pointer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            default, other = base / "default", base / "other"
+            default.mkdir()
+            (default / "data_location.txt").write_text(f"{other}\n", encoding="utf-8")
+            self._populate(other, "moved")
+
+            storage._set_data_location(None, copy=True, current_dir=other, default_dir=default)
+            self.assertFalse((default / "data_location.txt").exists())
+            self.assertEqual((default / "groups.json").read_text(encoding="utf-8"), "moved")
+            storage._set_data_location(default, copy=False, current_dir=default, default_dir=default)  # already default: no pointer
+            self.assertFalse((default / "data_location.txt").exists())
+
+    def test_has_data_detects_groups_presets_or_servers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            self.assertFalse(storage._data_folder_has_data(folder))
+            (folder / "projects").mkdir()
+            self.assertTrue(storage._data_folder_has_data(folder))
+
+
 class RuntimeWarningTests(unittest.TestCase):
     def setUp(self) -> None:
         for finder in (runtimes.find_python, runtimes.find_node):

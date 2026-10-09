@@ -30,28 +30,35 @@ def default_data_dir(environ: Mapping[str, str]) -> Path:
     return (Path(base) if base else Path.home() / "AppData" / "Roaming") / APP_DIR_NAME
 
 
-def resolve_data_dir(argv: Sequence[str], environ: Mapping[str, str]) -> Path:
+def resolve_data_dir_and_source(argv: Sequence[str], environ: Mapping[str, str]) -> tuple[Path, str]:
     """Where every file the launcher creates at run time goes (groups, presets,
-    saved server specs, the kept-running handoff). The first one set wins:
-    ``--data-dir <path>``, the SCUTI_SERVER_LAUNCHER_DATA variable, the first
-    line of ``data_location.txt`` in the default folder, then the default
-    folder itself."""
+    saved server specs, the kept-running handoff), and what chose it. The first
+    one set wins: ``--data-dir <path>`` ("flag"), the SCUTI_SERVER_LAUNCHER_DATA
+    variable ("env"), the first line of ``data_location.txt`` in the default
+    folder ("file"), then the default folder itself ("default")."""
     for index, arg in enumerate(argv):
         if arg == DATA_DIR_FLAG and index + 1 < len(argv) and argv[index + 1].strip():
-            return Path(argv[index + 1]).expanduser()
+            return Path(argv[index + 1]).expanduser(), "flag"
         if arg.startswith(DATA_DIR_FLAG + "=") and arg[len(DATA_DIR_FLAG) + 1:].strip():
-            return Path(arg[len(DATA_DIR_FLAG) + 1:]).expanduser()
+            return Path(arg[len(DATA_DIR_FLAG) + 1:]).expanduser(), "flag"
     if environ.get(DATA_DIR_ENV, "").strip():
-        return Path(environ[DATA_DIR_ENV]).expanduser()
+        return Path(environ[DATA_DIR_ENV]).expanduser(), "env"
     default = default_data_dir(environ)
     try:
         lines = (default / LOCATION_FILE_NAME).read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
-        return default
-    return Path(lines[0].strip()).expanduser() if lines and lines[0].strip() else default
+        return default, "default"
+    if lines and lines[0].strip():
+        return Path(lines[0].strip()).expanduser(), "file"
+    return default, "default"
 
 
-DATA_DIR = resolve_data_dir(sys.argv[1:], os.environ)
+def resolve_data_dir(argv: Sequence[str], environ: Mapping[str, str]) -> Path:
+    return resolve_data_dir_and_source(argv, environ)[0]
+
+
+DEFAULT_DATA_DIR = default_data_dir(os.environ)
+DATA_DIR, DATA_DIR_SOURCE = resolve_data_dir_and_source(sys.argv[1:], os.environ)
 _PRESETS_PATH = DATA_DIR / "presets.json"
 _GROUPS_PATH = DATA_DIR / "groups.json"
 # One folder per listed server, each holding the launcher's own saved copy of its
