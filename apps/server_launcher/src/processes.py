@@ -35,7 +35,7 @@ def _find_free_port(start_port: int) -> int:
 
 
 def _kill_pid_tree(pid: int) -> None:
-    subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
 
 
 def _find_pid_on_port(port: int) -> int | None:
@@ -43,7 +43,7 @@ def _find_pid_on_port(port: int) -> int | None:
     from `netstat -ano` - used only for the one-time startup adoption scan
     (see LauncherWindow._adopt_running_instances()), never called
     repeatedly from the main thread."""
-    result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+    result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     for line in result.stdout.splitlines():
         parts = line.split()
         if len(parts) >= 5 and parts[0] == "TCP" and parts[3] == "LISTENING" and parts[1].endswith(f":{port}"):
@@ -61,7 +61,8 @@ def _pid_alive(pid: int) -> bool:
     Calling this from _tick() every poll interval is what froze the app
     before; the watcher thread now does it instead, off-thread, and is_alive()
     just reads the cached result."""
-    result = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True)
+    result = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True,
+                            creationflags=subprocess.CREATE_NO_WINDOW)
     return str(pid) in result.stdout
 
 
