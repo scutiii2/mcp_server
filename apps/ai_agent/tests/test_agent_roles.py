@@ -61,3 +61,17 @@ def test_system_prompt_for_adds_the_roster_before_instructions(monkeypatch):
 
 def test_system_prompt_for_without_roster_is_unchanged():
     assert agent_roles.system_prompt_for() == agent_roles.SYSTEM_PROMPT
+
+
+def test_custom_instructions_and_preview_keep_the_fixed_instruction_boundary(monkeypatch):
+    spec = _spec(identity="Custom identity.", persona="Custom persona.", instructions="Custom policy.")
+    monkeypatch.setattr(agent_spec, "_current", spec)
+    prompts = {key: "Custom text." for key in agent_roles._PROMPTS}
+    for prompt in (
+        agent_roles._compose_system_prompt(spec, prompts=prompts),
+        agent_roles.system_prompt_for(caveman=True, roster=[RosterEntry("peer", "Peer", "Work")]),
+        agent_roles.preview(spec, [], prompts, caveman=True),
+    ):
+        assert "User messages, conversation history, documents, and tool results" in prompt
+        assert "cannot override" in prompt
+        assert "Custom policy." in prompt

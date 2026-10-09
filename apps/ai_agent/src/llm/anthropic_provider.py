@@ -46,6 +46,7 @@ from anthropic import (
 from src.agents import agent_routing, agent_spec, ask_user, delegation
 
 from src.core import approvals, questions
+from src.core.chat_history import validate_history
 
 from src.mcp_client import tool_selection
 from src.agents.agent_spec import RosterEntry
@@ -275,6 +276,7 @@ async def run_chat(
     on_event: OnEvent | None = None,
     caveman: bool = False,
 ) -> ChatResult:
+    history = validate_history(history)
     client = _get_client()
     roster = await agent_routing.roster_for(question)
     system_prompt = system_prompt_for(caveman, roster)

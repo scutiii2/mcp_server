@@ -47,6 +47,7 @@ from src.mcp_client import tool_selection
 from src.agents.agent_spec import RosterEntry
 from src.llm import cancellation, cooldown, llm_config, llm_options, token_limits
 from src.llm.agent_roles import SYSTEM_PROMPT, system_prompt_for
+from src.core.chat_history import validate_history
 from src.llm.base_provider import (
     BaseProvider, ChatCancelled, ChatResult, LiveUsage, OnEvent, ToolCallRecord, dispatch_with_progress, step_event,
 )
@@ -282,6 +283,7 @@ async def run_chat(
     on_event: OnEvent | None = None,
     caveman: bool = False,
 ) -> ChatResult:
+    history = validate_history(history)
     client = _get_client()
     model_name = model or DEFAULT_MODEL
     history = token_limits.trim_history_to_fit(history, PROVIDER_ID, _limit_gateway())

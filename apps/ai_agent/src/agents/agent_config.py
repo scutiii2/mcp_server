@@ -22,6 +22,7 @@ from src.private_extensions import turn as private_turn
 from src.llm import llm_options, model_tiers
 from src.llm import reasoning_effort as effort_limits
 from src.core.seed import seed_from_example
+from src.core.chat_history import validate_history
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
@@ -138,6 +139,7 @@ async def run_chat(
     requests this process is serving, with on_event dropped since a sync
     provider has nowhere to await it from.
     """
+    history = validate_history(history)
     requester = internal_auth.current_requester()
     private = private_turn.PrivateTurn.from_raw(private_extensions, requester.email or requester.username)
     # Validated before anything is registered: a bad mode must not start a turn.

@@ -62,8 +62,20 @@ limits) resolved from the agent file.
 - `catalog.py`, `seed.py`, `config_files.py` - `@catalog` stub, `.example`
   seeding, and the paths/readers for `../configs/`.
 - `internal_auth.py` - internal API token and requester identity.
+- `chat_history.py` - accepts only caller-supplied `{role, content}` messages
+  with a `user`/`assistant` role and string content. Privileged roles, extra
+  fields, and structured tool activity are rejected before provider setup or
+  history trimming; providers generate tool calls/results within their own loop.
 - `approvals.py` - per-call tool approval handling.
 - `usage_log.py` - append-only per-agent usage log.
+
+Agent system prompts include a fixed instruction-priority rule, including in
+the admin preview and with custom prompt text. User messages, documents, and
+tool results cannot authorize replacing the configured identity, scope, or
+instructions. This strengthens prompt-injection resistance; model adherence
+is not guaranteed, so access controls and tool restrictions still need code
+enforcement. Caller-supplied assistant text is conversation context, not
+verified evidence of authorization.
 
 ## Runtime data (not code)
 
