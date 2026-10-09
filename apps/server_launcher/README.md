@@ -34,7 +34,7 @@ Sidebar tabs:
   **Add** picks a project folder with a launchable `run.bat` and lists it;
   **Remove** drops the selected server from the list (a folder added by hand
   is forgotten, a detected one is hidden; Add its folder to bring it back).
-  Project files are never touched. Both are saved in `data/servers.json`
+  Project files are never touched. Both are saved in `.data/servers.json`
   (gitignored, per machine).
 - **Agent projects** (a bat that runs `src.supervisor` next to an `agents/`
   folder, i.e. ai_agent): the Servers page shows the agent files read-only
@@ -86,7 +86,7 @@ default port, or a port kept via "keep running in background" on close).
 | `src/widgets.py`, `src/theme.py` | Rounded hover widgets, member card, panel, scroll frame, dark scrollbar; ember colors and radius scale |
 | `src/config.py` | Paths, run.bat regexes, timing constants |
 | `src/assets/` | Empty-state image |
-| `data/` | `groups.json` (tracked); `presets.json`, `servers.json`, `kept_running.json` (gitignored, per-machine) |
+| `.data/` | `groups.json`, `extra_roots.json`, `presets.json`, `servers.json`, `kept_running.json` (all gitignored, per-machine) |
 | `tests/` | pytest suite |
 
 No `configs/` or `secrets/`: the launcher has neither.
