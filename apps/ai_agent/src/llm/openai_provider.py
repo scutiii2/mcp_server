@@ -39,6 +39,7 @@ from typing import Any, Sequence
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, BadRequestError, OpenAI, RateLimitError
 
+from src.llm.turn_guard import TurnStopped
 from src.agents import agent_routing, ask_user, delegation
 
 from src.core import approvals, questions
@@ -304,116 +305,128 @@ async def run_chat(
     output_tokens: int | None = None
     meter = LiveUsage(on_event)
     options = llm_options.for_provider(PROVIDER_ID)
+    guard = options.turn_guard()
+    stop_message = 'Reached maximum tool-call rounds without a final answer.'
     # The full prompt just sent (all resent history), not a sum across
     # rounds like total_tokens - overwritten each round rather than
     # accumulated, same reasoning as anthropic_provider.run_chat.
     context_tokens: int | None = None
 
     try:
-        for _ in range(options.max_tool_rounds(token_limits.max_tool_rounds(PROVIDER_ID, _limit_gateway()))):
-            if cancellation.is_cancelled(request_id):
-                raise ChatCancelled()
-            token_limits.enforce_context_limit(PROVIDER_ID, messages, _limit_gateway())
-            # Every round is streamed, so text appears as the model writes
-            # it. A round that ends in function calls may still have streamed
-            # some text first; "token_reset" tells the client to drop it,
-            # since the real answer is the text of the final (no-tool) round.
-            while True:
-                text_parts: list[str] = []
-                try:
-                    async with client.responses.stream(
+        async with guard.timeout():
+            for _ in range(options.max_tool_rounds(token_limits.max_tool_rounds(PROVIDER_ID, _limit_gateway()))):
+                if cancellation.is_cancelled(request_id):
+                    raise ChatCancelled()
+                token_limits.enforce_context_limit(PROVIDER_ID, messages, _limit_gateway())
+                # Every round is streamed, so text appears as the model writes
+                # it. A round that ends in function calls may still have streamed
+                # some text first; "token_reset" tells the client to drop it,
+                # since the real answer is the text of the final (no-tool) round.
+                while True:
+                    text_parts: list[str] = []
+                    try:
+                        async with client.responses.stream(
+                            model=model_name,
+                            input=messages,
+                            tools=schemas if schemas else None,
+                            max_output_tokens=options.max_tokens(token_limits.max_output_tokens(PROVIDER_ID, _limit_gateway())),
+                            **options.extra_kwargs(model_name),
+                        ) as stream:
+                            async for event in stream:
+                                if event.type == "response.output_text.delta":
+                                    text_parts.append(event.delta)
+                                    if on_event:
+                                        await on_event(step_event("token", text=event.delta))
+                                    await meter.chars(len(event.delta))
+                            response = await stream.get_final_response()
+                        break
+                    except BadRequestError as error:
+                        # A rejected per-agent option fails before any text
+                        # streams; drop it and retry this round once without it.
+                        if text_parts or not options.drop_rejected(str(error), model_name):
+                            raise
+                usage = getattr(response, "usage", None)
+                round_tokens = getattr(usage, "total_tokens", None) if usage is not None else None
+                if round_tokens is not None:
+                    total_tokens = (total_tokens or 0) + round_tokens
+                round_input = getattr(usage, "input_tokens", None) if usage is not None else None
+                if round_input is not None:
+                    input_tokens = (input_tokens or 0) + round_input
+                round_output = getattr(usage, "output_tokens", None) if usage is not None else None
+                if round_output is not None:
+                    output_tokens = (output_tokens or 0) + round_output
+                await meter.round_done(round_tokens)
+                context_tokens = getattr(usage, "input_tokens", None) if usage is not None else None
+                guard.check_tokens(total_tokens)
+
+                function_calls = [item for item in response.output if getattr(item, "type", "") == "function_call"]
+                if not function_calls:
+                    return ChatResult(
+                        response="".join(text_parts) or response.output_text,
+                        tools_used=tools_used,
+                        tool_calls=tool_calls,
+                        provider_id=PROVIDER_ID,
                         model=model_name,
-                        input=messages,
-                        tools=schemas if schemas else None,
-                        max_output_tokens=options.max_tokens(token_limits.max_output_tokens(PROVIDER_ID, _limit_gateway())),
-                        **options.extra_kwargs(model_name),
-                    ) as stream:
-                        async for event in stream:
-                            if event.type == "response.output_text.delta":
-                                text_parts.append(event.delta)
-                                if on_event:
-                                    await on_event(step_event("token", text=event.delta))
-                                await meter.chars(len(event.delta))
-                        response = await stream.get_final_response()
-                    break
-                except BadRequestError as error:
-                    # A rejected per-agent option fails before any text
-                    # streams; drop it and retry this round once without it.
-                    if text_parts or not options.drop_rejected(str(error), model_name):
-                        raise
-            usage = getattr(response, "usage", None)
-            round_tokens = getattr(usage, "total_tokens", None) if usage is not None else None
-            if round_tokens is not None:
-                total_tokens = (total_tokens or 0) + round_tokens
-            round_input = getattr(usage, "input_tokens", None) if usage is not None else None
-            if round_input is not None:
-                input_tokens = (input_tokens or 0) + round_input
-            round_output = getattr(usage, "output_tokens", None) if usage is not None else None
-            if round_output is not None:
-                output_tokens = (output_tokens or 0) + round_output
-            await meter.round_done(round_tokens)
-            context_tokens = getattr(usage, "input_tokens", None) if usage is not None else None
-
-            function_calls = [item for item in response.output if getattr(item, "type", "") == "function_call"]
-            if not function_calls:
-                return ChatResult(
-                    response="".join(text_parts) or response.output_text,
-                    tools_used=tools_used,
-                    tool_calls=tool_calls,
-                    provider_id=PROVIDER_ID,
-                    model=model_name,
-                    total_tokens=total_tokens,
-                    context_tokens=context_tokens,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
-
-            if text_parts and on_event:
-                await on_event(step_event("token_reset"))
-
-            messages.extend(_output_as_input_items(response.output))
-            for call in function_calls:
-                try:
-                    arguments = json.loads(call.arguments or "{}")
-                except Exception:
-                    arguments = {}
-                tools_used.append(call.name)
-                step_id = call.call_id
-                if on_event:
-                    await on_event(step_event(
-                        "step_start", id=step_id, tool=call.name, label=labels.get(call.name), arguments=arguments,
-                    ))
-                # ask_user waits for the user's answers, not for an approval: it
-                # is not gated by tool approval and never reaches _dispatch.
-                asked = await questions.handle(call.name, request_id, step_id, arguments, on_event)
-                if asked is not None:
-                    result_text, ok = asked
-                else:
-                    # With approvals on, the user answers before anything runs; a
-                    # refusal is handed to the model as this step's result.
-                    declined = await approvals.review(
-                        request_id, step_id, call.name, labels.get(call.name), arguments, on_event
+                        total_tokens=total_tokens,
+                        context_tokens=context_tokens,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
                     )
-                    if declined is not None:
-                        result_text, ok = declined, False
+
+                if text_parts and on_event:
+                    await on_event(step_event("token_reset"))
+
+                messages.extend(_output_as_input_items(response.output))
+                for call in function_calls:
+                    try:
+                        arguments = json.loads(call.arguments or "{}")
+                    except Exception:
+                        arguments = {}
+                    guard.check_call(call.name, arguments)
+                    tools_used.append(call.name)
+                    step_id = call.call_id
+                    if on_event:
+                        await on_event(step_event(
+                            "step_start", id=step_id, tool=call.name, label=labels.get(call.name), arguments=arguments,
+                        ))
+                    # ask_user waits for the user's answers, not for an approval: it
+                    # is not gated by tool approval and never reaches _dispatch.
+                    asked = await questions.handle(call.name, request_id, step_id, arguments, on_event)
+                    if asked is not None:
+                        result_text, ok = asked
                     else:
-                        try:
-                            result_text = await dispatch_with_progress(_dispatch, on_event, step_id, call.name, arguments, depth)
-                            ok = True
-                        except Exception as error:
-                            result_text = f"Tool '{call.name}' failed: {error}"
-                            ok = False
-                if on_event:
-                    await on_event(step_event("step_end", id=step_id, ok=ok, result=result_text))
-                tool_calls.append(ToolCallRecord(name=call.name, arguments=arguments, result=result_text))
-                messages.append({"type": "function_call_output", "call_id": call.call_id, "output": result_text})
+                        # With approvals on, the user answers before anything runs; a
+                        # refusal is handed to the model as this step's result.
+                        declined = await approvals.review(
+                            request_id, step_id, call.name, labels.get(call.name), arguments, on_event
+                        )
+                        if declined is not None:
+                            result_text, ok = declined, False
+                        else:
+                            try:
+                                result_text = await dispatch_with_progress(_dispatch, on_event, step_id, call.name, arguments, depth)
+                                ok = True
+                            except Exception as error:
+                                result_text = f"Tool '{call.name}' failed: {error}"
+                                ok = False
+                    if on_event:
+                        await on_event(step_event("step_end", id=step_id, ok=ok, result=result_text))
+                    tool_calls.append(ToolCallRecord(name=call.name, arguments=arguments, result=result_text))
+                    messages.append({"type": "function_call_output", "call_id": call.call_id, "output": result_text})
+    except TurnStopped as error:
+        stop_message = str(error)
+    except TimeoutError:
+        stop_message = guard.time_message()
     except RateLimitError as error:
         seconds = cooldown.extract_retry_after_seconds(error) or cooldown.DEFAULT_COOLDOWN_SECONDS
         cooldown.start_cooldown(PROVIDER_ID, seconds)
         raise
 
+    if on_event:
+        await on_event(step_event("token_reset"))
+        await on_event(step_event("token", text=stop_message))
     return ChatResult(
-        response="Reached maximum tool-call rounds without a final answer.",
+        response=stop_message,
         tools_used=tools_used,
         tool_calls=tool_calls,
         provider_id=PROVIDER_ID,

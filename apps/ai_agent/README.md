@@ -36,6 +36,15 @@ tracked in Git, including edits made through the admin UI. Create or copy an
 agent file and edit it directly. Unknown keys are an error, so
 typos are caught at startup.
 
+Anthropic and OpenAI turns default to a 100,000-token budget and a 300-second
+deadline. Set `llm.max_turn_tokens` (positive integer) and
+`llm.max_turn_seconds` (0.001 to 86,400) beside `max_tool_rounds` to override
+them per agent. Tokens include input and output summed across rounds, checked
+when a response reports usage; one response can exceed the cap. A third tool
+call with the same name and arguments ends the turn before it executes.
+Deadlines interrupt async waits; a synchronous tool already running cannot
+be undone. These budgets apply to each agent turn independently.
+
 ```json
 {
   "label": "Calculator",

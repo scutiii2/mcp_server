@@ -40,7 +40,7 @@ _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _TOP_KEYS = {"label", "port", "url", "enabled", "entry", "llm", "identity", "persona", "instructions", "focus", "tools", "orchestrator"}
-_LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "min_tier", "max_tier", "max_effort"}
+_LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "max_turn_tokens", "max_turn_seconds", "min_tier", "max_tier", "max_effort"}
 _TOOLS_KEYS = {"allow", "deny"}
 
 
@@ -63,6 +63,8 @@ class LlmSpec:
     reasoning_effort: str = "off"
     max_tokens: int | None = None
     max_tool_rounds: int | None = None
+    max_turn_tokens: int | None = None
+    max_turn_seconds: float | None = None
     min_tier: str | None = None
     max_tier: str | None = None
     # Highest reasoning effort a delegating orchestrator may request of this
@@ -268,6 +270,8 @@ def load_file(path: Path) -> AgentSpec:
         reasoning_effort=effort,
         max_tokens=check.integer(llm_data, "max_tokens", None, 1, 1_000_000, "llm."),
         max_tool_rounds=check.integer(llm_data, "max_tool_rounds", None, 1, 100, "llm."),
+        max_turn_tokens=check.integer(llm_data, "max_turn_tokens", None, 1, 100_000_000, "llm."),
+        max_turn_seconds=check.number(llm_data, "max_turn_seconds", 0.001, 86_400, "llm."),
         min_tier=min_tier,
         max_tier=max_tier,
         max_effort=max_effort,
@@ -285,7 +289,7 @@ def load_file(path: Path) -> AgentSpec:
             raise check.fail("llm.gateway", "Laya triage runs locally; cloud gateways are not supported")
         if llm.model not in (None, "convaiinnovations/laya"):
             raise check.fail("llm.model", "Laya triage only supports convaiinnovations/laya")
-        if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds", "min_tier", "max_tier", "max_effort")) or effort != "off":
+        if any(key in llm_data for key in ("temperature", "max_tokens", "max_tool_rounds", "max_turn_tokens", "max_turn_seconds", "min_tier", "max_tier", "max_effort")) or effort != "off":
             raise check.fail("llm", "Laya triage does not accept generation or tool-loop settings")
 
     return AgentSpec(
