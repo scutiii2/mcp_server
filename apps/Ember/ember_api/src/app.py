@@ -28,6 +28,7 @@ from src.routes import (
     chats,
     config_issues,
     emberlings as emberlings_routes,
+    tickets as tickets_routes,
     logs,
     mcp,
     nav_preferences,
@@ -201,6 +202,8 @@ def create_app(
     app.include_router(attachments.router)
     app.include_router(config_issues.router)
     app.include_router(emberlings_routes.router)
+    app.include_router(tickets_routes.router)
+    app.include_router(tickets_routes.admin_router)
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, error: Exception) -> JSONResponse:
