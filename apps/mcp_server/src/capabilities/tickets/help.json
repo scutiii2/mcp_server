@@ -1,0 +1,38 @@
+{
+  "summary": "Report bugs and failures, suggest features, and follow your own support tickets. Admins triage them in Ember Admin.",
+  "tools": [
+    {"name": "tool_ticket_createTicket", "purpose": "File a ticket (bug, feature or other)", "connection": "Local SQLite", "commands": ["create"]},
+    {"name": "tool_ticket_listMyTickets", "purpose": "List your own tickets", "connection": "Local SQLite", "commands": ["list"]},
+    {"name": "tool_ticket_getTicket", "purpose": "Show one ticket with its comments", "connection": "Local SQLite", "commands": ["show"]},
+    {"name": "tool_ticket_addComment", "purpose": "Add a comment to your ticket", "connection": "Local SQLite", "commands": ["reply"]}
+  ],
+  "commands": [
+    {"name": "create", "tool": "tool_ticket_createTicket", "params": [
+      {"name": "type", "required": true, "default": null, "description": "bug, feature or other."},
+      {"name": "title", "required": true, "default": null, "description": "Short summary (max 120 characters)."},
+      {"name": "description", "required": true, "default": null, "description": "What happened or what you want (max 4000 characters)."},
+      {"name": "tags", "required": false, "default": null, "description": "Optional tags; leave empty to let the server choose."},
+      {"name": "source", "required": false, "default": "user", "description": "Leave as user."},
+      {"name": "chat_id", "required": false, "default": "", "description": "Optional chat id."},
+      {"name": "agent", "required": false, "default": "", "description": "Optional agent name."},
+      {"name": "tool_name", "required": false, "default": "", "description": "Optional failing tool."},
+      {"name": "error_text", "required": false, "default": "", "description": "Optional exact error message."}
+    ]},
+    {"name": "list", "tool": "tool_ticket_listMyTickets", "params": [
+      {"name": "status", "required": false, "default": "", "description": "Optional filter: open, in_progress, resolved, closed."}
+    ]},
+    {"name": "show", "tool": "tool_ticket_getTicket", "params": [
+      {"name": "ticket_id", "required": true, "default": null, "description": "Ticket id from list."}
+    ]},
+    {"name": "reply", "tool": "tool_ticket_addComment", "params": [
+      {"name": "ticket_id", "required": true, "default": null, "description": "Ticket id from list."},
+      {"name": "body", "required": true, "default": null, "description": "Comment text (max 2000 characters)."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_ticket_createTicket", "ai_only_step": false, "explanation": "File a bug, a failure or a feature suggestion."},
+    {"sequence": "2", "tool": "tool_ticket_listMyTickets", "ai_only_step": false, "explanation": "See your tickets and their status."},
+    {"sequence": "3", "tool": "tool_ticket_getTicket", "ai_only_step": false, "explanation": "Read one ticket and the admins' comments."},
+    {"sequence": "4", "tool": "tool_ticket_addComment", "ai_only_step": false, "explanation": "Give an admin the details they asked for."}
+  ]
+}

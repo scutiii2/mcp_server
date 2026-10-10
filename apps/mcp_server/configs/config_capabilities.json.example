@@ -28,5 +28,8 @@
   },
   "memory": {
     "enabled": true
+  },
+  "ticket": {
+    "enabled": true
   }
 }
