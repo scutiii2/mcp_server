@@ -14,6 +14,7 @@ from src.deps import (
     get_db_session,
     get_email_sender,
     get_log_writer,
+    get_memory_purger,
     get_otp_service,
     get_settings_service,
     require_permission,
@@ -25,6 +26,7 @@ from src.models import Account, InviteCode, Permission, Role
 from src.services.admin_service import AccountStatus, AdminError, AdminService, DelegationError, NotFoundError
 from src.services.email_service import EmailDeliveryError, EmailSender
 from src.services.log_service import LogWriter
+from src.services.memory_purger import MemoryPurger
 from src.services.otp_service import OtpService
 from src.services.permissions import (
     ADMIN_ROLE, ALL_PERMISSIONS, ADMIN_PERMISSIONS, ACCOUNTS_VIEW, ACCOUNTS_MANAGE,
@@ -268,13 +270,19 @@ async def delete_account(
     admin: Account = Depends(require_accounts_delete),
     admin_service: AdminService = Depends(get_admin_service),
     logs: LogWriter = Depends(get_log_writer),
+    purger: MemoryPurger = Depends(get_memory_purger),
 ) -> Response:
     try:
         target = await admin_service.account(account_id)
         username = target.username
+        uid = target.uid
         await admin_service.delete_account(admin, target)
     except AdminError as error:
         raise _http_error(error) from error
+    if not await purger.purge(uid):
+        await logs.error(
+            admin.id, "admin.memory_purge", f"Memory notes of deleted account '{username}' were not purged (mcp_server did not confirm)"
+        )
     await logs.action(admin, "admin.delete_account", f"Deleted account '{username}'")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
