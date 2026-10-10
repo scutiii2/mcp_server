@@ -1,5 +1,7 @@
 # Emberlings
 
+> **Renamed 2026-10-11:** the game is now called Ascension and Sparks are Ascended (see `2026-10-11-ascension-rename-design.md`). This record keeps the names it was written with.
+
 Date: 2026-10-09 (Asia/Manila).
 Last updated: 2026-10-10 (Asia/Manila).
 Status: ongoing planning record, not an approved implementation specification.

@@ -65,10 +65,10 @@ export const router = createRouter({
       meta: { permission: "chat.use" },
     },
     {
-      path: "/emberlings",
-      name: "emberlings",
-      component: () => import("../views/EmberlingsView.vue"),
-      meta: { permission: "emberlings.play" },
+      path: "/ascension",
+      name: "ascension",
+      component: () => import("../views/AscensionView.vue"),
+      meta: { permission: "ascension.play" },
     },
     {
       path: "/config-issues",

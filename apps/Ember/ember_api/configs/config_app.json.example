@@ -9,7 +9,7 @@
   "require_email_verification": true,
   "agents_registry_path": "../../ai_agent/.data/agent_registry.json",
   "mcp_server_url": "http://127.0.0.1:8010/mcp",
-  "emberlings_url": "http://127.0.0.1:8060",
+  "ascension_url": "http://127.0.0.1:8060",
   "security": {
     "trusted_proxies": [
       "127.0.0.1",

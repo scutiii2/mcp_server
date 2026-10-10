@@ -1,5 +1,7 @@
 # Emberlings page redesign
 
+> **Renamed 2026-10-11:** the game is now called Ascension and Sparks are Ascended (see `2026-10-11-ascension-rename-design.md`). This record keeps the names it was written with.
+
 Date: 2026-10-11. Scope: `apps/Ember/ember_web` only. No backend change.
 
 ## Goal

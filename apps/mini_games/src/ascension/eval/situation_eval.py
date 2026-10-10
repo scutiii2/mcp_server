@@ -35,7 +35,7 @@ from src.ascension.situation import (
     SituationView,
 )
 
-OUT_PATH = Path(__file__).resolve().parents[3] / "docs" / "emberlings-laya-eval.md"
+OUT_PATH = Path(__file__).resolve().parents[3] / "docs" / "ascension-laya-eval.md"
 MIN_CONFIDENT_RATE = 0.7  # danger and advantage answers that are valid and confident
 MIN_MONOTONIC = 0.8  # danger rises as HP falls
 MIN_WIN_GAIN = 0.05  # win rate with Laya reads minus win rate with heuristics
@@ -158,7 +158,7 @@ async def evaluate(catalog: Catalog, laya: LayaClient, views: int, battles: int,
 def render_report(report: EvalReport, seed: int, today: date) -> str:
     rate = lambda s: f"{s.rate:.0%} of {s.asked}"  # noqa: E731
     return "\n".join([
-        "# Emberlings: Laya situation reads", "",
+        "# Ascension: Laya situation reads", "",
         f"Date: {today.isoformat()}. Model: `{DEFAULT_MODEL}`. Seed: {seed}. Views: {report.views}. Battles per side: {report.battles}.", "",
         "| Measure | Result | Gate |", "|---|---|---|",
         f"| Danger answered confidently | {rate(report.danger)} | at least {MIN_CONFIDENT_RATE:.0%} |",

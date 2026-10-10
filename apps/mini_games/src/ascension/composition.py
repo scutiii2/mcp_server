@@ -1,4 +1,4 @@
-"""The composition root: builds the whole Emberlings object graph once at startup."""
+"""The composition root: builds the whole Ascension object graph once at startup."""
 
 from __future__ import annotations
 

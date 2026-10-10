@@ -18,8 +18,8 @@ from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
 # The newest real migration; the tests' throwaway one comes after it.
-HEAD = "0012"
-NEXT = "0013"
+HEAD = "0013"
+NEXT = "0014"
 
 
 def drop_account_uid(conn: sqlite3.Connection) -> None:
@@ -99,6 +99,32 @@ def test_ticket_permission_is_granted_to_chat_roles_once(tmp_path: Path) -> None
         conn.commit()
     assert run_with(make_database(tmp_path)) == "current"
     assert "tickets.create" not in grants("chatters")  # a later revocation sticks
+
+
+def test_the_game_permission_is_renamed_with_its_grants_kept(tmp_path: Path) -> None:
+    run_with(make_database(tmp_path))
+    path = tmp_path / "ember.db"
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("UPDATE alembic_version SET version_num = '0012'")
+        conn.execute("DELETE FROM permissions WHERE name = 'ascension.play'")
+        conn.execute("INSERT INTO roles (name) VALUES ('players')")
+        conn.execute("INSERT INTO permissions (name) VALUES ('emberlings.play')")
+        conn.execute(
+            "INSERT INTO role_permission SELECT r.id, p.id FROM roles r, permissions p "
+            "WHERE r.name = 'players' AND p.name = 'emberlings.play'"
+        )
+        conn.commit()
+
+    assert run_with(make_database(tmp_path)) == "upgraded"
+
+    with closing(sqlite3.connect(path)) as conn:
+        names = {row[0] for row in conn.execute("SELECT name FROM permissions")}
+        granted = {row[0] for row in conn.execute(
+            "SELECT p.name FROM role_permission rp JOIN roles r ON r.id = rp.role_id "
+            "JOIN permissions p ON p.id = rp.permission_id WHERE r.name = 'players'"
+        )}
+    assert "emberlings.play" not in names
+    assert granted == {"ascension.play"}
 
 
 def make_database(tmp_path: Path) -> Database:
@@ -335,7 +361,7 @@ class TestDatabaseFromBeforeMigrations:
     def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
         scripts = tmp_path / "baseline_only"
-        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*", "0010*", "0011*", "0012*"))
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*", "0010*", "0011*", "0012*", "0013*"))
         calls: list[int] = []
 
         async def backup() -> None:

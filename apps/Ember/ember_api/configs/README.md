@@ -16,7 +16,7 @@ gitignored.
 | `agents_registry_path` | ai_agent's `.data/agent_registry.json` (relative to the ember_api folder). ember_api only proxies to agents listed there. |
 | `agents_registry_url` | Optional. ai_agent's `GET /registry`, e.g. `http://10.0.0.5:9100/registry`, for an ai_agent in another directory or on another machine. Wins over `agents_registry_path`; sent with `INTERNAL_API_TOKEN` from `.env`. Fetched with a 3 s timeout and cached 5 s; if it stops answering, the last good list is used for 60 s, then there are no agents. Leave it out for a same-machine setup. |
 | `mcp_server_url` | mcp_server's MCP endpoint the proxy forwards to. |
-| `emberlings_url` | Optional. mini_games' address (the Emberlings game), default `http://127.0.0.1:8060`. Called with `INTERNAL_API_TOKEN` from `.env`, so put the same token in mini_games' `.env`. The browser never sees this address. |
+| `ascension_url` | Optional. mini_games' address (the Ascension game), default `http://127.0.0.1:8060`. Called with `INTERNAL_API_TOKEN` from `.env`, so put the same token in mini_games' `.env`. The browser never sees this address. |
 | `security` | Optional block; every key below has the default shown in the example, so it can be left out. |
 | `security.trusted_proxies` | Peers allowed to name the real client in `X-Forwarded-For` (last hop only). Default loopback, for Vite's proxy. |
 | `security.rate_limit` | `enabled`, `scope` (`ip` / `account` / `both`), `max_attempts` failed logins within `window_seconds` -> login refused (`429` + `Retry-After`) until `lockout_seconds` after the last failure. |

@@ -121,21 +121,21 @@ def test_a_registry_url_replaces_the_file_check(tmp_path: Path, monkeypatch) -> 
     assert any(i.key == "agents_registry_url" and "could not be read" in i.message for i in found)
 
 
-def test_emberlings_url_must_be_an_http_url(client: TestClient, tmp_path: Path) -> None:
+def test_ascension_url_must_be_an_http_url(client: TestClient, tmp_path: Path) -> None:
     as_admin(client)
     (tmp_path / "config_app.json").write_text(
-        json.dumps({**GOOD_CONFIG, "emberlings_url": "ftp://games"}), encoding="utf-8"
+        json.dumps({**GOOD_CONFIG, "ascension_url": "ftp://games"}), encoding="utf-8"
     )
 
-    assert ("config_app.json", "emberlings_url", "must be an http(s) URL") in issues(client)
+    assert ("config_app.json", "ascension_url", "must be an http(s) URL") in issues(client)
 
 
-def test_emberlings_url_is_optional(monkeypatch, tmp_path: Path) -> None:
+def test_ascension_url_is_optional(monkeypatch, tmp_path: Path) -> None:
     import src.config as config
 
     monkeypatch.setattr(config, "CONFIGS_DIR", tmp_path)
     (tmp_path / "config_app.json").write_text(json.dumps({}), encoding="utf-8")
-    assert config.load_settings().emberlings_url == config.DEFAULT_EMBERLINGS_URL == "http://127.0.0.1:8060"
+    assert config.load_settings().ascension_url == config.DEFAULT_ASCENSION_URL == "http://127.0.0.1:8060"
 
-    (tmp_path / "config_app.json").write_text(json.dumps({"emberlings_url": "http://10.0.0.9:8060"}), encoding="utf-8")
-    assert config.load_settings().emberlings_url == "http://10.0.0.9:8060"
+    (tmp_path / "config_app.json").write_text(json.dumps({"ascension_url": "http://10.0.0.9:8060"}), encoding="utf-8")
+    assert config.load_settings().ascension_url == "http://10.0.0.9:8060"

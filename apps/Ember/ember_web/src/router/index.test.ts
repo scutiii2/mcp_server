@@ -228,27 +228,27 @@ it("does not expose personal Usage to a usage observer without chat permission",
   expect(router.currentRoute.value.name).toBe("no-access");
 });
 
-describe("Emberlings page", () => {
+describe("Ascension page", () => {
   it("opens for an account that may play", async () => {
-    me.mockResolvedValue({ ...ACCOUNT, permissions: [...ACCOUNT.permissions, "emberlings.play"] });
+    me.mockResolvedValue({ ...ACCOUNT, permissions: [...ACCOUNT.permissions, "ascension.play"] });
 
-    await router.push("/emberlings");
+    await router.push("/ascension");
 
-    expect(router.currentRoute.value.name).toBe("emberlings");
+    expect(router.currentRoute.value.name).toBe("ascension");
   });
 
-  it("sends an account without emberlings.play to its home page", async () => {
+  it("sends an account without ascension.play to its home page", async () => {
     me.mockResolvedValue(ACCOUNT);
 
-    await router.push("/emberlings");
+    await router.push("/ascension");
 
     expect(router.currentRoute.value.name).toBe("chat");
   });
 
   it("is in the nav rail and on Overview only for that permission", () => {
-    const page = NAV_PAGES.find((p) => p.to === "/emberlings");
+    const page = NAV_PAGES.find((p) => p.to === "/ascension");
 
-    expect(page?.label).toBe("Emberlings");
-    expect(page?.permission).toBe("emberlings.play");
+    expect(page?.label).toBe("Ascension");
+    expect(page?.permission).toBe("ascension.play");
   });
 });

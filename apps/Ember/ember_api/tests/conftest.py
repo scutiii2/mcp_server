@@ -17,7 +17,7 @@ from src.config import BackupSettings, SecuritySettings, Settings, UsageSettings
 from src.services import otp_service
 from src.services.agent_gateway import AgentCallError, Caller
 from src.services.email_service import EmailDeliveryError
-from src.services.emberlings_gateway import EmberlingsRefused, EmberlingsUnavailable
+from src.services.ascension_gateway import AscensionRefused, AscensionUnavailable
 from src.services.server_tools import ServerUnavailable
 from src.services.traffic import TrafficRecorder
 
@@ -287,11 +287,11 @@ class FakeServerTools:
 
 
 @dataclass
-class FakeEmberlings:
-    """Stands in for mini_games behind EmberlingsGateway. Records every call;
+class FakeAscension:
+    """Stands in for mini_games behind AscensionGateway. Records every call;
     `responses` maps (method, path) to a reply (default {"ok": True});
-    `refuse` raises EmberlingsRefused(status, message) and `unavailable`
-    raises EmberlingsUnavailable."""
+    `refuse` raises AscensionRefused(status, message) and `unavailable`
+    raises AscensionUnavailable."""
 
     calls: list[dict[str, Any]] = field(default_factory=list)
     responses: dict[tuple[str, str], Any] = field(default_factory=dict)
@@ -303,9 +303,9 @@ class FakeEmberlings:
             {"method": method, "path": path, "owner": str(account.id), "json": json, "params": params, "key": idempotency_key}
         )
         if self.unavailable:
-            raise EmberlingsUnavailable("connection refused (fake)")
+            raise AscensionUnavailable("connection refused (fake)")
         if self.refuse is not None:
-            raise EmberlingsRefused(*self.refuse)
+            raise AscensionRefused(*self.refuse)
         return self.responses.get((method, path), {"ok": True})
 
     async def reset_profile(self, account, idempotency_key):
@@ -380,8 +380,8 @@ def server_tools() -> FakeServerTools:
 
 
 @pytest.fixture
-def emberlings() -> FakeEmberlings:
-    return FakeEmberlings()
+def ascension() -> FakeAscension:
+    return FakeAscension()
 
 
 @pytest.fixture
@@ -398,7 +398,7 @@ def client_factory(
     agent: FakeAgent,
     server_tools: FakeServerTools,
     traffic: TrafficRecorder,
-    emberlings: FakeEmberlings,
+    ascension: FakeAscension,
 ) -> Iterator[Callable[..., TestClient]]:
     """Builds a started app (lifespan run) per call; all are closed at the end."""
     opened: list[TestClient] = []
@@ -414,7 +414,7 @@ def client_factory(
                 agent_gateway=agent,
                 server_tools=server_tools,
                 traffic=traffic,
-                emberlings=emberlings,
+                ascension=ascension,
             ),
             client=(address, 50000),
         )

@@ -1,6 +1,6 @@
 # mini_games
 
-Game backend for Ember. It hosts **Emberlings**, a game of collecting and
+Game backend for Ember. It hosts **Ascension**, a game of collecting and
 battling **Ascended**, with a local Laya model helping the AI read the battle. It
 never calls an LLM, so it costs nothing to play. Chess and Tetris will plug in
 later as further games (see `docs/superpowers/` at the repo root).
@@ -38,7 +38,7 @@ the engine owns the choice. Laya only reads the situation:
    probabilities, then draws with the battle's seeded random stream.
 
 `situation_source` in `configs/config_app.json` is `heuristic` (the default) or
-`laya`. Choose `laya` only if `docs/emberlings-laya-eval.md`, produced by the manual
+`laya`. Choose `laya` only if `docs/ascension-laya-eval.md`, produced by the manual
 evaluation, says so. EMBLEM choice after a timed-out prompt always asks Laya, and
 falls back to basic ATTACK.
 
@@ -113,7 +113,7 @@ deadline. Timers run in real time while the service is stopped.
 ```
 
 The tests use a fake Laya engine. The evaluation needs the real model, is run by
-hand and writes `docs/emberlings-laya-eval.md`.
+hand and writes `docs/ascension-laya-eval.md`.
 
 ## Catalog
 
@@ -134,7 +134,7 @@ the collection; it has no effect in battle. All current Ascended are `enchant`.
 ## Layout
 
 - `src/` - shared shell: config, auth, the Laya client, the FastAPI app.
-- `src/ascension/` - Emberlings: catalog, battle engine, passives, action policy and
+- `src/ascension/` - Ascension: catalog, battle engine, passives, action policy and
   decider, situation readers, repository, services, coordinator, API.
 - `src/ascension/eval/` - the manual Laya evaluation.
 - `configs/`, `.env` - gitignored real files with `.example` twins, plus the

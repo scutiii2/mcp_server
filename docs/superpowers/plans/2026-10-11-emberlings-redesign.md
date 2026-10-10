@@ -1,5 +1,7 @@
 # Emberlings Redesign Implementation Plan
 
+> **Renamed 2026-10-11:** the game is now called Ascension and Sparks are Ascended (see `2026-10-11-ascension-rename-design.md`). This record keeps the names it was written with.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. In this repo the user approves each task before it starts and again before it is committed (ember_web workflow), and tests the page by hand: never launch browser-verification agents.
 
 **Goal:** Give the Emberlings page its own palette, type, shapes and components, built from the ChatGPT design pack.

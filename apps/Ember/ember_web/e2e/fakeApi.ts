@@ -129,8 +129,8 @@ export interface FakeApi {
   turns: Record<string, unknown>[];
   chats: Map<string, StoredChat>;
   folders: Map<number, StoredFolder>;
-  /** Emberlings (an account with emberlings.play only): the profile once a starter is chosen, and the Idempotency-Keys sent. */
-  emberlings: { profile: Record<string, unknown> | null; keys: string[] };
+  /** Ascension (an account with ascension.play only): the profile once a starter is chosen, and the Idempotency-Keys sent. */
+  ascension: { profile: Record<string, unknown> | null; keys: string[] };
 }
 
 const NO_USAGE = {
@@ -173,8 +173,8 @@ const ADMIN_PERMISSIONS = [
   { name: "extensions.manage", description: "Add and remove mcp_server extensions (other MCP servers offered to every client)" },
 ];
 
-/** A small Emberlings catalog: two starters, two tiers. */
-const EMBERLINGS_CATALOG = {
+/** A small Ascension catalog: two starters, two tiers. */
+const ASCENSION_CATALOG = {
   version: 1,
   tiers: [
     { id: "common", stat_multiplier: 1, copy_threshold: 0, copy_reward: 1, emblem_strength: 1, emblem_price: 10 },
@@ -199,7 +199,7 @@ const EMBERLINGS_CATALOG = {
 };
 
 /** The profile mini_games makes for a new player with this starter. */
-function emberlingsProfile(starter: string): Record<string, unknown> {
+function ascensionProfile(starter: string): Record<string, unknown> {
   return {
     owner: "1",
     insignia: 0,
@@ -247,7 +247,7 @@ const event = (sequence: number, body: Record<string, unknown>) =>
 export const ANSWER_PIECES = ["The capital ", "of France ", "is Paris."];
 export const ANSWER = ANSWER_PIECES.join("");
 
-export async function installFakeApi(page: Page, options: { admin?: boolean; emberlings?: boolean } = {}): Promise<FakeApi> {
+export async function installFakeApi(page: Page, options: { admin?: boolean; ascension?: boolean } = {}): Promise<FakeApi> {
   const api: FakeApi = {
     accountCapabilities: { capabilities: new Set(), extensions: new Set() },
     userExtensions: new Map(),
@@ -261,10 +261,10 @@ export async function installFakeApi(page: Page, options: { admin?: boolean; emb
     turns: [],
     chats: new Map(),
     folders: new Map(),
-    emberlings: { profile: null, keys: [] },
+    ascension: { profile: null, keys: [] },
   };
   const base = options.admin ? ADMIN_ACCOUNT : ACCOUNT;
-  const account = options.emberlings ? { ...base, permissions: [...base.permissions, "emberlings.play"] } : base;
+  const account = options.ascension ? { ...base, permissions: [...base.permissions, "ascension.play"] } : base;
   if (options.admin) {
     for (const a of ADMIN_ACCOUNTS) api.accounts.set(a.id, { ...a });
     for (const r of ADMIN_ROLES) api.roles.set(r.id, { ...r });
@@ -513,20 +513,20 @@ export async function installFakeApi(page: Page, options: { admin?: boolean; emb
       if (method === "GET" && tail === "/events") return streamTurn(route, api, id!);
     }
 
-    if (method === "GET" && path === "/api/emberlings/catalog") return json(route, EMBERLINGS_CATALOG);
-    if (method === "GET" && path === "/api/emberlings/profile") {
-      if (api.emberlings.profile) return json(route, api.emberlings.profile);
+    if (method === "GET" && path === "/api/ascension/catalog") return json(route, ASCENSION_CATALOG);
+    if (method === "GET" && path === "/api/ascension/profile") {
+      if (api.ascension.profile) return json(route, api.ascension.profile);
       return json(route, { detail: "no profile yet; choose a starter first" }, 404);
     }
-    if (method === "POST" && path === "/api/emberlings/profile") {
-      api.emberlings.keys.push(request.headers()["idempotency-key"] ?? "");
+    if (method === "POST" && path === "/api/ascension/profile") {
+      api.ascension.keys.push(request.headers()["idempotency-key"] ?? "");
       const { starter_ascended_id } = request.postDataJSON() as { starter_ascended_id: string };
-      api.emberlings.profile = emberlingsProfile(starter_ascended_id);
-      return json(route, api.emberlings.profile, 201);
+      api.ascension.profile = ascensionProfile(starter_ascended_id);
+      return json(route, api.ascension.profile, 201);
     }
-    if (method === "POST" && path === "/api/emberlings/profile/reset") {
-      api.emberlings.keys.push(request.headers()["idempotency-key"] ?? "");
-      api.emberlings.profile = null;
+    if (method === "POST" && path === "/api/ascension/profile/reset") {
+      api.ascension.keys.push(request.headers()["idempotency-key"] ?? "");
+      api.ascension.profile = null;
       return json(route, { reset: true });
     }
 

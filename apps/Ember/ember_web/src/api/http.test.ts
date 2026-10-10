@@ -12,9 +12,9 @@ describe("apiRequest", () => {
     const fetchMock = vi.fn(async (_path: string, _init: RequestInit) => ok());
     vi.stubGlobal("fetch", fetchMock);
 
-    await apiRequest("POST", "/api/emberlings/encounters", undefined, { "Idempotency-Key": "k-1" });
+    await apiRequest("POST", "/api/ascension/encounters", undefined, { "Idempotency-Key": "k-1" });
 
-    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/emberlings/encounters", {
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/ascension/encounters", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Idempotency-Key": "k-1", "Content-Type": "application/json" },
@@ -26,8 +26,8 @@ describe("apiRequest", () => {
     const fetchMock = vi.fn(async (_path: string, _init: RequestInit) => ok());
     vi.stubGlobal("fetch", fetchMock);
 
-    await apiRequest("GET", "/api/emberlings/catalog");
+    await apiRequest("GET", "/api/ascension/catalog");
 
-    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/emberlings/catalog", { method: "GET", credentials: "same-origin" });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/ascension/catalog", { method: "GET", credentials: "same-origin" });
   });
 });

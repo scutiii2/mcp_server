@@ -24,10 +24,10 @@ watch(account, (now) => {
     <NavRail />
     <main class="page" :class="{ 'has-tabs': account && !auth.needsVerification }">
       <!-- KeepAlive: switching to Tools and back keeps the chat (and a turn in
-           flight) or an Emberlings battle intact. Keyed by account so a
+           flight) or an Ascension battle intact. Keyed by account so a
            different user never gets the previous user's cached pages. -->
       <RouterView v-slot="{ Component }">
-        <KeepAlive :key="account?.id ?? 'guest'" include="ChatView,CapabilitiesView,EmberlingsView">
+        <KeepAlive :key="account?.id ?? 'guest'" include="ChatView,CapabilitiesView,AscensionView">
           <component :is="Component" />
         </KeepAlive>
       </RouterView>

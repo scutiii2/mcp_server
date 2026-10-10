@@ -27,7 +27,7 @@ from src.routes import (
     chat_folders,
     chats,
     config_issues,
-    emberlings as emberlings_routes,
+    ascension as ascension_routes,
     tickets as tickets_routes,
     logs,
     mcp,
@@ -47,7 +47,7 @@ from src.services.backup_service import BackupScheduler, DatabaseBackup
 from src.services.migrations import MigrationRunner
 from src.services.chat_service import MAX_CHAT_BYTES
 from src.services.email_service import EmailSender, McpEmailSender
-from src.services.emberlings_gateway import EmberlingsApi, EmberlingsGateway
+from src.services.ascension_gateway import AscensionApi, AscensionGateway
 from src.services.extension_probe import ExtensionProbe
 from src.services.log_service import LogWriter
 from src.services.mcp_proxy import McpProxy
@@ -83,13 +83,13 @@ def create_app(
     agent_gateway: AgentGateway | None = None,
     server_tools: ServerTools | None = None,
     traffic: TrafficRecorder | None = None,
-    emberlings: EmberlingsApi | None = None,
+    ascension: AscensionApi | None = None,
 ) -> FastAPI:
     """email_sender defaults to the MCP Email capability,
     upstream_transport to real HTTP, agent_gateway to a real MCP client for
     ai_agent and server_tools to one for mcp_server; tests pass fakes. traffic
     defaults to a recorder saving to the database; tests pass their own.
-    emberlings defaults to an HTTP client for mini_games (the Emberlings game)."""
+    ascension defaults to an HTTP client for mini_games (the Ascension game)."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -120,7 +120,7 @@ def create_app(
         upstream = httpx.AsyncClient(transport=upstream_transport, timeout=_UPSTREAM_TIMEOUT)
         # A client of its own for mini_games: no default headers and no redirects,
         # so the internal token can never follow a redirect to another host.
-        emberlings_client = httpx.AsyncClient(transport=upstream_transport, follow_redirects=False)
+        ascension_client = httpx.AsyncClient(transport=upstream_transport, follow_redirects=False)
 
         app.state.settings = settings
         app.state.database = database
@@ -138,8 +138,8 @@ def create_app(
         app.state.agent_gateway = agent_gateway or McpAgentGateway(internal_token or None, recorder)
         app.state.extension_probe = ExtensionProbe(app.state.agent_gateway)
         app.state.server_tools = server_tools or McpServerTools(settings.mcp_server_url, internal_token or None, recorder)
-        app.state.emberlings = emberlings or EmberlingsGateway(
-            emberlings_client, settings.emberlings_url, internal_token or None, recorder
+        app.state.ascension = ascension or AscensionGateway(
+            ascension_client, settings.ascension_url, internal_token or None, recorder
         )
         app.state.logs = log_writer
         app.state.traffic = recorder
@@ -166,7 +166,7 @@ def create_app(
             # Saves the counters (turns just ended may have added some).
             await recorder.stop()
             await upstream.aclose()
-            await emberlings_client.aclose()
+            await ascension_client.aclose()
             await database.dispose()
 
     app = FastAPI(title="ember_api", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -203,7 +203,7 @@ def create_app(
     app.include_router(traffic_routes.router)
     app.include_router(attachments.router)
     app.include_router(config_issues.router)
-    app.include_router(emberlings_routes.router)
+    app.include_router(ascension_routes.router)
     app.include_router(tickets_routes.router)
     app.include_router(tickets_routes.admin_router)
 

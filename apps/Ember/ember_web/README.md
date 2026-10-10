@@ -231,20 +231,20 @@ URL, token or key.
   (a value the agent file does not set is left out), and a status (running,
   offline, disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
   always go to the entry agent, there is no per-agent chat.
-- Emberlings page (`/emberlings`, `emberlings.play`): the Emberlings game (collect and battle Sparks) from `apps/mini_games`, through ember_api's
-  `/api/emberlings` pass-through (the browser never learns mini_games' address or token). The page has its own look, not
-  Ember's: its theme (`components/emberlings/theme.css`, `--em-*` tokens: steel, copper, ivory), its bundled fonts
-  (Silkscreen and Inter, SIL OFL, via `@fontsource`) and its own small components in `components/emberlings/ui/`
-  (design source: `docs/design/emberlings/`, spec `docs/superpowers/specs/2026-10-11-emberlings-redesign-design.md`).
+- Ascension page (`/ascension`, `ascension.play`): the Ascension game (collect and battle Ascended) from `apps/mini_games`, through ember_api's
+  `/api/ascension` pass-through (the browser never learns mini_games' address or token). The page has its own look, not
+  Ember's: its theme (`components/ascension/theme.css`, `--em-*` tokens: steel, copper, ivory), its bundled fonts
+  (Silkscreen and Inter, SIL OFL, via `@fontsource`) and its own small components in `components/ascension/ui/`
+  (design source: `docs/design/ascension/`, spec `docs/superpowers/specs/2026-10-11-emberlings-redesign-design.md`).
   A masthead shows the Insignia wallet. The page opens on a main menu (New game, or Continue, Quick battle, Shop,
   How to play and Reset progress with a save, beside a fanned hand of small cards). New game picks a starter from a column of
   small cards, the large card and a side panel. In the game, a title, a Main menu link and tabs: Collection (small cards with
-  tier, copies, XP bar and a faint countdown, face-down cards for Sparks not collected yet; a card opens its full card,
-  personalities and five presets with a save toast), Battle (look for a wild Spark; preview and decline or fight; set up
-  Spark, preset, mode and EMBLEM limit; the arena with health bars, move buttons coloured by category and a round log,
+  tier, copies, XP bar and a faint countdown, face-down cards for Ascended not collected yet; a card opens its full card,
+  personalities and five presets with a save toast), Battle (look for a wild Ascended; preview and decline or fight; set up
+  Ascended, preset, mode and EMBLEM limit; the arena with health bars, move buttons coloured by category and a round log,
   latest first; autonomous rounds every 1.5 s; the five-second EMBLEM prompt counts down on this device; a result page per
-  outcome) and Shop (wallet, EMBLEMs, copies, selling a copy). Cards are drawn on `assets/emberlings/card_frame.webp`
-  (tinted per tier) with portraits from `assets/emberlings/sparks/` (`sparkArt.ts`; Bruiser has none yet). The battle loop pauses while
+  outcome) and Shop (wallet, EMBLEMs, copies, selling a copy). Cards are drawn on `assets/ascension/card_frame.webp`
+  (tinted per tier) with portraits from `assets/ascension/ascended/` (`ascendedArt.ts`; Bruiser has none yet). The battle loop pauses while
   the browser tab is hidden or another page is open and resumes where the battle is; a lost connection shows
   "Reconnecting..." and retries every 3 s; a stale action is refreshed, never resent. Kept alive across page switches.
   Every change sends a fresh `Idempotency-Key`.
@@ -354,9 +354,9 @@ token (five 2 px chart marks are allow-listed).
 
 `turnStream` (the event stream: pieces of events, ping, reconnect with backoff, resume, give up, abort) is covered too.
 
-Emberlings: the client (paths, Idempotency-Key per action), the store's battle loop with fake timers (1.5 s pace,
+Ascension: the client (paths, Idempotency-Key per action), the store's battle loop with fake timers (1.5 s pace,
 stop when left or hidden, prompt countdown and settle at zero, stale 409, reconnect, 502), each tab's components and
-the page. `e2e/emberlings.spec.ts` picks a starter on a first visit.
+the page. `e2e/ascension.spec.ts` picks a starter on a first visit.
 
 ### End-to-end test
 
@@ -402,23 +402,23 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 src/
   api/          http + AuthClient / ChatsClient / UsageClient / CommandsClient /
                 ExtensionsClient / AgentsClient / AttachmentsClient /
-                ConfigIssuesClient / TemplatesClient / NavPreferencesClient / SharesClient / SettingsClient / EmberlingsClient (ember_api REST),
+                ConfigIssuesClient / TemplatesClient / NavPreferencesClient / SharesClient / SettingsClient / AscensionClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
-  stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, accountCapabilities, configIssues, emberlings
+  stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, accountCapabilities, configIssues, ascension
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useCompletionNotify (completion alerts), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Capabilities, Agents, Emberlings, Usage, Settings, ConfigIssues,
+  views/        pages: Overview, Chat, Capabilities, Agents, Ascension, Usage, Settings, ConfigIssues,
                 Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, ConfirmModal, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
     analytics/  shared LineChart, hover/keyboard state in useBucketCursor and chart.css, used by Usage
     infoPage.css  shared look of the Agents / Config pages
-    emberlings/   the Emberlings page: MainMenu, StarterPick, SparkTemplateCard, CollectionPanel, SparkCard, PresetEditor,
+    ascension/   the Ascension page: MainMenu, StarterPick, AscendedTemplateCard, CollectionPanel, AscendedCard, PresetEditor,
                   EncounterPanel, BattleControls, BattleArena, RoundLog, ActionBar, EmblemPrompt, BattleResult, ShopPanel,
-                  EmShell, sparkArt, starterCopy; theme.css and fonts.ts; ui/ holds the Em* primitives
+                  EmShell, ascendedArt, starterCopy; theme.css and fonts.ts; ui/ holds the Em* primitives
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
                 tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics helpers, saved-prompt helpers

@@ -1,0 +1,116 @@
+/* The Ascension page's own theme (docs/design/ascension/STYLE-SHEET.md): forge steel,
+   copper controls, warm ivory text. Everything is scoped to .em-root, so nothing leaks
+   to the rest of Ember, and Ember's tokens are not used inside the page. */
+
+.em-root {
+  /* Palette (STYLE-SHEET section 1) */
+  --em-bg: #101720;
+  --em-header: #141e28;
+  --em-panel: #1b2733;
+  --em-raised: #253443;
+  --em-text: #f5f0e6;
+  --em-muted: #b8c6d2;
+  --em-border: #6b7f90;
+  --em-divider: #435463;
+  --em-accent: #f3b47a;
+  --em-accent-edge: #8b5c36;
+  --em-on-accent: #20180f;
+  --em-success: #9ad5ac;
+  --em-danger: #ff9b9b;
+  --em-warning: #f0cc85;
+  --em-danger-surface: #36252e;
+  --em-warning-surface: #302a20;
+  --em-success-surface: #253b31;
+  --em-disabled-text: #b1bcc8;
+  --em-disabled-surface: #202b36;
+  --em-disabled-border: #738391;
+  --em-card-ink: #14202b;
+
+  /* Tiers and ability categories: fixed colours, each also named in text */
+  --em-tier-common: #bdc7d0;
+  --em-tier-rare: #9ad5ac;
+  --em-tier-unique: #94c7ff;
+  --em-tier-royal: #d4b1ff;
+  --em-tier-legendary: #f0cc85;
+  --em-tier-forbidden: #ff9b9b;
+  --em-cat-attack: #ff9b9b;
+  --em-cat-defense: #94c7ff;
+  --em-cat-support: #9ad5ac;
+  --em-cat-flee: #f3b47a;
+  --em-cat-intercept: #d4b1ff;
+
+  /* Shape, spacing, depth (section 3) */
+  --em-radius: 2px;
+  --em-space-1: 4px;
+  --em-space-2: 8px;
+  --em-space-3: 12px;
+  --em-space-4: 16px;
+  --em-space-5: 24px;
+  --em-space-6: 32px;
+  --em-space-7: 48px;
+  --em-panel-shadow: 0 5px 0 #090f17;
+  --em-dialog-shadow: 0 18px 60px #0009;
+  --em-target: 44px;
+
+  /* Fonts (section 2) */
+  --em-font-display: "Silkscreen", monospace;
+  --em-font-body: "Inter", system-ui, "Segoe UI", sans-serif;
+
+
+  min-height: 100%;
+  color: var(--em-text);
+  background: var(--em-bg);
+  font-family: var(--em-font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.em-root *,
+.em-root *::before,
+.em-root *::after {
+  box-sizing: border-box;
+}
+
+.em-root h1,
+.em-root h2,
+.em-root h3,
+.em-root h4,
+.em-root p {
+  margin: 0;
+}
+
+.em-root .muted {
+  color: var(--em-muted);
+}
+
+.em-root .em-pixel {
+  font-family: var(--em-font-display);
+  font-weight: 400;
+}
+
+.em-root .em-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.em-root .em-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--em-accent);
+}
+
+.em-root :focus-visible {
+  outline: 2px solid var(--em-accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .em-root *,
+  .em-root *::before,
+  .em-root *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

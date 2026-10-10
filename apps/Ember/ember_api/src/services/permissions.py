@@ -27,7 +27,7 @@ TRAFFIC_VIEW = "traffic.view"
 AGENTS_MANAGE = "agents.manage"
 TICKETS_CREATE = "tickets.create"
 TICKETS_MANAGE = "tickets.manage"
-EMBERLINGS_PLAY = "emberlings.play"
+ASCENSION_PLAY = "ascension.play"
 
 ALL_PERMISSIONS: dict[str, str] = {
     CHAT_USE: "Chat with ai_agent instances",
@@ -56,7 +56,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     AGENTS_MANAGE: "Create, edit and remove ai_agent agents (provider, gateway, persona, tools)",
     TICKETS_CREATE: "Report bugs, suggest features and follow your own tickets",
     TICKETS_MANAGE: "See every ticket, triage them and set status, priority and assignee",
-    EMBERLINGS_PLAY: "Play Emberlings",
+    ASCENSION_PLAY: "Play Ascension",
 }
 
 ADMIN_ROLE = "Administrator"

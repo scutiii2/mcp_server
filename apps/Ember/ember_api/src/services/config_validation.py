@@ -79,7 +79,7 @@ def _check_app(data: dict[str, Any]) -> list[Problem]:
         ("agents_registry_path", _is_text, "a non-empty string"),
         ("agents_registry_url", _is_http_url, "an http(s) URL"),
         ("mcp_server_url", _is_http_url, "an http(s) URL"),
-        ("emberlings_url", _is_http_url, "an http(s) URL"),
+        ("ascension_url", _is_http_url, "an http(s) URL"),
         ("security", lambda v: isinstance(v, dict), "an object"),
         ("usage", lambda v: isinstance(v, dict), "an object"),
         ("backup", lambda v: isinstance(v, dict), "an object"),

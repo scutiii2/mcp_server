@@ -1,4 +1,4 @@
-"""HTTP routes for Emberlings: thin adapters over the services.
+"""HTTP routes for Ascension: thin adapters over the services.
 
 Ownership comes from the trusted requester header only. Request bodies reject
 unknown fields, so a client can never supply rewards, stats, chances, random
