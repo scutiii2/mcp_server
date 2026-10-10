@@ -58,12 +58,13 @@ describe("MainMenu", () => {
   });
 
   it("previews the starters without a save and shows your team with one", () => {
-    const names = (w: ReturnType<typeof mountMenu>) => w.findAll(".spark-name").map((n) => n.text());
+    const names = (w: ReturnType<typeof mountMenu>) => w.findAll(".spark .spark-name").map((n) => n.text());
 
     expect(names(mountMenu(null))).toEqual(["Guardian", "Striker"]);
     const team = mountMenu();
     expect(names(team)).toEqual(["Guardian"]);
-    expect(team.find(".spark-note").text()).toBe("Level 3");
+    expect(team.find(".spark .level").text()).toBe("Lv 3");
+    expect(mountMenu(null).find(".spark .level").exists()).toBe(false);
   });
 
   it("opens How to play in a dialog", async () => {

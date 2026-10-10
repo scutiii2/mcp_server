@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useEmberlingsStore } from "../../stores/emberlings";
-import { titleCase } from "../../utils/emberlings";
 import BaseModal from "../BaseModal.vue";
 import ConfirmModal from "../ConfirmModal.vue";
+import SparkTemplateCard from "./SparkTemplateCard.vue";
 
 /** The Emberlings main menu, the first screen: a title, large menu rows and a
  * Spark showcase. Without a save it offers New game and previews the starters;
@@ -29,17 +29,28 @@ const inBattle = computed(() => store.profile?.active_battle != null || store.ba
 const confirmingReset = ref(false);
 const showingHelp = ref(false);
 
-/** The three Sparks beside the menu: your first ones, or the starters to pick from. */
+/** The Sparks beside the menu, as a fanned hand of small cards: your first ones
+ * (with level and tier), or the starters to pick from. `rot` and `lift` place a
+ * card in the fan, the middle one on top. */
 const showcase = computed(() => {
-  if (store.profile !== null) {
-    return store.profile.sparks
-      .slice(0, SHOWCASE_SIZE)
-      .map((s) => ({ id: s.spark_id, name: s.name, note: `Level ${s.level}` }));
-  }
-  return (store.catalog?.sparks ?? [])
-    .filter((s) => s.starter)
-    .slice(0, SHOWCASE_SIZE)
-    .map((s) => ({ id: s.id, name: s.name, note: titleCase(s.passive.kind) }));
+  const catalog = store.catalog?.sparks ?? [];
+  const entries =
+    store.profile !== null
+      ? store.profile.sparks.slice(0, SHOWCASE_SIZE).map((s) => ({
+          id: s.spark_id,
+          info: catalog.find((c) => c.id === s.spark_id),
+          level: s.level,
+          tierId: s.tier_id,
+        }))
+      : catalog
+          .filter((c) => c.starter)
+          .slice(0, SHOWCASE_SIZE)
+          .map((c) => ({ id: c.id, info: c, level: 1, tierId: "normal" }));
+  return entries.flatMap((e, i) => {
+    if (e.info === undefined) return [];
+    const offset = i - (entries.length - 1) / 2;
+    return [{ ...e, info: e.info, rot: `${offset * 9}deg`, lift: `${Math.abs(offset) * 12}px`, z: 10 - Math.round(Math.abs(offset) * 2) }];
+  });
 });
 const sparkCount = computed(() => store.profile?.sparks.length ?? 0);
 
@@ -100,11 +111,14 @@ async function reset(): Promise<void> {
 
     <aside class="side" :aria-label="hasSave ? 'Your team' : 'Starter Sparks'">
       <p v-if="hasSave" class="muted side-title">Your team</p>
-      <ul class="showcase">
-        <li v-for="(spark, i) in showcase" :key="spark.id" class="spark" :class="{ mid: i === 1 }">
-          <span class="orb" aria-hidden="true">{{ spark.name.slice(0, 1) }}</span>
-          <span class="spark-name">{{ spark.name }}</span>
-          <span class="muted spark-note">{{ spark.note }}</span>
+      <ul class="hand">
+        <li
+          v-for="spark in showcase"
+          :key="spark.id"
+          class="spark"
+          :style="{ '--rot': spark.rot, '--lift': spark.lift, zIndex: spark.z }"
+        >
+          <SparkTemplateCard :spark="spark.info" :level="spark.level" :tier-id="spark.tierId" compact :show-level="hasSave" />
         </li>
       </ul>
       <p v-if="hasSave" class="muted stats">
@@ -252,48 +266,25 @@ async function reset(): Promise<void> {
   margin: 0 0 8px;
   font-size: 0.85em;
 }
-.showcase {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.hand {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 220px;
   margin: 0;
-  padding: 0;
+  padding: 16px 0 28px;
   list-style: none;
 }
 .spark {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 14px 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  text-align: center;
+  --card-width: 150px;
+  flex: none;
+  margin: 0 -14px;
+  transform: rotate(var(--rot)) translateY(var(--lift));
+  transition: transform 0.15s ease;
 }
-.spark.mid {
-  border-color: var(--accent);
-  transform: translateY(-10px);
-}
-.orb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 54px;
-  height: 54px;
-  margin-bottom: 8px;
-  border-radius: var(--radius-full);
-  font-size: 1.4rem;
-  font-weight: 600;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-}
-.spark-name {
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-.spark-note {
-  font-size: 0.75rem;
+.spark:hover {
+  z-index: 20 !important;
+  transform: rotate(0deg) translateY(-14px);
 }
 .stats {
   display: flex;
@@ -316,7 +307,8 @@ async function reset(): Promise<void> {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .row {
+  .row,
+  .spark {
     transition: none;
   }
 }
