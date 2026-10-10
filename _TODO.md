@@ -136,3 +136,17 @@ Items 1 to 6 are complete; item 7 remains open.
 **Open points**: card tier or rarity frames over the placeholder, image size and format for the real art, and whether the front or back shows for a fainted Ascended.
 
 **Revisit when**: user wants it built. Brainstorm the design first, then write the spec and plan.
+
+## Split Ascension out of mini_games and make the Ember page a game host (added 2026-10-11)
+
+**Context**: Today the Ascension game lives inside `apps/mini_games` (package `src/ascension`, port 8060) and its UI is a page inside `apps/Ember/ember_web` (`/ascension`, `ascension.play`), reached through ember_api's `/api/ascension` pass-through. The user wants the game and its UI separated from both.
+
+**Plan**:
+- Ascension gets its own project folder in `apps/` (its own backend code, README, tests, config), not code inside `mini_games`.
+- Ascension gets its own web UI server. It no longer shares ember_web's app, theme, router or build.
+- The mini_games page in ember_web becomes a host (an "emulator"): it plays any registered mini game, such as Ascension, and does not hold game code. Games register and deregister by their URLs.
+
+**Open points**: what `mini_games` itself becomes (a registry and gateway, or chess and Tetris only); how a game's URL is registered (config file, admin page or both) and who may register or deregister; how a hosted game is embedded (iframe or a link out) and how it learns the signed-in account without a shared login; how the `ascension.play` permission and the `/api/ascension` pass-through map to a per-game permission; and what happens to the existing data (`data/ascension.sqlite3`) and routes.
+
+**Revisit when**: user wants it built. Brainstorm the design first, then write the spec and plan.
+
