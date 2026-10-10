@@ -109,7 +109,7 @@ class Fighter:
     so later balance changes never alter a fight in progress."""
 
     side: str
-    species_id: str
+    spark_id: str
     tier_id: str
     level: int
     max_hp: int
@@ -120,7 +120,7 @@ class Fighter:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "side": self.side, "species_id": self.species_id, "tier_id": self.tier_id, "level": self.level,
+            "side": self.side, "spark_id": self.spark_id, "tier_id": self.tier_id, "level": self.level,
             "max_hp": self.max_hp, "essence": self.essence, "speed": self.speed,
             "abilities": [a.to_dict() for a in self.abilities], "passive": self.passive.to_dict(),
         }
@@ -128,7 +128,7 @@ class Fighter:
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "Fighter":
         return cls(
-            raw["side"], raw["species_id"], raw["tier_id"], raw["level"], raw["max_hp"], raw["essence"], raw["speed"],
+            raw["side"], raw["spark_id"], raw["tier_id"], raw["level"], raw["max_hp"], raw["essence"], raw["speed"],
             tuple(AbilitySpec.from_dict(a) for a in raw["abilities"]), PassiveSpec.from_dict(raw["passive"]),
         )
 

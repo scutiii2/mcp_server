@@ -15,7 +15,7 @@ Part of a series. This project is the backend only; the `ember_api` proxy, the
 ## The game in short
 
 - You choose a starter Spark (Guardian, Striker or Scout), then roll wild
-  encounters. The preview shows species, tier and level; personalities stay hidden.
+  encounters. The preview shows the Spark, tier and level; personalities stay hidden.
 - A battle is 1v1 against a wild Spark. Each round both sides choose in secret,
   then the actions are revealed and resolved together: SUPPORT, then DEFENSE,
   then a speed-weighted order for ATTACK, CATCH and FLEE.
@@ -55,7 +55,7 @@ run.bat
 
 The first start creates `.venv_mini_games`, installs the project and creates
 `configs/config_app.json` and `.env` from their `.example` twins. Both
-real files are gitignored; `configs/spark_catalog.json` (species, abilities,
+real files are gitignored; `configs/spark_catalog.json` (Spark rules, abilities,
 tiers, economy and policy numbers) is tracked. Put the same `INTERNAL_API_TOKEN`
 in `.env` that `mcp_server`, `ai_agent` and `ember_api` use; once set,
 every route except `/health` needs the `X-Internal-Token` header. Game data lives
@@ -73,11 +73,11 @@ last saw; a stale pair is a 409.
 
 | Route | Purpose |
 |---|---|
-| `GET /sparks/catalog` | Species, abilities, tiers, personalities, shop data |
+| `GET /sparks/catalog` | Sparks, abilities, tiers, personalities, shop data |
 | `POST /sparks/profile` | Create the profile with a starter |
 | `GET /sparks/profile` | Wallet, Sparks, timers, pending encounter, active battle |
-| `GET /sparks/species/{id}/personalities` | Collected personality instances (paginated) |
-| `GET`/`PUT /sparks/species/{id}/presets/{slot}` | One of five presets (up to three instances) |
+| `GET /sparks/sparks/{id}/personalities` | Collected personality instances (paginated) |
+| `GET`/`PUT /sparks/sparks/{id}/presets/{slot}` | One of five presets (up to three instances) |
 | `POST /sparks/encounters` | Roll a preview (one per 30 seconds) |
 | `GET /sparks/encounters/{id}` | The same preview, never rerolled |
 | `POST /sparks/encounters/{id}/decline` | Decline for free |
@@ -88,10 +88,10 @@ last saw; a stale pair is a 409.
 | `POST /sparks/battles/{id}/advance` | Play one autonomous round, or settle an expired prompt |
 | `POST /sparks/battles/{id}/mode` | Switch manual or autonomous between rounds |
 | `POST /sparks/battles/{id}/forfeit` | End as a loss |
-| `POST /sparks/shop/purchases` | Buy EMBLEMs or regular-species copies |
-| `POST /sparks/species/{id}/sales` | Sell one absorbed copy |
+| `POST /sparks/shop/purchases` | Buy EMBLEMs or regular-Spark copies |
+| `POST /sparks/sparks/{id}/sales` | Sell one absorbed copy |
 
-Errors: 400 bad input or unknown species or tier, 401 bad token, 404 missing or
+Errors: 400 bad input or unknown Spark or tier, 401 bad token, 404 missing or
 someone else's record, 409 state conflict (stale revision, wrong phase, not enough
 Insignia, cooldown, one active battle).
 

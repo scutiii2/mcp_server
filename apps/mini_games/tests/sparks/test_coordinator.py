@@ -35,9 +35,9 @@ def make(tmp_path, **kwargs):
     return Env(tmp_path / "s.sqlite3", **kwargs)
 
 
-async def encounter(env, species="scout", tier="normal", level=1, instances=(COWARD, BOLD), eid="e1", owner="ann"):
+async def encounter(env, spark_id="scout", tier="normal", level=1, instances=(COWARD, BOLD), eid="e1", owner="ann"):
     async with env.repo.transaction() as tx:
-        await tx.add_encounter(EncounterRecord(eid, owner, species, tier, level, "pending", tuple(instances), env.clock.now()))
+        await tx.add_encounter(EncounterRecord(eid, owner, spark_id, tier, level, "pending", tuple(instances), env.clock.now()))
     return eid
 
 
@@ -47,7 +47,7 @@ async def strong_guardian(env, copies=250, level=30):
 
 async def begin(env, coord, mode="manual", eid=None, slot=1, limit=None, **enc):
     eid = eid or await encounter(env, **enc)
-    return await coord.start("ann", env.key(), encounter_id=eid, species_id="guardian", preset_slot=slot,
+    return await coord.start("ann", env.key(), encounter_id=eid, spark_id="guardian", preset_slot=slot,
                              mode=mode, emblem_limit=limit)
 
 
@@ -62,7 +62,7 @@ def advance(coord, env, view):
 
 async def stats(env):
     async with env.repo.transaction() as tx:
-        return (await tx.get_player("ann")).insignia, await tx.emblem_counts("ann"), {s.species_id: s for s in await tx.list_sparks("ann")}
+        return (await tx.get_player("ann")).insignia, await tx.emblem_counts("ann"), {s.spark_id: s for s in await tx.list_sparks("ann")}
 
 
 # -- starting ------------------------------------------------------------------------
@@ -81,7 +81,7 @@ def test_start_creates_a_public_view_and_marks_the_encounter(tmp_path):
     view, enc, active = run(scenario())
     assert (view["status"], view["phase"], view["mode"], view["round"], view["revision"]) == ("active", "choosing", "manual", 1, 1)
     assert enc.status == "started" and active == view["id"]
-    assert view["player"]["species_id"] == "guardian" and view["wild"]["species_id"] == "scout"
+    assert view["player"]["spark_id"] == "guardian" and view["wild"]["spark_id"] == "scout"
     assert {"attack", "flee", "catch"} <= {a["kind"] for a in view["actions"]}
     assert not any(word in json.dumps(view) for word in SECRET_WORDS)
 
@@ -92,15 +92,15 @@ def test_start_validates_its_inputs(tmp_path):
         coord = env.coordinator()
         await env.start_player()
         eid = await encounter(env)
-        base = dict(encounter_id=eid, species_id="guardian", preset_slot=1, mode="manual", emblem_limit=None)
+        base = dict(encounter_id=eid, spark_id="guardian", preset_slot=1, mode="manual", emblem_limit=None)
         for bad in (dict(mode="turbo"), dict(mode="autonomous", emblem_limit=None), dict(mode="autonomous", preset_slot=None, emblem_limit="normal"),
-                    dict(emblem_limit="gold"), dict(species_id="nope")):
+                    dict(emblem_limit="gold"), dict(spark_id="nope")):
             with pytest.raises(InvalidRequest):
                 await coord.start("ann", env.key(), **{**base, **bad})
         with pytest.raises(NotFound):
             await coord.start("ann", env.key(), **{**base, "encounter_id": "nope"})
         with pytest.raises(NotFound):
-            await coord.start("ann", env.key(), **{**base, "species_id": "scout"})  # not owned
+            await coord.start("ann", env.key(), **{**base, "spark_id": "scout"})  # not owned
         await env.close()
 
     run(scenario())
@@ -113,8 +113,8 @@ def test_an_empty_preset_cannot_play_autonomously_but_can_play_manually(tmp_path
         await env.start_player()
         eid = await encounter(env)
         with pytest.raises(InvalidRequest, match="no personalities"):
-            await coord.start("ann", env.key(), encounter_id=eid, species_id="guardian", preset_slot=2, mode="autonomous", emblem_limit="normal")
-        view = await coord.start("ann", env.key(), encounter_id=eid, species_id="guardian", preset_slot=2, mode="manual", emblem_limit=None)
+            await coord.start("ann", env.key(), encounter_id=eid, spark_id="guardian", preset_slot=2, mode="autonomous", emblem_limit="normal")
+        view = await coord.start("ann", env.key(), encounter_id=eid, spark_id="guardian", preset_slot=2, mode="manual", emblem_limit=None)
         await env.close()
         return view
 
@@ -314,7 +314,7 @@ def test_a_knockout_faints_the_fighter_for_five_minutes_without_copy_loss(tmp_pa
         await env.start_player()
         await env.give(guardian=SparkRecord("ann", "guardian", 3, 1, 0))
         coord = env.coordinator(ScriptedPolicy())
-        view = await begin(env, coord, species="forbidden", tier="forbidden", level=50)
+        view = await begin(env, coord, spark_id="forbidden", tier="forbidden", level=50)
         done = await act(coord, env, view)
         while done["status"] == "active":
             done = await act(coord, env, done)
@@ -355,7 +355,7 @@ def test_a_capture_reveals_every_source_personality_and_spends_the_emblem(tmp_pa
         async with env.repo.transaction() as tx:
             await tx.add_emblems("ann", "ascended", 40)
         coord = env.coordinator(ScriptedPolicy())  # the wild Spark only attacks, so nothing preempts the attempt
-        view = await begin(env, coord, species="channeler", level=1)
+        view = await begin(env, coord, spark_id="channeler", level=1)
         outcome = view
         for _ in range(100):
             outcome = await act(coord, env, view, "catch", emblem_tier="ascended")
@@ -382,7 +382,7 @@ def test_a_failed_collection_attempt_still_costs_the_emblem(tmp_path):
         await env.start_player()
         await strong_guardian(env)  # 1462 HP survives one hit from the level-50 Forbidden Spark
         coord = env.coordinator(ScriptedPolicy())
-        view = await begin(env, coord, species="forbidden", tier="forbidden", level=50)
+        view = await begin(env, coord, spark_id="forbidden", tier="forbidden", level=50)
         after = await act(coord, env, view, "catch", emblem_tier="normal")  # 100 / (100 + 12800): about 0.8%
         counts = (await stats(env))[1]
         await env.close()
@@ -483,7 +483,7 @@ def catch_battle(tmp_path, *, laya=None, emblems=None, limit="rare", reader_poli
             for tier, count in (emblems or {"rare": 2, "royalty": 1}).items():
                 await tx.add_emblems("ann", tier, count)
         coord = env.coordinator(ScriptedPolicy(player=["catch"], wild=["attack"]), laya=laya)
-        view = await begin(env, coord, mode="autonomous", limit=limit, species="channeler", tier="normal", level=1)
+        view = await begin(env, coord, mode="autonomous", limit=limit, spark_id="channeler", tier="normal", level=1)
         return env, coord, view
 
     return setup()
@@ -692,7 +692,7 @@ def test_a_restart_between_rounds_gives_the_same_battle_as_not_restarting(tmp_pa
         env = Env(path / "s.sqlite3")
         await env.start_player()
         coord = env.coordinator()  # the real policy and situation reader, driven by the saved seed
-        view = await begin(env, coord, mode="autonomous", limit="normal", species="sentinel", level=3)
+        view = await begin(env, coord, mode="autonomous", limit="normal", spark_id="sentinel", level=3)
         view = await advance(coord, env, view)
         if restart:
             await env.close()

@@ -38,11 +38,11 @@ def fighter(
     speed: int = 20,
     abilities: tuple[AbilitySpec, ...] = (),
     passive: PassiveSpec | None = None,
-    species_id: str = "guardian",
+    spark_id: str = "guardian",
     tier_id: str = "normal",
     level: int = 1,
 ) -> Fighter:
-    return Fighter(side, species_id, tier_id, level, hp, essence, speed, abilities, passive or PassiveSpec("none"))
+    return Fighter(side, spark_id, tier_id, level, hp, essence, speed, abilities, passive or PassiveSpec("none"))
 
 
 def setup(player: Fighter | None = None, wild: Fighter | None = None) -> BattleSetup:

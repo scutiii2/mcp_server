@@ -36,7 +36,7 @@ class BattleViewBuilder:
         fighter, state = record.setup.of(side), record.state.of(side)
         ready = dict(state.cooldowns)
         return {
-            "species_id": fighter.species_id, "name": self._catalog.species(fighter.species_id).name,
+            "spark_id": fighter.spark_id, "name": self._catalog.spark(fighter.spark_id).name,
             "tier_id": fighter.tier_id, "level": fighter.level, "hp": state.hp, "max_hp": fighter.max_hp,
             "essence": self._engine.stat(fighter, state, "essence"), "speed": self._engine.stat(fighter, state, "speed"),
             "buffs": [b.to_dict() for b in state.buffs],

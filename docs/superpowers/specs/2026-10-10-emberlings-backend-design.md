@@ -6,7 +6,7 @@ Status: draft for user review; no implementation has started.
 ## Purpose and agreed scope
 
 Add a Spark-collector game to the planned `apps/mini_games` service, with
-Ember as its interface. Players collect species, absorb duplicates, earn
+Ember as its interface. Players collect Sparks, absorb duplicates, earn
 Insignia, and assemble personality presets whose weights bias each Spark's
 action choices. The engine applies the weights and rolls the action; local Laya
 only reads the battle situation (see Action policy). Manual control remains
@@ -16,14 +16,14 @@ not repeat one action predictably, and progression and active battles survive
 restarts.
 
 Naming (decided 2026-10-10): the game is **Emberlings** and its collectibles are
-**Sparks**. Species names are still working role labels. File names keep the
+**Sparks**. Spark names are still working role labels. File names keep the
 earlier working name so links stay valid.
 
 Revision 2026-10-10: personality now acts through an engine-side action policy
 instead of through Laya's choice. This supersedes the earlier "Laya selects the
 action" design; the decision record carries the matching change.
 
-V1 includes 1v1 wild encounters, seven species, progression, collection, shops,
+V1 includes 1v1 wild encounters, seven Sparks, progression, collection, shops,
 personality pools, presets, and persistent battles. NPC-player battles and human
 multiplayer are excluded. Wild Sparks can obstruct escape but cannot collect
 the player's Spark.
@@ -55,7 +55,7 @@ Use three boundaries within mini_games:
 3. **SQLite repository:** durable records, transactions, idempotency,
    battle revisions, private RNG state, and recovery checkpoints.
 
-A committed, versioned JSON catalog defines species, abilities, personality
+A committed, versioned JSON catalog defines Sparks, abilities, personality
 types, and initial balance values. Catalog loading and validation belong to
 mini_games; no imports from other projects are required. Runtime data lives at
 `apps/mini_games/data/sparks.sqlite3`, excluded from git.
@@ -69,7 +69,7 @@ apps/mini_games/
     catalog.py         # Catalog (loads and validates spark_catalog.json)
     models.py          # frozen value objects
     runtime.py         # Clock, RandomSource, seeded and recording randomness
-    passives.py        # one class per species passive, PassiveFactory
+    passives.py        # one class per Spark passive, PassiveFactory
     engine.py          # BattleEngine
     policy.py          # ActionPolicy and Mood: probabilities, mood, repeat penalty
     situation.py       # SituationReader and its implementations
@@ -101,7 +101,7 @@ no base class. Data that crosses a boundary is an immutable dataclass.
 
 | Class | Responsibility | Depends on (injected) |
 |---|---|---|
-| `Catalog` | Loads and validates the versioned JSON catalog; looks up species, abilities, personalities, tier tables | none |
+| `Catalog` | Loads and validates the versioned JSON catalog; looks up Sparks, abilities, personalities, tier tables | none |
 | `Spark`, `BattleSnapshot`, `Personality`, `Preset`, `RoundResult`, ... | Immutable value objects (frozen dataclasses) | none |
 | `BattleEngine` | Pure rules: legal actions, phases, effects, damage, FLEE/CATCH math, terminal outcomes | `Catalog` |
 | `ActionPolicy` | Pure: situation values, mood, personality weights and history in; action probabilities and a seeded draw out | `Catalog` (policy block) |
@@ -111,9 +111,9 @@ no base class. Data that crosses a boundary is an immutable dataclass.
 | `FallbackSituationReader` | Composes a primary and a heuristic reader, falling back per question | two `SituationReader`s |
 | `SparkRepository` (Protocol) | Async persistence interface: profiles, Sparks, personalities, presets, encounters, battles, rounds, idempotency | none |
 | `SqliteSparkRepository` | Implements the interface over SQLite: transactions, constraints, revisions; blocking `sqlite3` calls run in a worker thread behind a write lock so the event loop never blocks | database path |
-| `CollectionService` | Profile and starter, personality pool, five presets per species | `SparkRepository`, `IdempotentWriter`, `Catalog`, `Clock`, `RandomSource` |
+| `CollectionService` | Profile and starter, personality pool, five presets per Spark | `SparkRepository`, `IdempotentWriter`, `Catalog`, `Clock`, `RandomSource` |
 | `IdempotentWriter` | Exactly-once mutations: the response is stored in the same transaction as the change | `SparkRepository`, `Clock` |
-| `EncounterRoller` | Pure random draws behind an encounter (tier, species, level, personalities) | `Catalog` |
+| `EncounterRoller` | Pure random draws behind an encounter (tier, Spark, level, personalities) | `Catalog` |
 | `ActionDecider` | One Spark's decision: situation read, mood draw, probabilities, seeded draw | `Catalog`, `BattleEngine`, `ActionPolicy`, `Mood`, `SituationReader`, `SituationViewBuilder` |
 | `BattleViewBuilder` | The public battle JSON, never private data | `BattleEngine`, `Catalog` |
 | `BattleSimulator` | AI-against-AI battles for tuning and for checking personality behaviour | `Catalog`, `BattleEngine`, `ActionDecider` |
@@ -140,12 +140,12 @@ does not accept a Spark battle as an alternating-turn session.
 
 ### Collection and progression
 
-- One owned Spark per species; subsequent captures or purchases add copies.
+- One owned Spark per kind of Spark; subsequent captures or purchases add copies.
 - Regular copy thresholds are Normal 0, Rare 10, Legendary 40, Royalty 100,
   Ascended 250. Copies are retained, and reductions can cause downgrades.
 - Forbidden is a separate fixed tier, capped at level 50 and 100 held copies.
-  Regular species cap at level 30.
-- First captures and shop-unlocked species start at level 1. Tier changes keep
+  Regular Sparks cap at level 30.
+- First captures and shop-unlocked Sparks start at level 1. Tier changes keep
   level and XP. Purchases preserve an already-owned Spark's level.
 - Capture rewards are 1 / 2 / 3 / 4 / 5 copies for regular tiers, and 1 for
   Forbidden. Purchases use regular capture amounts; Forbidden is capture-only.
@@ -154,21 +154,21 @@ does not accept a Spark battle as an alternating-turn session.
   copies, five Normal EMBLEMs, zero Insignia, and one uniformly selected tier-1
   personality equipped in preset 1.
 
-Working species names for this backend are Guardian, Striker, Scout, Sentinel,
+Working Spark names for this backend are Guardian, Striker, Scout, Sentinel,
 Bruiser, Channeler, and Forbidden. Stable catalog IDs are separate from display
 names so presentation can be changed later without changing ownership.
 
 ### Stats and abilities
 
 ```text
-Stat = (species base stat + per-level growth × (level − 1)) × tier multiplier
+Stat = (Spark base stat + per-level growth × (level − 1)) × tier multiplier
 Ability magnitude = ESSENCE × ability percentage
 Damage received = Raw damage × 100 / (100 + Defense rating)
 ```
 
-HP, ESSENCE, and SPEED use the approved species bases and 10%-of-base growth.
+HP, ESSENCE, and SPEED use the approved Spark bases and 10%-of-base growth.
 Battle-stat tier multipliers are 1 / 1.25 / 1.5 / 2 / 2.5 / 4. ESSENCE is not
-consumed. Each species has one passive and three catalogued active abilities,
+consumed. Each Spark has one passive and three catalogued active abilities,
 unlocked at levels 1, 10, and 20. Basic ATTACK is 100% ESSENCE with no cooldown;
 basic ATTACK, FLEE, and CATCH are outside the three active slots.
 
@@ -218,9 +218,9 @@ before reveal.
   Tier probabilities are 60% / 30% / 10%, independent of Spark rarity.
 - Capture reveals all source personalities and uniformly awards one instance.
   Discarded source instances are visible in the capture result but not collected.
-- Every award creates a distinct species-specific instance, including identical
+- Every award creates a distinct Spark-specific instance, including identical
   type/tier duplicates. No automatic upgrade, replacement, or lock mechanism.
-- No gameplay pool-size cap. At most five presets per species and three distinct
+- No gameplay pool-size cap. At most five presets per Spark and three distinct
   instance IDs per preset. Repeated types require separately acquired instances.
   An instance can be referenced by several presets.
 - Matching weights add. Each personality's weight budget is 2 / 4 / 6 for tiers
@@ -238,7 +238,7 @@ before reveal.
 XP needed for next level = 100 × current level
 XP reward = 20 × enemy level × enemy battle-stat tier multiplier
 Insignia reward = 10 × enemy level × enemy battle-stat tier multiplier
-Sale value = floor(species base price × current battle-stat tier multiplier
+Sale value = floor(Spark base price × current battle-stat tier multiplier
                    × [1 + 0.05 × (level − 1)])
 Purchase price = 2 × copies granted
                  × per-copy sale value at resulting Spark tier and level
@@ -249,7 +249,7 @@ Only player wins and successful captures grant XP and Insignia, equally for
 either outcome. XP goes to the Spark that fought. Selling removes one copy,
 can downgrade regular Sparks, never causes fainting, and cannot remove the
 owned Spark. Zero copies means nothing to sell. The shop has unlimited stock
-for all six regular species and five regular tiers; no personalities are sold.
+for all six regular Sparks and five regular tiers; no personalities are sold.
 
 HP, temporary effects, and cooldowns reset between battles. Knockout and forfeit
 cause five minutes of fainting at any tier without copy loss. Successful escape
@@ -259,13 +259,13 @@ they cannot occur in v1 wild encounters.
 
 ## Encounters and battle lifecycle
 
-Preview species, tier, and level, keeping personalities hidden. The player then
+Preview the Spark, tier, and level, keeping personalities hidden. The player then
 chooses a non-fainted Spark, preset, control mode, and autonomous EMBLEM limit.
 Declining is free. Enforce one new roll per 30 seconds, starting at generation.
 
 Draw encounter tier using the approved 60% / 25% / 10% / 4% / 0.9% / 0.1%
 probabilities. Proposed default: regular tiers choose uniformly among the six
-regular species; Forbidden selects the sole Forbidden species. Draw enemy level
+regular Sparks; Forbidden selects the sole Forbidden Spark. Draw enemy level
 uniformly between `clamp(highest owned level − 2, 1, enemy cap)` and
 `clamp(highest owned level + 2, 1, enemy cap)`. This handles a level-50 collection
 producing regular enemies without an invalid level interval.
@@ -426,10 +426,10 @@ verified on the engine's own distributions, not on the model.
 
 ## Persistent model and API
 
-SQLite records include player wallets/starter initialization; owned species and
+SQLite records include player wallets/starter initialization; owned Sparks and
 progress; EMBLEM balances; personality instances; presets and slots; encounters;
 battles and participant snapshots; rounds with private choices, the mood draw,
-the action probabilities and results; and idempotency responses. Unique constraints enforce owner/species ownership,
+the action probabilities and results; and idempotency responses. Unique constraints enforce owner/Spark ownership,
 one active battle per owner, and preset/slot limits. All IDs are server-created.
 
 Use the existing internal-token and requester-username boundary. Ownership comes
@@ -441,11 +441,11 @@ Proposed Spark route family:
 
 | Route | Purpose |
 |---|---|
-| `GET /sparks/catalog` | Public species, abilities, tiers, and shop metadata |
-| `POST /sparks/profile` | Initialize once with a starter species |
+| `GET /sparks/catalog` | Public Sparks, abilities, tiers, and shop metadata |
+| `POST /sparks/profile` | Initialize once with a starter Spark |
 | `GET /sparks/profile` | Wallet, owned summaries, timers, pending encounter, and active battle |
-| `GET /sparks/species/{id}/personalities` | Paginated collected instances |
-| `GET/PUT /sparks/species/{id}/presets/{slot}` | Read/edit one of five presets |
+| `GET /sparks/sparks/{id}/personalities` | Paginated collected instances |
+| `GET/PUT /sparks/sparks/{id}/presets/{slot}` | Read/edit one of five presets |
 | `POST /sparks/encounters` | Generate and persist one preview |
 | `GET /sparks/encounters/{id}` | Reload the same owner-safe preview without rerolling |
 | `POST /sparks/encounters/{id}/decline` | Decline without cost |
@@ -456,8 +456,8 @@ Proposed Spark route family:
 | `POST /sparks/battles/{id}/advance` | Drive an autonomous round or expired prompt |
 | `POST /sparks/battles/{id}/mode` | Switch control mode at a round boundary |
 | `POST /sparks/battles/{id}/forfeit` | End as a player loss |
-| `POST /sparks/shop/purchases` | Buy EMBLEMs or regular-species copies |
-| `POST /sparks/species/{id}/sales` | Sell one absorbed copy |
+| `POST /sparks/shop/purchases` | Buy EMBLEMs or regular-Spark copies |
+| `POST /sparks/sparks/{id}/sales` | Sell one absorbed copy |
 
 Mutations use an idempotency key. Round mutations also require the round number
 and expected battle revision; stale or conflicting choices return 409. Repeat
@@ -467,16 +467,16 @@ only invalid AI choices trigger the AI fallback.
 
 Proposed defaults: store timestamps as UTC, enforce deadlines on the server,
 paginate personality instances with a default page size of 50 and maximum 100,
-and reject sales/purchases changing the selected species while its battle is
-active. Other species and EMBLEM purchases may proceed transactionally.
+and reject sales/purchases changing the selected Spark while its battle is
+active. Other Sparks and EMBLEM purchases may proceed transactionally.
 
 ## Other explicit technical defaults for review
 
-- Compute species level/tier stats at full precision, then floor to positive
+- Compute Spark level/tier stats at full precision, then floor to positive
   whole-number stats. Floor applied buff magnitudes; sum raw damage and apply
   mitigation before flooring received damage. A positive attack deals at least
   one damage. V1 has no negative stats, resistances, or damage values.
-- Carry excess XP through successive level-ups. At the species cap, stop gaining
+- Carry excess XP through successive level-ups. At the Spark cap, stop gaining
   XP and discard excess beyond the final level-up. Tier changes do not reset XP.
 - Do not provide personality deletion in the initial backend. Pools have no
   gameplay cap and presets reference persistent instance IDs.
@@ -502,7 +502,7 @@ and COWARD flees more over many seeded draws, while low HP still raises DEFENSE
 and FLEE for every personality; saved RNG state gives the same draw after restart.
 
 Repository/API tests cover ownership isolation, initialization once, distinct
-duplicate personalities, five-preset/three-instance constraints, species scope,
+duplicate personalities, five-preset/three-instance constraints, Spark scope,
 copy thresholds/downgrades, Forbidden caps, XP overflow, price calculations,
 insufficient funds/inventory, and no buy/resell profit from immediate resale.
 

@@ -19,7 +19,7 @@ WINNER_BY_TERMINAL = {"won": PLAYER, "knocked_out": WILD}
 
 @dataclass(frozen=True)
 class Combatant:
-    species_id: str
+    spark_id: str
     tier_id: str
     level: int
     personalities: tuple[PersonalityInstance, ...]
@@ -49,8 +49,8 @@ class BattleSimulator:
 
     async def run(self, player: Combatant, wild: Combatant, seed: int, max_rounds: int = 60) -> SimulationReport:
         setup = BattleSetup(
-            self._engine.build_fighter(PLAYER, player.species_id, player.tier_id, player.level),
-            self._engine.build_fighter(WILD, wild.species_id, wild.tier_id, wild.level),
+            self._engine.build_fighter(PLAYER, player.spark_id, player.tier_id, player.level),
+            self._engine.build_fighter(WILD, wild.spark_id, wild.tier_id, wild.level),
         )
         deciders = {
             side: ActionDecider(self._catalog, self._engine, self._policy, self._mood, who.reader, self._views)

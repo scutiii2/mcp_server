@@ -37,7 +37,7 @@ class _Body(BaseModel):
 
 
 class InitializeBody(_Body):
-    starter_species_id: str
+    starter_spark_id: str
 
 
 class PresetBody(_Body):
@@ -46,7 +46,7 @@ class PresetBody(_Body):
 
 class StartBody(_Body):
     encounter_id: str
-    species_id: str
+    spark_id: str
     preset_slot: StrictInt | None = None
     mode: str = "manual"
     emblem_limit: str | None = None
@@ -80,7 +80,7 @@ class PurchaseBody(_Body):
     kind: str
     tier: str
     quantity: StrictInt = 1
-    species_id: str | None = None
+    spark_id: str | None = None
 
 
 def idempotency_key(idempotency_key: str = Header(default="", alias="Idempotency-Key")) -> str:
@@ -90,7 +90,7 @@ def idempotency_key(idempotency_key: str = Header(default="", alias="Idempotency
 
 
 def catalog_summary(catalog: Catalog) -> dict[str, Any]:
-    """Public catalog data: species, abilities, tiers, personalities and shop metadata."""
+    """Public catalog data: Sparks, abilities, tiers, personalities and shop metadata."""
     return {
         "version": catalog.version,
         "tiers": [
@@ -99,11 +99,11 @@ def catalog_summary(catalog: Catalog) -> dict[str, Any]:
             for t in catalog.tiers
         ],
         "levels": {"regular_cap": catalog.levels.regular_cap, "forbidden_cap": catalog.levels.forbidden_cap},
-        "species": [
+        "sparks": [
             {"id": s.id, "name": s.name, "starter": s.starter, "forbidden": s.forbidden, "base": dict(s.base),
              "growth": dict(s.growth), "base_price": s.base_price, "passive": s.passive.to_dict(),
              "abilities": [a.to_dict() for a in s.abilities]}
-            for s in catalog.all_species()
+            for s in catalog.all_sparks()
         ],
         "personalities": [{"id": p.id, "categories": list(p.categories)} for p in catalog.personalities.values()],
     }
@@ -119,24 +119,24 @@ def build_router(services: SparkServices) -> APIRouter:
 
     @router.post("/profile", status_code=201)
     async def create_profile(body: InitializeBody, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
-        return await collection.initialize(owner, key, body.starter_species_id)
+        return await collection.initialize(owner, key, body.starter_spark_id)
 
     @router.get("/profile")
     async def get_profile(owner: str = Depends(requester)):
         return await collection.profile(owner)
 
-    @router.get("/species/{species_id}/personalities")
-    async def list_personalities(species_id: str, limit: int | None = Query(default=None), cursor: int = Query(default=0, ge=0, le=2**63 - 1),
+    @router.get("/sparks/{spark_id}/personalities")
+    async def list_personalities(spark_id: str, limit: int | None = Query(default=None), cursor: int = Query(default=0, ge=0, le=2**63 - 1),
                                  owner: str = Depends(requester)):
-        return await collection.personalities(owner, species_id, limit, cursor)
+        return await collection.personalities(owner, spark_id, limit, cursor)
 
-    @router.get("/species/{species_id}/presets/{slot}")
-    async def get_preset(species_id: str, slot: int, owner: str = Depends(requester)):
-        return await collection.get_preset(owner, species_id, slot)
+    @router.get("/sparks/{spark_id}/presets/{slot}")
+    async def get_preset(spark_id: str, slot: int, owner: str = Depends(requester)):
+        return await collection.get_preset(owner, spark_id, slot)
 
-    @router.put("/species/{species_id}/presets/{slot}")
-    async def put_preset(species_id: str, slot: int, body: PresetBody, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
-        return await collection.put_preset(owner, key, species_id, slot, body.instance_ids)
+    @router.put("/sparks/{spark_id}/presets/{slot}")
+    async def put_preset(spark_id: str, slot: int, body: PresetBody, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
+        return await collection.put_preset(owner, key, spark_id, slot, body.instance_ids)
 
     @router.post("/encounters", status_code=201)
     async def roll_encounter(owner: str = Depends(requester), key: str = Depends(idempotency_key)):
@@ -152,7 +152,7 @@ def build_router(services: SparkServices) -> APIRouter:
 
     @router.post("/battles", status_code=201)
     async def start_battle(body: StartBody, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
-        return await coordinator.start(owner, key, encounter_id=body.encounter_id, species_id=body.species_id,
+        return await coordinator.start(owner, key, encounter_id=body.encounter_id, spark_id=body.spark_id,
                                        preset_slot=body.preset_slot, mode=body.mode, emblem_limit=body.emblem_limit)
 
     @router.get("/battles/{battle_id}")
@@ -185,13 +185,13 @@ def build_router(services: SparkServices) -> APIRouter:
     async def purchase(body: PurchaseBody, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
         if body.kind == "emblem":
             return await shop.buy_emblems(owner, key, body.tier, body.quantity)
-        if body.kind == "copies" and body.species_id:
-            return await shop.buy_copies(owner, key, body.species_id, body.tier)
-        raise HTTPException(400, 'kind must be "emblem" (with tier, quantity) or "copies" (with species_id, tier)')
+        if body.kind == "copies" and body.spark_id:
+            return await shop.buy_copies(owner, key, body.spark_id, body.tier)
+        raise HTTPException(400, 'kind must be "emblem" (with tier, quantity) or "copies" (with spark_id, tier)')
 
-    @router.post("/species/{species_id}/sales", status_code=201)
-    async def sell(species_id: str, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
-        return await shop.sell_copy(owner, key, species_id)
+    @router.post("/sparks/{spark_id}/sales", status_code=201)
+    async def sell(spark_id: str, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
+        return await shop.sell_copy(owner, key, spark_id)
 
     return router
 

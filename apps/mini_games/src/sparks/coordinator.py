@@ -122,16 +122,16 @@ class RoundCoordinator:
     # -- starting ------------------------------------------------------------------
 
     async def start(
-        self, owner: str, key: str, *, encounter_id: str, species_id: str, preset_slot: int | None,
+        self, owner: str, key: str, *, encounter_id: str, spark_id: str, preset_slot: int | None,
         mode: str, emblem_limit: str | None,
     ) -> dict[str, Any]:
-        payload = {"encounter": encounter_id, "species": species_id, "slot": preset_slot, "mode": mode, "limit": emblem_limit}
+        payload = {"encounter": encounter_id, "spark": spark_id, "slot": preset_slot, "mode": mode, "limit": emblem_limit}
         if mode not in MODES:
             raise InvalidRequest(f"mode must be one of {', '.join(MODES)}")
         try:
             if emblem_limit is not None:
                 self._catalog.tier(emblem_limit)
-            self._catalog.species(species_id)
+            self._catalog.spark(spark_id)
         except CatalogError as error:
             raise InvalidRequest(str(error)) from error
         if preset_slot is not None:
@@ -145,23 +145,23 @@ class RoundCoordinator:
                 raise NotFound("no such encounter")
             if encounter.status != "pending":
                 raise WrongPhase(f"this encounter is already {encounter.status}")
-            spark = await tx.get_spark(owner, species_id)
+            spark = await tx.get_spark(owner, spark_id)
             if spark is None:
-                raise NotFound("you do not own that species")
+                raise NotFound("you do not own that Spark")
             now = self._clock.now()
             if spark.faint_until is not None and spark.faint_until > now:
                 raise SparkFainted(f"that Spark is fainted for another {spark.faint_until - now:.0f} seconds")
             instances = ()
             if preset_slot is not None:
-                preset = await tx.get_preset(owner, species_id, preset_slot)
+                preset = await tx.get_preset(owner, spark_id, preset_slot)
                 ids = list(preset.instance_ids) if preset else []
-                by_id = {p.id: p.instance() for p in await tx.get_personalities(owner, species_id, ids)}
+                by_id = {p.id: p.instance() for p in await tx.get_personalities(owner, spark_id, ids)}
                 instances = tuple(by_id[i] for i in ids if i in by_id)  # frozen for the whole battle
             if mode == "autonomous" and not instances:
                 raise InvalidRequest("that preset has no personalities; equip at least one")
             setup = BattleSetup(
-                self._engine.build_fighter(PLAYER, species_id, self._catalog.tier_for_copies(species_id, spark.copies), spark.level),
-                self._engine.build_fighter(WILD, encounter.species_id, encounter.tier_id, encounter.level),
+                self._engine.build_fighter(PLAYER, spark_id, self._catalog.tier_for_copies(spark_id, spark.copies), spark.level),
+                self._engine.build_fighter(WILD, encounter.spark_id, encounter.tier_id, encounter.level),
             )
             record = BattleRecord(
                 id=new_id(), owner=owner, encounter_id=encounter.id, status="active", phase="choosing", mode=mode,

@@ -38,18 +38,18 @@ CREATE TABLE emblems (
     owner TEXT NOT NULL, tier_id TEXT NOT NULL, count INTEGER NOT NULL CHECK (count >= 0),
     PRIMARY KEY (owner, tier_id));
 CREATE TABLE sparks (
-    owner TEXT NOT NULL, species_id TEXT NOT NULL, copies INTEGER NOT NULL CHECK (copies >= 0),
+    owner TEXT NOT NULL, spark_id TEXT NOT NULL, copies INTEGER NOT NULL CHECK (copies >= 0),
     level INTEGER NOT NULL, xp INTEGER NOT NULL, faint_until REAL,
-    PRIMARY KEY (owner, species_id));
+    PRIMARY KEY (owner, spark_id));
 CREATE TABLE personalities (
     seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, owner TEXT NOT NULL,
-    species_id TEXT NOT NULL, type_id TEXT NOT NULL, tier INTEGER NOT NULL, created_at REAL NOT NULL);
-CREATE INDEX personalities_by_species ON personalities (owner, species_id, seq);
+    spark_id TEXT NOT NULL, type_id TEXT NOT NULL, tier INTEGER NOT NULL, created_at REAL NOT NULL);
+CREATE INDEX personalities_by_spark ON personalities (owner, spark_id, seq);
 CREATE TABLE presets (
-    owner TEXT NOT NULL, species_id TEXT NOT NULL, slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 5),
-    instance_ids TEXT NOT NULL, PRIMARY KEY (owner, species_id, slot));
+    owner TEXT NOT NULL, spark_id TEXT NOT NULL, slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 5),
+    instance_ids TEXT NOT NULL, PRIMARY KEY (owner, spark_id, slot));
 CREATE TABLE encounters (
-    id TEXT PRIMARY KEY, owner TEXT NOT NULL, species_id TEXT NOT NULL, tier_id TEXT NOT NULL,
+    id TEXT PRIMARY KEY, owner TEXT NOT NULL, spark_id TEXT NOT NULL, tier_id TEXT NOT NULL,
     level INTEGER NOT NULL, status TEXT NOT NULL, wild_personalities TEXT NOT NULL, created_at REAL NOT NULL);
 CREATE INDEX encounters_by_owner ON encounters (owner, status);
 CREATE TABLE battles (
@@ -77,14 +77,14 @@ class SparkTransaction(Protocol):
     async def set_last_roll(self, owner: str, when: float) -> None: ...
     async def emblem_counts(self, owner: str) -> dict[str, int]: ...
     async def add_emblems(self, owner: str, tier_id: str, delta: int) -> None: ...
-    async def get_spark(self, owner: str, species_id: str) -> SparkRecord | None: ...
+    async def get_spark(self, owner: str, spark_id: str) -> SparkRecord | None: ...
     async def list_sparks(self, owner: str) -> list[SparkRecord]: ...
     async def put_spark(self, record: SparkRecord) -> None: ...
     async def add_personality(self, record: PersonalityRecord) -> None: ...
-    async def list_personalities(self, owner: str, species_id: str, limit: int, after_seq: int) -> list[PersonalityRecord]: ...
-    async def get_personalities(self, owner: str, species_id: str, ids: list[str]) -> list[PersonalityRecord]: ...
-    async def get_preset(self, owner: str, species_id: str, slot: int) -> PresetRecord | None: ...
-    async def list_presets(self, owner: str, species_id: str) -> list[PresetRecord]: ...
+    async def list_personalities(self, owner: str, spark_id: str, limit: int, after_seq: int) -> list[PersonalityRecord]: ...
+    async def get_personalities(self, owner: str, spark_id: str, ids: list[str]) -> list[PersonalityRecord]: ...
+    async def get_preset(self, owner: str, spark_id: str, slot: int) -> PresetRecord | None: ...
+    async def list_presets(self, owner: str, spark_id: str) -> list[PresetRecord]: ...
     async def put_preset(self, record: PresetRecord) -> None: ...
     async def add_encounter(self, record: EncounterRecord) -> None: ...
     async def get_encounter(self, owner: str, encounter_id: str) -> EncounterRecord | None: ...
@@ -172,81 +172,81 @@ class _SqliteTransaction:
 
     @staticmethod
     def _spark(row: sqlite3.Row) -> SparkRecord:
-        return SparkRecord(row["owner"], row["species_id"], row["copies"], row["level"], row["xp"], row["faint_until"])
+        return SparkRecord(row["owner"], row["spark_id"], row["copies"], row["level"], row["xp"], row["faint_until"])
 
-    async def get_spark(self, owner: str, species_id: str) -> SparkRecord | None:
-        row = await self._run("SELECT * FROM sparks WHERE owner = ? AND species_id = ?", (owner, species_id), "one")
+    async def get_spark(self, owner: str, spark_id: str) -> SparkRecord | None:
+        row = await self._run("SELECT * FROM sparks WHERE owner = ? AND spark_id = ?", (owner, spark_id), "one")
         return self._spark(row) if row else None
 
     async def list_sparks(self, owner: str) -> list[SparkRecord]:
-        rows = await self._run("SELECT * FROM sparks WHERE owner = ? ORDER BY species_id", (owner,), "all")
+        rows = await self._run("SELECT * FROM sparks WHERE owner = ? ORDER BY spark_id", (owner,), "all")
         return [self._spark(r) for r in rows]
 
     async def put_spark(self, record: SparkRecord) -> None:
         await self._run(
-            "INSERT INTO sparks (owner, species_id, copies, level, xp, faint_until) VALUES (?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT (owner, species_id) DO UPDATE SET copies = excluded.copies, level = excluded.level, "
+            "INSERT INTO sparks (owner, spark_id, copies, level, xp, faint_until) VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (owner, spark_id) DO UPDATE SET copies = excluded.copies, level = excluded.level, "
             "xp = excluded.xp, faint_until = excluded.faint_until",
-            (record.owner, record.species_id, record.copies, record.level, record.xp, record.faint_until),
+            (record.owner, record.spark_id, record.copies, record.level, record.xp, record.faint_until),
         )
 
     @staticmethod
     def _personality(row: sqlite3.Row) -> PersonalityRecord:
-        return PersonalityRecord(row["id"], row["owner"], row["species_id"], row["type_id"], row["tier"],
+        return PersonalityRecord(row["id"], row["owner"], row["spark_id"], row["type_id"], row["tier"],
                                  row["created_at"], row["seq"])
 
     async def add_personality(self, record: PersonalityRecord) -> None:
         await self._run(
-            "INSERT INTO personalities (id, owner, species_id, type_id, tier, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (record.id, record.owner, record.species_id, record.type_id, record.tier, record.created_at),
+            "INSERT INTO personalities (id, owner, spark_id, type_id, tier, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (record.id, record.owner, record.spark_id, record.type_id, record.tier, record.created_at),
         )
 
-    async def list_personalities(self, owner: str, species_id: str, limit: int, after_seq: int) -> list[PersonalityRecord]:
+    async def list_personalities(self, owner: str, spark_id: str, limit: int, after_seq: int) -> list[PersonalityRecord]:
         rows = await self._run(
-            "SELECT * FROM personalities WHERE owner = ? AND species_id = ? AND seq > ? ORDER BY seq LIMIT ?",
-            (owner, species_id, after_seq, limit), "all",
+            "SELECT * FROM personalities WHERE owner = ? AND spark_id = ? AND seq > ? ORDER BY seq LIMIT ?",
+            (owner, spark_id, after_seq, limit), "all",
         )
         return [self._personality(r) for r in rows]
 
-    async def get_personalities(self, owner: str, species_id: str, ids: list[str]) -> list[PersonalityRecord]:
+    async def get_personalities(self, owner: str, spark_id: str, ids: list[str]) -> list[PersonalityRecord]:
         if not ids:
             return []
         marks = ",".join("?" * len(ids))
         rows = await self._run(
-            f"SELECT * FROM personalities WHERE owner = ? AND species_id = ? AND id IN ({marks})",
-            (owner, species_id, *ids), "all",
+            f"SELECT * FROM personalities WHERE owner = ? AND spark_id = ? AND id IN ({marks})",
+            (owner, spark_id, *ids), "all",
         )
         return [self._personality(r) for r in rows]
 
-    async def get_preset(self, owner: str, species_id: str, slot: int) -> PresetRecord | None:
+    async def get_preset(self, owner: str, spark_id: str, slot: int) -> PresetRecord | None:
         row = await self._run(
-            "SELECT * FROM presets WHERE owner = ? AND species_id = ? AND slot = ?", (owner, species_id, slot), "one")
-        return PresetRecord(owner, species_id, slot, tuple(json.loads(row["instance_ids"]))) if row else None
+            "SELECT * FROM presets WHERE owner = ? AND spark_id = ? AND slot = ?", (owner, spark_id, slot), "one")
+        return PresetRecord(owner, spark_id, slot, tuple(json.loads(row["instance_ids"]))) if row else None
 
-    async def list_presets(self, owner: str, species_id: str) -> list[PresetRecord]:
+    async def list_presets(self, owner: str, spark_id: str) -> list[PresetRecord]:
         rows = await self._run(
-            "SELECT * FROM presets WHERE owner = ? AND species_id = ? ORDER BY slot", (owner, species_id), "all")
-        return [PresetRecord(owner, species_id, r["slot"], tuple(json.loads(r["instance_ids"]))) for r in rows]
+            "SELECT * FROM presets WHERE owner = ? AND spark_id = ? ORDER BY slot", (owner, spark_id), "all")
+        return [PresetRecord(owner, spark_id, r["slot"], tuple(json.loads(r["instance_ids"]))) for r in rows]
 
     async def put_preset(self, record: PresetRecord) -> None:
         await self._run(
-            "INSERT INTO presets (owner, species_id, slot, instance_ids) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT (owner, species_id, slot) DO UPDATE SET instance_ids = excluded.instance_ids",
-            (record.owner, record.species_id, record.slot, _dumps(list(record.instance_ids))),
+            "INSERT INTO presets (owner, spark_id, slot, instance_ids) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (owner, spark_id, slot) DO UPDATE SET instance_ids = excluded.instance_ids",
+            (record.owner, record.spark_id, record.slot, _dumps(list(record.instance_ids))),
         )
 
     # -- encounters ----------------------------------------------------------------
 
     @staticmethod
     def _encounter(row: sqlite3.Row) -> EncounterRecord:
-        return EncounterRecord(row["id"], row["owner"], row["species_id"], row["tier_id"], row["level"], row["status"],
+        return EncounterRecord(row["id"], row["owner"], row["spark_id"], row["tier_id"], row["level"], row["status"],
                                _instances(row["wild_personalities"]), row["created_at"])
 
     async def add_encounter(self, record: EncounterRecord) -> None:
         await self._run(
-            "INSERT INTO encounters (id, owner, species_id, tier_id, level, status, wild_personalities, created_at) "
+            "INSERT INTO encounters (id, owner, spark_id, tier_id, level, status, wild_personalities, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (record.id, record.owner, record.species_id, record.tier_id, record.level, record.status,
+            (record.id, record.owner, record.spark_id, record.tier_id, record.level, record.status,
              _dumps([i.to_dict() for i in record.wild_personalities]), record.created_at),
         )
 

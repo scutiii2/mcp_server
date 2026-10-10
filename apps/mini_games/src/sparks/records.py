@@ -19,7 +19,7 @@ class PlayerRecord:
 @dataclass(frozen=True)
 class SparkRecord:
     owner: str
-    species_id: str
+    spark_id: str
     copies: int
     level: int
     xp: int
@@ -30,7 +30,7 @@ class SparkRecord:
 class PersonalityRecord:
     id: str
     owner: str
-    species_id: str
+    spark_id: str
     type_id: str
     tier: int
     created_at: float
@@ -43,7 +43,7 @@ class PersonalityRecord:
 @dataclass(frozen=True)
 class PresetRecord:
     owner: str
-    species_id: str
+    spark_id: str
     slot: int
     instance_ids: tuple[str, ...]
 
@@ -52,7 +52,7 @@ class PresetRecord:
 class EncounterRecord:
     id: str
     owner: str
-    species_id: str
+    spark_id: str
     tier_id: str
     level: int
     status: str  # pending, declined, started or expired

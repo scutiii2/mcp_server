@@ -31,7 +31,7 @@ async def prompt_battle(tmp_path, picker, emblems=None):
         for tier, count in (emblems or {"rare": 2}).items():
             await tx.add_emblems("ann", tier, count)
     coord = env.coordinator(ScriptedPolicy(player=["catch"], wild=["attack"]), picker=picker)
-    view = await begin(env, coord, mode="autonomous", limit="rare", species="channeler", tier="normal", level=1)
+    view = await begin(env, coord, mode="autonomous", limit="rare", spark_id="channeler", tier="normal", level=1)
     prompt = await advance(coord, env, view)
     env.clock.advance(6)
     return env, coord, prompt

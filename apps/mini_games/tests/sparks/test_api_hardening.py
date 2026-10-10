@@ -14,9 +14,9 @@ FORBIDDEN_WORDS = ("seed", "draw", "counter", "pending", "probabilit")
 def test_an_oversized_or_negative_cursor_is_a_400_not_a_500(client):
     start_profile(client)
     for cursor in (2**63, 2**80, -1):
-        response = client.get(f"/sparks/species/guardian/personalities?cursor={cursor}", headers=headers())
+        response = client.get(f"/sparks/sparks/guardian/personalities?cursor={cursor}", headers=headers())
         assert response.status_code == 400 and "error" in response.json()
-    assert client.get(f"/sparks/species/guardian/personalities?cursor={2**63 - 1}", headers=headers()).status_code == 200
+    assert client.get(f"/sparks/sparks/guardian/personalities?cursor={2**63 - 1}", headers=headers()).status_code == 200
 
 
 def test_unknown_routes_and_wrong_methods_use_the_error_shape(client):

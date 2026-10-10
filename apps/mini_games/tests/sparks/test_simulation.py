@@ -11,8 +11,8 @@ sim = BattleSimulator(CATALOG)
 reader = HeuristicSituationReader(CATALOG.policy.default_aggression)
 
 
-def spark(species="striker", level=5, personalities=(), tier="normal"):
-    return Combatant(species, tier, level, personality_set(CATALOG, *personalities), reader)
+def spark(spark_id="striker", level=5, personalities=(), tier="normal"):
+    return Combatant(spark_id, tier, level, personality_set(CATALOG, *personalities), reader)
 
 
 def run(coro):

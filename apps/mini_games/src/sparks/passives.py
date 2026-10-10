@@ -1,4 +1,4 @@
-"""Species passives as small polymorphic objects.
+"""Spark passives as small polymorphic objects.
 
 Each passive overrides only the hooks it changes; the base class holds the
 neutral defaults, so the engine asks every passive the same questions.
@@ -13,7 +13,7 @@ from src.sparks.models import PassiveSpec
 
 
 class Passive:
-    """Neutral behavior: a species without a passive effect."""
+    """Neutral behavior: a Spark without a passive effect."""
 
     def start_buffs(self, essence: int) -> list[tuple[str, int]]:
         """(stat, amount) bonuses applied once when the battle starts."""

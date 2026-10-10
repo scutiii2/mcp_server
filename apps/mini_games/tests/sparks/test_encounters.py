@@ -20,23 +20,23 @@ def test_tier_follows_the_encounter_probabilities(u, tier):
     assert roll(10, u, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).tier_id == tier
 
 
-def test_regular_tiers_pick_uniformly_among_the_six_regular_species():
-    picked = [roll(10, 0.3, u, 0.0, 0.0, 0.0, 0.0).species_id for u in (0.0, 0.17, 0.34, 0.5, 0.67, 0.99)]
+def test_regular_tiers_pick_uniformly_among_the_six_regular_sparks():
+    picked = [roll(10, 0.3, u, 0.0, 0.0, 0.0, 0.0).spark_id for u in (0.0, 0.17, 0.34, 0.5, 0.67, 0.99)]
     assert picked == ["bruiser", "channeler", "guardian", "scout", "sentinel", "striker"]  # file-name order
 
 
-def test_forbidden_tier_is_always_the_forbidden_species_and_uses_one_fewer_draw():
-    assert roll(10, 0.9995, 0.0, 0.0, 0.0, 0.0).species_id == "forbidden"
+def test_forbidden_tier_is_always_the_forbidden_spark_and_uses_one_fewer_draw():
+    assert roll(10, 0.9995, 0.0, 0.0, 0.0, 0.0).spark_id == "forbidden"
 
 
-@pytest.mark.parametrize("highest,species_draw,low,high", [
+@pytest.mark.parametrize("highest,spark_draw,low,high", [
     (10, 0.0, 8, 12),
     (1, 0.0, 1, 3),
     (30, 0.0, 28, 30),
     (50, 0.0, 30, 30),  # a level-50 collection still meets valid regular enemies
 ])
-def test_enemy_level_window_is_clamped_to_the_species_cap(highest, species_draw, low, high):
-    levels = {roll(highest, 0.3, species_draw, u, 0.0, 0.0, 0.0).level for u in (0.0, 0.25, 0.5, 0.75, 0.999)}
+def test_enemy_level_window_is_clamped_to_the_spark_cap(highest, spark_draw, low, high):
+    levels = {roll(highest, 0.3, spark_draw, u, 0.0, 0.0, 0.0).level for u in (0.0, 0.25, 0.5, 0.75, 0.999)}
     assert min(levels) == low and max(levels) == high
 
 
@@ -90,7 +90,7 @@ def test_a_roll_creates_a_preview_without_personalities_and_starts_the_cooldown(
         return preview, profile, again, fetched, env.clock.now()
 
     preview, profile, again, fetched, now = run(scenario())
-    assert set(preview) == {"id", "species_id", "name", "tier_id", "level", "status", "created_at"}
+    assert set(preview) == {"id", "spark_id", "name", "tier_id", "level", "status", "created_at"}
     assert preview == again == fetched and preview["status"] == "pending"
     assert profile["pending_encounter"] == preview["id"] and profile["next_roll_at"] == now + COOLDOWN
 

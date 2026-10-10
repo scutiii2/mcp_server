@@ -105,12 +105,12 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 
 ### Encounter preparation
 
-- Preview the wild Spark's species, tier, and level before the player commits
+- Preview the wild Spark's kind, tier, and level before the player commits
   to battle. Its personalities remain hidden until successful capture.
 - After seeing the preview, the player can choose their Spark, personality
   preset, and autonomous EMBLEM tier limit before entering battle.
-- Encounters randomly select a species and Spark tier, with higher tiers
-  appearing less often and Forbidden the rarest. Forbidden-only species must
+- Encounters randomly select a kind of Spark and a Spark tier, with higher tiers
+  appearing less often and Forbidden the rarest. Forbidden-only Sparks must
   remain Forbidden rather than appearing in the regular tier progression.
 - Initial encounter tier probabilities are:
 
@@ -136,7 +136,7 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 - Players can decline an encounter preview for free. New encounters can be
   generated only once every 30 seconds, measured from generation of the previous
   encounter, to prevent instant repeated rolls for rare tiers.
-- Species-selection weights still need defining.
+- Spark-selection weights still need defining.
 
 ### New-player starting setup
 
@@ -148,16 +148,16 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   v1 types, and automatically equip its collected instance in the starter's
   first personality preset.
 - The player starts with five Normal EMBLEMs and zero Insignia.
-- Players choose their starter from three regular species. Their species
+- Players choose their starter from three regular Sparks. Their Spark
   identities still need defining; initial stats and ability sets are below.
 
-### V1 species roster
+### V1 Spark roster
 
-- V1 has six regular species and one Forbidden species.
-- Three of the regular species are offered as starter choices.
-- The other species are collected through encounters or regular-species shop
-  purchases; the Forbidden species remains capture-only.
-- Species identities remain to be designed. Initial stats, growth values,
+- V1 has six regular Sparks and one Forbidden Spark.
+- Three of the regular Sparks are offered as starter choices.
+- The other Sparks are collected through encounters or regular-Spark shop
+  purchases; the Forbidden Spark remains capture-only.
+- Spark identities remain to be designed. Initial stats, growth values,
   passives, active abilities, and base prices are recorded in this document.
 - The three starter roles have these initial level-1 Normal base stats:
 
@@ -171,7 +171,7 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   first. These are role labels and initial balance values, not finalized
   Spark names or evidence from balance simulations. Scout still uses the
   probabilistic SPEED order rule.
-- Initial starter growth per level is 10% of each species' corresponding base
+- Initial starter growth per level is 10% of each Spark's corresponding base
   stat, added linearly before the Spark-tier multiplier:
 
   | Starter role | HP growth | ESSENCE growth | SPEED growth |
@@ -181,7 +181,7 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   | Scout | +12 | +2.2 | +3.5 |
 
 - Keep fractional growth values in the definitions. Final stat rounding still
-  needs defining; growth for the other species remains open.
+  needs defining; growth for the other Sparks remains open.
 - Initial starter passives, available from level 1, are:
 
   | Starter role | Passive effect |
@@ -210,30 +210,30 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   the other starters use default one-attack protection expiring that round.
 - These are initial ability balance values, subject to battle simulation and
   tuning. Ability names remain to be chosen.
-- The remaining species have these initial base stats, before tier scaling:
+- The remaining Sparks have these initial base stats, before tier scaling:
 
-  | Species role | Base HP | Base ESSENCE | Base SPEED |
+  | Spark role | Base HP | Base ESSENCE | Base SPEED |
   |---|---:|---:|---:|
   | Sentinel | 180 | 18 | 10 |
   | Bruiser | 140 | 28 | 12 |
   | Channeler | 90 | 25 | 25 |
-  | Forbidden species | 200 | 40 | 30 |
+  | Forbidden Spark | 200 | 40 | 30 |
 
-- These four species also gain 10% of each corresponding base stat per level,
+- These four Sparks also gain 10% of each corresponding base stat per level,
   added linearly before tier scaling. Their per-level HP/ESSENCE/SPEED growth is
   Sentinel 18/1.8/1, Bruiser 14/2.8/1.2, Channeler 9/2.5/2.5, and Forbidden
   20/4/3. Together with the starters, this confirms 10%-of-base growth for the
   whole initial roster.
-- At level 1, the Forbidden species' ×4 multiplier yields 800 HP, 160 ESSENCE,
+- At level 1, the Forbidden Spark's ×4 multiplier yields 800 HP, 160 ESSENCE,
   and 120 SPEED. Its role label is not yet a finalized Spark name.
-- Initial passives for the remaining species are:
+- Initial passives for the remaining Sparks are:
 
-  | Species role | Passive effect |
+  | Spark role | Passive effect |
   |---|---|
   | Sentinel | DEFENSE gains additional rating equal to 50% of unbuffed ESSENCE. |
   | Bruiser | Against an opponent choosing DEFENSE, ATTACK adds raw damage equal to 25% of current ESSENCE. |
   | Channeler | Its SUPPORT buffs last one extra round. |
-  | Forbidden species | Species-specific active cooldowns are reduced by one round, to a minimum of one. |
+  | Forbidden Spark | Spark-specific active cooldowns are reduced by one round, to a minimum of one. |
 
 - Sentinel modifies a defense activation's rating, not a separate stacking
   defense effect. Its added rating uses ESSENCE before temporary buffs.
@@ -241,16 +241,16 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   including buffs, and added before defense mitigation. It uses the opponent's
   revealed DEFENSE choice, not information available during private selection.
 - Channeler's extension adds one round to its SUPPORT ability's base duration.
-- Forbidden's reduction applies to species-specific active abilities, not
+- Forbidden's reduction applies to Spark-specific active abilities, not
   basic ATTACK, FLEE, or CATCH, which already have no cooldown.
-- Initial active ability sets for the remaining species are:
+- Initial active ability sets for the remaining Sparks are:
 
-  | Species role | Level 1 | Level 10 | Level 20 |
+  | Spark role | Level 1 | Level 10 | Level 20 |
   |---|---|---|---|
   | Sentinel | DEFENSE: 300% ESSENCE; cooldown 1 | SUPPORT: ESSENCE bonus equal to 50% unbuffed ESSENCE; duration 2 rounds; cooldown 2 | ATTACK: 125% ESSENCE; cooldown 2 |
   | Bruiser | ATTACK: 175% ESSENCE; cooldown 1 | DEFENSE: 100% ESSENCE; cooldown 1 | SUPPORT: ESSENCE bonus equal to 50% unbuffed ESSENCE; duration 2 rounds; cooldown 2 |
   | Channeler | SUPPORT: ESSENCE bonus equal to 75% unbuffed ESSENCE; duration 2 rounds; cooldown 2 | ATTACK: 125% ESSENCE; cooldown 1 | DEFENSE: 100% ESSENCE; cooldown 1 |
-  | Forbidden species | ATTACK: 200% ESSENCE; cooldown 2 | DEFENSE: 300% ESSENCE; cooldown 2 | SUPPORT: ESSENCE bonus equal to 100% unbuffed ESSENCE; duration 2 rounds; cooldown 3 |
+  | Forbidden Spark | ATTACK: 200% ESSENCE; cooldown 2 | DEFENSE: 300% ESSENCE; cooldown 2 | SUPPORT: ESSENCE bonus equal to 100% unbuffed ESSENCE; duration 2 rounds; cooldown 3 |
 
 - The table lists base cooldowns and durations. Channeler's passive extends
   its SUPPORT duration from two rounds to three. Forbidden's passive changes
@@ -261,18 +261,18 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 ### Sparks and abilities
 
 - Spark stats include HP, ESSENCE, and SPEED.
-- Each species defines its own base HP, ESSENCE, and SPEED. Members of the
-  same species share these base stats; species differences create distinct
+- Each Spark defines its own base HP, ESSENCE, and SPEED. Members of the
+  same Spark share these base stats; differences between Sparks create distinct
   battle styles, and personalities supply behavioral variation.
-- HP, ESSENCE, and SPEED use linear, species-specific level growth followed by
+- HP, ESSENCE, and SPEED use linear, Spark-specific level growth followed by
   a Spark-tier multiplier:
 
   ```text
-  Stat = (species base stat + growth per level × (level − 1))
+  Stat = (Spark base stat + growth per level × (level − 1))
          × Spark-tier multiplier
   ```
 
-- Each species defines separate base and per-level growth values for HP,
+- Each Spark defines separate base and per-level growth values for HP,
   ESSENCE, and SPEED. Tier changes recalculate stats without changing level.
   Numerical growth values and rounding remain to be defined.
 - Initial Spark-tier stat multipliers apply to HP, ESSENCE, and SPEED:
@@ -292,14 +292,14 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   consume ESSENCE; ability strength scales from ESSENCE and availability is
   governed by cooldowns.
 - Each Spark can have one passive ability and up to three active abilities.
-- Each species has a fixed species-specific ability set: one passive and up to
+- Each Spark has a fixed ability set: one passive and up to
   three active abilities in v1. Personalities affect how Laya uses that set,
-  rather than changing which abilities the species has.
-- The passive and first species-specific active ability unlock at level 1.
+  rather than changing which abilities the Spark has.
+- The passive and first Spark-specific active ability unlock at level 1.
   The second active unlocks at level 10 and the third at level 20, if those
-  abilities exist in the species' set.
+  abilities exist in the Spark's set.
 - Basic ATTACK, FLEE, and CATCH are available from the start, separate from
-  the three species-specific active ability slots. This confirms the previously
+  the three Spark-specific active ability slots. This confirms the previously
   proposed universal-action slot accounting for FLEE and CATCH.
 - Every Spark has an always-available basic ATTACK with no cooldown,
   separate from its three active ability slots. Its rating is 100% of ESSENCE:
@@ -315,7 +315,7 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   rather than multiplying them. Base SPEED 50 with bonuses of +10 and +15
   becomes SPEED 75.
 - SUPPORT buff magnitudes use the Spark's ESSENCE before temporary buffs,
-  including its normal species, level, and Spark-tier scaling. Refreshing an
+  including its normal base stats, level, and Spark-tier scaling. Refreshing an
   ESSENCE buff cannot strengthen that buff recursively: with 100 unbuffed
   ESSENCE, a 20% ESSENCE buff grants +20 each time.
 - ATTACK and DEFENSE can benefit from temporarily increased ESSENCE. Within-round
@@ -330,10 +330,10 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 - Cooldowns count full rounds after use. An ability used in round 1 with a
   one-round cooldown is unavailable in round 2 and available again in round 3;
   a two-round cooldown blocks rounds 2 and 3, returning in round 4.
-- Species-specific ability cooldown lengths remain to be assigned. Whether
+- Spark-specific ability cooldown lengths remain to be assigned. Whether
   selecting an action that never resolves starts its cooldown needs defining.
 - Every Spark also has universal FLEE and CATCH actions outside the three
-  species-specific active ability slots.
+  Spark-specific active ability slots.
 - Wild Sparks cannot use CATCH to collect the player's Spark; that
   capability is restricted to NPC players. Wild CATCH can only obstruct FLEE;
   it applies the normal ESSENCE-based escape reduction and uses no EMBLEM.
@@ -359,12 +359,12 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   awards one source instance uniformly, following the confirmed award rule.
 - Personality profiles do not evolve automatically through leveling or Spark
   tier changes. Equipped personalities can be changed through player presets.
-- Each player has only one captured active Spark per species. Later captures
-  of that species are absorbed into that Spark rather than retained as
+- Each player has only one captured active Spark per kind of Spark. Later captures
+  of that Spark are absorbed into that Spark rather than retained as
   separate playable individuals. This supersedes separate-individual ownership.
-- Personality pools are scoped to the player's collected species: personalities
-  acquired from a species can only be equipped by that species. Duplicate
-  captures contribute to that species' Spark and personality pool.
+- Personality pools are scoped to the player's collected Sparks: personalities
+  acquired from a Spark can only be equipped by that Spark. Duplicate
+  captures contribute to that Spark and its personality pool.
 - Each capture awards one randomly selected personality from the captured
   Spark to the player. The user has not specified that the source loses it.
 - Players can create personality presets and equip them for captured Sparks
@@ -402,11 +402,11 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 - Wild Sparks' personalities are hidden before capture. A successful capture
   reveals all of that Spark's personalities, including those not awarded
   (the discarded personalities).
-- Only one personality instance is awarded to the player's species pool.
+- Only one personality instance is awarded to the player's Spark pool.
   Every personality instance on the captured Spark has an equal selection
   chance, regardless of its type or tier. With three instances, each has a
   one-in-three chance. Discarded instances are revealed but not added to the pool.
-- The recipient pool is the captured Spark's species pool. The precise award
+- The recipient pool is the captured Spark's pool. The precise award
   timing still needs defining.
 - Each personality has three tier levels.
 - Per-personality total weight budgets grow with personality tier:
@@ -591,7 +591,7 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 - The capture model presented with this rule is:
 
   ```text
-  Full-health resistance = species base resistance × tier multiplier
+  Full-health resistance = Spark base resistance × tier multiplier
   Capture resistance = Full-health resistance
                        × [HP floor + (1 − HP floor) × current HP / max HP]
   Capture chance = 100% × EMBLEM strength
@@ -610,12 +610,12 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   | Forbidden | 3,200 | ×128 |
 
 - Capture-resistance multipliers are separate from battle-stat multipliers.
-  For a species with base resistance 100, a matching EMBLEM gives 50% success
+  For a Spark with base resistance 100, a matching EMBLEM gives 50% success
   at full HP for regular tiers, but 20% for Forbidden. Forbidden's 80% floor
   limits the low-HP chance to approximately 23.8% with its matching EMBLEM.
-- Every species uses 100 base capture resistance in v1. Spark tier and
-  remaining HP determine capture difficulty; species still differ through
-  battle stats, abilities, and personalities. Species-specific base capture
+- Every Spark uses 100 base capture resistance in v1. Spark tier and
+  remaining HP determine capture difficulty; Sparks still differ through
+  battle stats, abilities, and personalities. Spark-specific base capture
   resistance can be considered in later versions.
 - The earlier illustrative Forbidden resistance of 1,000 and EMBLEM strength
   of 100 were examples, superseded as balance guidance by the table above.
@@ -662,10 +662,10 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   to the previous tier. Unlocked tiers are not permanent.
 - Every successful capture awards absorbed copies, including the first capture
   of that Spark.
-- The first capture of a species creates its collected Spark at level 1,
-  rather than preserving the wild Spark's level. For regular species, the
+- The first capture of a kind of Spark creates the player's collected Spark at level 1,
+  rather than preserving the wild Spark's level. For regular Sparks, the
   owned tier is determined by absorbed-copy count, including the first capture's
-  awarded copies; Forbidden species remain Forbidden.
+  awarded copies; Forbidden Sparks remain Forbidden.
 - Rewards are based on the captured Spark's tier:
 
   | Captured tier | Copies awarded |
@@ -724,10 +724,10 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 - Losses and escapes do not award Insignia.
 - Successful capture awards both absorbed copies and Insignia.
 - Players can buy EMBLEMs and Sparks with Insignia.
-- The v1 Spark shop offers all six regular species in the five regular
+- The v1 Spark shop offers all six regular Sparks in the five regular
   tiers, with no stock limit; purchases are constrained by available Insignia.
   Forbidden Sparks are excluded.
-- Buying a previously unowned species creates its Spark at level 1. Buying
+- Buying a previously unowned Spark creates it at level 1. Buying
   additional copies preserves the existing Spark's level.
 - Initial EMBLEM shop price is 20% of its strength, in Insignia:
 
@@ -742,11 +742,11 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 
 - These prices are initial balance values; Forbidden remains the most expensive
   EMBLEM tier.
-- Buying a Spark unlocks its species if unowned, or adds absorbed copies
-  to the player's existing Spark of that species. Purchases do not award
+- Buying a Spark unlocks it if unowned, or adds absorbed copies
+  to the player's existing Spark of that kind. Purchases do not award
   personalities; apart from the starter's one random personality, personalities
   are acquired only through successful captures.
-- A newly purchased species without collected personalities can be played
+- A newly purchased Spark without collected personalities can be played
   manually until capture supplies personalities for its autonomous presets.
 - Shop purchases grant the same absorbed-copy rewards as captures for regular
   tiers: Normal 1, Rare 2, Legendary 3, Royalty 4, Ascended 5. The purchased tier
@@ -761,13 +761,13 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 - Initial price for selling one absorbed copy is:
 
   ```text
-  Sale value = species base price × current Spark-tier stat multiplier
+  Sale value = Spark base price × current Spark-tier stat multiplier
                × [1 + 0.05 × (Spark level − 1)]
   ```
 
 - Calculate sale value using the owned Spark's tier and level before removing
   the copy, then round down to whole Insignia. Each level above 1 adds 5% of the
-  tier-adjusted base price. Species base prices still need assigning.
+  tier-adjusted base price. Spark base prices still need assigning.
 - Initial regular-Spark purchase price is:
 
   ```text
@@ -779,10 +779,10 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   and its level to calculate the per-copy sale value. This keeps purchase cost
   above the immediate resale value of the granted copies, including purchases
   that cross an upgrade threshold. Existing levels are not reset by this pricing
-  calculation; a shop-unlocked species starts at level 1.
-- Initial species base prices, in Insignia, are:
+  calculation; a shop-unlocked Spark starts at level 1.
+- Initial Spark base prices, in Insignia, are:
 
-  | Species role | Base price |
+  | Spark role | Base price |
   |---|---:|
   | Guardian | 100 |
   | Striker | 120 |
@@ -790,7 +790,7 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   | Sentinel | 140 |
   | Bruiser | 130 |
   | Channeler | 150 |
-  | Forbidden species | 1,000 |
+  | Forbidden Spark | 1,000 |
 
 - These base prices feed the sale and purchase formulas. Forbidden's price
   affects sales only because Forbidden Sparks remain capture-only.
@@ -799,11 +799,11 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 
 ### Gameplay and content
 
-- Finalize species identities and ability names. All seven
+- Finalize Spark identities and ability names. All seven
   initial stat/growth tables, passives, and active ability sets are confirmed.
 - Define any personality management/discard flow if needed; there is no gameplay
   storage cap in v1.
-- Define species-selection weights within regular and Forbidden encounter pools.
+- Define Spark-selection weights within regular and Forbidden encounter pools.
 
 ### Engineering details for the eventual specification
 
@@ -863,7 +863,7 @@ Do not treat a suggestion as approved simply because the conversation moved on.
 - Capture-time selection, personality locks, and skipping replacement when all
   slots were locked were subsequently superseded by a personality pool with one
   random personality awarded per capture and player-created equipped presets.
-  Pools were subsequently confirmed as species-specific. The lock mechanism was
+  Pools were subsequently confirmed as Spark-specific. The lock mechanism was
   then explicitly removed; each Spark can have up to five presets.
 - A highest-tier-only personality pool was briefly selected, then superseded:
   collected personalities are separate entries, including identical type/tier
@@ -883,10 +883,10 @@ Do not treat a suggestion as approved simply because the conversation moved on.
   Spark. The user corrected this: only NPC players can capture player
   Sparks. Capture-loss and zero-copy faint rules apply to those NPC captures,
   not collection attempts by wild opponents.
-- A single collection entry per species was initially proposed and rejected.
-  The user then considered separate same-species individuals with different
+- A single collection entry per Spark was initially proposed and rejected.
+  The user then considered separate same-Spark individuals with different
   personalities. This was subsequently replaced by one active captured Spark
-  per species that absorbs later same-species captures; species-specific
+  per Spark that absorbs later same-Spark captures; Spark-specific
   personality pools and presets provide behavior variation instead.
 
 - 2026-10-10: Laya choosing each action was replaced by an engine-side action

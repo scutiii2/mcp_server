@@ -16,7 +16,7 @@ from src.sparks.runtime import Clock, RandomSource, new_id
 
 @dataclass(frozen=True)
 class RolledEncounter:
-    species_id: str
+    spark_id: str
     tier_id: str
     level: int
     personalities: tuple[PersonalityInstance, ...]
@@ -43,11 +43,11 @@ class EncounterRoller:
     def roll(self, highest_level: int, rng: RandomSource) -> RolledEncounter:
         tier_id = self._tier(rng.next())
         if tier_id == self._catalog.forbidden_tier.id:
-            species = self._catalog.forbidden_species()
+            spec = self._catalog.forbidden_spark()
         else:
-            regular = self._catalog.regular_species()
-            species = regular[self._pick(len(regular), rng.next())]
-        cap = self._catalog.level_cap(species.id)
+            regular = self._catalog.regular_sparks()
+            spec = regular[self._pick(len(regular), rng.next())]
+        cap = self._catalog.level_cap(spec.id)
         window = self._catalog.economy.encounter_level_window
         low = min(max(highest_level - window, 1), cap)
         high = min(max(highest_level + window, 1), cap)
@@ -64,7 +64,7 @@ class EncounterRoller:
                     tier = number
                     break
             instances.append(PersonalityInstance(new_id(), type_id, tier))
-        return RolledEncounter(species.id, tier_id, level, tuple(instances))
+        return RolledEncounter(spec.id, tier_id, level, tuple(instances))
 
 
 class EncounterService:
@@ -75,9 +75,9 @@ class EncounterService:
         self._roller = EncounterRoller(catalog)
 
     def preview(self, record: EncounterRecord) -> dict[str, Any]:
-        """What the player may see: species, tier and level, never the personalities."""
-        species = self._catalog.species(record.species_id)
-        return {"id": record.id, "species_id": record.species_id, "name": species.name,
+        """What the player may see: the Spark, tier and level, never the personalities."""
+        spec = self._catalog.spark(record.spark_id)
+        return {"id": record.id, "spark_id": record.spark_id, "name": spec.name,
                 "tier_id": record.tier_id, "level": record.level, "status": record.status,
                 "created_at": record.created_at}
 
@@ -96,7 +96,7 @@ class EncounterService:
                 await tx.set_encounter_status(previous.id, "expired")
             highest = max(s.level for s in await tx.list_sparks(owner))
             rolled = self._roller.roll(highest, self._rng)
-            record = EncounterRecord(new_id(), owner, rolled.species_id, rolled.tier_id, rolled.level, "pending",
+            record = EncounterRecord(new_id(), owner, rolled.spark_id, rolled.tier_id, rolled.level, "pending",
                                      rolled.personalities, now)
             await tx.add_encounter(record)
             await tx.set_last_roll(owner, now)

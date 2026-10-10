@@ -72,7 +72,7 @@ def test_unknown_tier_is_a_catalog_error(tmp_path):
     run(scenario())
 
 
-def test_buying_a_new_species_starts_it_at_level_one(tmp_path):
+def test_buying_a_new_spark_starts_it_at_level_one(tmp_path):
     async def scenario():
         env = make(tmp_path)
         await env.start_player()
@@ -84,11 +84,11 @@ def test_buying_a_new_species_starts_it_at_level_one(tmp_path):
 
     bought, profile = run(scenario())
     assert bought["price"] == 2 * 1 * 140 and bought["copies_granted"] == 1
-    sentinel = next(s for s in profile["sparks"] if s["species_id"] == "sentinel")
+    sentinel = next(s for s in profile["sparks"] if s["spark_id"] == "sentinel")
     assert (sentinel["level"], sentinel["copies"]) == (1, 1) and profile["insignia"] == 1000 - 280
 
 
-def test_buying_keeps_an_owned_species_level_and_prices_at_the_resulting_tier(tmp_path):
+def test_buying_keeps_an_owned_spark_level_and_prices_at_the_resulting_tier(tmp_path):
     async def scenario():
         env = make(tmp_path)
         await env.start_player()
@@ -105,7 +105,7 @@ def test_buying_keeps_an_owned_species_level_and_prices_at_the_resulting_tier(tm
     assert (guardian["level"], guardian["xp"], guardian["copies"]) == (11, 40, 11)
 
 
-def test_the_forbidden_species_and_tier_cannot_be_bought(tmp_path):
+def test_the_forbidden_spark_and_tier_cannot_be_bought(tmp_path):
     async def scenario():
         env = make(tmp_path)
         await env.start_player()
@@ -152,17 +152,17 @@ def test_selling_never_removes_the_owned_spark_or_causes_fainting(tmp_path):
     assert spark["copies"] == 0 and spark["fainted"] is False
 
 
-@pytest.mark.parametrize("species_id", [s.id for s in CATALOG.regular_species()])
+@pytest.mark.parametrize("spark_id", [s.id for s in CATALOG.regular_sparks()])
 @pytest.mark.parametrize("package", ["normal", "rare", "legendary", "royalty", "ascended"])
 @pytest.mark.parametrize("start_copies,level", [(0, 1), (8, 7), (39, 30), (99, 12), (249, 30)])
-def test_buying_then_reselling_never_makes_a_profit(species_id, package, start_copies, level):
-    owned = SparkRecord("ann", species_id, start_copies, level, 0)
+def test_buying_then_reselling_never_makes_a_profit(spark_id, package, start_copies, level):
+    owned = SparkRecord("ann", spark_id, start_copies, level, 0)
     price, granted, resulting = _price(owned, package)
     resale = 0
     copies = owned.copies + granted
     for _ in range(granted):
-        tier = CATALOG.tier_for_copies(species_id, copies)
-        resale += CATALOG.sale_value(species_id, tier, level)
+        tier = CATALOG.tier_for_copies(spark_id, copies)
+        resale += CATALOG.sale_value(spark_id, tier, level)
         copies -= 1
     assert resale < price
 
@@ -170,16 +170,16 @@ def test_buying_then_reselling_never_makes_a_profit(species_id, package, start_c
 def _price(owned, package):
     from src.sparks.shop import ShopService
 
-    return ShopService(None, CATALOG, None).copy_price(owned.species_id, owned, package)
+    return ShopService(None, CATALOG, None).copy_price(owned.spark_id, owned, package)
 
 
-def test_a_species_that_is_fighting_cannot_be_bought_or_sold_but_others_can(tmp_path):
+def test_a_spark_that_is_fighting_cannot_be_bought_or_sold_but_others_can(tmp_path):
     async def scenario():
         env = make(tmp_path)
         await env.start_player()
         await env.give(insignia=5000, guardian=SparkRecord("ann", "guardian", 3, 1, 0))
         async with env.repo.transaction() as tx:
-            await tx.add_battle(battle_record())  # its fighter is the guardian species by default
+            await tx.add_battle(battle_record())  # its fighter is the guardian Spark by default
         with pytest.raises(WrongPhase):
             await env.shop.buy_copies("ann", "c1", "guardian", "normal")
         with pytest.raises(WrongPhase):

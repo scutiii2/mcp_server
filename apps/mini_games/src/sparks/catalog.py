@@ -1,4 +1,4 @@
-"""The versioned game catalog: species, abilities, tiers, personalities, the
+"""The versioned game catalog: Sparks, abilities, tiers, personalities, the
 economy and the action-policy numbers. Loaded and validated once at startup.
 
 Balance numbers are initial values; changing the file affects future battles
@@ -37,7 +37,7 @@ class TierSpec:
 
 
 @dataclass(frozen=True)
-class SpeciesSpec:
+class SparkSpec:
     id: str
     name: str
     starter: bool
@@ -93,8 +93,8 @@ def _require(raw: Mapping[str, Any], key: str, where: str) -> Any:
     return raw[key]
 
 
-def _ability(raw: Mapping[str, Any], species_id: str) -> AbilitySpec:
-    where = f"species {species_id!r} ability {raw.get('id')!r}"
+def _ability(raw: Mapping[str, Any], spark_id: str) -> AbilitySpec:
+    where = f"spark {spark_id!r} ability {raw.get('id')!r}"
     ability = AbilitySpec(
         id=_require(raw, "id", where), name=_require(raw, "name", where),
         unlock_level=_require(raw, "unlock_level", where), category=_require(raw, "category", where),
@@ -110,9 +110,9 @@ def _ability(raw: Mapping[str, Any], species_id: str) -> AbilitySpec:
     return ability
 
 
-def _species(raw: Mapping[str, Any]) -> SpeciesSpec:
-    sid = _require(raw, "id", "species")
-    where = f"species {sid!r}"
+def _spark_spec(raw: Mapping[str, Any]) -> SparkSpec:
+    sid = _require(raw, "id", "spark")
+    where = f"spark {sid!r}"
     base, growth = _require(raw, "base", where), _require(raw, "growth", where)
     if set(base) != set(STATS) or set(growth) != set(STATS):
         raise CatalogError(f"{where}: base and growth need exactly hp, essence and speed")
@@ -120,7 +120,7 @@ def _species(raw: Mapping[str, Any]) -> SpeciesSpec:
     if tuple(a.unlock_level for a in abilities) != ABILITY_UNLOCK_LEVELS:
         raise CatalogError(f"{where}: abilities must unlock at levels {ABILITY_UNLOCK_LEVELS}")
     passive = _require(raw, "passive", where)
-    return SpeciesSpec(
+    return SparkSpec(
         id=sid, name=_require(raw, "name", where), starter=bool(raw.get("starter")), forbidden=bool(raw.get("forbidden")),
         base_price=_require(raw, "base_price", where), base=dict(base), growth=dict(growth),
         passive=PassiveSpec(_require(passive, "kind", f"{where} passive"), dict(passive.get("params", {}))), abilities=abilities,
@@ -151,14 +151,14 @@ class Catalog:
             raise CatalogError("personality ids must be unique")
         policy = dict(_require(raw, "policy", "catalog"))
         self.policy = PolicySpec(**policy)
-        species = [_species(s) for s in _require(raw, "sparks", "catalog")]
-        self._species = {s.id: s for s in species}
-        if len(self._species) != len(species):
-            raise CatalogError("species ids must be unique")
-        # Action keys and cooldowns key on the ability id, so it is unique across species.
-        ability_ids = [a.id for s in species for a in s.abilities]
+        specs = [_spark_spec(s) for s in _require(raw, "sparks", "catalog")]
+        self._sparks = {s.id: s for s in specs}
+        if len(self._sparks) != len(specs):
+            raise CatalogError("spark ids must be unique")
+        # Action keys and cooldowns key on the ability id, so it is unique across Sparks.
+        ability_ids = [a.id for s in specs for a in s.abilities]
         if len(set(ability_ids)) != len(ability_ids):
-            raise CatalogError("ability ids must be unique across all species")
+            raise CatalogError("ability ids must be unique across all Sparks")
         self._tiers = {t.id: t for t in self.tiers}
         self._validate()
 
@@ -172,9 +172,9 @@ class Catalog:
         for tier in self.tiers:
             if tier.stat_multiplier <= 0 or tier.capture_multiplier <= 0 or tier.encounter_probability < 0:
                 raise CatalogError(f"tier {tier.id!r}: multipliers must be positive and probability non-negative")
-        for species in self._species.values():
-            if species.base_price <= 0:
-                raise CatalogError(f"species {species.id!r}: base_price must be positive")
+        for spec in self._sparks.values():
+            if spec.base_price <= 0:
+                raise CatalogError(f"spark {spec.id!r}: base_price must be positive")
         if not math.isclose(sum(t.encounter_probability for t in self.tiers), 1.0, abs_tol=1e-9):
             raise CatalogError("tier encounter probabilities must sum to 1")
         if not math.isclose(sum(self.economy.personality_tier_probabilities), 1.0, abs_tol=1e-9):
@@ -185,11 +185,11 @@ class Catalog:
         thresholds = [t.copy_threshold for t in self.regular_tiers]
         if thresholds[0] != 0 or thresholds != sorted(set(thresholds)):
             raise CatalogError("regular copy thresholds must start at 0 and strictly increase")
-        if len([s for s in self._species.values() if s.starter]) != 3:
-            raise CatalogError("exactly three species must be starters")
-        if len([s for s in self._species.values() if s.forbidden]) != 1:
-            raise CatalogError("exactly one species must be Forbidden")
-        if any(s.starter and s.forbidden for s in self._species.values()):
+        if len([s for s in self._sparks.values() if s.starter]) != 3:
+            raise CatalogError("exactly three Sparks must be starters")
+        if len([s for s in self._sparks.values() if s.forbidden]) != 1:
+            raise CatalogError("exactly one Spark must be Forbidden")
+        if any(s.starter and s.forbidden for s in self._sparks.values()):
             raise CatalogError("a starter cannot be Forbidden")
         for personality in self.personalities.values():
             if not personality.categories or any(c not in CATEGORIES for c in personality.categories):
@@ -248,46 +248,46 @@ class Catalog:
         except KeyError:
             raise CatalogError(f"unknown tier {tier_id!r}") from None
 
-    def species(self, species_id: str) -> SpeciesSpec:
+    def spark(self, spark_id: str) -> SparkSpec:
         try:
-            return self._species[species_id]
+            return self._sparks[spark_id]
         except KeyError:
-            raise CatalogError(f"unknown species {species_id!r}") from None
+            raise CatalogError(f"unknown spark {spark_id!r}") from None
 
-    def has_species(self, species_id: str) -> bool:
-        return species_id in self._species
+    def has_spark(self, spark_id: str) -> bool:
+        return spark_id in self._sparks
 
-    def all_species(self) -> tuple[SpeciesSpec, ...]:
-        return tuple(self._species.values())
+    def all_sparks(self) -> tuple[SparkSpec, ...]:
+        return tuple(self._sparks.values())
 
-    def regular_species(self) -> tuple[SpeciesSpec, ...]:
-        return tuple(s for s in self._species.values() if not s.forbidden)
+    def regular_sparks(self) -> tuple[SparkSpec, ...]:
+        return tuple(s for s in self._sparks.values() if not s.forbidden)
 
-    def starter_species(self) -> tuple[SpeciesSpec, ...]:
-        return tuple(s for s in self._species.values() if s.starter)
+    def starter_sparks(self) -> tuple[SparkSpec, ...]:
+        return tuple(s for s in self._sparks.values() if s.starter)
 
-    def forbidden_species(self) -> SpeciesSpec:
-        return next(s for s in self._species.values() if s.forbidden)
+    def forbidden_spark(self) -> SparkSpec:
+        return next(s for s in self._sparks.values() if s.forbidden)
 
-    def level_cap(self, species_id: str) -> int:
-        return self.levels.forbidden_cap if self.species(species_id).forbidden else self.levels.regular_cap
+    def level_cap(self, spark_id: str) -> int:
+        return self.levels.forbidden_cap if self.spark(spark_id).forbidden else self.levels.regular_cap
 
-    def stat_value(self, species_id: str, level: int, tier_id: str, stat: str) -> int:
+    def stat_value(self, spark_id: str, level: int, tier_id: str, stat: str) -> int:
         """Full-precision stat, then floored to a positive whole number."""
-        species = self.species(species_id)
-        raw = (species.base[stat] + species.growth[stat] * (level - 1)) * self.tier(tier_id).stat_multiplier
+        spec = self.spark(spark_id)
+        raw = (spec.base[stat] + spec.growth[stat] * (level - 1)) * self.tier(tier_id).stat_multiplier
         return max(1, math.floor(raw + 1e-9))
 
-    def tier_for_copies(self, species_id: str, copies: int) -> str:
+    def tier_for_copies(self, spark_id: str, copies: int) -> str:
         """Highest regular tier whose threshold the copy count meets; Forbidden is fixed.
         A negative count clamps to the lowest tier."""
-        if self.species(species_id).forbidden:
+        if self.spark(spark_id).forbidden:
             return self.forbidden_tier.id
         reached = [t for t in self.regular_tiers if copies >= t.copy_threshold]
         return (reached or self.regular_tiers[:1])[-1].id
 
-    def sale_value(self, species_id: str, tier_id: str, level: int) -> int:
+    def sale_value(self, spark_id: str, tier_id: str, level: int) -> int:
         """Insignia for selling one copy of a Spark at this tier and level."""
-        species = self.species(species_id)
+        spec = self.spark(spark_id)
         factor = 1 + self.economy.sale_level_bonus * (level - 1)
-        return math.floor(species.base_price * self.tier(tier_id).stat_multiplier * factor + 1e-9)
+        return math.floor(spec.base_price * self.tier(tier_id).stat_multiplier * factor + 1e-9)

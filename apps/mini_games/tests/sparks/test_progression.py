@@ -50,10 +50,10 @@ def test_forbidden_copies_cap_at_one_hundred():
 
 # -- applying a terminal result ------------------------------------------------------
 
-def build_battle(player_species="guardian", wild_species="scout", wild_tier="normal", wild_level=10, wild_instances=None):
+def build_battle(player_spark="guardian", wild_spark="scout", wild_tier="normal", wild_level=10, wild_instances=None):
     setup = BattleSetup(
-        engine.build_fighter(PLAYER, player_species, "normal", 5),
-        engine.build_fighter(WILD, wild_species, wild_tier, wild_level),
+        engine.build_fighter(PLAYER, player_spark, "normal", 5),
+        engine.build_fighter(WILD, wild_spark, wild_tier, wild_level),
     )
     record = battle_record()
     instances = wild_instances or (PersonalityInstance("w1", "COWARD", 2), PersonalityInstance("w2", "BOLD", 3), PersonalityInstance("w3", "AGGRESSIVE", 1))
@@ -68,7 +68,7 @@ async def apply(terminal, battle, spark, *draws, others=()):
         for other in others:
             await tx.put_spark(other)
         result = await progression.apply_terminal(tx, battle, terminal, ScriptedRandom(*draws))
-        after = {s.species_id: s for s in await tx.list_sparks("ann")}
+        after = {s.spark_id: s for s in await tx.list_sparks("ann")}
         player = await tx.get_player("ann")
         personalities = {s: await tx.list_personalities("ann", s, 50, 0) for s in after}
     await repo.close()
@@ -93,8 +93,8 @@ def test_a_win_levels_up_with_carry():
     assert result["level_before"] == 1 and result["level_after"] == 2
 
 
-def test_capturing_an_unowned_species_starts_it_at_level_one_with_the_tiers_copies():
-    battle = build_battle(wild_species="channeler", wild_tier="rare")
+def test_capturing_an_unowned_spark_starts_it_at_level_one_with_the_tiers_copies():
+    battle = build_battle(wild_spark="channeler", wild_tier="rare")
     result, sparks, player, personalities = run(apply("captured", battle, FIGHTER, 0.5))
     new = sparks["channeler"]
     assert (new.level, new.xp, new.copies) == (1, 0, 2)  # Rare grants 2 copies
@@ -106,16 +106,16 @@ def test_capturing_an_unowned_species_starts_it_at_level_one_with_the_tiers_copi
     assert (sparks["guardian"].level, sparks["guardian"].xp) == (5, 280)  # 20 * 10 * 1.25 = 250 XP
 
 
-def test_capture_adds_copies_to_an_owned_species_and_tier_follows_the_count():
+def test_capture_adds_copies_to_an_owned_spark_and_tier_follows_the_count():
     owned = SparkRecord("ann", "scout", 8, 12, 40)
-    battle = build_battle(wild_species="scout", wild_tier="rare")
+    battle = build_battle(wild_spark="scout", wild_tier="rare")
     result, sparks, _, _ = run(apply("captured", battle, FIGHTER, 0.0, others=(owned,)))
     assert (sparks["scout"].copies, sparks["scout"].level) == (10, 12) and result["tier_id"] == "rare"
 
 
 @pytest.mark.parametrize("draw,index", [(0.0, 0), (0.33, 0), (0.34, 1), (0.99, 2)])
 def test_every_source_personality_is_equally_likely_to_be_awarded(draw, index):
-    battle = build_battle(wild_species="channeler")
+    battle = build_battle(wild_spark="channeler")
     result, _, _, _ = run(apply("captured", battle, FIGHTER, draw))
     assert result["awarded_personality"]["type"] == ["COWARD", "BOLD", "AGGRESSIVE"][index]
 
@@ -123,7 +123,7 @@ def test_every_source_personality_is_equally_likely_to_be_awarded(draw, index):
 def test_identical_personalities_stay_distinct_instances():
     same = (PersonalityInstance("a", "BOLD", 2), PersonalityInstance("b", "BOLD", 2))
     owned = SparkRecord("ann", "channeler", 1, 3, 0)
-    battle = build_battle(wild_species="channeler", wild_instances=same)
+    battle = build_battle(wild_spark="channeler", wild_instances=same)
 
     async def twice():
         repo = SqliteSparkRepository(":memory:")
@@ -143,14 +143,14 @@ def test_identical_personalities_stay_distinct_instances():
 
 def test_a_capped_forbidden_capture_still_pays_xp_insignia_and_a_personality():
     capped = SparkRecord("ann", "forbidden", 100, 40, 0)
-    battle = build_battle(wild_species="forbidden", wild_tier="forbidden", wild_level=20)
+    battle = build_battle(wild_spark="forbidden", wild_tier="forbidden", wild_level=20)
     result, sparks, player, personalities = run(apply("captured", battle, FIGHTER, 0.0, others=(capped,)))
     assert sparks["forbidden"].copies == 100 and result["copies_granted"] == 0
     assert player.insignia == 800 and len(personalities["forbidden"]) == 1
 
 
 def test_a_first_forbidden_capture_grants_one_copy():
-    battle = build_battle(wild_species="forbidden", wild_tier="forbidden", wild_level=3)
+    battle = build_battle(wild_spark="forbidden", wild_tier="forbidden", wild_level=3)
     result, sparks, _, _ = run(apply("captured", battle, FIGHTER, 0.0))
     assert (sparks["forbidden"].copies, sparks["forbidden"].level, result["tier_id"]) == (1, 1, "forbidden")
 

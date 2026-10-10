@@ -63,13 +63,13 @@ class BattleEngine:
 
     # -- setup ---------------------------------------------------------------------
 
-    def build_fighter(self, side: str, species_id: str, tier_id: str, level: int) -> Fighter:
-        species = self._catalog.species(species_id)
-        stat = lambda name: self._catalog.stat_value(species_id, level, tier_id, name)  # noqa: E731
+    def build_fighter(self, side: str, spark_id: str, tier_id: str, level: int) -> Fighter:
+        spec = self._catalog.spark(spark_id)
+        stat = lambda name: self._catalog.stat_value(spark_id, level, tier_id, name)  # noqa: E731
         return Fighter(
-            side=side, species_id=species_id, tier_id=tier_id, level=level,
+            side=side, spark_id=spark_id, tier_id=tier_id, level=level,
             max_hp=stat("hp"), essence=stat("essence"), speed=stat("speed"),
-            abilities=tuple(a for a in species.abilities if a.unlock_level <= level), passive=species.passive,
+            abilities=tuple(a for a in spec.abilities if a.unlock_level <= level), passive=spec.passive,
         )
 
     def start_state(self, setup: BattleSetup) -> BattleState:

@@ -23,11 +23,11 @@ def catalog():
 def test_shipped_catalog_is_valid(catalog):
     assert catalog.version == 1
     assert [t.id for t in catalog.tiers] == ["normal", "rare", "legendary", "royalty", "ascended", "forbidden"]
-    assert len(catalog.all_species()) == 7
-    assert [s.id for s in catalog.starter_species()] == ["guardian", "scout", "striker"]  # file-name order
-    assert catalog.forbidden_species().id == "forbidden"
-    assert len(catalog.regular_species()) == 6
-    assert [s.id for s in catalog.all_species()] == ["bruiser", "channeler", "forbidden", "guardian", "scout", "sentinel", "striker"]
+    assert len(catalog.all_sparks()) == 7
+    assert [s.id for s in catalog.starter_sparks()] == ["guardian", "scout", "striker"]  # file-name order
+    assert catalog.forbidden_spark().id == "forbidden"
+    assert len(catalog.regular_sparks()) == 6
+    assert [s.id for s in catalog.all_sparks()] == ["bruiser", "channeler", "forbidden", "guardian", "scout", "sentinel", "striker"]
 
 
 def test_stats_use_growth_then_tier_multiplier_and_floor(catalog):
@@ -39,10 +39,10 @@ def test_stats_use_growth_then_tier_multiplier_and_floor(catalog):
     assert catalog.stat_value("scout", 2, "normal", "speed") == 38  # 35 + 3.5 = 38.5 floored
 
 
-def test_every_species_grows_ten_percent_of_base(catalog):
-    for species in catalog.all_species():
+def test_every_spark_grows_ten_percent_of_base(catalog):
+    for spec in catalog.all_sparks():
         for stat in ("hp", "essence", "speed"):
-            assert species.growth[stat] == pytest.approx(species.base[stat] * 0.1)
+            assert spec.growth[stat] == pytest.approx(spec.base[stat] * 0.1)
 
 
 @pytest.mark.parametrize("copies,tier", [(0, "normal"), (9, "normal"), (10, "rare"), (39, "rare"), (40, "legendary"), (100, "royalty"), (250, "ascended"), (9999, "ascended")])
@@ -75,7 +75,7 @@ def _broken(raw, mutate):
     (lambda d: d["tiers"][0].update(encounter_probability=0.5), "sum to 1"),
     (lambda d: d["tiers"][1].update(id="normal"), "unique"),
     (lambda d: d["tiers"][2].update(copy_threshold=5), "strictly increase"),
-    (lambda d: _spark(d, "guardian").update(starter=False), "three species must be starters"),
+    (lambda d: _spark(d, "guardian").update(starter=False), "three Sparks must be starters"),
     (lambda d: _spark(d, "sentinel")["abilities"].pop(), "unlock at levels"),
     (lambda d: _spark(d, "guardian")["abilities"][1].pop("duration"), "SUPPORT needs"),
     (lambda d: _spark(d, "guardian")["abilities"][0].update(category="HEAL"), "category must be"),

@@ -21,7 +21,7 @@ def test_initialize_creates_the_starter_setup(tmp_path):
     profile, preset, pool = run(scenario())
     assert profile["insignia"] == 0 and profile["emblems"] == {"normal": 5}
     [spark] = profile["sparks"]
-    assert (spark["species_id"], spark["level"], spark["copies"], spark["tier_id"]) == ("scout", 1, 0, "normal")
+    assert (spark["spark_id"], spark["level"], spark["copies"], spark["tier_id"]) == ("scout", 1, 0, "normal")
     assert pool["items"][0]["type"] == "AGGRESSIVE" and pool["items"][0]["tier"] == 1
     assert preset["instance_ids"] == [pool["items"][0]["id"]]
 
@@ -119,7 +119,7 @@ def test_presets_hold_up_to_three_distinct_collected_instances(tmp_path):
     assert ok["instance_ids"] == ["b", "c", "d"] == stored["instance_ids"] and again["instance_ids"] == ["b"] and empty["instance_ids"] == []
 
 
-def test_a_preset_cannot_use_someone_elses_instances_or_an_unowned_species(tmp_path):
+def test_a_preset_cannot_use_someone_elses_instances_or_an_unowned_spark(tmp_path):
     async def scenario():
         env = make(tmp_path, 0.0, 0.0)
         await env.start_player("ann")

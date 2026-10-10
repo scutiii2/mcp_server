@@ -43,7 +43,7 @@ def client(config, tmp_path, clock):
 
 
 def start_profile(client, owner="ann", starter="guardian"):
-    response = client.post("/sparks/profile", json={"starter_species_id": starter}, headers=headers(owner))
+    response = client.post("/sparks/profile", json={"starter_spark_id": starter}, headers=headers(owner))
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -65,52 +65,52 @@ def test_the_requester_header_is_required(client):
 
 
 def test_mutations_need_an_idempotency_key(client):
-    response = client.post("/sparks/profile", json={"starter_species_id": "guardian"}, headers=headers(key=False))
+    response = client.post("/sparks/profile", json={"starter_spark_id": "guardian"}, headers=headers(key=False))
     assert response.status_code == 400 and "Idempotency-Key" in response.json()["error"]
 
 
 def test_the_catalog_is_readable_and_complete(client):
     data = client.get("/sparks/catalog", headers=headers(owner="anyone")).json()
-    assert len(data["species"]) == 7 and [t["id"] for t in data["tiers"]][-1] == "forbidden"
-    assert {s["id"] for s in data["species"] if s["starter"]} == {"guardian", "striker", "scout"}
+    assert len(data["sparks"]) == 7 and [t["id"] for t in data["tiers"]][-1] == "forbidden"
+    assert {s["id"] for s in data["sparks"] if s["starter"]} == {"guardian", "striker", "scout"}
     assert len(data["personalities"]) == 8
 
 
 # -- profile, personalities, presets -------------------------------------------------
 
 def test_profile_creation_is_once_and_idempotent(client):
-    first = client.post("/sparks/profile", json={"starter_species_id": "scout"}, headers=headers(key="same"))
-    again = client.post("/sparks/profile", json={"starter_species_id": "scout"}, headers=headers(key="same"))
-    other = client.post("/sparks/profile", json={"starter_species_id": "scout"}, headers=headers())
-    clash = client.post("/sparks/profile", json={"starter_species_id": "striker"}, headers=headers(key="same"))
+    first = client.post("/sparks/profile", json={"starter_spark_id": "scout"}, headers=headers(key="same"))
+    again = client.post("/sparks/profile", json={"starter_spark_id": "scout"}, headers=headers(key="same"))
+    other = client.post("/sparks/profile", json={"starter_spark_id": "scout"}, headers=headers())
+    clash = client.post("/sparks/profile", json={"starter_spark_id": "striker"}, headers=headers(key="same"))
     assert first.status_code == again.status_code == 201 and first.json() == again.json()
     assert other.status_code == 409 and clash.status_code == 409
     profile = client.get("/sparks/profile", headers=headers()).json()
-    assert profile["emblems"] == {"normal": 5} and profile["insignia"] == 0 and profile["sparks"][0]["species_id"] == "scout"
+    assert profile["emblems"] == {"normal": 5} and profile["insignia"] == 0 and profile["sparks"][0]["spark_id"] == "scout"
 
 
 def test_a_bad_starter_and_unknown_fields_are_400(client):
-    assert client.post("/sparks/profile", json={"starter_species_id": "forbidden"}, headers=headers()).status_code == 400
-    assert client.post("/sparks/profile", json={"starter_species_id": "guardian", "insignia": 9999}, headers=headers()).status_code == 400
+    assert client.post("/sparks/profile", json={"starter_spark_id": "forbidden"}, headers=headers()).status_code == 400
+    assert client.post("/sparks/profile", json={"starter_spark_id": "guardian", "insignia": 9999}, headers=headers()).status_code == 400
     assert client.post("/sparks/profile", json={}, headers=headers()).status_code == 400
 
 
 def test_profiles_are_private_to_their_owner(client):
     start_profile(client, "ann")
     assert client.get("/sparks/profile", headers=headers("bob")).status_code == 404
-    assert client.get("/sparks/species/guardian/personalities", headers=headers("bob")).status_code == 404
+    assert client.get("/sparks/sparks/guardian/personalities", headers=headers("bob")).status_code == 404
 
 
 def test_personalities_and_presets_over_http(client):
     start_profile(client)
-    pool = client.get("/sparks/species/guardian/personalities", headers=headers()).json()
+    pool = client.get("/sparks/sparks/guardian/personalities", headers=headers()).json()
     ids = [p["id"] for p in pool["items"]]
     assert len(ids) == 1 and pool["next_cursor"] is None
-    put = client.put("/sparks/species/guardian/presets/2", json={"instance_ids": ids}, headers=headers())
-    assert put.status_code == 200 and client.get("/sparks/species/guardian/presets/2", headers=headers()).json()["instance_ids"] == ids
-    assert client.put("/sparks/species/guardian/presets/2", json={"instance_ids": ["nope"]}, headers=headers()).status_code == 400
-    assert client.put("/sparks/species/guardian/presets/9", json={"instance_ids": []}, headers=headers()).status_code == 400
-    assert client.get("/sparks/species/guardian/personalities?limit=500", headers=headers()).status_code == 400
+    put = client.put("/sparks/sparks/guardian/presets/2", json={"instance_ids": ids}, headers=headers())
+    assert put.status_code == 200 and client.get("/sparks/sparks/guardian/presets/2", headers=headers()).json()["instance_ids"] == ids
+    assert client.put("/sparks/sparks/guardian/presets/2", json={"instance_ids": ["nope"]}, headers=headers()).status_code == 400
+    assert client.put("/sparks/sparks/guardian/presets/9", json={"instance_ids": []}, headers=headers()).status_code == 400
+    assert client.get("/sparks/sparks/guardian/personalities?limit=500", headers=headers()).status_code == 400
 
 
 # -- encounters ----------------------------------------------------------------------
@@ -137,7 +137,7 @@ def test_decline_over_http(client):
 def open_battle(client, mode="manual", **extra):
     start_profile(client)
     encounter = client.post("/sparks/encounters", headers=headers()).json()
-    body = {"encounter_id": encounter["id"], "species_id": "guardian", "preset_slot": 1, "mode": mode, **extra}
+    body = {"encounter_id": encounter["id"], "spark_id": "guardian", "preset_slot": 1, "mode": mode, **extra}
     response = client.post("/sparks/battles", json=body, headers=headers())
     assert response.status_code == 201, response.text
     return response.json()
@@ -216,8 +216,8 @@ def test_shop_over_http(client):
     start_profile(client)
     poor = client.post("/sparks/shop/purchases", json={"kind": "emblem", "tier": "rare", "quantity": 1}, headers=headers())
     assert poor.status_code == 409
-    assert client.post("/sparks/shop/purchases", json={"kind": "copies", "species_id": "sentinel", "tier": "normal"}, headers=headers()).status_code == 409
+    assert client.post("/sparks/shop/purchases", json={"kind": "copies", "spark_id": "sentinel", "tier": "normal"}, headers=headers()).status_code == 409
     assert client.post("/sparks/shop/purchases", json={"kind": "stock", "tier": "rare"}, headers=headers()).status_code == 400
     assert client.post("/sparks/shop/purchases", json={"kind": "emblem", "tier": "gold", "quantity": 1}, headers=headers()).status_code == 400
-    assert client.post("/sparks/species/guardian/sales", headers=headers()).status_code == 409  # nothing to sell
-    assert client.post("/sparks/species/dragon/sales", headers=headers()).status_code == 400
+    assert client.post("/sparks/sparks/guardian/sales", headers=headers()).status_code == 409  # nothing to sell
+    assert client.post("/sparks/sparks/dragon/sales", headers=headers()).status_code == 400

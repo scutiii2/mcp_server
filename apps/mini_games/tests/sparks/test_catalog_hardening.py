@@ -24,7 +24,7 @@ def _mutated(raw, mutate):
 
 
 @pytest.mark.parametrize("mutate,message", [
-    (lambda d: _spark(d, "striker").update(id=_spark(d, "guardian")["id"]), "species ids must be unique"),
+    (lambda d: _spark(d, "striker").update(id=_spark(d, "guardian")["id"]), "spark ids must be unique"),
     (lambda d: d["personalities"][1].update(id=d["personalities"][0]["id"]), "personality ids must be unique"),
     (lambda d: d["tiers"][1].update(id=d["tiers"][0]["id"]), "tier ids must be unique"),
     (lambda d: _spark(d, "striker")["abilities"][0].update(id=_spark(d, "guardian")["abilities"][0]["id"]), "ability ids must be unique"),
@@ -81,7 +81,7 @@ def sparks_dir(tmp_path):
 
 
 def test_a_copied_sparks_directory_loads(sparks_dir):
-    assert len(Catalog.load(CATALOG_PATH, sparks_dir).all_species()) == 7
+    assert len(Catalog.load(CATALOG_PATH, sparks_dir).all_sparks()) == 7
 
 
 def test_a_missing_sparks_directory_is_a_catalog_error(tmp_path):
@@ -127,7 +127,7 @@ def test_a_duplicate_spark_id_is_rejected(sparks_dir):
 
 def test_the_load_order_is_alphabetical(sparks_dir):
     catalog = Catalog.load(CATALOG_PATH, sparks_dir)
-    ids = [s.id for s in catalog.all_species()]
+    ids = [s.id for s in catalog.all_sparks()]
     assert ids == sorted(ids)
 
 

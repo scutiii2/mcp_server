@@ -31,9 +31,9 @@ class ProgressionService:
     def xp_needed(self, level: int) -> int:
         return self._catalog.levels.xp_per_level * level
 
-    def add_xp(self, species_id: str, level: int, xp: int, gained: int) -> tuple[int, int]:
+    def add_xp(self, spark_id: str, level: int, xp: int, gained: int) -> tuple[int, int]:
         """Carry excess XP through level-ups; at the cap XP stops and the excess is discarded."""
-        cap = self._catalog.level_cap(species_id)
+        cap = self._catalog.level_cap(spark_id)
         if level >= cap:
             return cap, 0
         xp += gained
@@ -42,8 +42,8 @@ class ProgressionService:
             level += 1
         return level, (0 if level >= cap else xp)
 
-    def add_copies(self, species_id: str, copies: int, granted: int) -> int:
-        if self._catalog.species(species_id).forbidden:
+    def add_copies(self, spark_id: str, copies: int, granted: int) -> int:
+        if self._catalog.spark(spark_id).forbidden:
             return min(copies + granted, self._catalog.economy.forbidden_copy_cap)
         return copies + granted
 
@@ -65,11 +65,11 @@ class ProgressionService:
         owner = battle.owner
         fighter, enemy = battle.setup.player, battle.setup.wild
         result: dict[str, Any] = {"kind": terminal}
-        spark = await tx.get_spark(owner, fighter.species_id)
+        spark = await tx.get_spark(owner, fighter.spark_id)
 
         if terminal in REWARDED:
             xp, insignia = self.rewards_for(enemy.level, enemy.tier_id)
-            level, new_xp = self.add_xp(fighter.species_id, spark.level, spark.xp, xp)
+            level, new_xp = self.add_xp(fighter.spark_id, spark.level, spark.xp, xp)
             await tx.put_spark(replace(spark, level=level, xp=new_xp))
             await tx.add_insignia(owner, insignia)
             result.update(xp=xp, insignia=insignia, level_before=spark.level, level_after=level)
@@ -84,24 +84,24 @@ class ProgressionService:
     async def _collect(self, tx: SparkTransaction, battle: BattleRecord, rng: RandomSource) -> dict[str, Any]:
         owner, enemy = battle.owner, battle.setup.wild
         reward = self._catalog.tier(enemy.tier_id).copy_reward
-        owned = await tx.get_spark(owner, enemy.species_id)
+        owned = await tx.get_spark(owner, enemy.spark_id)
         if owned is None:
-            copies = self.add_copies(enemy.species_id, 0, reward)
-            await tx.put_spark(SparkRecord(owner, enemy.species_id, copies, 1, 0))
+            copies = self.add_copies(enemy.spark_id, 0, reward)
+            await tx.put_spark(SparkRecord(owner, enemy.spark_id, copies, 1, 0))
             granted = copies
         else:
-            copies = self.add_copies(enemy.species_id, owned.copies, reward)
+            copies = self.add_copies(enemy.spark_id, owned.copies, reward)
             await tx.put_spark(replace(owned, copies=copies))
             granted = copies - owned.copies
         instances = battle.wild_personalities
         chosen = instances[min(int(rng.next() * len(instances)), len(instances) - 1)]
-        award = PersonalityRecord(new_id(), owner, enemy.species_id, chosen.type_id, chosen.tier, self._clock.now())
+        award = PersonalityRecord(new_id(), owner, enemy.spark_id, chosen.type_id, chosen.tier, self._clock.now())
         await tx.add_personality(award)
         return {
-            "species_id": enemy.species_id,
+            "spark_id": enemy.spark_id,
             "copies_granted": granted,
             "copies": copies,
-            "tier_id": self._catalog.tier_for_copies(enemy.species_id, copies),
+            "tier_id": self._catalog.tier_for_copies(enemy.spark_id, copies),
             "awarded_personality": _describe(award.instance()),
             "revealed_personalities": [_describe(i) for i in instances],  # every source instance, awarded or not
         }

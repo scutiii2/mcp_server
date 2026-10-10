@@ -19,7 +19,7 @@ def test_start_rejects_an_out_of_range_preset_slot(tmp_path, slot):
         await env.start_player()
         eid = await encounter(env)
         with pytest.raises(InvalidRequest, match="preset slot"):
-            await coord.start("ann", env.key(), encounter_id=eid, species_id="guardian", preset_slot=slot,
+            await coord.start("ann", env.key(), encounter_id=eid, spark_id="guardian", preset_slot=slot,
                               mode="manual", emblem_limit=None)
         await env.close()
 
