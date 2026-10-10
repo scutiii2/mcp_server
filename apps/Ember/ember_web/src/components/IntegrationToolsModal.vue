@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { commandsClient } from "../api/CommandsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import type { ToolInfo, ToolRunResult } from "../api/types";
 import { useAuthStore } from "../stores/auth";
 import { errorMessage } from "../utils/errors";
+import { commandsByTool } from "../utils/toolCommands";
 import BaseModal from "./BaseModal.vue";
+import CopyButton from "./CopyButton.vue";
 import ToolResultPanel from "./ToolResultPanel.vue";
 import ToolRunForm from "./ToolRunForm.vue";
 
@@ -15,6 +18,19 @@ const auth = useAuthStore();
 const client = new McpServerClient();
 const tools = computed(() => canBrowse.value && props.available ? props.providedTools : []);
 const search = ref("");
+const registry = ref<Awaited<ReturnType<typeof commandsClient.list>>>([]);
+const commands = computed(() => {
+  if (!props.available) return new Map<string, string>();
+  return commandsByTool(registry.value, props.names, props.kind === "extension" && !props.privateExtension ? props.identity : null);
+});
+let commandsLoaded = false;
+/** The command registry is read once; without it the modal just shows no commands. */
+async function loadCommands(): Promise<void> {
+  if (commandsLoaded) return;
+  commandsLoaded = true;
+  try { registry.value = await commandsClient.list(); } catch { commandsLoaded = false; }
+}
+watch(() => props.open, (open) => { if (open) void loadCommands(); }, { immediate: true });
 const visibleTools = computed(() => {
   const query = search.value.trim().toLowerCase();
   return props.names.map((name) => ({ name, tool: tools.value.find((tool) => tool.name === name) }))
@@ -69,7 +85,7 @@ function close(): void { if (!running.value) emit("close"); }
           <ul v-else class="tool-list" :aria-busy="running">
             <li v-for="{ name, tool } in visibleTools" :key="name">
               <button type="button" :disabled="running || !tool" :aria-pressed="selected?.name === name" @click="choose(tool!)">
-                <span class="tool-label"><strong>{{ tool?.title ?? name }}</strong><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></span><code>{{ name }}</code>
+                <span class="tool-label"><strong>{{ tool?.title ?? name }}</strong><span v-if="commands.has(name)" class="cmd-badge" title="Has a slash command" aria-label="Has a slash command">/</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></span><code>{{ name }}</code>
                 <span v-if="tool?.description" class="tool-preview">{{ tool.description }}</span>
               </button>
             </li>
@@ -77,7 +93,7 @@ function close(): void { if (!running.value) emit("close"); }
           <p v-if="names.length && !visibleTools.length" class="browser-note">No tools match your search.</p>
         </section>
         <section v-if="selected" class="tester" :aria-label="`Test ${selected.title}`" :aria-busy="running">
-          <div class="tool-heading"><span class="eyebrow">Tool details</span><h4>{{ selected.title }}</h4><code>{{ selected.name }}</code><p v-if="selected.description" class="tool-description">{{ selected.description }}</p></div>
+          <div class="tool-heading"><span class="eyebrow">Tool details</span><h4>{{ selected.title }}</h4><code>{{ selected.name }}</code><p v-if="commands.get(selected.name)" class="tool-command"><span class="muted">Slash command</span><code>{{ commands.get(selected.name) }}</code><CopyButton :text="commands.get(selected.name)!" label="Copy command" /></p><p v-if="selected.description" class="tool-description">{{ selected.description }}</p></div>
           <section class="parameters" aria-label="Parameters"><div class="section-heading"><h5>Parameters</h5><span class="muted">{{ running ? 'Running…' : canRun ? 'Ready to test' : 'Read-only' }}</span></div>
             <ToolRunForm v-if="canRun" :key="`${identity}:${selected.name}`" :schema="selected.inputSchema" :running="running" submit-label="Run tool" @run="run" />
             <p v-else class="muted">Testing requires Run tools access.</p>
@@ -146,6 +162,9 @@ h4, h5, p { margin: 0; }
 .tester { min-height: 0; overflow-y: auto; overscroll-behavior: contain; min-width: 0; padding: 24px; display: flex; flex-direction: column; gap: 22px; }
 .eyebrow { display: block; font-size: 0.7em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
 .tool-heading h4 { font-size: 1.15em; font-weight: 600; margin-bottom: 3px; overflow-wrap: anywhere; }
+.cmd-badge { flex-shrink: 0; padding: 0 6px; border-radius: var(--radius-sm); font: 0.75em var(--mono); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.tool-command { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.85em; }
+.tool-command code { color: var(--text); background: var(--code-bg); padding: 1px 6px; border-radius: var(--radius-sm); }
 .tool-description { margin-top: 12px; font-size: 0.9em; white-space: pre-wrap; color: var(--muted); overflow-wrap: anywhere; }
 .parameters, .output-panel { border-top: 1px solid var(--border); padding-top: 18px; }
 .outcome { color: var(--success); font-size: 0.75em; }

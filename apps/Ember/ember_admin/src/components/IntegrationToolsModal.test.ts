@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { commandsClient } from "../api/CommandsClient";
 import { McpServerClient } from "../api/McpServerClient";
 import { useAuthStore } from "../stores/auth";
 import IntegrationToolsModal from "./IntegrationToolsModal.vue";
@@ -88,4 +89,19 @@ it("filters tools by name, title, and description", async () => {
   expect(wrapper.findAll(".tool-list button")).toHaveLength(2);
   await wrapper.get('input[aria-label="Find a tool"]').setValue("missing");
   expect(wrapper.text()).toContain("No tools match your search.");
+});
+
+describe("IntegrationToolsModal slash commands", () => {
+  it("marks a tool that has a slash command and shows the command", async () => {
+    vi.spyOn(commandsClient, "list").mockResolvedValue([{ capability: "notes", name: "add", description: "", tool_name: TOOL.name }]);
+    const wrapper = await setup();
+    expect(wrapper.find(".cmd-badge").exists()).toBe(true);
+    await wrapper.get(".tool-list button").trigger("click");
+    expect(wrapper.get(".tool-command code").text()).toBe("/notes add");
+  });
+  it("shows no indicator when the command list fails", async () => {
+    vi.spyOn(commandsClient, "list").mockRejectedValue(new Error("down"));
+    const wrapper = await setup();
+    expect(wrapper.find(".cmd-badge").exists()).toBe(false);
+  });
 });
