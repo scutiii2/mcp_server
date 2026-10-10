@@ -60,6 +60,15 @@ Each tool this server offers lives under its own folder in
 shape every capability follows and how to add a new one:
 
 - [`capabilities/server_manager`](src/capabilities/server_manager) - start/stop/restart/list managed apps (`/server ...`)
+- [`capabilities/tickets`](src/capabilities/tickets) - file bugs and feature suggestions, list and follow your own tickets (`/ticket ...`).
+
+Support tickets use the always-on `/tickets` reporter routes and `/ticket-admin`
+staff routes, even when the chat capability is offline. SQLite storage defaults
+to `specifics/tickets/.data/tickets.db`, configurable with `MCP_TICKETS_DB_PATH`.
+See `configs/config_tickets.json.example` for tags, automatic-report caps,
+priority thresholds and classifier limits. Optional `LAYA_URL` points at the
+Laya agent's MCP address for advisory grouping and tagging; blank skips Laya.
+Ember permissions and triage interfaces are planned separately.
 
 Every capability can be turned off without touching code, live - no
 restart needed. `GET /capabilities` lists each one's current state
