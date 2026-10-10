@@ -1,0 +1,28 @@
+[project]
+name = "mini-games"
+description = "Game backend for Ember: Emberlings (Spark collecting and battling) with a Laya-assisted action policy; chess and Tetris plug in later"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+laya = ["laya"]
+
+[project.scripts]
+mini-games = "src.run:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
