@@ -37,7 +37,8 @@ workflows: a **trigger** (`poll()` sees something) and an **action** (`on_comple
 
 ## Base class changes (`services/watcher.py`)
 
-- Open-ended schedule: a `backoff_schedule` whose last cutoff is `None` never times out.
+- Open-ended schedule: a `backoff_schedule` whose last cutoff is `float("inf")` never times out (no base-class code change needed).
+- `resume_all` points rebuilt watchers at the real state directory; a cancelled watcher never writes its record again.
 - Shared `cancel(state_dir, key)` (stop the running watcher and delete its record). `UserWatcher` has its own copy today.
 - Shared `is_active(key)` used by `is_watching`.
 - `on_state_change` docstring loses "reserved for a future notification hook".
