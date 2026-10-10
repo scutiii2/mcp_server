@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "tiers": [
+    {"id": "normal", "stat_multiplier": 1.0, "capture_multiplier": 1, "hp_floor": 0.10, "emblem_strength": 100, "emblem_price": 20, "encounter_probability": 0.60, "copy_threshold": 0, "copy_reward": 1},
+    {"id": "rare", "stat_multiplier": 1.25, "capture_multiplier": 2, "hp_floor": 0.20, "emblem_strength": 200, "emblem_price": 40, "encounter_probability": 0.25, "copy_threshold": 10, "copy_reward": 2},
+    {"id": "legendary", "stat_multiplier": 1.5, "capture_multiplier": 4, "hp_floor": 0.35, "emblem_strength": 400, "emblem_price": 80, "encounter_probability": 0.10, "copy_threshold": 40, "copy_reward": 3},
+    {"id": "royalty", "stat_multiplier": 2.0, "capture_multiplier": 8, "hp_floor": 0.50, "emblem_strength": 800, "emblem_price": 160, "encounter_probability": 0.04, "copy_threshold": 100, "copy_reward": 4},
+    {"id": "ascended", "stat_multiplier": 2.5, "capture_multiplier": 16, "hp_floor": 0.65, "emblem_strength": 1600, "emblem_price": 320, "encounter_probability": 0.009, "copy_threshold": 250, "copy_reward": 5},
+    {"id": "forbidden", "stat_multiplier": 4.0, "capture_multiplier": 128, "hp_floor": 0.80, "emblem_strength": 3200, "emblem_price": 640, "encounter_probability": 0.001, "copy_threshold": null, "copy_reward": 1}
+  ],
+  "levels": {"regular_cap": 30, "forbidden_cap": 50, "xp_per_level": 100},
+  "economy": {
+    "xp_reward_factor": 20,
+    "insignia_reward_factor": 10,
+    "sale_level_bonus": 0.05,
+    "purchase_factor": 2,
+    "forbidden_copy_cap": 100,
+    "base_capture_resistance": 100,
+    "starter_emblems": {"normal": 5},
+    "starter_personality_tier": 1,
+    "encounter_level_window": 2,
+    "personality_tier_probabilities": [0.6, 0.3, 0.1]
+  },
+  "personalities": [
+    {"id": "AGGRESSIVE", "categories": ["ATTACK"]},
+    {"id": "DEFENSIVE", "categories": ["DEFENSE"]},
+    {"id": "SUPPORTIVE", "categories": ["SUPPORT"]},
+    {"id": "COWARD", "categories": ["FEAR"]},
+    {"id": "TENACIOUS", "categories": ["INTERCEPT"]},
+    {"id": "BOLD", "categories": ["ATTACK", "SUPPORT"]},
+    {"id": "CAUTIOUS", "categories": ["DEFENSE", "FEAR"]},
+    {"id": "DISCIPLINED", "categories": ["DEFENSE", "SUPPORT"]}
+  ],
+  "policy": {
+    "gain": 0.25,
+    "off_mood_factor": 0.5,
+    "repeat_factor": 0.5,
+    "floor": 0.05,
+    "default_aggression": 0.5,
+    "default_flee_share": 0.1,
+    "coefficients": {
+      "ATTACK": {"base": 0.5, "advantage": 0.8, "safety": 0.4},
+      "DEFENSE": {"base": 0.3, "danger": 0.9, "aggression": 0.5},
+      "SUPPORT": {"base": 0.3, "safety": 0.7, "passivity": 0.4},
+      "FEAR": {"base": 0.05, "escape_pressure": 1.2},
+      "INTERCEPT": {"collector_base": 0.05, "collector_weakness": 1.2, "wild_base": 0.05, "wild_flee_share": 1.0}
+    }
+  },
+  "species": [
+    {"id": "guardian", "name": "Guardian", "starter": true, "forbidden": false, "base_price": 100,
+     "base": {"hp": 150, "essence": 20, "speed": 15}, "growth": {"hp": 15, "essence": 2, "speed": 1.5},
+     "passive": {"kind": "defense_extension", "params": {"protected_attacks": 2, "rounds": 2}},
+     "abilities": [
+       {"id": "guardian_bulwark", "name": "Bulwark", "unlock_level": 1, "category": "DEFENSE", "percentage": 200, "cooldown": 1},
+       {"id": "guardian_rally", "name": "Rally", "unlock_level": 10, "category": "SUPPORT", "percentage": 50, "cooldown": 2, "stat": "essence", "duration": 2},
+       {"id": "guardian_heavy_blow", "name": "Heavy Blow", "unlock_level": 20, "category": "ATTACK", "percentage": 150, "cooldown": 2}]},
+    {"id": "striker", "name": "Striker", "starter": true, "forbidden": false, "base_price": 120,
+     "base": {"hp": 100, "essence": 30, "speed": 20}, "growth": {"hp": 10, "essence": 3, "speed": 2},
+     "passive": {"kind": "low_hp_attack_bonus", "params": {"hp_below": 0.5, "essence_fraction": 0.2}},
+     "abilities": [
+       {"id": "striker_rending_strike", "name": "Rending Strike", "unlock_level": 1, "category": "ATTACK", "percentage": 150, "cooldown": 1},
+       {"id": "striker_battle_focus", "name": "Battle Focus", "unlock_level": 10, "category": "SUPPORT", "percentage": 50, "cooldown": 2, "stat": "essence", "duration": 2},
+       {"id": "striker_brace", "name": "Brace", "unlock_level": 20, "category": "DEFENSE", "percentage": 100, "cooldown": 1}]},
+    {"id": "scout", "name": "Scout", "starter": true, "forbidden": false, "base_price": 110,
+     "base": {"hp": 120, "essence": 22, "speed": 35}, "growth": {"hp": 12, "essence": 2.2, "speed": 3.5},
+     "passive": {"kind": "battle_start_speed", "params": {"essence_fraction": 0.5}},
+     "abilities": [
+       {"id": "scout_quickstep", "name": "Quickstep", "unlock_level": 1, "category": "SUPPORT", "percentage": 100, "cooldown": 2, "stat": "speed", "duration": 2},
+       {"id": "scout_swift_slash", "name": "Swift Slash", "unlock_level": 10, "category": "ATTACK", "percentage": 125, "cooldown": 1},
+       {"id": "scout_evade", "name": "Evade", "unlock_level": 20, "category": "DEFENSE", "percentage": 150, "cooldown": 1}]},
+    {"id": "sentinel", "name": "Sentinel", "starter": false, "forbidden": false, "base_price": 140,
+     "base": {"hp": 180, "essence": 18, "speed": 10}, "growth": {"hp": 18, "essence": 1.8, "speed": 1},
+     "passive": {"kind": "defense_rating_bonus", "params": {"essence_fraction": 0.5}},
+     "abilities": [
+       {"id": "sentinel_stone_guard", "name": "Stone Guard", "unlock_level": 1, "category": "DEFENSE", "percentage": 300, "cooldown": 1},
+       {"id": "sentinel_hold_fast", "name": "Hold Fast", "unlock_level": 10, "category": "SUPPORT", "percentage": 50, "cooldown": 2, "stat": "essence", "duration": 2},
+       {"id": "sentinel_shield_bash", "name": "Shield Bash", "unlock_level": 20, "category": "ATTACK", "percentage": 125, "cooldown": 2}]},
+    {"id": "bruiser", "name": "Bruiser", "starter": false, "forbidden": false, "base_price": 130,
+     "base": {"hp": 140, "essence": 28, "speed": 12}, "growth": {"hp": 14, "essence": 2.8, "speed": 1.2},
+     "passive": {"kind": "attack_bonus_vs_defense", "params": {"essence_fraction": 0.25}},
+     "abilities": [
+       {"id": "bruiser_crushing_blow", "name": "Crushing Blow", "unlock_level": 1, "category": "ATTACK", "percentage": 175, "cooldown": 1},
+       {"id": "bruiser_guard_up", "name": "Guard Up", "unlock_level": 10, "category": "DEFENSE", "percentage": 100, "cooldown": 1},
+       {"id": "bruiser_rage", "name": "Rage", "unlock_level": 20, "category": "SUPPORT", "percentage": 50, "cooldown": 2, "stat": "essence", "duration": 2}]},
+    {"id": "channeler", "name": "Channeler", "starter": false, "forbidden": false, "base_price": 150,
+     "base": {"hp": 90, "essence": 25, "speed": 25}, "growth": {"hp": 9, "essence": 2.5, "speed": 2.5},
+     "passive": {"kind": "support_duration_bonus", "params": {"rounds": 1}},
+     "abilities": [
+       {"id": "channeler_focus", "name": "Focus", "unlock_level": 1, "category": "SUPPORT", "percentage": 75, "cooldown": 2, "stat": "essence", "duration": 2},
+       {"id": "channeler_bolt", "name": "Bolt", "unlock_level": 10, "category": "ATTACK", "percentage": 125, "cooldown": 1},
+       {"id": "channeler_ward", "name": "Ward", "unlock_level": 20, "category": "DEFENSE", "percentage": 100, "cooldown": 1}]},
+    {"id": "forbidden", "name": "Forbidden", "starter": false, "forbidden": true, "base_price": 1000,
+     "base": {"hp": 200, "essence": 40, "speed": 30}, "growth": {"hp": 20, "essence": 4, "speed": 3},
+     "passive": {"kind": "cooldown_reduction", "params": {"rounds": 1, "minimum": 1}},
+     "abilities": [
+       {"id": "forbidden_ruin", "name": "Ruin", "unlock_level": 1, "category": "ATTACK", "percentage": 200, "cooldown": 2},
+       {"id": "forbidden_dread_ward", "name": "Dread Ward", "unlock_level": 10, "category": "DEFENSE", "percentage": 300, "cooldown": 2},
+       {"id": "forbidden_ascendance", "name": "Ascendance", "unlock_level": 20, "category": "SUPPORT", "percentage": 100, "cooldown": 3, "stat": "essence", "duration": 2}]}
+  ]
+}
