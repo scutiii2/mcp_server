@@ -376,14 +376,25 @@ class SqliteSparkRepository:
             SqliteSparkRepository._rollback(conn)
             raise
 
+    def _connect(self) -> None:
+        # Stores the connection from inside the worker, so a caller cancelled mid-open
+        # cannot orphan it: close() always finds and closes it.
+        self._conn = self._open()
+
+    @staticmethod
+    def _begin(conn: sqlite3.Connection) -> None:
+        if conn.in_transaction:  # a stray transaction from an interrupted caller
+            SqliteSparkRepository._rollback(conn)
+        conn.execute("BEGIN IMMEDIATE")
+
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[SparkTransaction]:
         async with self._lock:
             if self._conn is None:
-                self._conn = await _in_thread(self._open)
+                await _in_thread(self._connect)
             conn = self._conn
-            await _in_thread(conn.execute, "BEGIN IMMEDIATE")
             try:
+                await _in_thread(self._begin, conn)
                 yield _SqliteTransaction(conn)
             except BaseException:
                 await _in_thread(self._rollback, conn)

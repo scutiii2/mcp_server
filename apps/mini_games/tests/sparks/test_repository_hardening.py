@@ -193,3 +193,72 @@ def test_pending_encounter_ties_break_on_insertion_order(tmp_path):
         await repo.close()
 
     run(scenario())
+
+
+def test_cancel_during_begin_does_not_leave_the_connection_in_a_transaction(tmp_path):
+    async def scenario():
+        repo = await _repo_with_proxy(tmp_path, delay_on="BEGIN IMMEDIATE")
+
+        async def writer():
+            async with repo.transaction() as tx:
+                await tx.create_player("ann", 1.0)
+
+        task = asyncio.create_task(writer())
+        await asyncio.sleep(0.1)  # inside the slow BEGIN worker
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not repo._conn.in_transaction
+        repo._conn.delay_on = None
+        async with asyncio.timeout(5):
+            async with repo.transaction() as tx:
+                assert await tx.get_player("ann") is None
+        await repo.close()
+
+    run(scenario())
+
+
+def test_a_stray_open_transaction_is_rolled_back_at_the_next_start(tmp_path):
+    async def scenario():
+        repo = await _repo_with_proxy(tmp_path)
+        repo._conn.execute("BEGIN IMMEDIATE")
+        async with repo.transaction() as tx:
+            await tx.create_player("ann", 1.0)
+        await repo.close()
+
+    run(scenario())
+
+
+def test_cancel_during_open_does_not_leak_the_connection(tmp_path, monkeypatch):
+    opened = []
+    real_connect = sqlite3.connect
+
+    def slow_connect(*args, **kwargs):
+        time.sleep(0.3)
+        conn = real_connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", slow_connect)
+
+    async def scenario():
+        repo = SqliteSparkRepository(tmp_path / "s.sqlite3")
+
+        async def writer():
+            async with repo.transaction():
+                pass
+
+        task = asyncio.create_task(writer())
+        await asyncio.sleep(0.1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert len(opened) == 1 and repo._conn is not None  # the new connection is kept, not orphaned
+        async with repo.transaction():
+            pass
+        assert len(opened) == 1
+        await repo.close()
+        with pytest.raises(sqlite3.ProgrammingError):
+            opened[0].execute("SELECT 1")  # closed
+
+    run(scenario())
