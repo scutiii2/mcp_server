@@ -7,7 +7,7 @@ import pytest
 
 from src.services.ticket_config import load_ticket_config
 from src.services.ticket_store import TicketStore
-from src.services.tickets import TicketError, TicketService
+from src.services.tickets import TicketError, TicketNotFound, TicketService
 
 
 class FakeLaya:
@@ -222,3 +222,113 @@ def test_pinned_group_priority_is_not_elevated(make):
         last = create(service, reporter=f"u{index}", tags=["email"])
 
     assert last.ticket["effective_priority"] == "normal"  # ticket's own priority; group stays pinned at low
+
+
+def run(coro):
+    return asyncio.run(coro)
+
+
+def test_reporter_sees_only_own_tickets_and_gets_404_for_others(make):
+    service = make()
+    mine = create(service).ticket["id"]
+    theirs = create(service, reporter="bob").ticket["id"]
+
+    assert [t["id"] for t in run(service.list_tickets(reporter="alice"))] == [mine]
+    assert run(service.get_ticket(mine, reporter="alice"))["id"] == mine
+    with pytest.raises(TicketNotFound):
+        run(service.get_ticket(theirs, reporter="alice"))
+    with pytest.raises(TicketNotFound):
+        run(service.get_ticket(999))
+    assert run(service.get_ticket(theirs))["reporter"] == "bob"  # staff scope
+
+
+def test_comments_roles_and_ownership(make):
+    service = make()
+    ticket_id = create(service).ticket["id"]
+
+    run(service.add_comment(ticket_id, author="alice", role="reporter", body="the log says X", reporter="alice"))
+    ticket = run(service.add_comment(ticket_id, author="root", role="staff", body="thanks"))
+
+    assert [c["author_role"] for c in ticket["comments"]] == ["reporter", "staff"]
+    with pytest.raises(TicketNotFound):
+        run(service.add_comment(ticket_id, author="bob", role="reporter", body="hi", reporter="bob"))
+    with pytest.raises(TicketError, match="role"):
+        run(service.add_comment(ticket_id, author="alice", role="admin", body="hi"))
+    with pytest.raises(TicketError, match="comment"):
+        run(service.add_comment(ticket_id, author="alice", role="reporter", body="x" * 2001))
+
+
+def test_close_own(make):
+    service = make()
+    ticket_id = create(service).ticket["id"]
+
+    assert run(service.close_own(ticket_id, "alice"))["status"] == "closed"
+    with pytest.raises(TicketNotFound):
+        run(service.close_own(ticket_id, "bob"))
+
+
+def test_staff_update_validates_values_and_clears_assignee(make):
+    service = make()
+    ticket_id = create(service).ticket["id"]
+
+    updated = run(service.update_ticket(ticket_id, status="in_progress", priority="high", assignee="root", tags=["config", "x"]))
+    assert (updated["status"], updated["priority"], updated["assignee"], updated["tags"]) == ("in_progress", "high", "root", ["config"])
+    assert run(service.update_ticket(ticket_id, assignee=""))["assignee"] is None
+    with pytest.raises(TicketError, match="status"):
+        run(service.update_ticket(ticket_id, status="done"))
+    with pytest.raises(TicketError, match="priority"):
+        run(service.update_ticket(ticket_id, priority="critical"))
+    with pytest.raises(TicketNotFound):
+        run(service.update_ticket(999, status="open"))
+
+
+def test_move_ticket_and_split(make):
+    service = make()
+    a = create(service)
+    b = create(service, reporter="bob", title="Other")
+
+    moved = run(service.move_ticket(b.ticket["id"], a.ticket["group_id"]))
+    assert moved["group_id"] == a.ticket["group_id"]
+    split = run(service.move_ticket(b.ticket["id"], None))
+    assert split["group_id"] not in (a.ticket["group_id"], b.ticket["group_id"])
+    with pytest.raises(TicketNotFound):
+        run(service.move_ticket(b.ticket["id"], 999))
+
+
+def test_moving_tickets_into_a_group_elevates_it(make):
+    service = make()
+    tickets = [create(service, reporter=f"u{i}", title=f"T{i}") for i in range(3)]
+    target = tickets[0].ticket["group_id"]
+
+    run(service.move_ticket(tickets[1].ticket["id"], target))
+    last = run(service.move_ticket(tickets[2].ticket["id"], target))
+
+    assert last["effective_priority"] == "high"
+
+
+def test_group_priority_pin_and_unpin(make):
+    service = make()
+    first = create(service)
+    group_id = first.ticket["group_id"]
+
+    pinned = run(service.set_group_priority(group_id, priority="urgent"))
+    assert pinned["priority"] == "urgent" and pinned["priority_pinned"] is True
+    with pytest.raises(TicketError, match="priority"):
+        run(service.set_group_priority(group_id, priority="critical"))
+    with pytest.raises(TicketNotFound):
+        run(service.set_group_priority(999, priority="low"))
+
+    unpinned = run(service.set_group_priority(group_id, pinned=False))
+    assert unpinned["priority_pinned"] is False and unpinned["priority"] == "urgent"  # never lowered
+
+
+def test_list_groups_and_stats(make):
+    service = make()
+    create(service, tags=["email"])
+    create(service, reporter="bob", title="UI", tags=["ui"])
+
+    groups = run(service.list_groups(tag="ui"))
+    assert len(groups) == 1 and groups[0]["ticket_count"] == 1
+    assert run(service.stats()) == {"open": 2, "urgent": 0, "groups": 2}
+    with pytest.raises(TicketError, match="status"):
+        run(service.list_tickets(status="done"))

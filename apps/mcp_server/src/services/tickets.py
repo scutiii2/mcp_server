@@ -179,6 +179,115 @@ class TicketService:
             await self._db(self._store.update_group, group_id, priority=raised, now=self._now().isoformat())
 
 
+    # ---- reads --------------------------------------------------------
+
+    async def _visible(self, ticket_id: int, reporter: str | None) -> dict[str, Any]:
+        ticket = await self._db(self._store.get_ticket, ticket_id)
+        # Someone else's ticket looks exactly like a missing one.
+        if ticket is None or (reporter is not None and ticket["reporter"] != reporter):
+            raise TicketNotFound(f"No ticket {ticket_id}.")
+        return ticket
+
+    async def _with_comments(self, ticket_id: int) -> dict[str, Any]:
+        ticket = await self._db(self._store.get_ticket, ticket_id)
+        ticket["comments"] = await self._db(self._store.list_comments, ticket_id)
+        return ticket
+
+    async def get_ticket(self, ticket_id: int, *, reporter: str | None = None) -> dict[str, Any]:
+        await self._visible(ticket_id, reporter)
+        return await self._with_comments(ticket_id)
+
+    @staticmethod
+    def _check(value: str | None, allowed: tuple[str, ...], name: str) -> None:
+        if value is not None and value not in allowed:
+            raise TicketError(f"The {name} must be one of: {', '.join(allowed)}.")
+
+    async def list_tickets(
+        self, *, reporter: str | None = None, status: str | None = None, type: str | None = None,
+        tag: str | None = None, priority: str | None = None, assignee: str | None = None,
+        group_id: int | None = None, possible_only: bool = False, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        self._check(status, rules.STATUSES, "status")
+        self._check(type, rules.TYPES, "type")
+        self._check(priority, rules.PRIORITIES, "priority")
+        return await self._db(
+            self._store.list_tickets, reporter=reporter, status=status, type=type, tag=tag, priority=priority,
+            assignee=assignee, group_id=group_id, possible_only=possible_only, limit=max(1, min(limit, 500)),
+        )
+
+    async def list_groups(
+        self, *, status: str | None = None, tag: str | None = None, priority: str | None = None, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        self._check(status, rules.STATUSES, "status")
+        self._check(priority, rules.PRIORITIES, "priority")
+        return await self._db(
+            self._store.list_groups, since=self._since(), status=status, tag=tag, priority=priority,
+            limit=max(1, min(limit, 500)),
+        )
+
+    async def stats(self) -> dict[str, int]:
+        return await self._db(self._store.stats)
+
+    # ---- changes ------------------------------------------------------
+
+    async def add_comment(
+        self, ticket_id: int, *, author: str, role: str, body: str, reporter: str | None = None,
+    ) -> dict[str, Any]:
+        await self._visible(ticket_id, reporter)
+        self._check(role, ("reporter", "staff", "ai"), "role")
+        text = _text(body, "comment", COMMENT_MAX)
+        if role == "ai":
+            text = redact(text)[0]
+        await self._db(self._store.add_comment, ticket_id, author, role, text, self._now().isoformat())
+        return await self._with_comments(ticket_id)
+
+    async def close_own(self, ticket_id: int, reporter: str) -> dict[str, Any]:
+        await self._visible(ticket_id, reporter)
+        await self._db(self._store.update_ticket, ticket_id, {"status": "closed"}, self._now().isoformat())
+        return await self._with_comments(ticket_id)
+
+    async def update_ticket(
+        self, ticket_id: int, *, status: str | None = None, priority: str | None = None,
+        assignee: str | None = None, tags: list[str] | None = None,
+    ) -> dict[str, Any]:
+        self._check(status, rules.STATUSES, "status")
+        self._check(priority, rules.PRIORITIES, "priority")
+        await self._visible(ticket_id, None)
+        changes: dict[str, Any] = {}
+        if status is not None:
+            changes["status"] = status
+        if priority is not None:
+            changes["priority"] = priority
+        if assignee is not None:
+            changes["assignee"] = assignee.strip() or None
+        if tags is not None:
+            changes["tags"] = rules.clean_tags(tags, self._config.tags)
+        if changes:
+            await self._db(self._store.update_ticket, ticket_id, changes, self._now().isoformat())
+        return await self._with_comments(ticket_id)
+
+    async def move_ticket(self, ticket_id: int, group_id: int | None) -> dict[str, Any]:
+        await self._visible(ticket_id, None)
+        target = await self._db(self._store.move_ticket, ticket_id, group_id, self._now().isoformat())
+        if target is None:
+            raise TicketNotFound(f"No group {group_id}.")
+        await self._reelevate(target)
+        return await self._with_comments(ticket_id)
+
+    async def set_group_priority(
+        self, group_id: int, *, priority: str | None = None, pinned: bool | None = None,
+    ) -> dict[str, Any]:
+        self._check(priority, rules.PRIORITIES, "priority")
+        if await self._db(self._store.get_group, group_id) is None:
+            raise TicketNotFound(f"No group {group_id}.")
+        if priority is not None and pinned is None:
+            pinned = True  # a hand-set priority is pinned until an admin unpins it
+        await self._db(self._store.update_group, group_id, priority=priority, pinned=pinned, now=self._now().isoformat())
+        if pinned is False:
+            await self._reelevate(group_id)
+        return await self._db(self._store.get_group, group_id)
+
+
 _service: TicketService | None = None
 
 
