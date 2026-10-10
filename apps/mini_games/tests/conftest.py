@@ -1,4 +1,4 @@
-"""Shared fixtures. Tests never read the real configs/ or secrets/ files."""
+"""Shared fixtures. Tests never read the real configs/ or .env files."""
 
 from pathlib import Path
 

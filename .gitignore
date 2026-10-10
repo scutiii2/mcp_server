@@ -96,6 +96,5 @@ dev_rfc.log
 /apps/mini_games/configs/*
 !/apps/mini_games/configs/*.example
 !/apps/mini_games/configs/spark_catalog.json
-/apps/mini_games/secrets/*
-!/apps/mini_games/secrets/*.example
+/apps/mini_games/.env
 /apps/mini_games/data/

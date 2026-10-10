@@ -54,10 +54,10 @@ run.bat
 ```
 
 The first start creates `.venv_mini_games`, installs the project and creates
-`configs/config_app.json` and `secrets/.env` from their `.example` twins. Both
+`configs/config_app.json` and `.env` from their `.example` twins. Both
 real files are gitignored; `configs/spark_catalog.json` (species, abilities,
 tiers, economy and policy numbers) is tracked. Put the same `INTERNAL_API_TOKEN`
-in `secrets/.env` that `mcp_server`, `ai_agent` and `ember_api` use; once set,
+in `.env` that `mcp_server`, `ai_agent` and `ember_api` use; once set,
 every route except `/health` needs the `X-Internal-Token` header. Game data lives
 in `data/sparks.sqlite3` (gitignored).
 
@@ -115,8 +115,9 @@ hand and writes `docs/emberlings-laya-eval.md`.
 - `src/sparks/` - Emberlings: catalog, battle engine, passives, action policy and
   decider, situation readers, repository, services, coordinator, API.
 - `src/sparks/eval/` - the manual Laya evaluation.
-- `configs/`, `secrets/` - gitignored real files with `.example` twins, plus the
-  tracked `spark_catalog.json`.
+- `configs/`, `.env` - gitignored real files with `.example` twins, plus the
+  tracked `spark_catalog.json`. `.env` and `.env.example` sit in the project root,
+  beside `configs/`.
 - `data/` - SQLite database (created at runtime).
 
 ## Behaviour notes

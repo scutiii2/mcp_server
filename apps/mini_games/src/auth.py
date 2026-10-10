@@ -13,17 +13,17 @@ from fastapi import Header, HTTPException
 
 from src.seed import seed_from_example
 
-SECRETS_PATH = Path(__file__).resolve().parent.parent / "secrets" / ".env"
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 REQUESTER_USERNAME_HEADER = "X-Requester-Username"
 OPEN_PATHS = ("/health",)
 
 
 def load_token(path: Path | None = None) -> str:
-    """INTERNAL_API_TOKEN from the environment, else from secrets/.env
+    """INTERNAL_API_TOKEN from the environment, else from .env
     (seeded from its .example on first run). "" = not configured."""
     if path is None:
-        path = SECRETS_PATH
+        path = ENV_PATH
         seed_from_example(path)
     return os.getenv("INTERNAL_API_TOKEN") or dotenv_values(path).get("INTERNAL_API_TOKEN") or ""
 
