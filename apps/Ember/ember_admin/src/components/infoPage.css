@@ -1,5 +1,5 @@
 /* Shared look of the single-column information pages (Extensions,
-   Watchers, Logs, Config issues). Plain CSS scoped by the .info-page class,
+   Logs, Config issues). Plain CSS scoped by the .info-page class,
    like admin/admin.css, since each view's <style scoped> can't share. */
 
 .info-page {

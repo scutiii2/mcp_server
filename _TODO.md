@@ -79,12 +79,12 @@ The agents are implemented. These manual checks remain unverified:
 
 - **Email Assistant** (`email-assistant`, port 9112): paste an email and check its summary, triage and draft reply.
 - **Data Analyst** (`data-analyst`, port 9113): attach a CSV, ask for a total and a top 5, and check the results.
-- **Scheduler** (`scheduler`, port 9114): watch a local URL that is down, bring it up, and check that the requester receives one email and the Watchers page records the outcome. Configure `config_email.json` and `SMTP_PASSWORD` if needed.
+- **Scheduler** (`scheduler`, port 9114): no usable tools remain after the Watchers capability removal. Decide whether to repurpose or retire it.
 - **Ember routing**: check delegation across the specialist roster with Laya routing enabled.
 
 Optional follow-up features, not implemented:
 
-- **Email**: read-only IMAP mailbox access, then saved drafts. Decide credentials in `.env` and treat mail content as untrusted. The existing email service provides SMTP sending for watchers.
+- **Email**: read-only IMAP mailbox access, then saved drafts. Decide credentials in `.env` and treat mail content as untrusted. The existing email service provides SMTP sending for capability-owned JobWatchers, including ServerWatcher.
 - **Data analysis**: sandboxed code execution, `.xls` support, charts and downloadable results.
 - **Scheduling**: recurring monitoring, alerts on every change, log/file patterns, other recipients (requires an allowed-domains rule), SMS or push.
 

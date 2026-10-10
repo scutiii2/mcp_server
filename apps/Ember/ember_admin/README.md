@@ -76,7 +76,7 @@ One card per mcp_server capability, with an online switch.
 
 Only the capability's own folder is re-imported. Shared modules in
 `mcp_server/src/services` are not: restart mcp_server for those. Do not reload
-the watchers capability while its watchers run.
+the server_manager capability while its ServerWatchers run.
 
 The first mcp_server run with the folder scanner writes `enabled: true` for
 every existing capability and a `_scanner` marker into
