@@ -15,6 +15,7 @@ export function sparkInfo(id: string, extra: Partial<SparkInfo> = {}): SparkInfo
     name: nameOf(id),
     starter: false,
     forbidden: false,
+    ascension_types: ["enchant"],
     base: { hp: 100, essence: 10, speed: 10 },
     growth: { hp: 5, essence: 1, speed: 1 },
     base_price: 50,
@@ -54,6 +55,7 @@ export function ownedSpark(id: string, extra: Partial<OwnedSpark> = {}): OwnedSp
   return {
     spark_id: id,
     name: nameOf(id),
+    ascension_types: ["enchant"],
     level: 3,
     xp: 40,
     xp_needed: 300,

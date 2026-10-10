@@ -4,6 +4,7 @@ import { emberlingsClient, type OwnedSpark, type PersonalityItem } from "../../a
 import cardBackUrl from "../../assets/emberlings/card_back.png";
 import { useEmberlingsStore } from "../../stores/emberlings";
 import { errorMessage } from "../../utils/errors";
+import { filterByType, groupByType, typeLabel, typesPresent } from "../../utils/ascensionTypes";
 import { titleCase } from "../../utils/emberlings";
 import PresetEditor from "./PresetEditor.vue";
 import SparkCard from "./SparkCard.vue";
@@ -11,6 +12,7 @@ import SparkTemplateCard from "./SparkTemplateCard.vue";
 import EmBar from "./ui/EmBar.vue";
 import EmDialog from "./ui/EmDialog.vue";
 import EmNotice from "./ui/EmNotice.vue";
+import EmSwitch from "./ui/EmSwitch.vue";
 import EmTierBadge from "./ui/EmTierBadge.vue";
 
 /** The Collection tab: owned Sparks as small cards with a caption, the rest of the
@@ -19,11 +21,18 @@ import EmTierBadge from "./ui/EmTierBadge.vue";
 const store = useEmberlingsStore();
 const PAGE_SIZE = 50;
 
-const owned = computed(() => store.profile?.sparks ?? []);
-const notOwned = computed(() => {
-  const ids = new Set(owned.value.map((s) => s.spark_id));
+const typeFilter = ref<string | null>(null);
+const grouped = ref(false);
+const allOwned = computed(() => store.profile?.sparks ?? []);
+const allNotOwned = computed(() => {
+  const ids = new Set(allOwned.value.map((s) => s.spark_id));
   return (store.catalog?.sparks ?? []).filter((s) => !ids.has(s.id));
 });
+/** The types to offer as filters: those any Ascended in the catalog has. */
+const types = computed(() => typesPresent(store.catalog?.sparks ?? []));
+const owned = computed(() => filterByType(allOwned.value, typeFilter.value));
+const notOwned = computed(() => filterByType(allNotOwned.value, typeFilter.value));
+const groups = computed(() => groupByType(owned.value));
 
 const open = ref<OwnedSpark | null>(null);
 const openInfo = computed(() => store.catalog?.sparks.find((s) => s.id === open.value?.spark_id) ?? null);
@@ -59,14 +68,39 @@ function show(spark: OwnedSpark): void {
 
 <template>
   <section class="collection">
+    <div v-if="types.length" class="filters">
+      <div class="chips" role="group" aria-label="Filter by Ascension Type">
+        <button type="button" class="chip" :aria-pressed="typeFilter === null" @click="typeFilter = null">All</button>
+        <button
+          v-for="id in types"
+          :key="id"
+          type="button"
+          class="chip"
+          :aria-pressed="typeFilter === id"
+          @click="typeFilter = typeFilter === id ? null : id"
+        >
+          {{ typeLabel(id) }}
+        </button>
+      </div>
+      <EmSwitch v-model="grouped" label="Group by type" />
+    </div>
+
     <div class="section-head">
       <h3 class="em-pixel">Collected Sparks</h3>
       <small>Choose a card to manage presets</small>
     </div>
-    <div class="grid">
+    <template v-if="grouped">
+      <section v-for="group in groups" :key="group.typeId ?? 'none'" class="group" :data-type="group.typeId ?? 'none'">
+        <h4 class="group-name">{{ group.label }} <small class="em-num">{{ group.items.length }}</small></h4>
+        <div class="grid">
+          <SparkCard v-for="spark in group.items" :key="spark.spark_id" :spark="spark" @open="show(spark)" />
+        </div>
+      </section>
+    </template>
+    <div v-else class="grid">
       <SparkCard v-for="spark in owned" :key="spark.spark_id" :spark="spark" @open="show(spark)" />
     </div>
-    <p v-if="owned.length === 0" class="empty">None collected yet.</p>
+    <p v-if="owned.length === 0" class="empty">{{ typeFilter === null ? "None collected yet." : `No ${typeLabel(typeFilter)} Sparks collected yet.` }}</p>
 
     <template v-if="notOwned.length">
       <div class="section-head">
@@ -88,7 +122,10 @@ function show(spark: OwnedSpark): void {
         <div class="side">
           <h3 class="em-pixel name">{{ open.name }}</h3>
           <p class="level em-num">Level {{ open.level }} of {{ open.level_cap }}</p>
-          <EmTierBadge :tier-id="open.tier_id" />
+          <div class="badges">
+            <EmTierBadge :tier-id="open.tier_id" />
+            <span v-for="id in open.ascension_types" :key="id" class="type-chip">{{ typeLabel(id) }}</span>
+          </div>
           <div class="xp">
             <template v-if="open.xp_needed !== null">
               <EmBar :value="open.xp" :max="open.xp_needed" :label="`${open.name} XP`" />
@@ -195,8 +232,60 @@ function show(spark: OwnedSpark): void {
 .level {
   color: var(--em-muted);
 }
-.side > :deep(.em-tier) {
-  align-self: flex-start;
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--em-space-2);
+  align-items: center;
+}
+.type-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--em-border);
+  border-radius: var(--em-radius);
+  color: var(--em-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--em-space-3);
+  margin-bottom: var(--em-space-4);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--em-space-2);
+}
+.chip {
+  min-height: var(--em-target);
+  padding: 0 14px;
+  border: 1px solid var(--em-border);
+  border-radius: var(--em-radius);
+  color: var(--em-text);
+  background: var(--em-panel);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] {
+  border-color: var(--em-accent);
+  color: var(--em-on-accent);
+  background: var(--em-accent);
+}
+.group {
+  margin-bottom: var(--em-space-5);
+}
+.group-name {
+  margin: 0 0 var(--em-space-3);
+  font-size: 16px;
+}
+.group-name small {
+  margin-left: var(--em-space-2);
+  color: var(--em-muted);
 }
 .xp {
   display: flex;

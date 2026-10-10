@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { emberlingsClient, type Profile } from "../../api/EmberlingsClient";
-import { CATALOG, PROFILE, ownedSpark } from "../../api/EmberlingsClient.fixtures";
+import { CATALOG, PROFILE, ownedSpark, sparkInfo } from "../../api/EmberlingsClient.fixtures";
 import { useEmberlingsStore } from "../../stores/emberlings";
 import CollectionPanel from "./CollectionPanel.vue";
 import PresetEditor from "./PresetEditor.vue";
@@ -158,5 +158,64 @@ describe("PresetEditor", () => {
     await flushPromises();
 
     expect(client.preset).toHaveBeenLastCalledWith("guardian", 3);
+  });
+
+  describe("Ascension Types", () => {
+    const TYPED = {
+      ...CATALOG,
+      sparks: [
+        sparkInfo("guardian", { starter: true, ascension_types: ["enchant"] }),
+        sparkInfo("striker", { starter: true, ascension_types: ["divine", "enchant"] }),
+        sparkInfo("bruiser", { ascension_types: [] }),
+        sparkInfo("forbidden", { forbidden: true, ascension_types: ["abyss"] }),
+      ],
+    };
+    const PROFILE_TYPED: Profile = {
+      ...PROFILE,
+      sparks: [
+        ownedSpark("guardian", { ascension_types: ["enchant"] }),
+        ownedSpark("striker", { ascension_types: ["divine", "enchant"] }),
+        ownedSpark("bruiser", { ascension_types: [] }),
+      ],
+    };
+
+    function mountTyped() {
+      const wrapper = mountPanel(PROFILE_TYPED);
+      useEmberlingsStore().catalog = TYPED;
+      return wrapper;
+    }
+    const chip = (wrapper: ReturnType<typeof mountTyped>, label: string) => wrapper.findAll(".chip").find((c) => c.text() === label)!;
+    const names = (wrapper: ReturnType<typeof mountTyped>) => wrapper.findAll(".spark-card .spark-name").map((n) => n.text());
+
+    it("offers a chip per type in the catalog and starts with All", async () => {
+      const wrapper = mountTyped();
+      await flushPromises();
+      expect(wrapper.findAll(".chip").map((c) => c.text())).toEqual(["All", "Abyss", "Divine", "Enchant"]);
+      expect(chip(wrapper, "All").attributes("aria-pressed")).toBe("true");
+      expect(names(wrapper)).toEqual(["Guardian", "Striker", "Bruiser"]);
+    });
+
+    it("filters owned and not-collected cards by one type, and a second click clears it", async () => {
+      const wrapper = mountTyped();
+      await chip(wrapper, "Enchant").trigger("click");
+      expect(names(wrapper)).toEqual(["Guardian", "Striker"]);
+      expect(wrapper.findAll(".missing-spark")).toHaveLength(0);
+      await chip(wrapper, "Abyss").trigger("click");
+      expect(wrapper.find(".empty").text()).toBe("No Abyss Sparks collected yet.");
+      expect(wrapper.findAll(".missing-name").map((n) => n.text())).toEqual(["Forbidden"]);
+      await chip(wrapper, "Abyss").trigger("click");
+      expect(chip(wrapper, "All").attributes("aria-pressed")).toBe("true");
+    });
+
+    it("groups owned cards by type when the switch is on", async () => {
+      const wrapper = mountTyped();
+      await wrapper.find("input[role=switch]").setValue(true);
+      const groups = wrapper.findAll(".group").map((g) => [g.find(".group-name").text(), g.findAll(".spark-name").map((n) => n.text())]);
+      expect(groups).toEqual([
+        ["Divine 1", ["Striker"]],
+        ["Enchant 2", ["Guardian", "Striker"]],
+        ["No type 1", ["Bruiser"]],
+      ]);
+    });
   });
 });

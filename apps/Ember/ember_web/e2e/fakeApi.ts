@@ -186,6 +186,7 @@ const EMBERLINGS_CATALOG = {
     name: id.charAt(0).toUpperCase() + id.slice(1),
     starter: true,
     forbidden: false,
+    ascension_types: ["enchant"],
     base: { hp: 100, essence: 10, speed: 10 },
     growth: { hp: 5, essence: 1, speed: 1 },
     base_price: 50,
@@ -207,6 +208,7 @@ function emberlingsProfile(starter: string): Record<string, unknown> {
       {
         spark_id: starter,
         name: starter.charAt(0).toUpperCase() + starter.slice(1),
+        ascension_types: ["enchant"],
         level: 1,
         xp: 0,
         xp_needed: 100,

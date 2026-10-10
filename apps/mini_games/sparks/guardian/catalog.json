@@ -3,6 +3,9 @@
   "name": "Guardian",
   "starter": true,
   "forbidden": false,
+  "ascension_types": [
+    "enchant"
+  ],
   "base_price": 100,
   "base": {
     "hp": 150,

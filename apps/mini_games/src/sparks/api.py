@@ -104,7 +104,7 @@ def catalog_summary(catalog: Catalog) -> dict[str, Any]:
         ],
         "levels": {"regular_cap": catalog.levels.regular_cap, "forbidden_cap": catalog.levels.forbidden_cap},
         "sparks": [
-            {"id": s.id, "name": s.name, "starter": s.starter, "forbidden": s.forbidden, "base": dict(s.base),
+            {"id": s.id, "name": s.name, "starter": s.starter, "forbidden": s.forbidden, "ascension_types": [t.value for t in s.ascension_types], "base": dict(s.base),
              "growth": dict(s.growth), "base_price": s.base_price, "passive": s.passive.to_dict(),
              "abilities": [a.to_dict() for a in s.abilities]}
             for s in catalog.all_sparks()

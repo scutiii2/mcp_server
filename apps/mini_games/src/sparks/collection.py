@@ -40,7 +40,8 @@ class CollectionService:
             spec = self._catalog.spark(spark.spark_id)
             level_cap = self._catalog.level_cap(spark.spark_id)
             sparks.append({
-                "spark_id": spark.spark_id, "name": spec.name, "level": spark.level, "xp": spark.xp,
+                "spark_id": spark.spark_id, "name": spec.name,
+                "ascension_types": [t.value for t in spec.ascension_types], "level": spark.level, "xp": spark.xp,
                 "xp_needed": None if spark.level >= level_cap else self._catalog.levels.xp_per_level * spark.level,
                 "level_cap": level_cap, "copies": spark.copies,
                 "tier_id": self._catalog.tier_for_copies(spark.spark_id, spark.copies),

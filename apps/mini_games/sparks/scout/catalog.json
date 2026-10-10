@@ -3,6 +3,9 @@
   "name": "Scout",
   "starter": true,
   "forbidden": false,
+  "ascension_types": [
+    "enchant"
+  ],
   "base_price": 110,
   "base": {
     "hp": 120,

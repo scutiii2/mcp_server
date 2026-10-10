@@ -74,6 +74,7 @@ def test_the_catalog_is_readable_and_complete(client):
     assert len(data["sparks"]) == 7 and [t["id"] for t in data["tiers"]][-1] == "forbidden"
     assert {s["id"] for s in data["sparks"] if s["starter"]} == {"guardian", "striker", "scout"}
     assert len(data["personalities"]) == 8
+    assert all(s["ascension_types"] == ["enchant"] for s in data["sparks"])
 
 
 # -- profile, personalities, presets -------------------------------------------------
@@ -87,6 +88,7 @@ def test_profile_creation_is_once_and_idempotent(client):
     assert other.status_code == 409 and clash.status_code == 409
     profile = client.get("/sparks/profile", headers=headers()).json()
     assert profile["emblems"] == {"common": 5} and profile["insignia"] == 0 and profile["sparks"][0]["spark_id"] == "scout"
+    assert profile["sparks"][0]["ascension_types"] == ["enchant"]
 
 
 def test_a_bad_starter_and_unknown_fields_are_400(client):

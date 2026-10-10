@@ -3,6 +3,9 @@
   "name": "Channeler",
   "starter": false,
   "forbidden": false,
+  "ascension_types": [
+    "enchant"
+  ],
   "base_price": 150,
   "base": {
     "hp": 90,

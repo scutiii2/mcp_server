@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from src.sparks.ascension_types import AscensionType
 from src.sparks.models import ABILITY_CATEGORIES, CATEGORIES, AbilitySpec, PassiveSpec
 
 ABILITY_UNLOCK_LEVELS = (1, 10, 20)
@@ -52,6 +53,7 @@ class SparkSpec:
     growth: Mapping[str, float]
     passive: PassiveSpec
     abilities: tuple[AbilitySpec, ...]
+    ascension_types: tuple[AscensionType, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -125,10 +127,15 @@ def _spark_spec(raw: Mapping[str, Any]) -> SparkSpec:
     if tuple(a.unlock_level for a in abilities) != ABILITY_UNLOCK_LEVELS:
         raise CatalogError(f"{where}: abilities must unlock at levels {ABILITY_UNLOCK_LEVELS}")
     passive = _require(raw, "passive", where)
+    try:
+        ascension_types = AscensionType.parse_all(raw.get("ascension_types", []), where)
+    except ValueError as error:
+        raise CatalogError(str(error)) from error
     return SparkSpec(
         id=sid, name=_require(raw, "name", where), starter=bool(raw.get("starter")), forbidden=bool(raw.get("forbidden")),
         base_price=_require(raw, "base_price", where), base=dict(base), growth=dict(growth),
         passive=PassiveSpec(_require(passive, "kind", f"{where} passive"), dict(passive.get("params", {}))), abilities=abilities,
+        ascension_types=ascension_types,
     )
 
 

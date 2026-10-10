@@ -3,6 +3,9 @@
   "name": "Sentinel",
   "starter": false,
   "forbidden": false,
+  "ascension_types": [
+    "enchant"
+  ],
   "base_price": 140,
   "base": {
     "hp": 180,

@@ -37,6 +37,8 @@ export interface SparkInfo {
   name: string;
   starter: boolean;
   forbidden: boolean;
+  /** Ascension Type ids; zero or more. */
+  ascension_types: string[];
   base: Record<string, number>;
   growth: Record<string, number>;
   base_price: number;
@@ -56,6 +58,7 @@ export interface Catalog {
 export interface OwnedSpark {
   spark_id: string;
   name: string;
+  ascension_types: string[];
   level: number;
   xp: number;
   /** null at the level cap. */

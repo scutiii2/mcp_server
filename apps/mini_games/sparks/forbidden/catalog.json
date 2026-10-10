@@ -3,6 +3,9 @@
   "name": "Forbidden",
   "starter": false,
   "forbidden": true,
+  "ascension_types": [
+    "enchant"
+  ],
   "base_price": 1000,
   "base": {
     "hp": 200,

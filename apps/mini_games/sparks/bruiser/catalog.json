@@ -3,6 +3,9 @@
   "name": "Bruiser",
   "starter": false,
   "forbidden": false,
+  "ascension_types": [
+    "enchant"
+  ],
   "base_price": 130,
   "base": {
     "hp": 140,

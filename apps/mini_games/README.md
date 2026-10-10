@@ -123,6 +123,11 @@ without a `catalog.json` and loose files (the shared card placeholders
 `spark_normal_front_template.png` and `spark_normal_back_template.png`) are
 skipped. Both locations are fixed in the project tree and have no config entry.
 
+Each Spark file may list `"ascension_types"`, zero or more of `pure`, `abyss`,
+`divine`, `crimson`, `enchant` and `synthetic` (the Ascension game's types). An
+unknown or repeated type stops startup. For now a type only filters and groups
+the collection; it has no effect in battle. All current Sparks are `enchant`.
+
 ## Layout
 
 - `src/` - shared shell: config, auth, the Laya client, the FastAPI app.

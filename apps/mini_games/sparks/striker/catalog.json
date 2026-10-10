@@ -3,6 +3,9 @@
   "name": "Striker",
   "starter": true,
   "forbidden": false,
+  "ascension_types": [
+    "enchant"
+  ],
   "base_price": 120,
   "base": {
     "hp": 100,
