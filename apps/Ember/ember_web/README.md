@@ -231,17 +231,6 @@ URL, token or key.
   (a value the agent file does not set is left out), and a status (running,
   offline, disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
   always go to the entry agent, there is no per-agent chat.
-- Watchers page (`watchers.view`): every capability's background watchers,
-  refreshed every 15 s ("Live - updated Ns ago"). Status tiles (running with
-  the oldest age, succeeded, failed), a timeline with one lane per capability
-  that opens (click its name) into one lane per watcher, and a list under it
-  that follows the same open lanes. Failed is red, running blue, finished a
-  quiet gray, each with a glyph and a label (a running bar ends in a dot, a
-  failed one in a tick). Lanes keep their place across refreshes; the top 8 are
-  drawn ("Show all N") and a capability with a failure always is. Search, a
-  24h / 7d / All range, and a "Focus" menu for one capability (kept in the
-  address as `?capability=`).
-
 - Config issues page (`config.issues.view`): problems in ember_api's config and
   secret files, as errors (broken) or warnings (risky or incomplete), grouped by
   file. Not a nav tab: a red (errors) or amber (warnings only) alert with a count
@@ -288,7 +277,7 @@ URL, token or key.
   with `refresh_after` shows a countdown ring ("New code in N s") and re-runs
   the tool at zero; it stops when you leave the page and while the tab is hidden.
 - Pages and tabs follow your permissions (`chat.use`, `tools.use`,
-  `admin.manage`, `watchers.view`, `logs.*`, `traffic.view`, `config.issues.view`);
+  `admin.manage`, `logs.*`, `traffic.view`, `config.issues.view`);
   ember_api enforces the same rules on every call.
 - Light and dark theme: a top-bar button cycles System, Light and Dark
   (remembered per browser, also on the login page). Colors are
@@ -391,7 +380,7 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 ```
 src/
   api/          http + AuthClient / ChatsClient / UsageClient / CommandsClient /
-                ExtensionsClient / AgentsClient / WatchersClient / AttachmentsClient /
+                ExtensionsClient / AgentsClient / AttachmentsClient /
                 ConfigIssuesClient / TemplatesClient / NavPreferencesClient / SharesClient / SettingsClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
@@ -400,16 +389,15 @@ src/
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useCompletionNotify (completion alerts), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Capabilities, Agents, Watchers, Usage, Settings, ConfigIssues,
+  views/        pages: Overview, Chat, Capabilities, Agents, Usage, Settings, ConfigIssues,
                 Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, ConfirmModal, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
     analytics/  shared LineChart, hover/keyboard state in useBucketCursor and chart.css, used by Usage
-    watchers/   the Watchers page's WatcherTimeline, WatcherList, CapabilityFocus (status colours `--status-*`)
-    infoPage.css  shared look of the Agents / Watchers / Config pages
+    infoPage.css  shared look of the Agents / Config pages
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
-                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics and watcher helpers, saved-prompt helpers
+                tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics helpers, saved-prompt helpers
 ```
 
 ## Security notes

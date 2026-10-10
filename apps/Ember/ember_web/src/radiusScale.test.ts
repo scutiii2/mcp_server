@@ -98,7 +98,6 @@ describe("findLiteralRadii", () => {
 const ALLOWED_LITERALS: Record<string, string[]> = {
   "components/analytics/chart.css": ["2px"],
   "components/UsageHeatmap.vue": ["2px"],
-  "views/WatchersView.vue": ["2px"],
 };
 
 /** Every `.vue` and `.css` file under `src/`, keyed by its path from `src/` (read from disk: Vitest
