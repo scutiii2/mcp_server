@@ -6,8 +6,10 @@ import { CATALOG, PROFILE, battleView, fighter } from "../../api/EmberlingsClien
 import { useEmberlingsStore } from "../../stores/emberlings";
 import ActionBar from "./ActionBar.vue";
 import BattleArena from "./BattleArena.vue";
+import BattleControls from "./BattleControls.vue";
 import BattleResult from "./BattleResult.vue";
 import EmblemPrompt from "./EmblemPrompt.vue";
+import RoundLog from "./RoundLog.vue";
 
 vi.mock("../../api/EmberlingsClient", () => ({
   emberlingsClient: { action: vi.fn(), emblem: vi.fn(), setMode: vi.fn(), forfeit: vi.fn(), profile: vi.fn() },
@@ -50,26 +52,53 @@ const manual = () =>
   });
 
 describe("BattleArena", () => {
-  it("shows both Sparks, their health and the round log in words", () => {
+  it("shows both Sparks with their health written out, and what affects them", () => {
     const view = battleView({
       wild: fighter("bruiser", { hp: 20, buffs: [{ source: "bruiser_rally", stat: "essence", amount: 4, rounds_left: 2 }] }),
+    });
+    withBattle(view);
+
+    const wrapper = mount(BattleArena, { props: { battle: view } });
+
+    expect(wrapper.findAll("[role='progressbar']").map((m) => m.attributes("aria-valuenow"))).toEqual(["80", "20"]);
+    expect(wrapper.findAll("p.hp").map((p) => p.text())).toEqual(["HP 80 / 100", "HP 20 / 100"]);
+    expect(wrapper.text()).toContain("+4 essence, 2 rounds left");
+    expect(wrapper.find(".versus").text()).toBe("VS");
+  });
+});
+
+describe("RoundLog", () => {
+  it("lists the rounds in words, latest first", () => {
+    const view = battleView({
       history: [
         {
           round: 1,
           actions: { player: ["ability:guardian_strike", "ATTACK"], wild: ["attack", "ATTACK"] },
           events: [{ type: "attack", side: "player", damage: 18, protected: false, target_hp: 20 }],
         },
+        {
+          round: 2,
+          actions: { player: ["attack", "ATTACK"], wild: ["attack", "ATTACK"] },
+          events: [{ type: "attack", side: "wild", damage: 5, protected: false, target_hp: 75 }],
+        },
       ],
     });
     withBattle(view);
 
-    const wrapper = mount(BattleArena, { props: { battle: view } });
+    const wrapper = mount(RoundLog, { props: { battle: view } });
 
-    expect(wrapper.findAll("[role='meter']").map((m) => m.attributes("aria-valuenow"))).toEqual(["80", "20"]);
-    expect(wrapper.text()).toContain("+4 essence, 2 rounds left");
-    const log = wrapper.find(".round-log").text();
-    expect(log).toContain("Round 1: Guardian chose Strike, Bruiser chose Attack");
-    expect(log).toContain("Guardian hits for 18; Bruiser has 20 HP left");
+    const titles = wrapper.findAll(".title").map((t) => t.text());
+    expect(titles[0]).toContain("R02");
+    expect(titles[1]).toContain("Round 1: Guardian chose Strike, Bruiser chose Attack");
+    expect(wrapper.text()).toContain("Guardian hits for 18; Bruiser has 20 HP left");
+    expect(wrapper.find(".rounds").attributes("aria-live")).toBe("polite");
+  });
+
+  it("says when no round was played yet", () => {
+    const view = battleView({ history: [] });
+    withBattle(view);
+
+    expect(mount(RoundLog, { props: { battle: view } }).text()).toContain("No rounds yet.");
   });
 });
 
@@ -112,13 +141,15 @@ describe("ActionBar", () => {
 
     expect(client.action).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 1 }, { kind: "catch", emblem_tier: "normal" });
   });
+});
 
+describe("BattleControls", () => {
   it("keeps a battle without an EMBLEM limit manual", async () => {
     const view = battleView({ mode: "manual", emblem_limit: null });
     withBattle(view);
-    const wrapper = mount(ActionBar, { props: { battle: view } });
+    const wrapper = mount(BattleControls, { props: { battle: view } });
 
-    const autonomous = wrapper.findAll("button.segment").find((b) => b.text() === "Autonomous")!;
+    const autonomous = wrapper.findAll("[role=tab]").find((b) => b.text() === "Autonomous")!;
     expect(autonomous.attributes("disabled")).toBeDefined();
     await autonomous.trigger("click");
 
@@ -129,9 +160,9 @@ describe("ActionBar", () => {
     const view = battleView({ mode: "manual" });
     withBattle(view);
     client.setMode.mockResolvedValue(battleView());
-    const wrapper = mount(ActionBar, { props: { battle: view } });
+    const wrapper = mount(BattleControls, { props: { battle: view } });
 
-    await wrapper.findAll("button.segment").find((b) => b.text() === "Autonomous")!.trigger("click");
+    await wrapper.findAll("[role=tab]").find((b) => b.text() === "Autonomous")!.trigger("click");
     await flushPromises();
 
     expect(client.setMode).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 1 }, "autonomous", null);
@@ -143,7 +174,7 @@ describe("ActionBar", () => {
     client.forfeit.mockResolvedValue(
       battleView({ status: "terminal", phase: "terminal", result: { kind: "forfeited", faint_until: 1_700_000_600 } }),
     );
-    const wrapper = mount(ActionBar, { props: { battle: view } });
+    const wrapper = mount(BattleControls, { props: { battle: view } });
 
     await wrapper.find("button.danger").trigger("click");
     expect(client.forfeit).not.toHaveBeenCalled();
@@ -169,8 +200,9 @@ describe("EmblemPrompt", () => {
     client.emblem.mockResolvedValue(battleView({ mode: "manual", round: 2, revision: 5 }));
     const wrapper = mount(EmblemPrompt);
 
+    expect(wrapper.find(".em-ring").text()).toBe("4s");
     expect(wrapper.text()).toContain("4 s left");
-    await wrapper.findAll("button").find((b) => b.text() === "Normal (2)")!.trigger("click");
+    await wrapper.findAll("button.tier").find((b) => b.text().startsWith("Normal"))!.trigger("click");
     await flushPromises();
 
     expect(client.emblem).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 4 }, "normal");
@@ -184,7 +216,8 @@ describe("EmblemPrompt", () => {
     const wrapper = mount(EmblemPrompt);
 
     expect(wrapper.text()).toContain("Time is up");
-    expect(wrapper.findAll("button").find((b) => b.text() === "Normal (2)")!.attributes("disabled")).toBeDefined();
+    expect(wrapper.findAll("button.tier").find((b) => b.text().startsWith("Normal"))!.attributes("disabled")).toBeDefined();
+    expect(wrapper.text()).toContain("Your Spark will decide this turn.");
   });
 });
 
@@ -215,9 +248,9 @@ describe("BattleResult", () => {
 
     const text = wrapper.text();
     expect(text).toContain("Captured");
-    expect(text).toContain("+30 XP for Guardian, now level 4");
+    expect(wrapper.findAll(".reward")[0]!.text()).toBe("+30 XPfor Guardian, now level 4");
     expect(text).toContain("+12 Insignia");
-    expect(text).toContain("+2 copies of Bruiser, now Rare");
+    expect(wrapper.findAll(".reward")[2]!.text()).toBe("+2 copiesof Bruiser, now Rare");
     expect(text).toContain("Cautious · tier 1");
     expect(text).toContain("Bold · tier 2 (now yours)");
 

@@ -3,13 +3,13 @@ import { computed } from "vue";
 import { titleCase } from "../../../utils/emberlings";
 
 /** A tier's name in its colour, with a small square marker. The name is always
- * written, so the colour is never the only signal. */
-const props = defineProps<{ tierId: string }>();
-const label = computed(() => titleCase(props.tierId));
+ * written (or `label`, for example "Tier 2"), so the colour is never the only signal. */
+const props = defineProps<{ tierId: string; label?: string }>();
+const text = computed(() => props.label ?? titleCase(props.tierId));
 </script>
 
 <template>
-  <span class="em-tier" :style="{ '--tier': `var(--em-tier-${tierId}, var(--em-tier-normal))` }">{{ label }}</span>
+  <span class="em-tier" :style="{ '--tier': `var(--em-tier-${tierId}, var(--em-tier-normal))` }">{{ text }}</span>
 </template>
 
 <style scoped>

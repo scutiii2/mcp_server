@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from "vue";
-import "../components/infoPage.css";
 import "../components/emberlings/fonts";
 import "../components/emberlings/theme.css";
 import ActionBar from "../components/emberlings/ActionBar.vue";
 import BattleArena from "../components/emberlings/BattleArena.vue";
+import BattleControls from "../components/emberlings/BattleControls.vue";
 import BattleResult from "../components/emberlings/BattleResult.vue";
 import CollectionPanel from "../components/emberlings/CollectionPanel.vue";
 import EmShell from "../components/emberlings/EmShell.vue";
 import EmblemPrompt from "../components/emberlings/EmblemPrompt.vue";
-import EncounterPanel from "../components/emberlings/EncounterPanel.vue";
+import EncounterPanel, { type EncounterStage } from "../components/emberlings/EncounterPanel.vue";
+import RoundLog from "../components/emberlings/RoundLog.vue";
 import MainMenu, { type PlayTarget } from "../components/emberlings/MainMenu.vue";
 import ShopPanel from "../components/emberlings/ShopPanel.vue";
 import StarterPick from "../components/emberlings/StarterPick.vue";
+import EmButton from "../components/emberlings/ui/EmButton.vue";
 import EmIcon from "../components/emberlings/ui/EmIcon.vue";
+import EmNotice from "../components/emberlings/ui/EmNotice.vue";
 import EmPageHead from "../components/emberlings/ui/EmPageHead.vue";
+import EmPanel from "../components/emberlings/ui/EmPanel.vue";
 import EmTabs, { type EmTabOption } from "../components/emberlings/ui/EmTabs.vue";
 import { useEmberlingsStore } from "../stores/emberlings";
 import { titleCase } from "../utils/emberlings";
@@ -34,21 +38,25 @@ const tabs: EmTabOption[] = [
   { value: "battle", label: "Battle", icon: "battle" },
   { value: "shop", label: "Shop", icon: "shop" },
 ];
-const PAGE_TITLES: Record<Tab, { title: string }> = {
-  collection: { title: "Your collection" },
-  battle: { title: "Into the wild" },
-  shop: { title: "The forge shop" },
-};
-const subtitle = computed(() => {
+const encounterStage = ref<EncounterStage>("look");
+/** The page title and the line under it, from the tab and, in Battle, the step. */
+const heading = computed<{ title: string; subtitle: string }>(() => {
   if (tab.value === "collection") {
     const n = store.profile?.sparks.length ?? 0;
-    return `${n} ${n === 1 ? "Spark" : "Sparks"}. Every one has a story.`;
+    return { title: "Your collection", subtitle: `${n} ${n === 1 ? "Spark" : "Sparks"}. Every one has a story.` };
   }
-  const owned = store.profile?.emblems ?? {};
-  const parts = (store.catalog?.tiers ?? [])
-    .filter((t) => (owned[t.id] ?? 0) > 0)
-    .map((t) => `${titleCase(t.id)} ${owned[t.id] ?? 0}`);
-  return `EMBLEMs: ${parts.length > 0 ? parts.join(" · ") : "none"}`;
+  if (tab.value === "shop") return { title: "The forge shop", subtitle: "A little preparation goes a long way." };
+  const battle = store.battle;
+  if (battle !== null) {
+    if (battle.result) return { title: "Battle complete", subtitle: "A new chapter for your collection." };
+    return { title: "The forge arena", subtitle: `${battle.player.name} vs. wild ${battle.wild.name} · Round ${battle.round}` };
+  }
+  const wild = store.encounter;
+  if (encounterStage.value === "setup" && wild !== null) {
+    return { title: "Prepare for battle", subtitle: `Wild ${wild.name} · ${titleCase(wild.tier_id)} · Level ${wild.level}` };
+  }
+  if (encounterStage.value === "preview") return { title: "A wild Spark appeared", subtitle: "Take a look. Choose your moment." };
+  return { title: "Into the wild", subtitle: "Your next Spark is waiting." };
 });
 
 function play(target: PlayTarget): void {
@@ -84,30 +92,35 @@ onUnmounted(() => store.detach());
 </script>
 
 <template>
-  <section class="info-page em-root emberlings-page">
+  <section class="em-root emberlings-page">
     <EmShell :insignia="store.profile?.insignia ?? 0">
-      <div v-if="store.unavailable" class="card unavailable" role="alert">
-        <p>Emberlings is not available right now.</p>
-        <button type="button" class="primary" :disabled="store.loading" @click="store.retry()">Retry</button>
-      </div>
+      <EmPanel v-if="store.unavailable" class="state unavailable" role="alert">
+        <EmIcon name="warning" :size="40" />
+        <h2 class="em-pixel">Emberlings is not available right now</h2>
+        <p>Try connecting to the forge again.</p>
+        <EmButton variant="primary" :disabled="store.loading" @click="store.retry()">Retry</EmButton>
+      </EmPanel>
 
-      <div v-else-if="!store.loaded" class="loading">
-        <p v-if="store.error" class="error" role="alert">Could not load Emberlings: {{ store.error }}</p>
-        <p v-else class="muted">Loading …</p>
-        <button v-if="store.error && !store.loading" type="button" class="chip" @click="store.retry()">Retry</button>
-      </div>
+      <EmPanel v-else-if="!store.loaded" class="state loading">
+        <EmIcon name="flame" :size="40" />
+        <h2 class="em-pixel">Loading your Sparks…</h2>
+        <p>Preparing your collection and wallet.</p>
+        <EmNotice v-if="store.error" tone="error">Could not load Emberlings: {{ store.error }}</EmNotice>
+        <EmButton v-if="store.error && !store.loading" @click="store.retry()">Retry</EmButton>
+        <div v-else class="skeletons" aria-hidden="true"><span v-for="n in 4" :key="n" class="skeleton" /></div>
+      </EmPanel>
 
       <template v-else>
-        <p v-if="store.reconnecting" class="muted status" role="status">Reconnecting...</p>
+        <EmNotice v-if="store.reconnecting" class="status">Reconnecting… Your battle will resume when connected.</EmNotice>
         <MainMenu v-if="screen === 'menu'" @new-game="screen = 'starter'" @play="play" />
         <StarterPick v-else-if="screen === 'starter'" @back="screen = 'menu'" @started="play('collection')" />
 
         <template v-else>
-          <EmPageHead :title="PAGE_TITLES[tab].title" :subtitle="subtitle">
+          <EmPageHead :title="heading.title" :subtitle="heading.subtitle">
             <button type="button" class="menu-link" @click="screen = 'menu'"><EmIcon name="arrow" class="back-arrow" /> Main menu</button>
             <EmTabs :model-value="tab" :options="tabs" aria-label="Emberlings sections" @update:model-value="selectTab" />
           </EmPageHead>
-          <p v-if="store.error" class="error status" role="alert">{{ store.error }}</p>
+          <EmNotice v-if="store.error" tone="error" class="status">{{ store.error }}</EmNotice>
 
           <div v-if="tab === 'collection'" class="tab-body">
             <CollectionPanel />
@@ -116,13 +129,17 @@ onUnmounted(() => store.detach());
           <div v-else-if="tab === 'battle'" class="tab-body">
             <template v-if="store.battle">
               <BattleResult v-if="store.battle.result" :battle="store.battle" />
-              <BattleArena :battle="store.battle" />
-              <template v-if="!store.battle.result">
-                <ActionBar :battle="store.battle" />
+              <template v-else>
+                <BattleControls :battle="store.battle" />
+                <BattleArena :battle="store.battle" />
+                <div class="battle-bottom">
+                  <ActionBar :battle="store.battle" />
+                  <RoundLog :battle="store.battle" />
+                </div>
                 <EmblemPrompt />
               </template>
             </template>
-            <EncounterPanel v-else />
+            <EncounterPanel v-else @stage="encounterStage = $event" />
           </div>
 
           <ShopPanel v-else class="tab-body" />
@@ -134,6 +151,8 @@ onUnmounted(() => store.detach());
 
 <style scoped>
 .emberlings-page {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 .menu-link {
@@ -152,20 +171,55 @@ onUnmounted(() => store.detach());
 .back-arrow {
   transform: scaleX(-1);
 }
-.unavailable {
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--em-space-3);
+  padding: 48px 24px;
+  text-align: center;
+}
+.state svg {
+  color: var(--em-accent);
+}
+.state h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.state p {
+  max-width: 360px;
+  color: var(--em-muted);
+}
+.skeletons {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
+  gap: 20px;
+  margin-top: var(--em-space-3);
 }
-.unavailable p {
-  margin: 0;
+.skeleton {
+  width: 140px;
+  aspect-ratio: 1060 / 1484;
+  border: 1px solid var(--em-border);
+  background: linear-gradient(var(--em-raised) 25%, #334756 25% 74%, var(--em-raised) 74%);
 }
 .status {
-  margin: 10px 0 0;
+  margin: var(--em-space-3) 0;
 }
 .tab-body {
   margin-top: var(--em-space-5);
+}
+.battle-bottom {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: var(--em-space-5);
+  margin-top: var(--em-space-5);
+}
+@media (max-width: 700px) {
+  .battle-bottom {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--em-space-4);
+  }
 }
 </style>

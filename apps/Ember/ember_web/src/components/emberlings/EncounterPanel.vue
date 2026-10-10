@@ -1,44 +1,77 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { BattleMode } from "../../api/EmberlingsClient";
 import { useNowSeconds } from "../../composables/useNowSeconds";
 import { useEmberlingsStore } from "../../stores/emberlings";
 import { formatCountdown, titleCase } from "../../utils/emberlings";
-import BaseModal from "../BaseModal.vue";
-import SegmentedControl from "../SegmentedControl.vue";
-import TierBadge from "./TierBadge.vue";
+import SparkTemplateCard from "./SparkTemplateCard.vue";
+import EmButton from "./ui/EmButton.vue";
+import EmIcon from "./ui/EmIcon.vue";
+import EmNotice from "./ui/EmNotice.vue";
+import EmPanel from "./ui/EmPanel.vue";
+import EmTabs from "./ui/EmTabs.vue";
+import EmTierBadge from "./ui/EmTierBadge.vue";
 
-/** The Battle tab without a battle: look for a wild Spark (once the cooldown
- * is over), then decline it for free or fight it. Fight asks which Spark,
- * which preset, who plays and the highest EMBLEM tier the Spark may throw on
- * its own. mini_games needs a preset and a limit for autonomous play. */
+/** The Battle tab without a battle, in three steps: look for a wild Spark (once the
+ * cooldown is over), see it and decline for free or fight, then set the battle up (which
+ * Spark, which preset, who plays and the highest EMBLEM tier the Spark may throw on its
+ * own). mini_games needs a preset and a limit for autonomous play. It reports the step
+ * (`stage`) so the page can title it. */
+export type EncounterStage = "look" | "preview" | "setup";
+const emit = defineEmits<{ stage: [stage: EncounterStage] }>();
+
 const store = useEmberlingsStore();
 const now = useNowSeconds();
 
-const MODE_OPTIONS: { value: BattleMode; label: string }[] = [
+const MODE_OPTIONS = [
   { value: "manual", label: "Manual" },
   { value: "autonomous", label: "Autonomous" },
 ];
-const PRESET_SLOTS = [1, 2, 3, 4, 5];
+const PRESET_OPTIONS = [{ value: "none", label: "None" }, ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }))];
 
 const rollWait = computed(() => {
   const at = store.profile?.next_roll_at ?? null;
   return at === null ? 0 : Math.max(0, at - now.value);
 });
-const ready = computed(() =>
-  (store.profile?.sparks ?? []).filter((s) => s.faint_until === null || s.faint_until <= now.value),
-);
+const sparks = computed(() => store.profile?.sparks ?? []);
+const ready = computed(() => sparks.value.filter((s) => s.faint_until === null || s.faint_until <= now.value));
+const resting = computed(() => sparks.value.filter((s) => s.faint_until !== null && s.faint_until > now.value));
 const tiers = computed(() => store.catalog?.tiers ?? []);
+const ownedEmblems = computed(() =>
+  tiers.value
+    .filter((t) => (store.profile?.emblems[t.id] ?? 0) > 0)
+    .map((t) => `${store.profile?.emblems[t.id]} ${titleCase(t.id)}`)
+    .join(" · "),
+);
+const wildInfo = computed(() => store.catalog?.sparks.find((s) => s.id === store.encounter?.spark_id) ?? null);
 
 const formOpen = ref(false);
 const sparkId = ref("");
 const presetSlot = ref("none");
 const mode = ref<BattleMode>("manual");
 const emblemLimit = ref("none");
+const chosen = computed(() => ready.value.find((s) => s.spark_id === sparkId.value) ?? null);
+const chosenInfo = computed(() => store.catalog?.sparks.find((s) => s.id === chosen.value?.spark_id) ?? null);
 const autonomousIncomplete = computed(
   () => mode.value === "autonomous" && (presetSlot.value === "none" || emblemLimit.value === "none"),
 );
 const canFight = computed(() => sparkId.value !== "" && !autonomousIncomplete.value && !store.busy);
+const limitHint = computed(() => {
+  const index = tiers.value.findIndex((t) => t.id === emblemLimit.value);
+  if (index === -1) return "Choose a limit to let your Spark throw EMBLEMs on its own. Autonomous play needs one.";
+  const names = tiers.value.slice(0, index + 1).map((t) => titleCase(t.id));
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  return `Your Spark may use ${list} EMBLEMs. Higher tiers stay in your wallet.`;
+});
+const stage = computed<EncounterStage>(() => (store.encounter === null ? "look" : formOpen.value ? "setup" : "preview"));
+watch(stage, (value) => emit("stage", value), { immediate: true });
+// A new encounter always starts at its preview.
+watch(
+  () => store.encounter?.id ?? null,
+  () => {
+    formOpen.value = false;
+  },
+);
 
 function openForm(): void {
   sparkId.value = ready.value[0]?.spark_id ?? "";
@@ -46,6 +79,10 @@ function openForm(): void {
   mode.value = "manual";
   emblemLimit.value = "none";
   formOpen.value = true;
+}
+
+function setMode(value: string): void {
+  mode.value = value as BattleMode;
 }
 
 async function fight(): Promise<void> {
@@ -64,108 +101,258 @@ async function fight(): Promise<void> {
 
 <template>
   <section class="encounter-panel">
-    <div v-if="!store.encounter" class="card look">
-      <p class="muted">Wild Sparks roam nearby. Looking is free; you can look again after a short rest.</p>
-      <button type="button" class="primary" :disabled="rollWait > 0 || store.busy" @click="store.rollEncounter()">
-        {{ rollWait > 0 ? `Look again in ${formatCountdown(rollWait)}` : "Look for a wild Spark" }}
-      </button>
+    <div v-if="stage === 'look'" class="split">
+      <EmPanel class="look">
+        <EmIcon name="battle" :size="40" class="big-icon" />
+        <h3 class="em-pixel heading">Find a wild Spark</h3>
+        <p class="muted">Search for an opponent. Preview the Spark before choosing to fight.</p>
+        <EmButton variant="primary" :disabled="rollWait > 0 || store.busy" @click="store.rollEncounter()">
+          <EmIcon :name="rollWait > 0 ? 'clock' : 'spark'" />
+          {{ rollWait > 0 ? `Search ready in ${formatCountdown(rollWait)}` : "Look for a wild Spark" }}
+        </EmButton>
+        <p class="caption">Declining an encounter costs nothing.</p>
+      </EmPanel>
+      <EmPanel>
+        <h3 class="em-pixel heading">Ready for battle?</h3>
+        <p class="muted">Choose a Spark that is rested and a preset that fits your plan.</p>
+        <div class="facts">
+          <div>
+            <strong>{{ ready.length }} {{ ready.length === 1 ? "Spark" : "Sparks" }} ready</strong>
+            <p v-for="s in resting" :key="s.spark_id" class="em-num">
+              {{ s.name }} is fainted. Ready in {{ formatCountdown((s.faint_until ?? 0) - now) }}.
+            </p>
+            <p v-if="resting.length === 0">All rested.</p>
+          </div>
+          <div>
+            <strong>{{ ownedEmblems || "No EMBLEMs" }}{{ ownedEmblems ? " EMBLEMs" : "" }}</strong>
+            <p>Bring an EMBLEM if you hope to catch a Spark.</p>
+          </div>
+        </div>
+      </EmPanel>
     </div>
 
-    <div v-else class="card preview">
-      <div class="card-head">
-        <h3>A wild {{ store.encounter.name }}</h3>
-        <TierBadge :tier-id="store.encounter.tier_id" />
+    <EmPanel v-else-if="stage === 'preview' && store.encounter" class="preview">
+      <SparkTemplateCard
+        v-if="wildInfo"
+        class="wild-card"
+        :spark="wildInfo"
+        :level="store.encounter.level"
+        :tier-id="store.encounter.tier_id"
+        compact
+        show-level
+      />
+      <div class="about">
+        <p class="em-eyebrow">Wild encounter</p>
+        <h3 class="em-pixel name">{{ store.encounter.name }}</h3>
+        <p class="level em-num">Level {{ store.encounter.level }} · <EmTierBadge :tier-id="store.encounter.tier_id" /></p>
+        <p class="muted">Its personalities stay hidden until you capture it.</p>
+        <div class="buttons">
+          <EmButton variant="primary" :disabled="store.busy || ready.length === 0" @click="openForm"><EmIcon name="battle" /> Fight</EmButton>
+          <EmButton :disabled="store.busy" @click="store.declineEncounter()"><EmIcon name="arrow" /> Decline · free</EmButton>
+        </div>
+        <p v-if="ready.length === 0" class="caption">All your Sparks are fainted. Wait until one is ready again.</p>
+        <p v-else class="caption">The encounter waits until you choose.</p>
       </div>
-      <p class="muted">Level {{ store.encounter.level }}. Its personalities stay hidden until you capture it.</p>
-      <div class="buttons">
-        <button type="button" class="chip" :disabled="store.busy" @click="store.declineEncounter()">Decline</button>
-        <button type="button" class="primary" :disabled="store.busy || ready.length === 0" @click="openForm">Fight</button>
-      </div>
-      <p v-if="ready.length === 0" class="muted">All your Sparks are fainted. Wait until one is ready again.</p>
-    </div>
+    </EmPanel>
 
-    <BaseModal :open="formOpen" title="Start the battle" @close="formOpen = false">
-      <form class="start-form" @submit.prevent="fight">
-        <label>
-          <span>Spark</span>
-          <select v-model="sparkId" name="spark">
-            <option v-for="s in ready" :key="s.spark_id" :value="s.spark_id">{{ s.name }} (level {{ s.level }})</option>
-          </select>
-        </label>
-        <label>
-          <span>Preset</span>
-          <select v-model="presetSlot" name="preset">
-            <option value="none">None</option>
-            <option v-for="n in PRESET_SLOTS" :key="n" :value="String(n)">Preset {{ n }}</option>
-          </select>
-        </label>
-        <SegmentedControl v-model="mode" :options="MODE_OPTIONS" label="Who plays" />
-        <label>
-          <span>EMBLEM limit</span>
+    <form v-else class="start-form split" @submit.prevent="fight">
+      <EmPanel>
+        <h3 class="em-pixel heading">Choose your Spark</h3>
+        <div class="chosen">
+          <SparkTemplateCard v-if="chosenInfo && chosen" class="own-card" :spark="chosenInfo" :level="chosen.level" :tier-id="chosen.tier_id" compact show-level />
+          <div class="pick">
+            <label class="field">
+              <span>Your Spark</span>
+              <select v-model="sparkId" name="spark">
+                <option v-for="s in ready" :key="s.spark_id" :value="s.spark_id">{{ s.name }} · {{ titleCase(s.tier_id) }} · Lv. {{ s.level }}</option>
+              </select>
+            </label>
+            <p class="caption">Fainted Sparks are unavailable.</p>
+          </div>
+        </div>
+        <ul v-if="resting.length" class="resting">
+          <li v-for="s in resting" :key="s.spark_id" class="em-num">{{ s.name }} · Fainted, ready in {{ formatCountdown((s.faint_until ?? 0) - now) }}</li>
+        </ul>
+      </EmPanel>
+
+      <EmPanel>
+        <h3 class="em-pixel heading">Battle plan</h3>
+        <p class="label">Personality preset</p>
+        <EmTabs v-model="presetSlot" class="wide" :options="PRESET_OPTIONS" aria-label="Personality preset" />
+        <p class="label">Who plays?</p>
+        <EmTabs :model-value="mode" class="wide" :options="MODE_OPTIONS" aria-label="Who plays" @update:model-value="setMode" />
+        <label class="field">
+          <span>Highest EMBLEM tier for Autonomous play</span>
           <select v-model="emblemLimit" name="limit">
             <option value="none">None</option>
-            <option v-for="t in tiers" :key="t.id" :value="t.id">{{ titleCase(t.id) }}</option>
+            <option v-for="t in tiers" :key="t.id" :value="t.id">{{ titleCase(t.id) }} · up to {{ titleCase(t.id) }} EMBLEMs</option>
           </select>
         </label>
-        <p class="muted hint">The highest EMBLEM tier your Spark may throw on its own.</p>
-        <p v-if="autonomousIncomplete" class="error">Autonomous play needs a preset and an EMBLEM limit.</p>
+        <p class="caption">{{ limitHint }}</p>
+        <EmNotice v-if="autonomousIncomplete" tone="error">Autonomous play needs a preset and an EMBLEM limit.</EmNotice>
         <div class="buttons">
-          <button type="button" class="chip" @click="formOpen = false">Cancel</button>
-          <button type="submit" class="primary" :disabled="!canFight">Fight</button>
+          <EmButton type="submit" variant="primary" :disabled="!canFight"><EmIcon name="battle" /> Begin battle</EmButton>
+          <EmButton @click="formOpen = false">Back</EmButton>
         </div>
-      </form>
-    </BaseModal>
+      </EmPanel>
+    </form>
   </section>
 </template>
 
 <style scoped>
-.look,
-.preview {
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--em-space-5);
+  align-items: start;
+}
+.heading {
+  margin: 0 0 var(--em-space-3);
+  font-size: 18px;
+  line-height: 1.4;
+}
+.look {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  padding: 48px 24px;
+  text-align: center;
 }
-.look p,
-.preview p {
+.big-icon {
+  margin-bottom: var(--em-space-3);
+  color: var(--em-accent);
+}
+.look p {
+  max-width: 360px;
+  margin: 0 auto var(--em-space-4);
+}
+.caption {
+  font-size: 12px;
+  color: var(--em-muted);
+}
+.facts {
+  display: grid;
+  gap: 18px;
+  margin-top: var(--em-space-4);
+}
+.facts > div {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--em-divider);
+}
+.facts strong {
+  display: block;
+  margin-bottom: 3px;
+}
+.facts p {
+  color: var(--em-muted);
+}
+.preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--em-space-6);
+  align-items: center;
+}
+.wild-card {
+  --card-width: 190px;
+  flex: none;
+}
+.about {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--em-space-3);
+  min-width: 260px;
+}
+.name {
   margin: 0;
+  font-size: 18px;
 }
-.preview .card-head {
-  width: 100%;
+.level {
+  display: flex;
+  align-items: center;
+  gap: var(--em-space-2);
+  color: var(--em-muted);
+  font-size: 16px;
 }
 .buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--em-space-3);
+  margin-top: var(--em-space-2);
 }
-.start-form {
+.chosen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--em-space-5);
+  align-items: center;
+}
+.own-card {
+  --card-width: 190px;
+  flex: none;
+}
+.pick {
+  flex: 1;
+  min-width: 200px;
+}
+.field {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--em-space-2);
+  margin-bottom: var(--em-space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--em-muted);
 }
-.start-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.9em;
-}
-.start-form select {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  background: var(--bg);
+.field select {
+  min-height: var(--em-target);
+  padding: 10px 12px;
+  border: 1px solid var(--em-border);
+  border-radius: var(--em-radius);
+  color: var(--em-text);
+  background: var(--em-bg);
   font: inherit;
+  font-size: 14px;
 }
-.start-form select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.resting {
+  margin: var(--em-space-4) 0 0;
+  padding: 0;
+  list-style: none;
 }
-.hint {
-  margin: -6px 0 0;
-  font-size: 0.85em;
+.resting li {
+  padding: 14px 16px;
+  border: 1px dashed var(--em-border);
+  font-size: 14px;
+  color: var(--em-muted);
 }
-.start-form .buttons {
-  justify-content: flex-end;
+.label {
+  margin: var(--em-space-4) 0 var(--em-space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--em-muted);
+}
+.wide {
+  display: flex;
+}
+.wide :deep(.tab) {
+  flex: 1;
+}
+.start-form .caption {
+  margin: var(--em-space-2) 0 var(--em-space-3);
+}
+@media (max-width: 700px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--em-space-4);
+  }
+  .look {
+    padding: 32px 16px;
+  }
+  .wild-card {
+    --card-width: 170px;
+    margin: 0 auto;
+  }
+  .buttons > * {
+    flex: 1;
+  }
 }
 </style>

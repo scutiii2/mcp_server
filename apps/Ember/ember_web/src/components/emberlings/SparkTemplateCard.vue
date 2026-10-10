@@ -258,7 +258,7 @@ const abilities = computed(() =>
   font-size: 16cqw;
   font-weight: 600;
   line-height: 1;
-  color: var(--accent);
+  color: var(--em-accent);
 }
 .art-fill small {
   font-size: 2.4cqw;
@@ -364,7 +364,7 @@ const abilities = computed(() =>
   width: 6.4cqw;
   height: 6.4cqw;
   border: 0.4cqw solid #0f1012;
-  border-radius: var(--radius-sm);
+  border-radius: var(--em-radius);
   color: #ffb27a;
   background: #23262b;
 }

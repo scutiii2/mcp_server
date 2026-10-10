@@ -54,14 +54,15 @@ describe("EncounterPanel", () => {
 
     expect(client.rollEncounter).toHaveBeenCalledOnce();
     expect(store.encounter?.id).toBe("e1");
-    expect(wrapper.text()).toContain("A wild Bruiser");
+    expect(wrapper.find(".name").text()).toBe("Bruiser");
+    expect(wrapper.emitted("stage")!.map((e) => e[0])).toEqual(["look", "preview"]);
   });
 
   it("waits out the cooldown with a countdown", () => {
     const { wrapper } = mountPanel({ ...PROFILE, next_roll_at: Date.now() / 1000 + 20 });
 
-    const look = button(wrapper.findAll("button"), /Look again in/);
-    expect(look.text()).toMatch(/Look again in 0:(19|20)/);
+    const look = button(wrapper.findAll("button"), /Search ready in/);
+    expect(look.text()).toMatch(/Search ready in 0:(19|20)/);
     expect(look.attributes("disabled")).toBeDefined();
   });
 
@@ -70,7 +71,7 @@ describe("EncounterPanel", () => {
     const { store, wrapper } = mountPanel(PROFILE, ENCOUNTER);
     expect(wrapper.text()).toContain("Level 4");
 
-    await button(wrapper.findAll("button"), "Decline").trigger("click");
+    await button(wrapper.findAll("button"), "Decline · free").trigger("click");
     await flushPromises();
 
     expect(client.declineEncounter).toHaveBeenCalledExactlyOnceWith("e1");
@@ -92,13 +93,14 @@ describe("EncounterPanel", () => {
     const { wrapper } = mountPanel(PROFILE, ENCOUNTER);
 
     await button(wrapper.findAll("button"), "Fight").trigger("click");
+    expect(wrapper.emitted("stage")!.map((e) => e[0])).toEqual(["preview", "setup"]);
     const form = wrapper.find("form.start-form");
-    await button(form.findAll("button"), "Autonomous").trigger("click");
+    await form.findAll("[role=tab]").find((t) => t.text() === "Autonomous")!.trigger("click");
     const submit = form.find("button[type='submit']");
     expect(submit.attributes("disabled")).toBeDefined();
     expect(form.text()).toContain("Autonomous play needs a preset and an EMBLEM limit.");
 
-    await form.find("select[name='preset']").setValue("2");
+    await form.findAll("[role=tab]").find((t) => t.text() === "2")!.trigger("click");
     await form.find("select[name='limit']").setValue("rare");
     expect(submit.attributes("disabled")).toBeUndefined();
     await form.trigger("submit");

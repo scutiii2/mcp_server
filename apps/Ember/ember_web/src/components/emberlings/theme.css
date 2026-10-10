@@ -56,22 +56,6 @@
   --em-font-display: "Silkscreen", monospace;
   --em-font-body: "Inter", system-ui, "Segoe UI", sans-serif;
 
-  /* Legacy aliases: the old Emberlings components still read Ember's token names. They
-     take this theme's values until each is rewritten (Tasks 3 to 6); Task 7 removes them. */
-  --bg: var(--em-bg);
-  --surface: var(--em-panel);
-  --text: var(--em-text);
-  --muted: var(--em-muted);
-  --border: var(--em-border);
-  --accent: var(--em-accent);
-  --accent-contrast: var(--em-on-accent);
-  --danger: var(--em-danger);
-  --warning: var(--em-warning);
-  --code-bg: var(--em-bg);
-  --radius-sm: var(--em-radius);
-  --radius-md: var(--em-radius);
-  --radius-lg: var(--em-radius);
-  --radius-xl: var(--em-radius);
 
   min-height: 100%;
   color: var(--em-text);
@@ -93,6 +77,10 @@
 .em-root h4,
 .em-root p {
   margin: 0;
+}
+
+.em-root .muted {
+  color: var(--em-muted);
 }
 
 .em-root .em-pixel {

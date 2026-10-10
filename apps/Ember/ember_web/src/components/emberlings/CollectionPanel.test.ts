@@ -44,7 +44,8 @@ describe("CollectionPanel", () => {
     const cards = wrapper.findAll(".spark-card");
     expect(cards).toHaveLength(1);
     const text = cards[0]!.text();
-    expect(text).toContain("Rare · 3 copies");
+    expect(cards[0]!.find(".em-tier").text()).toBe("Rare");
+    expect(text).toContain("3 copies");
     expect(text).toContain("40 / 300 XP");
     expect(cards[0]!.find(".spark-name").text()).toBe("Guardian");
     expect(cards[0]!.find(".level").text()).toBe("Lv 3");
@@ -64,9 +65,16 @@ describe("CollectionPanel", () => {
     });
 
     const text = wrapper.find(".spark-card").text();
-    expect(text).toContain("Highest level reached");
-    expect(text).toMatch(/Fainted · ready in 1:0[56]/);
+    expect(text).toMatch(/Fainted, ready in 1:0[56]/);
+    expect(wrapper.find(".spark-card .xp").exists()).toBe(false);
     expect(wrapper.find(".spark-card").classes()).toContain("down");
+  });
+
+  it("says Highest level reached at the cap", () => {
+    const wrapper = mountPanel({ ...PROFILE, sparks: [ownedSpark("guardian", { xp_needed: null })] });
+
+    expect(wrapper.find(".spark-card").text()).toContain("Highest level reached");
+    expect(wrapper.find(".spark-card .em-bar").exists()).toBe(false);
   });
 
   it("opens a Spark's abilities, personalities (paged) and presets", async () => {
@@ -81,14 +89,16 @@ describe("CollectionPanel", () => {
     const details = wrapper.find(".details");
     expect(details.find(".big-card .spark-name").text()).toBe("Guardian");
     expect(details.findAll(".big-card .ability").map((a) => a.find("strong").text())).toEqual(["Strike", "Rally"]);
-    expect(details.text()).toContain("Aggressive · tier 2");
+    expect(details.find(".personalities").text()).toContain("Aggressive");
+    expect(details.find(".personalities").text()).toContain("Tier 2");
+    expect(details.text()).toContain("1+ collected");
 
     client.personalities.mockResolvedValueOnce({ items: [{ id: "p2", type: "CAUTIOUS", tier: 1 }], next_cursor: null });
     await details.findAll("button").find((b) => b.text() === "Show more")!.trigger("click");
     await flushPromises();
 
     expect(client.personalities).toHaveBeenLastCalledWith("guardian", 7, 50);
-    expect(wrapper.find(".details").text()).toContain("Cautious · tier 1");
+    expect(wrapper.find(".personalities").text()).toContain("Cautious");
     expect(wrapper.find(".details").findAll("button").some((b) => b.text() === "Show more")).toBe(false);
   });
 });
@@ -110,7 +120,7 @@ describe("PresetEditor", () => {
   it("equips at most three personalities and saves the preset", async () => {
     client.preset.mockResolvedValue({ spark_id: "guardian", slot: 1, instance_ids: ["p1"] });
     client.savePreset.mockResolvedValue({ spark_id: "guardian", slot: 1, instance_ids: ["p1", "p2", "p3"] });
-    const wrapper = mount(PresetEditor, { props: { sparkId: "guardian", personalities: items } });
+    const wrapper = mount(PresetEditor, { props: { sparkId: "guardian", sparkName: "Guardian", personalities: items } });
     await flushPromises();
 
     const switches = wrapper.findAll("input[role='switch']");
@@ -125,11 +135,26 @@ describe("PresetEditor", () => {
     expect(client.savePreset).toHaveBeenCalledExactlyOnceWith("guardian", 1, ["p1", "p2", "p3"]);
   });
 
-  it("loads the slot the user picks", async () => {
-    const wrapper = mount(PresetEditor, { props: { sparkId: "guardian", personalities: items } });
+  it("announces the save in a toast and keeps the saved state", async () => {
+    client.preset.mockResolvedValue({ spark_id: "guardian", slot: 1, instance_ids: [] });
+    client.savePreset.mockResolvedValue({ spark_id: "guardian", slot: 1, instance_ids: ["p1"] });
+    const wrapper = mount(PresetEditor, { props: { sparkId: "guardian", sparkName: "Guardian", personalities: items } });
     await flushPromises();
 
-    await wrapper.findAll("button.segment").find((b) => b.text() === "Preset 3")!.trigger("click");
+    await wrapper.findAll("input[role='switch']")[0]!.setValue(true);
+    expect(wrapper.find(".count").text()).toBe("Preset 1 · 1 of 3 personalities equipped");
+    await wrapper.find("button.save").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".em-toast").text()).toBe("Preset 1 saved. Guardian is ready.");
+    expect((wrapper.find("button.save").element as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("loads the slot the user picks", async () => {
+    const wrapper = mount(PresetEditor, { props: { sparkId: "guardian", sparkName: "Guardian", personalities: items } });
+    await flushPromises();
+
+    await wrapper.findAll("[role=tab]").find((b) => b.text() === "3")!.trigger("click");
     await flushPromises();
 
     expect(client.preset).toHaveBeenLastCalledWith("guardian", 3);

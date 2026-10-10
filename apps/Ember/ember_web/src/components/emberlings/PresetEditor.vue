@@ -4,23 +4,31 @@ import { emberlingsClient, type PersonalityItem } from "../../api/EmberlingsClie
 import { useEmberlingsStore } from "../../stores/emberlings";
 import { errorMessage } from "../../utils/errors";
 import { titleCase } from "../../utils/emberlings";
-import SegmentedControl from "../SegmentedControl.vue";
-import ToggleSwitch from "../ToggleSwitch.vue";
+import EmButton from "./ui/EmButton.vue";
+import EmIcon from "./ui/EmIcon.vue";
+import EmNotice from "./ui/EmNotice.vue";
+import EmSwitch from "./ui/EmSwitch.vue";
+import EmTabs from "./ui/EmTabs.vue";
+import EmTierBadge from "./ui/EmTierBadge.vue";
+import EmToast from "./ui/EmToast.vue";
 
-/** A Spark's five presets: up to three personality instances each. An
- * autonomous Spark lets one of them lead each round. */
-const props = defineProps<{ sparkId: string; personalities: PersonalityItem[] }>();
+/** A Spark's five presets: up to three personality instances each. An autonomous Spark
+ * lets one of them lead each round. */
+const props = defineProps<{ sparkId: string; sparkName: string; personalities: PersonalityItem[] }>();
 const store = useEmberlingsStore();
 
 const MAX_EQUIPPED = 3;
-const SLOT_OPTIONS = [1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: `Preset ${n}` }));
+const SLOT_OPTIONS = [1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }));
 
 const slot = ref("1");
 const chosen = ref<string[]>([]);
 const saved = ref<string[]>([]);
 const loading = ref(false);
 const loadError = ref("");
+const toastOpen = ref(false);
+const toastMessage = ref("");
 const dirty = computed(() => chosen.value.join(",") !== saved.value.join(","));
+const full = computed(() => chosen.value.length >= MAX_EQUIPPED);
 
 async function load(): Promise<void> {
   const sparkId = props.sparkId;
@@ -47,35 +55,37 @@ function toggle(id: string, on: boolean): void {
 }
 
 async function save(): Promise<void> {
-  const preset = await store.savePreset(props.sparkId, Number(slot.value), chosen.value);
+  const slotNumber = Number(slot.value);
+  const preset = await store.savePreset(props.sparkId, slotNumber, chosen.value);
   if (preset) {
     saved.value = preset.instance_ids;
     chosen.value = [...preset.instance_ids];
+    toastMessage.value = `Preset ${slotNumber} saved. ${props.sparkName} is ready.`;
+    toastOpen.value = true;
   }
 }
 </script>
 
 <template>
   <section class="preset-editor">
-    <h4>Presets</h4>
-    <SegmentedControl v-model="slot" :options="SLOT_OPTIONS" aria-label="Preset slot" />
-    <p class="muted hint">Up to {{ MAX_EQUIPPED }} personalities. An autonomous Spark lets one of them lead each round.</p>
-    <p v-if="loadError" class="error">{{ loadError }}</p>
+    <h4 class="heading">Personality presets</h4>
+    <EmTabs v-model="slot" class="slots" :options="SLOT_OPTIONS" aria-label="Preset slot" />
+    <p class="count em-num">Preset {{ slot }} · {{ chosen.length }} of {{ MAX_EQUIPPED }} personalities equipped</p>
+
+    <EmNotice v-if="loadError" tone="error">{{ loadError }}</EmNotice>
     <p v-else-if="loading" class="muted">Loading …</p>
     <p v-else-if="personalities.length === 0" class="muted">This Spark has no personalities yet.</p>
     <ul v-else class="choices">
       <li v-for="p in personalities" :key="p.id">
-        <ToggleSwitch
-          small
-          :checked="chosen.includes(p.id)"
-          :disabled="!chosen.includes(p.id) && chosen.length >= MAX_EQUIPPED"
-          @change="toggle(p.id, ($event.target as HTMLInputElement).checked)"
-        >
-          {{ titleCase(p.type) }} · tier {{ p.tier }}
-        </ToggleSwitch>
+        <EmSwitch :model-value="chosen.includes(p.id)" :label="titleCase(p.type)" :disabled="!chosen.includes(p.id) && full" @update:model-value="toggle(p.id, $event)">
+          <EmTierBadge tier-id="normal" :label="`Tier ${p.tier}`" class="badge" />
+        </EmSwitch>
       </li>
     </ul>
-    <button type="button" class="primary" :disabled="!dirty || store.busy" @click="save">Save preset</button>
+
+    <p class="hint">Equip up to {{ MAX_EQUIPPED }} collected personalities per preset. An autonomous Spark lets one of them lead each round.</p>
+    <EmButton variant="primary" class="save" :disabled="!dirty || store.busy" @click="save"><EmIcon name="check" /> Save preset</EmButton>
+    <EmToast :open="toastOpen" :message="toastMessage" @close="toastOpen = false" />
   </section>
 </template>
 
@@ -83,25 +93,43 @@ async function save(): Promise<void> {
 .preset-editor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
+  gap: var(--em-space-3);
+  margin-top: var(--em-space-5);
 }
-h4 {
+.heading {
   margin: 0;
+  font-size: 16px;
 }
-.hint {
-  margin: 0;
-  font-size: 0.85em;
+.slots {
+  display: flex;
+}
+.slots :deep(.tab) {
+  flex: 1;
+}
+.count {
+  font-size: 12px;
+  color: var(--em-muted);
 }
 .choices {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.primary {
-  align-self: flex-start;
+.choices li {
+  border-bottom: 1px solid var(--em-divider);
+}
+.badge {
+  margin-left: auto;
+}
+.hint {
+  padding: 10px 14px;
+  border: 1px solid var(--em-border);
+  border-radius: var(--em-radius);
+  background: var(--em-bg);
+  font-size: 12px;
+  color: var(--em-muted);
+}
+.save {
+  width: 100%;
 }
 </style>
