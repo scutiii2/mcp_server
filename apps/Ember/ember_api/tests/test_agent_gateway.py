@@ -18,7 +18,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from src.services.agent_gateway import AgentCallError, Caller, McpAgentGateway
 
-CALLER = Caller(username="alice", email="alice@example.com")
+CALLER = Caller(username="alice", email="alice@example.com", uid="uid-alice")
 
 
 def _free_port() -> int:
@@ -51,6 +51,7 @@ def _build_agent(approvals: bool = True, private: bool | None = None) -> FastMCP
     ) -> dict[str, Any]:
         headers = ctx.request_context.request.headers
         seen["username"] = headers.get("x-requester-username")
+        seen["uid"] = headers.get("x-requester-uid")
         seen["token"] = headers.get("x-internal-token")
         calls["asks"] += 1
         for text in ("Hel", "lo"):
@@ -151,7 +152,7 @@ def test_ask_streams_events_and_sends_identity(agent_url: str) -> None:
     )
 
     assert result["response"] == "echo: hi (1 earlier, caveman=True, ext=['notes'])"
-    assert result["seen"] == {"username": "alice", "token": "s3cret"}
+    assert result["seen"] == {"username": "alice", "uid": "uid-alice", "token": "s3cret"}
     assert [e["text"] for e in events] == ["Hel", "lo"]
 
 

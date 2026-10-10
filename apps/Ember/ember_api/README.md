@@ -269,8 +269,7 @@ only proxies authenticated calls with the internal token and session identity.
 Creates always send `source: "user"` and `verified_context` containing
 `via: "ember_api"` and the stable `account_id` as text. Ticket ownership is
 keyed by username: renaming an account orphans its existing tickets in
-mcp_server's store (the same limitation as memory notes). The verified
-account id is retained for a later ownership migration.
+mcp_server's store. The verified account id is retained for a later ownership migration.
 
 Titles are 1-120 characters, descriptions 1-4000, comments 1-2000 and
 assignees at most 64. Invalid request fields and ids return `422`.
@@ -308,7 +307,7 @@ automatic reports. Add manual limits later if abuse appears.
   `require_email_verification` is `false` in config.
 - **Ticket permissions:** `tickets.create`: "Report bugs, suggest features and follow your own tickets";
   `tickets.manage`: "See every ticket, triage them and set status, priority and assignee".
-  Migration `0011` grants `tickets.create` once to existing roles holding `chat.use`;
+  Migration `0012` grants `tickets.create` once to existing roles holding `chat.use`;
   later revocations stick. Staff access does not grant reporter access.
 - **Invites and verification codes:** 10 random characters, stored as
   SHA-256, single use. Invites expire after 7 days, verification codes after

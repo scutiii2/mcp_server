@@ -1,6 +1,6 @@
 # capabilities/memory/
 
-Short notes the assistant keeps about a user between chats. Three tools. Notes belong to the user named in the request's identity (never a tool parameter; see Rules for how far that can be trusted), live in a local SQLite file and are searched by keyword.
+Short notes the assistant keeps about a user between chats. Three tools. Notes belong to the account whose stable uid is in the request's identity (never a tool parameter; see Rules for how far that can be trusted), live in a local SQLite file and are searched by keyword.
 
 ## Tools
 
@@ -33,9 +33,9 @@ Short notes the assistant keeps about a user between chats. Three tools. Notes b
 - Search results are fenced as data (`services/untrusted.py`), but a fence is not a security boundary.
 - Recall is on demand: nothing is injected automatically, so the model must call `tool_mem_search`.
 - Notes are only returned to their owner, and this server never forwards notes to extensions (the model can still quote a note in another tool's arguments).
-- Ownership is keyed on the username only. Ember lets admins rename or delete accounts and nothing purges or moves notes then: a rename orphans the user's notes, a deleted account's notes stay, and a new account that takes a freed username inherits the old notes.
-- Privacy is only as strong as the caller is trusted. The identity is whatever the caller asserts (the `X-Requester-Username` header or `_meta.requester`), so notes are private only as far as the caller is trusted. Set `INTERNAL_API_TOKEN` whenever the server listens on a non-loopback address (`zima_host.yaml` binds 0.0.0.0).
-- The number of distinct usernames is not capped; only 200 notes x 500 characters per username.
+- Notes are keyed on the account's stable `uid` (a random id ember_api creates with the account; it never changes and is never reused), so renaming an account keeps its notes. When ember_api deletes an account it asks this server to delete that account's notes (`DELETE /memory/owners/{uid}`, internal token required). The purge is best effort: if `mcp_server` is down, no `INTERNAL_API_TOKEN` is set, or memory is offline, the notes stay behind. That is harmless for other users (a uid is never reused) but the data lingers.
+- Privacy is only as strong as the caller is trusted. The uid, like the username before it, is whatever the caller asserts (the `X-Requester-Uid` header or `_meta.requester.uid`), so notes are private only as far as the caller is trusted. Set `INTERNAL_API_TOKEN` whenever the server listens on a non-loopback address (`zima_host.yaml` binds 0.0.0.0). A caller that sends no uid (a direct MCP client) is refused.
+- The number of distinct uids is not capped; only 200 notes x 500 characters per uid.
 
 ## Configuration
 

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authClient, type Account } from "../api/AuthClient";
 import { UnauthorizedError } from "../api/http";
 import { router } from "./index";
+import { NAV_PAGES } from "./pages";
 
 vi.mock("../api/AuthClient", () => ({ authClient: { me: vi.fn() } }));
 
@@ -225,4 +226,29 @@ it("does not expose personal Usage to a usage observer without chat permission",
   expect(router.currentRoute.value.name).toBe("no-access");
   await router.push("/usage");
   expect(router.currentRoute.value.name).toBe("no-access");
+});
+
+describe("Emberlings page", () => {
+  it("opens for an account that may play", async () => {
+    me.mockResolvedValue({ ...ACCOUNT, permissions: [...ACCOUNT.permissions, "emberlings.play"] });
+
+    await router.push("/emberlings");
+
+    expect(router.currentRoute.value.name).toBe("emberlings");
+  });
+
+  it("sends an account without emberlings.play to its home page", async () => {
+    me.mockResolvedValue(ACCOUNT);
+
+    await router.push("/emberlings");
+
+    expect(router.currentRoute.value.name).toBe("chat");
+  });
+
+  it("is in the nav rail and on Overview only for that permission", () => {
+    const page = NAV_PAGES.find((p) => p.to === "/emberlings");
+
+    expect(page?.label).toBe("Emberlings");
+    expect(page?.permission).toBe("emberlings.play");
+  });
 });

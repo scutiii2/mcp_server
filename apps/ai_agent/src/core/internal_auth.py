@@ -8,7 +8,7 @@ request without it.
 
 Outbound: the same token goes on this agent's own calls - to mcp_server
 (mcp_upstream.py) and to peers (delegation.py) - and so does the asking
-user. ask() reads X-Requester-Username / X-Requester-Email off the HTTP
+user. ask() reads X-Requester-Username / X-Requester-Email / X-Requester-Uid off the HTTP
 request (set by ember_api / chat_app, never by the model) and binds them
 for the turn with bind_requester(). The persistent mcp_server session is
 shared by every user, so the identity travels in each tool call's `_meta`
@@ -35,6 +35,7 @@ _SECRETS_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 REQUESTER_USERNAME_HEADER = "X-Requester-Username"
 REQUESTER_EMAIL_HEADER = "X-Requester-Email"
+REQUESTER_UID_HEADER = "X-Requester-Uid"
 REQUESTER_META_KEY = "requester"
 # /registry lists every agent's URL, so it sits behind the token like /mcp.
 # /agents edits the agent files, so it sits behind the token too.
@@ -55,6 +56,7 @@ TOKEN = load_token()
 class Requester:
     username: str = ""
     email: str = ""
+    uid: str = ""
 
     @classmethod
     def from_headers(cls, headers: Mapping[str, str] | None) -> "Requester":
@@ -62,10 +64,15 @@ class Requester:
             return cls()
         username = headers.get(REQUESTER_USERNAME_HEADER, "")
         email = headers.get(REQUESTER_EMAIL_HEADER, "")
-        return cls(username if isinstance(username, str) else "", email if isinstance(email, str) else "")
+        uid = headers.get(REQUESTER_UID_HEADER, "")
+        return cls(
+            username if isinstance(username, str) else "",
+            email if isinstance(email, str) else "",
+            uid if isinstance(uid, str) else "",
+        )
 
     def __bool__(self) -> bool:
-        return bool(self.username or self.email)
+        return bool(self.username or self.email or self.uid)
 
 
 _requester: ContextVar[Requester] = ContextVar("requester", default=Requester())
@@ -89,7 +96,10 @@ def requester_meta() -> dict[str, Any] | None:
     requester = current_requester()
     if not requester:
         return None
-    return {REQUESTER_META_KEY: {"username": requester.username, "email": requester.email}}
+    identity = {"username": requester.username, "email": requester.email}
+    if requester.uid:
+        identity["uid"] = requester.uid
+    return {REQUESTER_META_KEY: identity}
 
 
 def outbound_headers() -> dict[str, str]:
@@ -103,6 +113,8 @@ def outbound_headers() -> dict[str, str]:
         headers[REQUESTER_USERNAME_HEADER] = requester.username
     if requester.email:
         headers[REQUESTER_EMAIL_HEADER] = requester.email
+    if requester.uid:
+        headers[REQUESTER_UID_HEADER] = requester.uid
     return headers
 
 

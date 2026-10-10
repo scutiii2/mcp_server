@@ -5,7 +5,7 @@ from src.services import identity_context, memory_store, untrusted
 
 
 def _owner() -> str:
-    return identity_context.current_username()
+    return identity_context.current_uid()
 
 
 def save(text: str) -> SaveResult:

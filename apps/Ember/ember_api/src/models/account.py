@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
-from sqlalchemy import String, true
+from sqlalchemy import Index, String, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db import Base, utcnow
@@ -12,7 +13,12 @@ from src.models.role import Role, account_role
 class Account(Base):
     __tablename__ = "accounts"
 
+    # A named unique index (not a column constraint) so a test can rebuild an older schema: SQLite cannot drop a UNIQUE column.
+    __table_args__ = (Index("ix_accounts_uid", "uid", unique=True),)
+
     id: Mapped[int] = mapped_column(primary_key=True)
+    # A stable id that never changes or repeats (unlike the username); internal only.
+    uid: Mapped[str] = mapped_column(String(32), default=lambda: uuid.uuid4().hex)
     username: Mapped[str] = mapped_column(String(80), unique=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))

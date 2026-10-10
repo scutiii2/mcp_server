@@ -18,8 +18,14 @@ from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
 # The newest real migration; the tests' throwaway one comes after it.
-HEAD = "0011"
-NEXT = "0012"
+HEAD = "0012"
+NEXT = "0013"
+
+
+def drop_account_uid(conn: sqlite3.Connection) -> None:
+    """Undo migration 0011 on a database built from the current models."""
+    conn.execute("DROP INDEX ix_accounts_uid")
+    conn.execute("ALTER TABLE accounts DROP COLUMN uid")
 
 
 def test_permission_split_preserves_access_once_and_keeps_revocations(tmp_path: Path) -> None:
@@ -27,6 +33,7 @@ def test_permission_split_preserves_access_once_and_keeps_revocations(tmp_path: 
     path = tmp_path / "ember.db"
     with closing(sqlite3.connect(path)) as conn:
         conn.execute("UPDATE alembic_version SET version_num = '0009'")
+        drop_account_uid(conn)
         for name in ("admin.manage", "tools.use", "chat.use"):
             conn.execute("INSERT INTO roles (name) VALUES (?)", (name,))
             conn.execute("INSERT INTO permissions (name) VALUES (?)", (name,))
@@ -63,7 +70,7 @@ def test_ticket_permission_is_granted_to_chat_roles_once(tmp_path: Path) -> None
     run_with(make_database(tmp_path))
     path = tmp_path / "ember.db"
     with closing(sqlite3.connect(path)) as conn:
-        conn.execute("UPDATE alembic_version SET version_num = '0010'")
+        conn.execute("UPDATE alembic_version SET version_num = '0011'")
         for name in ("chatters", "readers"):
             conn.execute("INSERT INTO roles (name) VALUES (?)", (name,))
         conn.execute("INSERT INTO permissions (name) VALUES ('chat.use')")
@@ -152,6 +159,77 @@ def differences(database: Database) -> list:
     return asyncio.run(go())
 
 
+def test_account_uid_is_backfilled_unique_and_removed_by_the_downgrade(tmp_path: Path) -> None:
+    run_with(make_database(tmp_path))
+    path = tmp_path / "ember.db"
+    with closing(sqlite3.connect(path)) as conn:
+        drop_account_uid(conn)
+        conn.execute("UPDATE alembic_version SET version_num = '0010'")
+        for name in ("lex", "sam"):
+            conn.execute(
+                "INSERT INTO accounts (username, email, password_hash, is_protected, is_active, email_verified, created_at)"
+                f" VALUES ('{name}', '{name}@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
+            )
+        conn.execute("INSERT INTO roles (name) VALUES ('Keeper')")
+        conn.execute("INSERT INTO account_role (account_id, role_id) SELECT a.id, r.id FROM accounts a, roles r WHERE a.username = 'lex' AND r.name = 'Keeper'")
+        conn.execute(
+            "INSERT INTO chats (account_id, chat_id, title, messages, message_count, pinned, created_at, updated_at)"
+            " SELECT id, 'kept-chat', 'Keep my transcript', '[]', 0, 0, '2026-01-01', '2026-01-01' FROM accounts WHERE username = 'lex'"
+        )
+        children = {
+            table: conn.execute(f"SELECT * FROM {table}").fetchall() for table in ("account_role", "chats")
+        }
+        conn.commit()
+
+    assert run_with(make_database(tmp_path)) == "upgraded"
+
+    with closing(sqlite3.connect(path)) as conn:
+        for table, rows in children.items():
+            assert conn.execute(f"SELECT * FROM {table}").fetchall() == rows
+        uids = [row[0] for row in conn.execute("SELECT uid FROM accounts ORDER BY id")]
+        assert len(uids) == 2 and len(set(uids)) == 2
+        assert all(len(uid) == 32 and int(uid, 16) >= 0 for uid in uids)
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO accounts (uid, username, email, password_hash, is_protected, is_active, email_verified, created_at)"
+                f" VALUES ('{uids[0]}', 'dup', 'dup@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
+            )
+
+    from alembic import command
+
+    async def downgrade() -> None:
+        database = make_database(tmp_path)
+        runner = MigrationRunner(database.engine)
+        try:
+            async with database.engine.connect() as conn:
+                await conn.run_sync(lambda sync: command.downgrade(runner._config(sync), "0010"))
+                assert (await conn.execute(text("PRAGMA foreign_keys"))).scalar() == 1
+        finally:
+            await database.dispose()
+
+    asyncio.run(downgrade())
+
+    assert revision_of(path) == "0010"
+    with closing(sqlite3.connect(path)) as conn:
+        assert "uid" not in {row[1] for row in conn.execute("PRAGMA table_info(accounts)")}
+        for table, rows in children.items():
+            assert conn.execute(f"SELECT * FROM {table}").fetchall() == rows
+        conn.execute("INSERT INTO account_role (account_id, role_id) VALUES (9999, 1)")
+        conn.commit()
+
+    async def invalid_upgrade() -> None:
+        database = make_database(tmp_path)
+        try:
+            with pytest.raises(RuntimeError, match="invalid foreign key references"):
+                await MigrationRunner(database.engine).run()
+            async with database.engine.connect() as conn:
+                assert (await conn.execute(text("PRAGMA foreign_keys"))).scalar() == 1
+        finally:
+            await database.dispose()
+
+    asyncio.run(invalid_upgrade())
+
+
 class TestFreshDatabase:
     def test_the_migrations_build_every_table(self, tmp_path: Path) -> None:
         database = make_database(tmp_path)
@@ -195,7 +273,7 @@ class TestFreshDatabase:
             database = make_database(tmp_path)
             runner = MigrationRunner(database.engine)
             try:
-                async with database.engine.begin() as conn:
+                async with database.engine.connect() as conn:
                     await conn.run_sync(lambda sync: command.downgrade(runner._config(sync), "0002"))
             finally:
                 await database.dispose()
@@ -222,6 +300,7 @@ class TestDatabaseFromBeforeMigrations:
             conn.execute("DROP TABLE user_extensions")  # likewise
             drop_chat_folders(conn)
             conn.execute("ALTER TABLE accounts DROP COLUMN prompt_suggestions")  # added after the baseline too
+            drop_account_uid(conn)  # likewise
             for column in ("agent_id", "provider_id", "gateway", "started_at", "finished_at", "delegated_by"):
                 conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")  # added after the baseline too
             conn.execute(
@@ -256,7 +335,7 @@ class TestDatabaseFromBeforeMigrations:
     def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
         scripts = tmp_path / "baseline_only"
-        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*", "0010*", "0011*"))
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*", "0010*", "0011*", "0012*"))
         calls: list[int] = []
 
         async def backup() -> None:
@@ -303,8 +382,8 @@ class TestLaterMigration:
         path = tmp_path / "ember.db"
         with closing(sqlite3.connect(path)) as conn:
             conn.execute(
-                "INSERT INTO accounts (username, email, password_hash, is_protected, is_active, email_verified, created_at)"
-                " VALUES ('lex', 'lex@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
+                "INSERT INTO accounts (uid, username, email, password_hash, is_protected, is_active, email_verified, created_at)"
+                " VALUES ('0123456789abcdef0123456789abcdef', 'lex', 'lex@example.com', 'x', 0, 1, 1, '2026-01-01 00:00:00')"
             )
             conn.commit()
         return path
@@ -357,6 +436,7 @@ class TestLaterMigration:
                 conn.execute(f"ALTER TABLE usage_records DROP COLUMN {column}")
             drop_chat_folders(conn)
             conn.execute("ALTER TABLE accounts DROP COLUMN prompt_suggestions")  # added after the baseline too
+            drop_account_uid(conn)  # likewise
             conn.commit()
         calls: list[int] = []
 

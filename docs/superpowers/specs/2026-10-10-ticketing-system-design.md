@@ -137,7 +137,7 @@ Files: `routes/tickets.py`, `services/ticket_gateway.py`, permission entries in 
 - Reporter routes (`tickets.create`): `POST /api/tickets`, `GET /api/tickets` (own, optional status), `GET /api/tickets/{id}`, `POST /api/tickets/{id}/comments`, `POST /api/tickets/{id}/close` (JSON `{}`). Reporters cannot set tags, source, reporter, status, priority or assignee.
 - Staff routes (`tickets.manage`): `GET /api/admin/tickets` (status, type, tag, effective priority, assignee, group_id, possible, limit), `GET /api/admin/tickets/stats`, `GET /api/admin/tickets/{id}`, `PATCH /api/admin/tickets/{id}`, `POST /api/admin/tickets/{id}/comments`, `POST /api/admin/tickets/{id}/move` (group_id or null to split), `GET /api/admin/ticket-groups` (status, tag, group priority, limit), `PATCH /api/admin/ticket-groups/{id}` (priority, pin).
 - Tickets filed through ember_api carry `source: user` and `verified_context` with `via: ember_api` and `account_id` as text. No browser context is accepted. Manual creation has no additional rate limiter; mcp_server limits automatic reports.
-- Ticket storage remains entirely in mcp_server. Ownership uses usernames, so an account rename orphans its existing tickets; the verified stable account id is retained for a later migration, as with memory notes.
+- Ticket storage remains entirely in mcp_server. Ownership uses usernames, so an account rename orphans its existing tickets; the verified stable account id is retained for a later migration.
 - Every staff change is written to the activity log.
 - Tests: permission matrix, own-only isolation, proxy error mapping, migration.
 

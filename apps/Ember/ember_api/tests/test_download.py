@@ -71,6 +71,7 @@ def test_the_path_goes_as_a_query_value_with_the_identity(client_factory, upstre
     assert sent.method == "GET" and sent.url.path == "/download"
     assert sent.url.params["path"] == PATH
     assert sent.headers["x-requester-username"] == "root"
+    assert len(sent.headers["x-requester-uid"]) == 32
     assert sent.headers["x-internal-token"] == "s3cret"
 
 

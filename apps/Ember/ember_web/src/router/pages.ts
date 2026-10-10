@@ -37,6 +37,15 @@ export const NAV_PAGES: NavPage[] = [
     description: "The AI agents behind ember: which are running, which is the entry agent, and what each is for.",
     permission: "chat.use",
   },
+  {
+    to: "/emberlings",
+    label: "Emberlings",
+    icon: [
+      "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z",
+    ],
+    description: "Collect Sparks, battle wild ones and spend Insignia in the shop.",
+    permission: "emberlings.play",
+  },
   { to: "/usage", label: "Usage", icon: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"], description: "Token usage and limits.", permission: "chat.use" },
   {
     to: "/settings",

@@ -231,6 +231,15 @@ URL, token or key.
   (a value the agent file does not set is left out), and a status (running,
   offline, disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
   always go to the entry agent, there is no per-agent chat.
+- Emberlings page (`/emberlings`, `emberlings.play`): the Emberlings game (collect and battle Sparks) from `apps/mini_games`, through ember_api's
+  `/api/emberlings` pass-through (the browser never learns mini_games' address or token). A header shows Insignia and
+  EMBLEM counts; tabs: Collection (Spark cards with tier badge, level, XP, copies and a faint countdown; a card opens
+  its abilities, collected personalities and five presets), Battle (look for a wild Spark, decline or fight; an arena
+  with health bars, round log and actions; autonomous rounds every 1.5 s; the five-second EMBLEM prompt counts down on
+  this device) and Shop (EMBLEMs, copies, selling a copy). A first visit picks a starter. The battle loop pauses while
+  the browser tab is hidden or another page is open and resumes where the battle is; a lost connection shows
+  "Reconnecting..." and retries every 3 s; a stale action is refreshed, never resent. Kept alive across page switches.
+  Every change sends a fresh `Idempotency-Key`.
 - Config issues page (`config.issues.view`): problems in ember_api's config and
   secret files, as errors (broken) or warnings (risky or incomplete), grouped by
   file. Not a nav tab: a red (errors) or amber (warnings only) alert with a count
@@ -337,6 +346,10 @@ token (five 2 px chart marks are allow-listed).
 
 `turnStream` (the event stream: pieces of events, ping, reconnect with backoff, resume, give up, abort) is covered too.
 
+Emberlings: the client (paths, Idempotency-Key per action), the store's battle loop with fake timers (1.5 s pace,
+stop when left or hidden, prompt countdown and settle at zero, stale 409, reconnect, 502), each tab's components and
+the page. `e2e/emberlings.spec.ts` picks a starter on a first visit.
+
 ### End-to-end test
 
 ```bash
@@ -381,20 +394,22 @@ routes - `/api/mcp/agents/{id}` (agent status only) and `/api/mcp/server`
 src/
   api/          http + AuthClient / ChatsClient / UsageClient / CommandsClient /
                 ExtensionsClient / AgentsClient / AttachmentsClient /
-                ConfigIssuesClient / TemplatesClient / NavPreferencesClient / SharesClient / SettingsClient (ember_api REST),
+                ConfigIssuesClient / TemplatesClient / NavPreferencesClient / SharesClient / SettingsClient / EmberlingsClient (ember_api REST),
                 McpClientBase / AiAgentClient / McpServerClient (MCP via ember_api), types
   services/     ConversationStorage (chat history; one-time import of old local chats),
                 turnStream (watching a running answer), slashCommands
-  stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, accountCapabilities, configIssues
+  stores/       Pinia: auth, entryAgent, chat, templates, navPrefs, accountCapabilities, configIssues, emberlings
   composables/  useChatShortcuts (window-level chat keys), useChatRoute (address bar <-> open chat),
                 useElapsed (running clock), useNotify (chime), useCompletionNotify (completion alerts), useSidebarCollapse (chat list),
                 useTheme (system / light / dark)
-  views/        pages: Overview, Chat, Capabilities, Agents, Usage, Settings, ConfigIssues,
+  views/        pages: Overview, Chat, Capabilities, Agents, Emberlings, Usage, Settings, ConfigIssues,
                 Account, Login, Register, VerifyEmail, NoAccess, SharedChat (public)
   components/   reusable pieces: MessageList, ToolSteps, AgentActivity, ChatInput, CommandFormModal, MarkdownContent,
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, ConfirmModal, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
     analytics/  shared LineChart, hover/keyboard state in useBucketCursor and chart.css, used by Usage
     infoPage.css  shared look of the Agents / Config pages
+    emberlings/   the Emberlings page: CollectionPanel, SparkCard, TierBadge, PresetEditor, EncounterPanel,
+                  BattleArena, HealthBar, RoundLog, ActionBar, EmblemPrompt, BattleResult, ShopPanel
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,
                 tool titles, tool-result formatting, attachment blocks in questions, clipboard, usage formatting, log-analytics helpers, saved-prompt helpers

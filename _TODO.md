@@ -101,10 +101,11 @@ Optional follow-up features, not implemented:
 5. **Compaction/summarizing — mostly existed, remainder done**: summarizing already lived in `ember_api` (`services/summarization.py`: auto at `auto_summarize_ratio` 0.6, manual button, 2,000-token cap, raw `log_attachment`), and `ai_agent`'s `trim_history_to_fit` is only a fallback. What was missing, the summarizer seeing tool results, is covered by item 4 (`render_messages(include_steps=True)` in the summary prompt only).
 6. **Persistent memory — done** (`9cf776f`, `6950a67`): a `memory` capability in `apps/mcp_server/src/capabilities/memory/` (tools `tool_mem_save`, `tool_mem_search`, `tool_mem_forget`; slash commands `/memory save|search|forget`); per-user notes in SQLite with FTS5 at `specifics/memory/.data/memory.db`, 500 characters per note and 200 notes per user; the model saves only user-stated facts (a tool-description rule, not enforced by code); recall is on demand. Known weakness: the model must remember to search. Next step if that proves unreliable: automatic recall injected each turn. Spec: `docs/superpowers/specs/2026-10-10-persistent-memory-design.md`.
    Follow-ups:
-   1. ember_api should purge or move a user's memory notes on account delete or rename (for example through a hidden admin tool in the memory capability).
+   1. **Done** (`cc675cd`, `118a4b2`, `1e2a0d6`, `0c90aba`, `61c495f`): notes are keyed on a stable account uid and purged when an account is deleted (spec docs/superpowers/specs/2026-10-10-memory-owner-uid-design.md).
    2. `apps/ai_agent/agents/reviewer.json` has no tool scope, so the reviewer agent is offered `tool_mem_save` although it reads other agents' output; add `"deny": ["tool_mem_*"]` (or scope it properly) in a follow-up (ai_agent edits were out of scope here).
    3. Consider refusing memory calls when `INTERNAL_API_TOKEN` is empty and the host is not loopback.
    4. Automatic recall if the model often skips `tool_mem_search` (already listed as the known weakness).
+   5. Retry or periodically sweep failed memory purges (a purge is best effort today: orphaned notes stay when mcp_server was unreachable or had no token).
 7. **Sandboxed workspace (files and shell)**: isolated per-user directory and a limited command runner, fitted to the approval flow. Real security risk. Best as a new `mcp_server` capability, not inside `ai_agent`. Hardest.
 
 Items 1 to 6 are complete; item 7 remains open.
