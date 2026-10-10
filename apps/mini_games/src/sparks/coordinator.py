@@ -64,7 +64,16 @@ class RoundCoordinator:
         self._locks: dict[str, asyncio.Lock] = {}
 
     def _lock(self, battle_id: str) -> asyncio.Lock:
-        return self._locks.setdefault(battle_id, asyncio.Lock())
+        lock = self._locks.get(battle_id)
+        if lock is None:
+            lock = self._locks[battle_id] = asyncio.Lock()
+        return lock
+
+    def _release_if_finished(self, battle_id: str, view: dict[str, Any]) -> dict[str, Any]:
+        """A finished battle takes no more moves, so its lock entry can go."""
+        if view.get("status") == "terminal":
+            self._locks.pop(battle_id, None)
+        return view
 
     # -- reading -------------------------------------------------------------------
 
@@ -190,6 +199,9 @@ class RoundCoordinator:
         if cached is not None:
             return cached
         async with self._lock(battle_id):
+            cached = await self._writer.lookup(owner, key, "battle.action", payload)  # a twin may have finished while we waited
+            if cached is not None:
+                return cached
             record, emblems = await self._load(owner, battle_id)
             self._require(record, round=round, revision=revision)
             if record.mode != "manual":
@@ -203,8 +215,8 @@ class RoundCoordinator:
                 raise InsufficientEmblems(f"you have no {player_action.emblem_tier} EMBLEM")
             rng = SeededRandom(record.rng_seed, record.rng_counter)
             wild = await self._decide(record, WILD, rng, can_collect=False)  # decided without sight of player_action
-            return await self._commit_round(
-                owner, key, "battle.action", payload, record, player_action, wild.action, rng, [wild.audit])
+            return self._release_if_finished(battle_id, await self._commit_round(
+                owner, key, "battle.action", payload, record, player_action, wild.action, rng, [wild.audit]))
 
     # -- autonomous play -----------------------------------------------------------
 
@@ -215,6 +227,9 @@ class RoundCoordinator:
         if cached is not None:
             return cached
         async with self._lock(battle_id):
+            cached = await self._writer.lookup(owner, key, "battle.advance", payload)
+            if cached is not None:
+                return cached
             record, emblems = await self._load(owner, battle_id)
             self._require(record, round=round, revision=revision, phase=("choosing", "awaiting_emblem"))
             if record.mode != "autonomous":
@@ -223,15 +238,15 @@ class RoundCoordinator:
             if record.phase == "awaiting_emblem":
                 if now < record.pending["deadline"]:
                     return self._battle_views.build(record, emblems, now)  # still the player's turn to answer
-                return await self._settle_prompt(owner, key, payload, record, emblems)
+                return self._release_if_finished(battle_id, await self._settle_prompt(owner, key, payload, record, emblems))
             rng = SeededRandom(record.rng_seed, record.rng_counter)
             permitted = self._battle_views.permitted_tiers(emblems, record.emblem_limit)
             player = await self._decide(record, PLAYER, rng, can_collect=bool(permitted))
             wild = await self._decide(record, WILD, rng, can_collect=False)
             if player.action.kind == "catch":
                 return await self._open_prompt(owner, key, payload, record, wild, player, rng)
-            return await self._commit_round(
-                owner, key, "battle.advance", payload, record, player.action, wild.action, rng, [player.audit, wild.audit])
+            return self._release_if_finished(battle_id, await self._commit_round(
+                owner, key, "battle.advance", payload, record, player.action, wild.action, rng, [player.audit, wild.audit]))
 
     async def _open_prompt(self, owner, key, payload, record, wild: Decision, player: Decision, rng) -> dict[str, Any]:
         """The player's Spark wants to CATCH: keep both private choices and ask for an EMBLEM."""
@@ -256,14 +271,24 @@ class RoundCoordinator:
         permitted = self._battle_views.permitted_tiers(emblems, record.emblem_limit)
         wild_state = record.state.wild
         chances = {t: self._engine.capture_chance(t, record.setup.wild, wild_state) for t in permitted}
-        tier = await self._emblem_picker.pick(self._situation_views.build(record.setup, record.state, PLAYER), chances)
-        player_action = (
-            Action("catch", "INTERCEPT", emblem_tier=tier) if tier in chances else Action("attack", "ATTACK")
-        )
-        rng = SeededRandom(record.rng_seed, record.rng_counter)
+        try:
+            tier = await self._emblem_picker.pick(self._situation_views.build(record.setup, record.state, PLAYER), chances)
+        except Exception:  # any picker failure means "no choice": the Spark attacks
+            tier = None
         wild_action = Action.from_dict(record.pending["wild_action"])
-        return await self._commit_round(
-            owner, key, "battle.advance", payload, record, player_action, wild_action, rng, record.pending["audit"])
+        attack = Action("attack", "ATTACK")
+        player_action = Action("catch", "INTERCEPT", emblem_tier=tier) if tier in chances else attack
+        try:
+            return await self._commit_round(
+                owner, key, "battle.advance", payload, record, player_action, wild_action,
+                SeededRandom(record.rng_seed, record.rng_counter), record.pending["audit"])
+        except InsufficientEmblems:
+            if player_action is attack:
+                raise
+            # The EMBLEM count changed between the read and the commit: fall back to the basic attack.
+            return await self._commit_round(
+                owner, key, "battle.advance", payload, record, attack, wild_action,
+                SeededRandom(record.rng_seed, record.rng_counter), record.pending["audit"])
 
     async def answer_emblem(
         self, owner: str, key: str, battle_id: str, *, round: int, revision: int, tier: str
@@ -274,6 +299,9 @@ class RoundCoordinator:
         if cached is not None:
             return cached
         async with self._lock(battle_id):
+            cached = await self._writer.lookup(owner, key, "battle.emblem", payload)
+            if cached is not None:
+                return cached
             record, emblems = await self._load(owner, battle_id)
             self._require(record, round=round, revision=revision, phase="awaiting_emblem")
             if self._clock.now() >= record.pending["deadline"]:
@@ -285,9 +313,9 @@ class RoundCoordinator:
             if emblems.get(tier, 0) < 1:
                 raise InsufficientEmblems(f"you have no {tier} EMBLEM")
             rng = SeededRandom(record.rng_seed, record.rng_counter)
-            return await self._commit_round(
+            return self._release_if_finished(battle_id, await self._commit_round(
                 owner, key, "battle.emblem", payload, record, Action("catch", "INTERCEPT", emblem_tier=tier),
-                Action.from_dict(record.pending["wild_action"]), rng, record.pending["audit"])
+                Action.from_dict(record.pending["wild_action"]), rng, record.pending["audit"]))
 
     # -- mode and forfeit ----------------------------------------------------------
 
@@ -336,4 +364,5 @@ class RoundCoordinator:
                 await tx.save_battle(updated, record.revision)
                 return self._battle_views.build(updated, await tx.emblem_counts(owner), now)
 
-            return await self._writer.commit(owner, key, "battle.forfeit", {"battle": battle_id}, work)
+            return self._release_if_finished(
+                battle_id, await self._writer.commit(owner, key, "battle.forfeit", {"battle": battle_id}, work))
