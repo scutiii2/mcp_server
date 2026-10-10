@@ -46,7 +46,7 @@ def test_error_text_says_at_least_only_for_range_errors(raw):
 def test_sparks_path_defaults_when_absent(raw):
     raw.pop("sparks_path")
     config = parse_config(raw, root=Path("/proj"))
-    assert config.sparks_path == Path("/proj") / ".catalogs" / ".sparks"
+    assert config.sparks_path == Path("/proj") / "catalogs" / "sparks"
 
 
 def test_sparks_path_resolves_against_the_root_and_keeps_absolute_paths(raw):

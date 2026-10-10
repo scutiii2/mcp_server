@@ -20,7 +20,7 @@ from tests.sparks.helpers import FixedClock
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = PROJECT_ROOT / "configs" / "spark_catalog.json"
-SPARKS_PATH = PROJECT_ROOT / ".catalogs" / ".sparks"
+SPARKS_PATH = PROJECT_ROOT / "catalogs" / "sparks"
 CATALOG = Catalog.load(CATALOG_PATH, SPARKS_PATH)
 
 

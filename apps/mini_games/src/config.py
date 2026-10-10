@@ -12,7 +12,7 @@ from src.seed import seed_from_example
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "configs" / "config_app.json"
-DEFAULT_SPARKS_PATH = ".catalogs/.sparks"
+DEFAULT_SPARKS_PATH = "catalogs/sparks"
 SITUATION_SOURCES = ("heuristic", "laya")
 
 
