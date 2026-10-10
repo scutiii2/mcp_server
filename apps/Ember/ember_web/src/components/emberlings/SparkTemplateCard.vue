@@ -10,10 +10,13 @@ import { abilityEffect, passiveText, titleCase } from "../../utils/emberlings";
  * in frame pixels and turned into percentages, so the card scales with its
  * width. The frame's see-through holes show the artwork box and, for each
  * ability, a colour for its category. The frame's metal is tinted for the
- * Spark's tier; the Emberlings plate keeps its own colours. */
-const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierId?: string }>(), {
+ * Spark's tier; the Emberlings plate keeps its own colours. `compact` is the
+ * small version for lists: the frame, the name and the artwork box, with the
+ * ability slots still coloured by category, and no stats or text. */
+const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierId?: string; compact?: boolean }>(), {
   level: 1,
   tierId: "normal",
+  compact: false,
 });
 
 const FRAME_W = 1060;
@@ -100,10 +103,10 @@ const abilities = computed(() =>
 </script>
 
 <template>
-  <article class="card" :class="`tier-${tierId}`" :aria-label="`${spark.name}, ${titleCase(tierId)}, level ${level}`">
+  <article class="card" :class="[`tier-${tierId}`, { compact }]" :aria-label="`${spark.name}, ${titleCase(tierId)}, level ${level}`">
     <div class="behind art-fill" :style="ART" aria-hidden="true">
       <span class="letter">{{ spark.name.slice(0, 1) }}</span>
-      <small>Artwork</small>
+      <small v-if="!compact">Artwork</small>
     </div>
     <div v-for="a in abilities" :key="a.ability.id" class="behind" :style="a.fill" aria-hidden="true" />
 
@@ -113,10 +116,10 @@ const abilities = computed(() =>
 
     <header class="header" :style="HEADER">
       <h4 class="spark-name">{{ spark.name }}</h4>
-      <span class="level">Lv {{ level }}</span>
+      <span v-if="!compact" class="level">Lv {{ level }}</span>
     </header>
 
-    <dl class="stat-list">
+    <dl v-if="!compact" class="stat-list">
       <div v-for="s in stats" :key="s.key" class="stat" :style="s.style">
         <dt>
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in s.icon" :key="d" :d="d" /></svg>
@@ -127,21 +130,23 @@ const abilities = computed(() =>
       </div>
     </dl>
 
-    <p class="passive" :style="PASSIVE" :title="`${passiveName}: ${passive}`">
+    <p v-if="!compact" class="passive" :style="PASSIVE" :title="`${passiveName}: ${passive}`">
       <strong :class="{ alone: passive === passiveName }">{{ passiveName }}</strong>
       <template v-if="passive !== passiveName">{{ ` ${passive}` }}</template>
     </p>
 
-    <div v-for="a in abilities" :key="a.ability.id" class="ability" :style="a.slot">
-      <span class="slot" aria-hidden="true">
-        <svg class="icon" viewBox="0 0 24 24"><path v-for="d in a.icon" :key="d" :d="d" /></svg>
-      </span>
-      <div class="ability-text">
-        <strong>{{ a.ability.name }}</strong>
-        <span>{{ a.effect }}</span>
+    <template v-if="!compact">
+      <div v-for="a in abilities" :key="a.ability.id" class="ability" :style="a.slot">
+        <span class="slot" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24"><path v-for="d in a.icon" :key="d" :d="d" /></svg>
+        </span>
+        <div class="ability-text">
+          <strong>{{ a.ability.name }}</strong>
+          <span>{{ a.effect }}</span>
+        </div>
+        <span class="unlock">Lv {{ a.ability.unlock_level }}</span>
       </div>
-      <span class="unlock">Lv {{ a.ability.unlock_level }}</span>
-    </div>
+    </template>
   </article>
 </template>
 
@@ -155,6 +160,15 @@ const abilities = computed(() =>
   aspect-ratio: 1060 / 1484;
   color: #e8e8ea;
   text-align: left;
+}
+.card.compact {
+  width: 150px;
+}
+.compact .spark-name {
+  font-size: 7.5cqw;
+}
+.compact .letter {
+  font-size: 34cqw;
 }
 .frame,
 .tint {

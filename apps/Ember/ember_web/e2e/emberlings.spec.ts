@@ -12,7 +12,7 @@ test("a first visit picks a starter, then the collection and the Battle tab open
   await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
   await page.getByRole("button", { name: "New game" }).click();
   await expect(page.getByRole("heading", { name: "Choose your first Spark" })).toBeVisible();
-  await page.getByRole("button", { name: "Pick Guardian" }).click();
+  await page.getByRole("radio", { name: "Guardian" }).click();
   await page.getByRole("button", { name: "Start with Guardian" }).click();
 
   await expect(page.locator(".spark-card")).toHaveCount(1);
