@@ -149,6 +149,19 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `DELETE` | `/api/admin/roles/{id}` | `roles.manage` | `204`. `409` for Administrator, or if it's your only source of role management/assignment access. |
 | `PUT` `DELETE` | `/api/admin/roles/{id}/permissions/{name}` | `roles.manage` | Grant / revoke -> the role. `404` unknown permission; `409` changing Administrator or revoking your own last role management/assignment access. |
 | `GET` | `/api/admin/permissions` | `roles.view (also roles.manage/roles.assign)` | `[{name, description}]` - defined in code (`services/permissions.py`), not editable. |
+| `POST` | `/api/tickets` | `tickets.create` | `{type: "bug"\|"feature"\|"other", title, description}` -> `201 {ticket, duplicate, group_size}` (`200` for a duplicate). No reporter, tags, source or staff fields accepted. |
+| `GET` | `/api/tickets` | `tickets.create` | `{tickets: [...]}` for the signed-in reporter; optional `?status=open\|in_progress\|resolved\|closed`. |
+| `GET` | `/api/tickets/{id}` | `tickets.create` | `{ticket}` with comments; `404` for a missing or another reporter's ticket. |
+| `POST` | `/api/tickets/{id}/comments` | `tickets.create` | `{body}` -> `{ticket}`; adds a reporter comment. |
+| `POST` | `/api/tickets/{id}/close` | `tickets.create` | Send JSON `{}` -> `{ticket}`; closes an own ticket. |
+| `GET` | `/api/admin/tickets` | `tickets.manage` | `{tickets: [...]}`; filters `status`, `type`, `tag`, `priority` (effective priority), `assignee`, `group_id`, `possible` (boolean), `limit` (1-500, default 100). |
+| `GET` | `/api/admin/tickets/stats` | `tickets.manage` | `{open, urgent, groups}`: open tickets, urgent tickets and open groups. |
+| `GET` | `/api/admin/tickets/{id}` | `tickets.manage` | `{ticket}` with comments for any reporter. |
+| `PATCH` | `/api/admin/tickets/{id}` | `tickets.manage` | Any of `{status, priority, assignee, tags}` -> `{ticket}`; empty assignee clears it, at most five tags. Logged as `tickets.update`. |
+| `POST` | `/api/admin/tickets/{id}/comments` | `tickets.manage` | `{body}` -> `{ticket}`; staff comment, logged as `tickets.comment`. |
+| `POST` | `/api/admin/tickets/{id}/move` | `tickets.manage` | `{group_id}` -> `{ticket}`; positive id joins a group, `null` splits into a new one. Logged as `tickets.move`. |
+| `GET` | `/api/admin/ticket-groups` | `tickets.manage` | `{groups: [...]}`; filters `status`, `tag`, `priority` (group priority), `limit` (1-500, default 100). |
+| `PATCH` | `/api/admin/ticket-groups/{id}` | `tickets.manage` | `{priority?, pinned?}` -> `{group}`; setting priority pins it unless `pinned: false`; unpinning returns to automatic elevation. Logged as `tickets.group_priority`. |
 | `GET` | `/api/chats` | `chat.use` | This account's chats, newest first: `[{id, title, agent_id, message_count, folder_id, pinned, created_at, updated_at}]` (no messages; `folder_id` is null for a chat in no folder). |
 | `GET` | `/api/chats/search?q=` | `chat.use` | `q` 2-100 characters. Chats whose title or message text contains `q` (case-insensitive, literal; attached files' text is not searched), newest first, at most 50: `[{id, title, folder_id, updated_at, title_match: {start, length}\|null, snippet: {text, start, length}\|null, message_index, message_matches}]`. The snippet is one line around the first matching message. |
 | `GET` | `/api/chats/{id}` | `chat.use` | One chat with `messages`. `404` if missing or another account's. |
@@ -251,6 +264,23 @@ addresses only, never loopback, link-local or cloud-metadata ones).
   be read, is reported to the watcher as a live turn event
   `{type: "notice", notices: [{id, label, error}]}`. It is not saved in the chat.
 
+Tickets and groups live in mcp_server; ember_api stores no ticket data and
+only proxies authenticated calls with the internal token and session identity.
+Creates always send `source: "user"` and `verified_context` containing
+`via: "ember_api"` and the stable `account_id` as text. Ticket ownership is
+keyed by username: renaming an account orphans its existing tickets in
+mcp_server's store (the same limitation as memory notes). The verified
+account id is retained for a later ownership migration.
+
+Titles are 1-120 characters, descriptions 1-4000, comments 1-2000 and
+assignees at most 64. Invalid request fields and ids return `422`.
+mcp_server's `404` is preserved; other upstream `4xx` responses become `400`
+with the upstream message. Unreachable, malformed or `5xx` upstream responses
+become `502 "mcp_server is unreachable"`. Staff actions log ids and changed
+field names only, after upstream success, never titles, descriptions or comments.
+Manual ticket creation has no additional rate limiter; mcp_server limits
+automatic reports. Add manual limits later if abuse appears.
+
 ## Security model
 
 - **Sessions:** a random 256-bit token in an `HttpOnly`, `SameSite=Strict`
@@ -270,12 +300,16 @@ addresses only, never loopback, link-local or cloud-metadata ones).
   `invites.manage`, `settings.manage`, `capabilities.manage`, `usage.all.view`,
   `extensions.personal.manage`, `extensions.manage`,
   `logs.view`, `logs.errors.view`, `logs.chat.view`, `config.issues.view`,
-  `traffic.view` (`src/services/permissions.py`). The Administrator role always holds all
+  `traffic.view`, `tickets.create`, `tickets.manage` (`src/services/permissions.py`). The Administrator role always holds all
   of them (new ones are added to it on startup). New registrations get `default_role` (config, default `Member`:
   `chat.use`, `chat.share`, `tools.view`, `tools.execute`,
-  `extensions.personal.manage`, `files.upload`, `files.download`) - unlike chat_app, where new accounts get no
+  `extensions.personal.manage`, `files.upload`, `files.download`, `tickets.create`) - unlike chat_app, where new accounts get no
   role. An account with an unverified email holds no permissions at all, unless
   `require_email_verification` is `false` in config.
+- **Ticket permissions:** `tickets.create`: "Report bugs, suggest features and follow your own tickets";
+  `tickets.manage`: "See every ticket, triage them and set status, priority and assignee".
+  Migration `0011` grants `tickets.create` once to existing roles holding `chat.use`;
+  later revocations stick. Staff access does not grant reporter access.
 - **Invites and verification codes:** 10 random characters, stored as
   SHA-256, single use. Invites expire after 7 days, verification codes after
   15 minutes. Registration
