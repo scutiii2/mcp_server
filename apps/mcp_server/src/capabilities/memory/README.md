@@ -1,6 +1,6 @@
 # capabilities/memory/
 
-Short notes the assistant keeps about a user between chats. Three tools. Notes belong to the signed-in user (read from the request's identity, never from a tool parameter), live in a local SQLite file and are searched by keyword.
+Short notes the assistant keeps about a user between chats. Three tools. Notes belong to the user named in the request's identity (never a tool parameter; see Rules for how far that can be trusted), live in a local SQLite file and are searched by keyword.
 
 ## Tools
 
@@ -32,7 +32,10 @@ Short notes the assistant keeps about a user between chats. Three tools. Notes b
 - The model may save only what the user stated, never anything from a tool result, web page, file or another agent. This rule is in the tool description (an instruction), not enforced by code.
 - Search results are fenced as data (`services/untrusted.py`), but a fence is not a security boundary.
 - Recall is on demand: nothing is injected automatically, so the model must call `tool_mem_search`.
-- Notes are only returned to their owner and are never sent to extensions.
+- Notes are only returned to their owner, and this server never forwards notes to extensions (the model can still quote a note in another tool's arguments).
+- Ownership is keyed on the username only. Ember lets admins rename or delete accounts and nothing purges or moves notes then: a rename orphans the user's notes, a deleted account's notes stay, and a new account that takes a freed username inherits the old notes.
+- Privacy is only as strong as the caller is trusted. The identity is whatever the caller asserts (the `X-Requester-Username` header or `_meta.requester`), so notes are private only as far as the caller is trusted. Set `INTERNAL_API_TOKEN` whenever the server listens on a non-loopback address (`zima_host.yaml` binds 0.0.0.0).
+- The number of distinct usernames is not capped; only 200 notes x 500 characters per username.
 
 ## Configuration
 
