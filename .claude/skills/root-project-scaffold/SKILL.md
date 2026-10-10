@@ -23,7 +23,7 @@ Mandatory in every root project:
 | `pyproject.toml` | Its own dependencies — each root project is a separate Python environment, never a shared venv |
 | `run.bat` | The one launcher, env-var-configured: don't copy the bat per instance, set env vars before calling it (ai_agent goes further: its bat starts a supervisor that runs one child per `agents/<id>.json`). Creates its own `.venv_<project>` on first run |
 | `configs/` | JSON config, each real file gitignored with a committed `.example` twin (`config_x.json` + `config_x.json.example`) |
-| `secrets/` | Credentials/env files, same gitignored-with-`.example` pattern (`mcp_server` and `ai_agent` keep a single root `.env` + `.env.example`) |
+| `.env`, `.env.example` | The project's one credentials file, in the project root beside `configs/` (no `secrets/` folder). The real `.env` is gitignored; `.env.example` is committed. `mini_games`, `mcp_server` and `ai_agent` follow this |
 | `src/` | The actual code |
 | `tests/` | Its test suite |
 
@@ -57,7 +57,7 @@ changes the convention for every project after it.
    MCP-specific that doesn't apply.
 3. For every config/secret file, write both the real (gitignored) file
    and a `.example` twin with placeholder values, matching how
-   `apps/mcp_server/configs/*.json.example` and `secrets/*.env.example` do it.
+   `apps/mcp_server/configs/*.json.example` and the root `.env.example` do it.
    Loaders should auto-create a missing real file by copying its
    `.example` (see `apps/ai_agent/src/core/seed.py`) rather than raising on first run.
 4. Write `README.md` covering: what the project does, requirements,
@@ -97,7 +97,7 @@ Walk the table above against the folder in question. Flag:
 
 - `ls` the new project root and confirm it matches the mandatory table
   exactly, with no extra top-level entries.
-- Every `configs/*.json` and `secrets/*` file has a committed `.example`
+- Every `configs/*.json` file and the root `.env` has a committed `.example`
   counterpart, and neither the real file nor real secrets are staged in
   git (`git status` — they should show as untracked/ignored, not staged).
 - `run.bat` starts the project standalone (not just importable) before
