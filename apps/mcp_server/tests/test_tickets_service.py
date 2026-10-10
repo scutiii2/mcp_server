@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from src.services.ticket_config import load_ticket_config
+from src.services.ticket_store import TicketStore
+from src.services.tickets import TicketError, TicketService
+
+
+class FakeLaya:
+    def __init__(self, verdicts=None, tag=None, fail=False):
+        self.verdicts, self.tag, self.fail = verdicts or {}, tag, fail
+        self.same_calls, self.tag_calls = [], 0
+
+    async def same_issue(self, new, existing):
+        self.same_calls.append(existing["group_id"])
+        if self.fail:
+            raise RuntimeError("laya down")
+        return self.verdicts.get(existing["group_id"], "no")
+
+    async def pick_tag(self, ticket, tags):
+        self.tag_calls += 1
+        if self.fail:
+            raise RuntimeError("laya down")
+        return self.tag
+
+
+class Clock:
+    def __init__(self):
+        self.now = datetime(2026, 10, 10, 10, 0, tzinfo=timezone.utc)
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, **kwargs):
+        self.now += timedelta(**kwargs)
+
+
+@pytest.fixture
+def clock():
+    return Clock()
+
+
+@pytest.fixture
+def config(tmp_path):
+    return load_ticket_config(tmp_path / "missing.json")
+
+
+@pytest.fixture
+def make(tmp_path, config, clock):
+    def build(laya=None):
+        return TicketService(TicketStore(tmp_path / "t.db"), config, laya, clock=clock)
+
+    return build
+
+
+def create(service, **over):
+    args = dict(reporter="alice", type="bug", title="Email fails", description="It does not send")
+    args.update(over)
+    return asyncio.run(service.create(**args))
+
+
+def test_basic_create(make):
+    service = make()
+    outcome = create(service, tags=["email", "bogus"], context={"chat_id": "c1", "evil": "x"},
+                     verified_context={"page": "/chat"})
+
+    ticket = outcome.ticket
+    assert ticket["status"] == "open" and ticket["source"] == "user"
+    assert ticket["tags"] == ["email"]
+    assert ticket["context"] == {"reported": {"chat_id": "c1"}, "verified": {"page": "/chat"}}
+    assert outcome.duplicate is False and outcome.group_size == 1
+
+
+@pytest.mark.parametrize(
+    "over,message",
+    [
+        ({"reporter": " "}, "reporter"),
+        ({"type": "complaint"}, "type"),
+        ({"title": " "}, "title"),
+        ({"title": "x" * 121}, "title"),
+        ({"description": ""}, "description"),
+        ({"description": "x" * 4001}, "description"),
+        ({"source": "robot"}, "source"),
+    ],
+)
+def test_validation_messages(make, over, message):
+    with pytest.raises(TicketError, match=message):
+        create(make(), **over)
+
+
+def test_ai_sources_are_redacted_but_user_text_is_not(make):
+    service = make()
+    secret = "password=hunter22 and mail bob@example.com"
+
+    auto = create(service, source="ai_auto", description=secret,
+                  context={"error_text": "Authorization: Bearer abcdefgh12345678 failed"})
+    typed = create(service, reporter="bob", description=secret)
+
+    assert "hunter22" not in auto.ticket["description"] and "bob@example.com" not in auto.ticket["description"]
+    assert "abcdefgh12345678" not in auto.ticket["context"]["reported"]["error_text"]
+    assert "hunter22" in typed.ticket["description"]
+
+
+def test_context_values_are_capped(make):
+    outcome = create(make(), context={"error_text": "e" * 5000, "agent": "a" * 500})
+    reported = outcome.ticket["context"]["reported"]
+    assert len(reported["error_text"]) == 2000 and len(reported["agent"]) == 100
+
+
+def test_auto_reports_dedupe_per_reporter_and_fingerprint(make):
+    service = make()
+    ctx = {"tool_name": "tool_email_sendEmail", "error_text": "Missing key smtp_host in /etc/a.json line 4"}
+    first = create(service, source="ai_auto", context=ctx)
+    again = create(service, source="ai_auto", context={**ctx, "error_text": "Missing key smtp_host in /srv/b.json line 9"})
+    other_user = create(service, source="ai_auto", reporter="bob", context=ctx)
+
+    assert again.duplicate and again.ticket["id"] == first.ticket["id"]
+    assert not other_user.duplicate and other_user.ticket["id"] != first.ticket["id"]
+
+
+def test_auto_reports_hit_an_hourly_cap_that_resets(make, clock):
+    service = make()
+    for index in range(5):
+        create(service, source="ai_auto", context={"tool_name": "t", "error_text": f"error kind{chr(97 + index)}"})
+
+    with pytest.raises(TicketError, match="automatic"):
+        create(service, source="ai_auto", context={"tool_name": "t", "error_text": "error kindz"})
+    create(service, source="user")  # manual tickets are never capped
+
+    clock.advance(minutes=61)
+    create(service, source="ai_auto", context={"tool_name": "t", "error_text": "error kindz"})
+
+
+def test_without_laya_every_ticket_gets_its_own_group(make):
+    service = make()
+    a = create(service)
+    b = create(service, reporter="bob")
+
+    assert a.ticket["group_id"] != b.ticket["group_id"]
+
+
+def test_confident_laya_match_joins_the_group_and_keeps_both_tickets(make):
+    laya = FakeLaya()
+    service = make(laya)
+    first = create(service, tags=["email"])
+    laya.verdicts = {first.ticket["group_id"]: "yes"}
+
+    second = create(service, reporter="bob", tags=["email"])
+
+    assert second.ticket["group_id"] == first.ticket["group_id"]
+    assert second.group_size == 2 and second.ticket["id"] != first.ticket["id"]
+    assert second.ticket["possible_group_id"] is None
+
+
+def test_uncertain_laya_match_keeps_own_group_with_a_hint(make):
+    laya = FakeLaya()
+    service = make(laya)
+    first = create(service, tags=["email"])
+    laya.verdicts = {first.ticket["group_id"]: "uncertain"}
+
+    second = create(service, reporter="bob", tags=["email"])
+
+    assert second.ticket["group_id"] != first.ticket["group_id"]
+    assert second.ticket["possible_group_id"] == first.ticket["group_id"]
+
+
+def test_no_match_and_unreachable_laya_never_block_creation(make):
+    service = make(FakeLaya(fail=True))
+    first = create(service, tags=["email"])
+    second = create(service, reporter="bob", tags=["email"])
+
+    assert second.ticket["group_id"] != first.ticket["group_id"]
+    assert second.ticket["possible_group_id"] is None
+
+
+def test_laya_is_asked_only_about_candidates_and_stops_at_first_yes(make, config):
+    laya = FakeLaya()
+    service = make(laya)
+    groups = [create(service, reporter=f"u{i}", title=f"Different {i}", tags=["email"]).ticket["group_id"] for i in range(7)]
+    laya.same_calls.clear()
+    laya.verdicts = {groups[5]: "yes"}  # candidates come newest first: groups[6], groups[5], ...
+
+    result = create(service, reporter="zed", tags=["email"])
+
+    assert laya.same_calls == [groups[6], groups[5]]
+    assert result.group_size == 2 and result.ticket["group_id"] == groups[5]
+
+
+def test_laya_picks_a_tag_only_when_none_were_given(make):
+    laya = FakeLaya(tag="config")
+    service = make(laya)
+
+    assert create(service).ticket["tags"] == ["config"]
+    assert create(service, reporter="bob", tags=["ui"]).ticket["tags"] == ["ui"]
+    assert laya.tag_calls == 1
+    assert create(make(FakeLaya(tag=None)), reporter="cy").ticket["tags"] == []
+
+
+def test_priority_elevates_as_tickets_join_a_group(make):
+    laya = FakeLaya()
+    service = make(laya)
+    first = create(service, tags=["email"])
+    laya.verdicts = {first.ticket["group_id"]: "yes"}
+    sizes = [create(service, reporter=f"u{i}", tags=["email"]) for i in range(2)]
+
+    assert sizes[-1].group_size == 3
+    assert sizes[-1].ticket["effective_priority"] == "high"  # 3 tickets in the group
+
+
+def test_pinned_group_priority_is_not_elevated(make):
+    laya = FakeLaya()
+    service = make(laya)
+    first = create(service, tags=["email"])
+    service._store.update_group(first.ticket["group_id"], priority="low", pinned=True, now="2026-10-10T10:00:00+00:00")
+    laya.verdicts = {first.ticket["group_id"]: "yes"}
+
+    for index in range(3):
+        last = create(service, reporter=f"u{index}", tags=["email"])
+
+    assert last.ticket["effective_priority"] == "normal"  # ticket's own priority; group stays pinned at low
