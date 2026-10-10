@@ -6,6 +6,9 @@ import EmButton from "./EmButton.vue";
 import EmConfirm from "./EmConfirm.vue";
 import EmDialog from "./EmDialog.vue";
 import EmIcon from "./EmIcon.vue";
+import EmMenuRow from "./EmMenuRow.vue";
+import EmNotice from "./EmNotice.vue";
+import EmPageHead from "./EmPageHead.vue";
 import EmRing from "./EmRing.vue";
 import EmSwitch from "./EmSwitch.vue";
 import EmTabs from "./EmTabs.vue";
@@ -193,5 +196,36 @@ describe("EmConfirm", () => {
 
     expect((wrapper.find("button.confirm").element as HTMLButtonElement).disabled).toBe(false);
     expect(wrapper.text()).toContain("Keep battling");
+  });
+});
+
+describe("EmMenuRow", () => {
+  it("is a button with its label and an arrow, with a variant and a disabled state", () => {
+    const wrapper = mount(EmMenuRow, { props: { icon: "play", variant: "primary" }, slots: { default: "Continue" } });
+    expect(wrapper.element.tagName).toBe("BUTTON");
+    expect(wrapper.find(".label").text()).toBe("Continue");
+    expect(wrapper.classes()).toContain("primary");
+    expect(wrapper.findAll("svg")).toHaveLength(2);
+
+    expect(mount(EmMenuRow, { props: { icon: "reset", variant: "danger", disabled: true } }).attributes("disabled")).toBeDefined();
+  });
+});
+
+describe("EmNotice", () => {
+  it("uses alert for errors and status for warnings", () => {
+    expect(mount(EmNotice, { props: { tone: "error" }, slots: { default: "Failed" } }).attributes("role")).toBe("alert");
+    const warning = mount(EmNotice, { slots: { default: "Reconnecting" } });
+    expect(warning.attributes("role")).toBe("status");
+    expect(warning.text()).toBe("Reconnecting");
+  });
+});
+
+describe("EmPageHead", () => {
+  it("shows the eyebrow, the title, the subtitle and the side slot", () => {
+    const wrapper = mount(EmPageHead, { props: { title: "Your collection", subtitle: "6 Sparks." }, slots: { default: "<a>Main menu</a>" } });
+    expect(wrapper.find(".em-eyebrow").text()).toBe("The forge is yours");
+    expect(wrapper.find("h2").text()).toBe("Your collection");
+    expect(wrapper.find(".subtitle").text()).toBe("6 Sparks.");
+    expect(wrapper.find(".side").text()).toBe("Main menu");
   });
 });

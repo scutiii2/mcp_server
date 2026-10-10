@@ -32,14 +32,15 @@ function mountMenu(profile: Profile | null = PROFILE) {
   return mount(MainMenu);
 }
 
-const labels = (wrapper: ReturnType<typeof mountMenu>) => wrapper.findAll("nav .t").map((t) => t.text());
+const labels = (wrapper: ReturnType<typeof mountMenu>) => wrapper.findAll("nav .label").map((t) => t.text());
 
 describe("MainMenu", () => {
   it("offers only New game and How to play without a save", async () => {
     const wrapper = mountMenu(null);
 
     expect(labels(wrapper)).toEqual(["New game", "How to play"]);
-    expect(wrapper.text()).toContain("No save found for this account");
+    expect(wrapper.find(".save").text()).toBe("Three Sparks. Your first choice.");
+    expect(wrapper.find(".hand-caption").text()).toBe("Guardian · Striker");
     await wrapper.find("button.primary").trigger("click");
     expect(wrapper.emitted("newGame")).toHaveLength(1);
   });
@@ -48,8 +49,8 @@ describe("MainMenu", () => {
     const wrapper = mountMenu();
 
     expect(labels(wrapper)).toEqual(["Continue", "Quick battle", "Shop", "How to play", "Reset progress"]);
-    expect(wrapper.find(".stats").text()).toContain("1 Spark");
-    expect(wrapper.find(".stats").text()).toContain("100 Insignia");
+    expect(wrapper.find(".save").text()).toBe("1 Spark, 100 Insignia");
+    expect(wrapper.find(".hand-caption").text()).toBe("Your first Sparks");
     const buttons = wrapper.findAll("nav button");
     await buttons[0]!.trigger("click");
     await buttons[1]!.trigger("click");
@@ -71,9 +72,9 @@ describe("MainMenu", () => {
     const wrapper = mountMenu(null);
     await wrapper.findAll("nav button")[1]!.trigger("click");
 
-    const help = wrapper.findAllComponents({ name: "BaseModal" }).find((m) => m.props("title") === "How to play");
+    const help = wrapper.findAllComponents({ name: "EmDialog" }).find((m) => m.props("title") === "Keep the fire going");
     expect(help?.props("open")).toBe(true);
-    expect(wrapper.find(".help").exists()).toBe(true);
+    expect(wrapper.find(".rules").exists()).toBe(true);
   });
 });
 
@@ -105,7 +106,7 @@ describe("reset progress", () => {
     await flushPromises();
 
     expect(client.resetProfile).toHaveBeenCalledTimes(1);
-    expect(wrapper.findComponent({ name: "ConfirmModal" }).props("open")).toBe(false);
+    expect(wrapper.findComponent({ name: "EmConfirm" }).props("open")).toBe(false);
     expect(labels(wrapper)).toEqual(["New game", "How to play"]);
   });
 });

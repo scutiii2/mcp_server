@@ -5,7 +5,8 @@ import EmDialog from "./EmDialog.vue";
 
 /** A confirmation dialog. With `requireText` the confirm button stays disabled until
  * that exact word is typed (the reset uses RESET). `danger` gives it the red rule and
- * the red button. The cancel button is named for what it keeps ("Keep battling"). */
+ * the red button. The cancel button is named for what it keeps ("Keep battling"). The default
+ * slot sits above the message, for a notice. */
 const props = withDefaults(
   defineProps<{
     open: boolean;
@@ -34,6 +35,7 @@ watch(
 
 <template>
   <EmDialog :open="open" :title="title" :danger="danger" @close="emit('close')">
+    <slot />
     <p class="message">{{ message }}</p>
     <label v-if="requireText !== undefined" class="require">
       <span>Type {{ requireText }} to confirm</span>

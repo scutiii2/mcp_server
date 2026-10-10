@@ -1,27 +1,22 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useEmberlingsStore } from "../../stores/emberlings";
-import BaseModal from "../BaseModal.vue";
-import ConfirmModal from "../ConfirmModal.vue";
 import SparkTemplateCard from "./SparkTemplateCard.vue";
+import EmButton from "./ui/EmButton.vue";
+import EmConfirm from "./ui/EmConfirm.vue";
+import EmDialog from "./ui/EmDialog.vue";
+import EmIcon from "./ui/EmIcon.vue";
+import EmMenuRow from "./ui/EmMenuRow.vue";
+import EmNotice from "./ui/EmNotice.vue";
 
-/** The Emberlings main menu, the first screen: a title, large menu rows and a
- * Spark showcase. Without a save it offers New game and previews the starters;
- * with one it offers Continue, Quick battle and Shop and shows your team.
+/** The Emberlings main menu, the first screen: the title, the menu rows and a fanned
+ * hand of small cards. Without a save it offers New game and previews the starters;
+ * with one it offers Continue, Quick battle and Shop and shows your first Sparks.
  * Reset progress lives here, behind a type-to-confirm. */
 export type PlayTarget = "collection" | "battle" | "shop";
 const emit = defineEmits<{ newGame: []; play: [target: PlayTarget] }>();
 
-// 24x24 stroke icons, as path data.
-const ICON = {
-  play: ["M7 4v16l13-8z"],
-  swords: ["M14.5 17.5L3 6V3h3l11.5 11.5", "M13 19l6-6", "M16 16l4 4", "M19 21l2-2"],
-  shop: ["M3 21h18", "M3 7h18l-2-4H5z", "M5 21V10", "M19 21V10", "M9 21v-5h6v5"],
-  book: ["M4 5a8 8 0 0 1 8 1.5A8 8 0 0 1 20 5v13a8 8 0 0 0-8 1.5A8 8 0 0 0 4 18z", "M12 6.5v13"],
-  reset: ["M20 11a8 8 0 0 0-15.5-2", "M4 5v4h4", "M4 13a8 8 0 0 0 15.5 2", "M20 19v-4h-4"],
-  chevron: ["M9 6l6 6-6 6"],
-};
-const SHOWCASE_SIZE = 3;
+const HAND_SIZE = 3;
 
 const store = useEmberlingsStore();
 const hasSave = computed(() => store.profile !== null);
@@ -29,14 +24,13 @@ const inBattle = computed(() => store.profile?.active_battle != null || store.ba
 const confirmingReset = ref(false);
 const showingHelp = ref(false);
 
-/** The Sparks beside the menu, as a fanned hand of small cards: your first ones
- * (with level and tier), or the starters to pick from. `rot` and `lift` place a
- * card in the fan, the middle one on top. */
-const showcase = computed(() => {
+/** The Sparks of the hand: your first ones (level, tier), or the starters to pick from.
+ * `rot` and `lift` place a card in the fan, the middle one raised and on top. */
+const hand = computed(() => {
   const catalog = store.catalog?.sparks ?? [];
   const entries =
     store.profile !== null
-      ? store.profile.sparks.slice(0, SHOWCASE_SIZE).map((s) => ({
+      ? store.profile.sparks.slice(0, HAND_SIZE).map((s) => ({
           id: s.spark_id,
           info: catalog.find((c) => c.id === s.spark_id),
           level: s.level,
@@ -44,14 +38,15 @@ const showcase = computed(() => {
         }))
       : catalog
           .filter((c) => c.starter)
-          .slice(0, SHOWCASE_SIZE)
+          .slice(0, HAND_SIZE)
           .map((c) => ({ id: c.id, info: c, level: 1, tierId: "normal" }));
   return entries.flatMap((e, i) => {
     if (e.info === undefined) return [];
     const offset = i - (entries.length - 1) / 2;
-    return [{ ...e, info: e.info, rot: `${offset * 9}deg`, lift: `${Math.abs(offset) * 12}px`, z: 10 - Math.round(Math.abs(offset) * 2) }];
+    return [{ ...e, info: e.info, rot: `${offset * 11}deg`, lift: `${-25 + Math.abs(offset) * 25}px`, z: 10 - Math.round(Math.abs(offset) * 4) }];
   });
 });
+const handCaption = computed(() => (hasSave.value ? "Your first Sparks" : hand.value.map((h) => h.info.name).join(" · ")));
 const sparkCount = computed(() => store.profile?.sparks.length ?? 0);
 
 async function reset(): Promise<void> {
@@ -60,256 +55,179 @@ async function reset(): Promise<void> {
 </script>
 
 <template>
-  <section class="menu">
+  <section class="hero">
     <div class="intro">
-      <p class="eyebrow">{{ hasSave ? "Welcome back" : "Collect · battle · grow" }}</p>
-      <h2 class="title">Emberlings</h2>
-      <p class="tagline">
-        {{ hasSave ? "Your Sparks are rested and ready." : "Catch Sparks, train them, and take on wild ones." }}
-      </p>
+      <p class="em-eyebrow">A little fire. A big adventure.</p>
+      <h2 class="em-pixel title">EMBERLINGS</h2>
+      <p class="tagline">Find your Spark.<br />Forge a legend, one battle at a time.</p>
+      <p v-if="hasSave" class="save em-num">{{ sparkCount }} {{ sparkCount === 1 ? "Spark" : "Sparks" }}, {{ store.profile?.insignia }} Insignia</p>
+      <p v-else class="save">Three Sparks. Your first choice.</p>
 
-      <p v-if="store.error" class="error" role="alert">{{ store.error }}</p>
+      <EmNotice v-if="store.error" tone="error">{{ store.error }}</EmNotice>
 
-      <nav class="rows" aria-label="Main menu">
+      <nav class="menu" aria-label="Main menu">
         <template v-if="hasSave">
-          <button type="button" class="row primary" @click="emit('play', 'collection')">
-            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.play" :key="d" :d="d" /></svg>
-            <span class="text"><span class="t">Continue</span><span class="d">Open your collection</span></span>
-            <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
-          </button>
-          <button type="button" class="row" @click="emit('play', 'battle')">
-            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.swords" :key="d" :d="d" /></svg>
-            <span class="text"><span class="t">Quick battle</span><span class="d">Find a wild Spark</span></span>
-            <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
-          </button>
-          <button type="button" class="row" @click="emit('play', 'shop')">
-            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.shop" :key="d" :d="d" /></svg>
-            <span class="text"><span class="t">Shop</span><span class="d">Spend your Insignia</span></span>
-            <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
-          </button>
+          <EmMenuRow icon="play" variant="primary" @click="emit('play', 'collection')">Continue</EmMenuRow>
+          <EmMenuRow icon="battle" @click="emit('play', 'battle')">Quick battle</EmMenuRow>
+          <EmMenuRow icon="shop" @click="emit('play', 'shop')">Shop</EmMenuRow>
         </template>
-        <button v-else type="button" class="row primary" @click="emit('newGame')">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.play" :key="d" :d="d" /></svg>
-          <span class="text"><span class="t">New game</span><span class="d">Choose your first Spark</span></span>
-          <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
-        </button>
-
-        <div :class="hasSave ? 'pair' : 'single'">
-          <button type="button" class="row" @click="showingHelp = true">
-            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.book" :key="d" :d="d" /></svg>
-            <span class="text"><span class="t">How to play</span><span v-if="!hasSave" class="d">Two minutes to learn</span></span>
-            <svg v-if="!hasSave" class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
-          </button>
-          <button v-if="hasSave" type="button" class="row danger" :disabled="inBattle" @click="confirmingReset = true">
-            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.reset" :key="d" :d="d" /></svg>
-            <span class="text"><span class="t">Reset progress</span></span>
-          </button>
-        </div>
+        <EmMenuRow v-else icon="play" variant="primary" @click="emit('newGame')">New game</EmMenuRow>
+        <EmMenuRow icon="book" @click="showingHelp = true">How to play</EmMenuRow>
+        <EmMenuRow v-if="hasSave" icon="reset" variant="danger" :disabled="inBattle" @click="confirmingReset = true">Reset progress</EmMenuRow>
       </nav>
-      <p v-if="hasSave && inBattle" class="muted note">Finish or forfeit your battle to reset</p>
+      <p v-if="hasSave && inBattle" class="caption">Finish or forfeit your battle to reset.</p>
+      <p v-else class="caption">{{ hasSave ? "Your progress is ready." : "Pick a starter and begin your collection." }}</p>
     </div>
 
-    <aside class="side" :aria-label="hasSave ? 'Your team' : 'Starter Sparks'">
-      <p v-if="hasSave" class="muted side-title">Your team</p>
-      <ul class="hand">
-        <li
-          v-for="spark in showcase"
-          :key="spark.id"
-          class="spark"
-          :style="{ '--rot': spark.rot, '--lift': spark.lift, zIndex: spark.z }"
-        >
+    <div class="hand-wrap">
+      <ul class="hand" :aria-label="hasSave ? 'Your first Sparks' : 'Starter Sparks'">
+        <li v-for="spark in hand" :key="spark.id" class="spark" :style="{ '--rot': spark.rot, '--lift': spark.lift, zIndex: spark.z }">
           <SparkTemplateCard :spark="spark.info" :level="spark.level" :tier-id="spark.tierId" compact :show-level="hasSave" />
         </li>
       </ul>
-      <p v-if="hasSave" class="muted stats">
-        <span><b>{{ sparkCount }}</b> {{ sparkCount === 1 ? "Spark" : "Sparks" }}</span>
-        <span><b>{{ store.profile?.insignia }}</b> Insignia</span>
-      </p>
-      <p v-else class="muted stats">No save found for this account</p>
-    </aside>
+      <p class="hand-caption">{{ handCaption }}</p>
+    </div>
 
-    <ConfirmModal
+    <EmConfirm
       :open="confirmingReset"
       title="Reset all Emberlings progress?"
-      message="Every Spark, personality, preset, EMBLEM and all Insignia are deleted. This cannot be undone."
+      message="You will start again with a new starter Spark."
       confirm-label="Reset progress"
+      cancel-label="Keep my progress"
       danger
       require-text="RESET"
       :busy="store.busy"
       @confirm="reset"
       @close="confirmingReset = false"
-    />
+    >
+      <EmNotice tone="error" class="reset-notice">This permanently removes your Sparks, Insignia, EMBLEMs and presets.</EmNotice>
+    </EmConfirm>
 
-    <BaseModal :open="showingHelp" title="How to play" @close="showingHelp = false">
-      <ul class="help">
-        <li>Pick a first Spark. It stays yours.</li>
-        <li>Battle wild Sparks to win Insignia and catch new ones.</li>
-        <li>In a manual battle, choose each action. In autonomous mode your Spark acts on its own.</li>
-        <li>An EMBLEM prompt gives you 5 seconds to answer.</li>
-        <li>Spend Insignia in the shop.</li>
-      </ul>
-    </BaseModal>
+    <EmDialog :open="showingHelp" title="Keep the fire going" @close="showingHelp = false">
+      <ol class="rules">
+        <li><strong>Choose a starter.</strong> Guardian, Scout or Striker begins your collection.</li>
+        <li><strong>Find a wild Spark.</strong> Preview it, then fight or decline for free.</li>
+        <li><strong>Make your move.</strong> Play manually or let your Spark act autonomously.</li>
+        <li><strong>Throw an EMBLEM.</strong> Choose a permitted tier before the five-second timer ends.</li>
+        <li><strong>Forge your collection.</strong> Earn XP and Insignia; copies raise tiers. Levels cap at 30, or 50 for Forbidden.</li>
+      </ol>
+      <EmButton variant="primary" class="ready" @click="showingHelp = false"><EmIcon name="play" /> Ready to play</EmButton>
+    </EmDialog>
   </section>
 </template>
 
 <style scoped>
-.menu {
+.hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  padding: 24px 0;
-}
-.eyebrow {
-  margin: 0 0 6px;
-  font-size: 0.75rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--accent);
+  gap: 40px;
+  min-height: 590px;
+  background: radial-gradient(ellipse at 73% 50%, #2a3033, transparent 60%);
 }
 .title {
-  margin: 0;
-  font-size: 2.5rem;
-  font-weight: 600;
-  line-height: 1.1;
+  margin: 14px 0;
+  font-size: 46px;
+  line-height: 1.2;
+  color: var(--em-accent);
 }
 .tagline {
-  margin: 8px 0 22px;
-  color: var(--muted);
-  line-height: 1.5;
+  max-width: 370px;
+  margin-bottom: 28px;
+  font-size: 16px;
+  color: var(--em-muted);
 }
-.rows {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.save {
+  margin: 0 0 16px;
+  font-size: 13px;
 }
-.row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  color: var(--text);
-  background: var(--surface);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-.row:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-.row:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.row:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-.row.primary {
-  border-color: var(--accent);
-  color: var(--accent-contrast);
-  background: var(--accent);
-}
-.ico {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  color: var(--muted);
-}
-.row.primary .ico {
-  color: inherit;
-}
-.ico.go {
-  width: 18px;
-  height: 18px;
-  margin-left: auto;
-}
-.text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.t {
-  font-weight: 600;
-}
-.d {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-.row.primary .d {
-  color: inherit;
-  opacity: 0.85;
-}
-.danger,
-.danger .ico {
-  color: var(--danger);
-}
-.pair {
+.menu {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
+  max-width: 380px;
+  margin-top: 22px;
 }
-.note {
-  margin: 8px 0 0;
-  font-size: 0.85em;
+.caption {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--em-muted);
 }
-.side-title {
-  margin: 0 0 8px;
-  font-size: 0.85em;
+.hand-wrap {
+  min-width: 0;
 }
 .hand {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  min-height: 220px;
+  height: 390px;
   margin: 0;
-  padding: 16px 0 28px;
+  padding: 0;
   list-style: none;
 }
 .spark {
-  --card-width: 150px;
+  --card-width: 170px;
   flex: none;
-  margin: 0 -14px;
+  margin: 0 -12px;
   transform: rotate(var(--rot)) translateY(var(--lift));
-  transition: transform 0.15s ease;
+  box-shadow: 0 20px 35px #0008;
+  transition: transform 160ms ease;
 }
 .spark:hover {
   z-index: 20 !important;
-  transform: rotate(0deg) translateY(-14px);
+  transform: rotate(0deg) translateY(-30px);
 }
-.stats {
-  display: flex;
-  gap: 18px;
-  margin: 16px 0 0;
-  font-size: 0.85em;
+.hand-caption {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--em-muted);
 }
-.stats b {
-  color: var(--text);
-  font-weight: 600;
+.reset-notice {
+  margin-bottom: 18px;
 }
-.help {
-  margin: 0;
-  padding-left: 18px;
-  line-height: 1.6;
+.rules {
+  margin: 0 0 20px;
+  padding-left: 22px;
+  color: var(--em-muted);
 }
-@media (max-width: 640px) {
-  .menu {
-    grid-template-columns: minmax(0, 1fr);
+.rules li {
+  padding: 8px 0;
+}
+.rules strong {
+  color: var(--em-text);
+}
+.ready {
+  width: 100%;
+}
+@media (max-width: 700px) {
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 26px;
+    min-height: 0;
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  .row,
+  .title {
+    margin: 12px 0;
+    font-size: 31px;
+  }
+  .tagline {
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .menu {
+    max-width: none;
+  }
+  .hand-wrap {
+    order: 2;
+  }
+  .hand {
+    height: 270px;
+  }
   .spark {
-    transition: none;
+    --card-width: 128px;
+    margin: 0 -16px;
   }
 }
 </style>

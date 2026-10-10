@@ -14,6 +14,7 @@ import MainMenu, { type PlayTarget } from "../components/emberlings/MainMenu.vue
 import ShopPanel from "../components/emberlings/ShopPanel.vue";
 import StarterPick from "../components/emberlings/StarterPick.vue";
 import EmIcon from "../components/emberlings/ui/EmIcon.vue";
+import EmPageHead from "../components/emberlings/ui/EmPageHead.vue";
 import EmTabs, { type EmTabOption } from "../components/emberlings/ui/EmTabs.vue";
 import { useEmberlingsStore } from "../stores/emberlings";
 import { titleCase } from "../utils/emberlings";
@@ -84,7 +85,7 @@ onUnmounted(() => store.detach());
 
 <template>
   <section class="info-page em-root emberlings-page">
-    <EmShell :insignia="store.profile?.insignia ?? null">
+    <EmShell :insignia="store.profile?.insignia ?? 0">
       <div v-if="store.unavailable" class="card unavailable" role="alert">
         <p>Emberlings is not available right now.</p>
         <button type="button" class="primary" :disabled="store.loading" @click="store.retry()">Retry</button>
@@ -102,17 +103,10 @@ onUnmounted(() => store.detach());
         <StarterPick v-else-if="screen === 'starter'" @back="screen = 'menu'" @started="play('collection')" />
 
         <template v-else>
-          <div class="topline">
-            <div>
-              <p class="em-eyebrow">The forge is yours</p>
-              <h2 class="em-pixel page-title">{{ PAGE_TITLES[tab].title }}</h2>
-              <p class="page-sub">{{ subtitle }}</p>
-            </div>
-            <div class="nav">
-              <button type="button" class="menu-link" @click="screen = 'menu'"><EmIcon name="arrow" class="back-arrow" /> Main menu</button>
-              <EmTabs :model-value="tab" :options="tabs" aria-label="Emberlings sections" @update:model-value="selectTab" />
-            </div>
-          </div>
+          <EmPageHead :title="PAGE_TITLES[tab].title" :subtitle="subtitle">
+            <button type="button" class="menu-link" @click="screen = 'menu'"><EmIcon name="arrow" class="back-arrow" /> Main menu</button>
+            <EmTabs :model-value="tab" :options="tabs" aria-label="Emberlings sections" @update:model-value="selectTab" />
+          </EmPageHead>
           <p v-if="store.error" class="error status" role="alert">{{ store.error }}</p>
 
           <div v-if="tab === 'collection'" class="tab-body">
@@ -141,27 +135,6 @@ onUnmounted(() => store.detach());
 <style scoped>
 .emberlings-page {
   overflow-y: auto;
-}
-.topline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--em-space-4);
-}
-.page-title {
-  margin: 8px 0 4px;
-  font-size: 28px;
-  line-height: 1.3;
-}
-.page-sub {
-  color: var(--em-muted);
-}
-.nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--em-space-4);
 }
 .menu-link {
   display: inline-flex;
@@ -194,13 +167,5 @@ onUnmounted(() => store.detach());
 }
 .tab-body {
   margin-top: var(--em-space-5);
-}
-@media (max-width: 700px) {
-  .page-title {
-    font-size: 23px;
-  }
-  .nav {
-    width: 100%;
-  }
 }
 </style>

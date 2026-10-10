@@ -59,6 +59,20 @@ describe("StarterPick", () => {
     expect(client.createProfile).toHaveBeenCalledExactlyOnceWith("guardian");
   });
 
+  it("describes the chosen starter in the side panel and follows the pick", async () => {
+    const wrapper = mount(StarterPick);
+
+    expect(wrapper.find(".info .name").text()).toBe("Guardian");
+    expect(wrapper.find(".info .blurb").text()).toBe("A steady shield for the journey ahead.");
+    expect(wrapper.find(".info .facts").text()).toContain("100 HP · +5 / lvl");
+    expect(wrapper.find(".info .facts").text()).toContain("Abilities unlock at levels 1 and 5.");
+    expect(wrapper.find(".selected-label").text()).toBe("Selected");
+
+    await wrapper.findAll("[role=radio]")[1]!.trigger("click");
+    expect(wrapper.find(".info .name").text()).toBe("Striker");
+    expect(wrapper.findAll(".selected-label")).toHaveLength(1);
+  });
+
   it("goes back to the menu", async () => {
     const wrapper = mount(StarterPick);
     await wrapper.find("button.back").trigger("click");

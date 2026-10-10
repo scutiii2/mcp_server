@@ -60,7 +60,7 @@ describe("EmberlingsView", () => {
     const wrapper = await mountView();
 
     expect(wrapper.find("[role=tab]").exists()).toBe(false);
-    expect(wrapper.findAll("nav .t").map((t) => t.text())).toEqual(["New game", "How to play"]);
+    expect(wrapper.findAll("nav .label").map((t) => t.text())).toEqual(["New game", "How to play"]);
 
     await wrapper.find("button.primary").trigger("click");
     expect(wrapper.text()).toContain("Choose your first Spark");
@@ -94,10 +94,10 @@ describe("EmberlingsView", () => {
     await wrapper.findAll("nav button")[0]!.trigger("click");
 
     expect(wrapper.find(".wallet").text()).toBe("100 Insignia");
-    expect(wrapper.find(".page-sub").text()).toBe("1 Spark. Every one has a story.");
+    expect(wrapper.find(".subtitle").text()).toBe("1 Spark. Every one has a story.");
 
     await tab(wrapper, "Battle").trigger("click");
-    expect(wrapper.find(".page-sub").text()).toContain("Normal 2");
+    expect(wrapper.find(".subtitle").text()).toContain("Normal 2");
   });
 
   it("restores an active battle on the Battle tab instead of rolling", async () => {
