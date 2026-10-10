@@ -28,7 +28,7 @@ function box(x0: number, y0: number, x1: number, y1: number): Record<string, str
 const HEADER = box(235, 62, 850, 135);
 const ART = box(81, 167, 978, 631);
 const STAT_COLUMNS = [box(70, 668, 375, 800), box(375, 668, 686, 800), box(686, 668, 990, 800)];
-const PASSIVE = box(100, 824, 960, 934);
+const PASSIVE = box(100, 820, 960, 938);
 /** The three ability holes in the frame (see-through). */
 const ABILITY_SLOTS = [box(101, 972, 960, 1057), box(101, 1090, 960, 1177), box(100, 1208, 959, 1298)];
 /** The Emberlings plate, redrawn on top so the tier tint leaves it alone. */
@@ -86,6 +86,7 @@ const tintStyle = computed(() => ({
   maskImage: `url(${frameUrl})`,
   WebkitMaskImage: `url(${frameUrl})`,
 }));
+const passiveName = computed(() => titleCase(props.spark.passive.kind));
 const passive = computed(() => passiveText(props.spark.passive.kind, props.spark.passive.params));
 const abilities = computed(() =>
   props.spark.abilities.slice(0, ABILITY_SLOTS.length).map((a, i) => ({
@@ -126,7 +127,10 @@ const abilities = computed(() =>
       </div>
     </dl>
 
-    <p class="passive" :style="PASSIVE" :title="`${titleCase(spark.passive.kind)}: ${passive}`">{{ passive }}</p>
+    <p class="passive" :style="PASSIVE" :title="`${passiveName}: ${passive}`">
+      <strong :class="{ alone: passive === passiveName }">{{ passiveName }}</strong>
+      <template v-if="passive !== passiveName">{{ ` ${passive}` }}</template>
+    </p>
 
     <div v-for="a in abilities" :key="a.ability.id" class="ability" :style="a.slot">
       <span class="slot" aria-hidden="true">
@@ -224,19 +228,21 @@ const abilities = computed(() =>
   display: flex;
   align-items: center;
   gap: 0.8cqw;
-  font-size: 2.5cqw;
+  font-size: 2.3cqw;
+  line-height: 1.1;
   letter-spacing: 0.3cqw;
   text-transform: uppercase;
   color: #3a3e46;
 }
 .stat dd {
   margin: 0;
-  font-size: 5cqw;
+  font-size: 4.4cqw;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.05;
 }
 .growth {
-  font-size: 2.4cqw;
+  font-size: 2.2cqw;
+  line-height: 1.1;
   color: #3a3e46;
 }
 .icon {
@@ -248,18 +254,27 @@ const abilities = computed(() =>
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* The passive box holds five lines; it is cut after that, in full in its tooltip. */
+/* The passive box holds four lines; it is cut after that, in full in its tooltip. */
 .passive {
   position: absolute;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
-  line-clamp: 5;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
   margin: 0;
   overflow: hidden;
-  font-size: 2.2cqw;
+  font-size: 2.4cqw;
+  font-weight: 500;
   line-height: 1.15;
   color: #1b1d21;
+}
+.passive strong {
+  font-weight: 700;
+  letter-spacing: 0.1cqw;
+  text-transform: uppercase;
+}
+.passive strong:not(.alone)::after {
+  content: " \2014";
 }
 .ability {
   position: absolute;

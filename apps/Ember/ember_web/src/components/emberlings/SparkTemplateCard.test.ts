@@ -20,7 +20,8 @@ describe("SparkTemplateCard", () => {
       expect.stringMatching(/Essence\s*30\s*\+3 \/ lvl/),
       expect.stringMatching(/Speed\s*20\s*\+2 \/ lvl/),
     ]);
-    expect(wrapper.find(".passive").text()).toBe("Below 50% HP, attacks deal extra damage equal to 20% of its Essence.");
+    expect(wrapper.find(".passive strong").text()).toBe("Low hp attack bonus");
+    expect(wrapper.find(".passive").text()).toBe("Low hp attack bonus Below 50% HP, attacks deal extra damage equal to 20% of its Essence.");
     const abilities = wrapper.findAll(".ability");
     expect(abilities).toHaveLength(2);
     expect(abilities[0]!.text()).toContain("Strike");
@@ -35,7 +36,7 @@ describe("SparkTemplateCard", () => {
     expect(wrapper.attributes("aria-label")).toBe("Striker, Rare, level 7");
   });
 
-  it("keeps the passive's name and sentence in its tooltip, since the box cuts after five lines", () => {
+  it("keeps the passive's name and sentence in its tooltip, since the box cuts after four lines", () => {
     const wrapper = mount(SparkTemplateCard, { props: { spark: striker } });
 
     expect(wrapper.find(".passive").attributes("title")).toBe(
