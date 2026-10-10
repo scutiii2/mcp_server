@@ -32,6 +32,7 @@ def capability(tmp_path, monkeypatch):
     # The loader purges and re-imports the capability, so patch the live module, not a stale import.
     domain = sys.modules["src.capabilities.memory.domain"]
     monkeypatch.setattr(domain, "settings", dataclasses.replace(settings, memory_db_path=tmp_path / "memory.db"))
+    assert domain.settings.memory_db_path.parent == tmp_path
     monkeypatch.setattr(identity_context, "current_username", lambda: "alice")
     return server
 

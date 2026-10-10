@@ -89,6 +89,14 @@ def test_forget_removes_only_the_owners_note_from_both_tables(db):
     assert store.forget(db, "alice", mine.id) is False
 
 
+def test_note_ids_are_not_reused_after_a_delete(db):
+    store.save(db, "alice", "first note")
+    second = store.save(db, "alice", "second note")
+    assert store.forget(db, "alice", second.id) is True
+    third = store.save(db, "alice", "third note")
+    assert third.id == second.id + 1 == 3
+
+
 def test_reading_a_missing_database_creates_nothing(db):
     assert store.search(db, "alice") == []
     assert store.forget(db, "alice", 1) is False

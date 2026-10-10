@@ -54,7 +54,7 @@ def _connect(path: Path) -> sqlite3.Connection:
     db.row_factory = sqlite3.Row
     db.execute(
         """CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY, owner TEXT NOT NULL, text TEXT NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, text TEXT NOT NULL,
             norm TEXT NOT NULL, created_at TEXT NOT NULL
         )"""
     )
