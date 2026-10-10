@@ -1,16 +1,56 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { SparkInfo } from "../../api/EmberlingsClient";
+import frameUrl from "../../assets/emberlings/card_frame.webp";
 import { abilityEffect, passiveText, titleCase } from "../../utils/emberlings";
 
-/** A Spark's card, laid out like the front card template
- * (apps/mini_games/sparks/spark_normal_front_template.png): header, artwork,
- * HP / Essence / Speed, passive and three abilities. Fixed size, so the real
- * image can replace this frame later with the same text laid over it. */
+/** A Spark's card, drawn on the card frame (assets/emberlings/card_frame.webp,
+ * the text-free front template, 1060 x 1484). The frame is the whole
+ * background; text and slots sit over it at the template's own positions, given
+ * in frame pixels and turned into percentages, so the card scales with its
+ * width. The frame's see-through holes show the artwork box and, for each
+ * ability, a colour for its category. The frame's metal is tinted for the
+ * Spark's tier; the Emberlings plate keeps its own colours. */
 const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierId?: string }>(), {
   level: 1,
   tierId: "normal",
 });
+
+const FRAME_W = 1060;
+const FRAME_H = 1484;
+
+/** A box in frame pixels as CSS percentages of the card. */
+function box(x0: number, y0: number, x1: number, y1: number): Record<string, string> {
+  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+  return { left: pct(x0, FRAME_W), top: pct(y0, FRAME_H), width: pct(x1 - x0, FRAME_W), height: pct(y1 - y0, FRAME_H) };
+}
+
+const HEADER = box(235, 62, 850, 135);
+const ART = box(81, 167, 978, 631);
+const STAT_COLUMNS = [box(70, 668, 375, 800), box(375, 668, 686, 800), box(686, 668, 990, 800)];
+const PASSIVE = box(100, 824, 960, 934);
+/** The three ability holes in the frame (see-through). */
+const ABILITY_SLOTS = [box(101, 972, 960, 1057), box(101, 1090, 960, 1177), box(100, 1208, 959, 1298)];
+/** The Emberlings plate, redrawn on top so the tier tint leaves it alone. */
+const PLATE_CLIP = "inset(86% 30% 2% 30%)";
+
+/** The tint laid over the frame's grey metal for each tier; Normal keeps the grey. */
+const TIER_TINTS: Record<string, string> = {
+  rare: "#2fa05a",
+  legendary: "#3a7bd5",
+  royalty: "#8a55d6",
+  ascended: "#d4a017",
+  forbidden: "#d03b3b",
+};
+/** Behind an ability's slot, by its category. */
+const CATEGORY_FILLS: Record<string, string> = {
+  ATTACK: "#8f2a2a",
+  DEFENSE: "#2a5a9a",
+  SUPPORT: "#2f7a3f",
+  FLEE: "#b8601a",
+  INTERCEPT: "#6a3fa0",
+};
+const DEFAULT_FILL = "#3a3e46";
 
 // 24x24 stroke icons, as path data.
 const STAT_ICONS = {
@@ -22,8 +62,9 @@ const CATEGORY_ICONS: Record<string, readonly string[]> = {
   ATTACK: ["M14.5 17.5L3 6V3h3l11.5 11.5", "M13 19l6-6", "M16 16l4 4", "M19 21l2-2"],
   DEFENSE: ["M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"],
   SUPPORT: ["M12 19V5", "M6 11l6-6 6 6"],
+  FLEE: ["M5 12h14", "M13 6l6 6-6 6"],
+  INTERCEPT: ["M12 3v4", "M12 17v4", "M3 12h4", "M17 12h4", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
 };
-const PASSIVE_ICON = ["M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"];
 
 const STATS = [
   { key: "hp", label: "HP" },
@@ -31,298 +72,242 @@ const STATS = [
   { key: "speed", label: "Speed" },
 ] as const;
 const stats = computed(() =>
-  STATS.map((s) => ({
+  STATS.map((s, i) => ({
     ...s,
     value: props.spark.base[s.key] ?? 0,
     growth: props.spark.growth[s.key] ?? 0,
     icon: STAT_ICONS[s.key],
+    style: STAT_COLUMNS[i],
+  })),
+);
+const tint = computed(() => TIER_TINTS[props.tierId] ?? null);
+const tintStyle = computed(() => ({
+  background: tint.value ?? "transparent",
+  maskImage: `url(${frameUrl})`,
+  WebkitMaskImage: `url(${frameUrl})`,
+}));
+const passive = computed(() => passiveText(props.spark.passive.kind, props.spark.passive.params));
+const abilities = computed(() =>
+  props.spark.abilities.slice(0, ABILITY_SLOTS.length).map((a, i) => ({
+    ability: a,
+    effect: abilityEffect(a),
+    slot: ABILITY_SLOTS[i],
+    fill: { ...ABILITY_SLOTS[i], background: CATEGORY_FILLS[a.category] ?? DEFAULT_FILL },
+    icon: CATEGORY_ICONS[a.category] ?? [],
   })),
 );
 </script>
 
 <template>
-  <article class="card" :aria-label="`${spark.name}, level ${level}`">
-    <header class="header">
-      <h4 class="spark-name">{{ spark.name }}</h4>
-      <span class="header-end"><span class="tier">{{ titleCase(tierId) }}</span>Lv {{ level }}</span>
-    </header>
-
-    <div class="art" aria-hidden="true">
+  <article class="card" :class="`tier-${tierId}`" :aria-label="`${spark.name}, ${titleCase(tierId)}, level ${level}`">
+    <div class="behind art-fill" :style="ART" aria-hidden="true">
       <span class="letter">{{ spark.name.slice(0, 1) }}</span>
       <small>Artwork</small>
     </div>
+    <div v-for="a in abilities" :key="a.ability.id" class="behind" :style="a.fill" aria-hidden="true" />
 
-    <dl class="stats">
-      <div v-for="s in stats" :key="s.key" class="stat">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in s.icon" :key="d" :d="d" /></svg>
-        <dt>{{ s.label }}</dt>
+    <img class="frame" :src="frameUrl" alt="" draggable="false" />
+    <div v-if="tint" class="tint" :style="tintStyle" aria-hidden="true" />
+    <img v-if="tint" class="frame plate" :src="frameUrl" alt="" draggable="false" :style="{ clipPath: PLATE_CLIP }" />
+
+    <header class="header" :style="HEADER">
+      <h4 class="spark-name">{{ spark.name }}</h4>
+      <span class="level">Lv {{ level }}</span>
+    </header>
+
+    <dl class="stat-list">
+      <div v-for="s in stats" :key="s.key" class="stat" :style="s.style">
+        <dt>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in s.icon" :key="d" :d="d" /></svg>
+          {{ s.label }}
+        </dt>
         <dd>{{ s.value }}</dd>
         <span class="growth">+{{ s.growth }} / lvl</span>
       </div>
     </dl>
 
-    <div class="passive">
+    <p class="passive" :style="PASSIVE" :title="`${titleCase(spark.passive.kind)}: ${passive}`">{{ passive }}</p>
+
+    <div v-for="a in abilities" :key="a.ability.id" class="ability" :style="a.slot">
       <span class="slot" aria-hidden="true">
-        <svg class="icon" viewBox="0 0 24 24"><path v-for="d in PASSIVE_ICON" :key="d" :d="d" /></svg>
+        <svg class="icon" viewBox="0 0 24 24"><path v-for="d in a.icon" :key="d" :d="d" /></svg>
       </span>
-      <div>
-        <strong>{{ titleCase(spark.passive.kind) }}</strong>
-        <span :title="passiveText(spark.passive.kind, spark.passive.params)">{{
-          passiveText(spark.passive.kind, spark.passive.params)
-        }}</span>
+      <div class="ability-text">
+        <strong>{{ a.ability.name }}</strong>
+        <span>{{ a.effect }}</span>
       </div>
+      <span class="unlock">Lv {{ a.ability.unlock_level }}</span>
     </div>
-
-    <ul class="abilities">
-      <li v-for="a in spark.abilities" :key="a.id" class="ability">
-        <span class="slot" aria-hidden="true">
-          <svg class="icon" viewBox="0 0 24 24">
-            <path v-for="d in CATEGORY_ICONS[a.category] ?? []" :key="d" :d="d" />
-          </svg>
-        </span>
-        <div class="ability-text">
-          <strong>{{ a.name }}</strong>
-          <span>{{ abilityEffect(a) }}</span>
-        </div>
-        <span class="unlock">Lv {{ a.unlock_level }}</span>
-      </li>
-    </ul>
-
-    <footer class="plate">Emberlings</footer>
   </article>
 </template>
 
 <style scoped>
-/* The template is 263 x 371; this keeps its proportions at a size the text can read at.
- * Every section has a fixed height (the artwork takes what is left), so a long
- * passive never moves the rest: it is cut after five lines, in full in its tooltip. */
+/* Sizes are in cqw (a percent of the card's width), so the text scales with the card. */
 .card {
-  --frame: #565b64;
-  --frame-edge: #1b1d21;
-  --frame-light: #9aa0a8;
-  --panel-light: #b9bec5;
-  --panel-pale: #c9cdd2;
-  --panel-dark: #3a3e46;
-  --slot: #23262b;
-  --ink: #1b1d21;
-  --ink-soft: #2a2d33;
-  --steel-text: #e8e8ea;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 340px;
-  height: 480px;
-  padding: 9px;
-  border: 3px solid var(--frame-edge);
-  border-radius: var(--radius-md);
-  outline: 2px solid var(--frame-light);
-  outline-offset: -5px;
-  color: var(--steel-text);
-  background: var(--frame);
+  container-type: inline-size;
+  position: relative;
+  isolation: isolate;
+  width: 440px;
+  aspect-ratio: 1060 / 1484;
+  color: #e8e8ea;
   text-align: left;
 }
-.header {
-  flex: none;
-  box-sizing: border-box;
-  height: 30px;
+.frame,
+.tint {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+.tint {
+  mix-blend-mode: color;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+  pointer-events: none;
+}
+.behind {
+  position: absolute;
+}
+.art-fill {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 3px 7px;
-  border: 2px solid var(--ink-soft);
-  border-radius: var(--radius-sm);
-  color: var(--ink);
-  background: var(--panel-light);
-}
-.spark-name {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-.header-end {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.tier {
-  padding: 0 6px;
-  border-radius: var(--radius-md);
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--steel-text);
-  background: var(--panel-dark);
-}
-.art {
-  display: flex;
-  flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  min-height: 60px;
-  border: 2px solid #34383f;
-  border-radius: var(--radius-sm);
+  gap: 0.5cqw;
   color: #6d727b;
   background: #20242b;
 }
 .letter {
-  font-size: 34px;
+  font-size: 16cqw;
   font-weight: 600;
   line-height: 1;
   color: var(--accent);
 }
-.art small {
-  font-size: 10px;
-  letter-spacing: 1.5px;
+.art-fill small {
+  font-size: 2.4cqw;
+  letter-spacing: 0.4cqw;
   text-transform: uppercase;
 }
-.stats {
-  flex: none;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+.header {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2cqw;
+  color: #1b1d21;
+}
+.spark-name {
   margin: 0;
-  border: 2px solid var(--ink-soft);
-  border-radius: var(--radius-sm);
-  color: var(--ink);
-  background: var(--panel-light);
+  overflow: hidden;
+  font-size: 4.4cqw;
+  font-weight: 600;
+  letter-spacing: 0.15cqw;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.level {
+  flex: none;
+  font-size: 3cqw;
+  font-weight: 600;
 }
 .stat {
-  display: grid;
-  justify-items: center;
-  padding: 3px 2px;
-  border-left: 1.5px solid #8a8f98;
-}
-.stat:first-child {
-  border-left: 0;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #1b1d21;
 }
 .stat dt {
-  font-size: 9px;
-  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 0.8cqw;
+  font-size: 2.5cqw;
+  letter-spacing: 0.3cqw;
   text-transform: uppercase;
-  color: var(--panel-dark);
+  color: #3a3e46;
 }
 .stat dd {
   margin: 0;
-  font-size: 15px;
+  font-size: 5cqw;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 .growth {
-  font-size: 10px;
-  color: var(--panel-dark);
+  font-size: 2.4cqw;
+  color: #3a3e46;
 }
 .icon {
-  width: 14px;
-  height: 14px;
+  width: 3cqw;
+  height: 3cqw;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* The passive box holds five lines; it is cut after that, in full in its tooltip. */
+.passive {
+  position: absolute;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  margin: 0;
+  overflow: hidden;
+  font-size: 2.2cqw;
+  line-height: 1.15;
+  color: #1b1d21;
+}
+.ability {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 2cqw;
+  box-sizing: border-box;
+  padding: 0 3cqw 0 2.5cqw;
+}
 .slot {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 2px solid #0f1012;
-  border-radius: var(--radius-sm);
-  color: var(--accent);
-  background: var(--slot);
-}
-.passive,
-.ability {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border-radius: var(--radius-sm);
-}
-.passive {
-  flex: none;
-  box-sizing: border-box;
-  height: 104px;
-  overflow: hidden;
-  align-items: flex-start;
-  padding: 5px 7px;
-  border: 2px solid var(--ink-soft);
-  color: var(--ink);
-  background: var(--panel-pale);
-}
-.passive strong,
-.ability strong {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-}
-.passive span:not(.slot) {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
-  line-clamp: 5;
-  overflow: hidden;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--ink-soft);
-}
-.abilities {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.ability {
-  flex: none;
-  box-sizing: border-box;
-  height: 40px;
-  padding: 4px 7px;
-  border: 2px solid var(--frame-edge);
-  background: var(--panel-dark);
+  width: 6.4cqw;
+  height: 6.4cqw;
+  border: 0.4cqw solid #0f1012;
+  border-radius: 0.8cqw;
+  color: #ffb27a;
+  background: #23262b;
 }
 .ability-text {
   flex: 1;
   min-width: 0;
 }
+.ability-text strong {
+  display: block;
+  font-size: 3cqw;
+  letter-spacing: 0.15cqw;
+  text-transform: uppercase;
+  text-shadow: 0 0 0.6cqw #000;
+}
 .ability-text span {
   display: block;
   overflow: hidden;
+  font-size: 2.4cqw;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
-  color: var(--panel-light);
+  color: #f0f0f2;
+  text-shadow: 0 0 0.6cqw #000;
 }
 .unlock {
   flex: none;
-  padding: 1px 7px;
-  border: 1.5px solid #0f1012;
-  border-radius: var(--radius-md);
-  font-size: 10px;
+  padding: 0.2cqw 1.8cqw;
+  border: 0.35cqw solid #0f1012;
+  border-radius: 2cqw;
+  font-size: 2.4cqw;
   color: #ffb27a;
-  background: var(--slot);
-}
-.plate {
-  flex: none;
-  align-self: center;
-  padding: 1px 14px;
-  border: 2px solid #0f1012;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--accent);
-  background: var(--slot);
+  background: #23262b;
 }
 </style>
