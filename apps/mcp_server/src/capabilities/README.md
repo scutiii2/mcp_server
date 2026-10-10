@@ -13,6 +13,7 @@ what it does:
 - `tables/` - questions about an attached CSV or Excel file (`/data ...`).
 - `email/` - shared outgoing email and threaded replies (`/email ...`).
 - `memory/` - per-user saved notes the model can search and forget (`/memory ...`).
+- `tickets/` - file bugs and feature suggestions, list and follow your own support tickets (`/ticket ...`).
 
 ## Shape of a capability
 

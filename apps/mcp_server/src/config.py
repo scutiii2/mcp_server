@@ -80,6 +80,11 @@ class Settings:
     email_audit_path: Path = Path(_env("MCP_EMAIL_AUDIT_PATH", "specifics/email/.data/audit.db"))
     # Per-user memory notes (capabilities/memory). Runtime state: gitignored.
     memory_db_path: Path = Path(_env("MCP_MEMORY_DB_PATH", "specifics/memory/.data/memory.db"))
+    # Support tickets (services/tickets.py): SQLite file, and the optional Laya
+    # agent's MCP address (http://host:9111/mcp) used to group and tag tickets.
+    # Blank LAYA_URL skips Laya; tickets still work.
+    tickets_db_path: Path = Path(_env("MCP_TICKETS_DB_PATH", "specifics/tickets/.data/tickets.db"))
+    laya_url: str = _env("LAYA_URL", "")
     # Tavily API key for the web_research capability. Blank until set in .env;
     # the tools then fail with a message naming the variable.
     tavily_api_key: str = _env("TAVILY_API_KEY", "")
@@ -98,6 +103,10 @@ class Settings:
     @property
     def email_config_path(self) -> Path:
         return self.configs_dir / "config_email.json"
+
+    @property
+    def tickets_config_path(self) -> Path:
+        return self.configs_dir / "config_tickets.json"
 
     @property
     def extensions_config_path(self) -> Path:

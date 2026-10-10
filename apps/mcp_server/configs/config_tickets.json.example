@@ -1,0 +1,19 @@
+{
+  "tags": {
+    "config": "A setting, config file or environment variable is missing or wrong.",
+    "tool-failure": "A tool or capability failed or returned an error.",
+    "auth": "Login, permissions or access problems.",
+    "ui": "Something looks or behaves wrong in the web interface.",
+    "chat": "Chat answers, history, attachments or agents misbehave.",
+    "performance": "Slowness, timeouts or high resource use.",
+    "email": "Sending or receiving email, invitations or verification.",
+    "feature-request": "A new feature or an improvement is being suggested."
+  },
+  "auto_hourly_cap": 5,
+  "recent_hours": 24,
+  "elevation": {
+    "high": {"tickets": 3, "recent": 2},
+    "urgent": {"tickets": 6, "recent": 4}
+  },
+  "laya": {"min_confidence": 0.7, "candidates": 5, "timeout_seconds": 20}
+}

@@ -38,11 +38,11 @@ mcp_server core --(optional, HTTP)--> Laya agent in ai_agent (classification onl
 ```
 
 - The core and its HTTP routes stay available when the `tickets` capability is switched off. The switch only removes the chat tools (and so AI filing).
-- Routes use `X-Internal-Token`, like `/upload`. ember_api sends requester headers and a `scope` flag (`own` or `all`); reporter identity is never taken from a request body or a tool argument.
+- Routes use `X-Internal-Token`, like `/upload`. ember_api sends requester headers and chooses reporter (`/tickets`) or staff (`/ticket-admin`) routes; reporter identity is never taken from a request body or a tool argument.
 
 ## 1. mcp_server core
 
-Files: `src/services/tickets.py` (storage and rules, no MCP dependency), `src/ticket_routes.py` (HTTP), `src/services/ticket_laya.py` (optional Laya client), registered in `run.py` beside the other routes. Storage is SQLite at `.data/tickets.db` (path from settings, like `memory_store.py`). Reads never create the file.
+Files: `src/services/tickets.py` (async orchestration), `ticket_store.py` (SQLite), `ticket_rules.py` (pure rules), `ticket_config.py` (configuration), `src/ticket_routes.py` (HTTP), `ticket_laya.py` (classifier) and `ticket_laya_transport.py` (MCP transport), registered in `run.py` beside the other routes. Storage defaults to `specifics/tickets/.data/tickets.db`, configurable with `MCP_TICKETS_DB_PATH`. Reads never create the file.
 
 ### Data model
 
@@ -75,7 +75,7 @@ Effective priority of a ticket is the higher of its own priority and its group's
 
 ### Tags
 
-Closed vocabulary in config (`configs/config_tickets.json`), for example `config`, `tool-failure`, `auth`, `ui`, `chat`, `performance`, `email`, `feature-request`. A closed set is needed because Laya `choice` questions need fixed options. The filing AI may pass tags. Unknown tags are dropped. When no valid tag remains, Laya picks from the vocabulary (`choice`); if Laya is unavailable the ticket gets no tags. Staff can edit tags afterwards.
+Closed vocabulary in config (`configs/config_tickets.json`), for example `config`, `tool-failure`, `auth`, `ui`, `chat`, `performance`, `email`, `feature-request`. A closed set is needed because Laya `choice` questions need fixed options. Config tags are `tag: description` pairs (Laya needs a description per option); 2 to 10 tags. Laya assigns at most one tag, and only when it is confident. The filing AI may pass tags; each ticket keeps at most five valid, unique tags. Unknown tags are dropped. When no valid tag remains, Laya picks from the vocabulary (`choice`); if Laya is unavailable the ticket gets no tags. Staff can edit tags afterwards.
 
 ### Grouping
 
@@ -89,7 +89,7 @@ Laya runs only on creation, never blocks it for long (short timeout; failure mea
 
 ### Priority elevation
 
-Deterministic code, not Laya. For each group, count tickets (`n`) and tickets created in the last 24 h (`r`). Thresholds come from config, for example `n >= 3` or `r >= 2` raises to `high`, `n >= 6` or `r >= 4` raises to `urgent`. Elevation only raises, never lowers, and stops while `priority_pinned` is true (set when staff sets the group's priority by hand). Re-evaluated whenever a ticket joins a group and by a periodic sweep so the rate decays naturally. The sweep never lowers priority; it only recomputes the rate view shown to staff.
+Deterministic code, not Laya. For each group, count tickets (`n`) and tickets created in the last 24 h (`r`). Thresholds come from config, for example `n >= 3` or `r >= 2` raises to `high`, `n >= 6` or `r >= 4` raises to `urgent`. Elevation only raises, never lowers, and stops while `priority_pinned` is true (set when staff sets the group's priority by hand). Re-evaluated when a ticket joins a group or is moved into one, and when staff unpins it. The rate shown to staff is computed live on read; because elevation never lowers priority, no periodic job is needed.
 
 ### HTTP routes
 
@@ -97,13 +97,13 @@ Reporter scope (requester must own the ticket):
 - `POST /tickets` create, `GET /tickets` list own, `GET /tickets/{id}` get with comments, `POST /tickets/{id}/comments`, `POST /tickets/{id}/close`.
 
 Staff scope (ember_api only calls these for `tickets.manage`):
-- `GET /tickets/all` (filters: status, type, tag, priority, assignee, group, possible duplicates; grouped or flat), `PATCH /tickets/{id}` (status, priority, assignee, tags), `POST /tickets/{id}/comments` with staff role, `PATCH /ticket-groups/{id}` (priority, pin), `POST /tickets/{id}/move` (to a group, or `null` to split out), `GET /tickets/stats` (open count, urgent count).
+- `GET /ticket-admin/tickets` (filters: status, type, tag, effective priority, assignee, `group_id`, `possible=1`, limit), `GET /ticket-admin/tickets/{id}`, `PATCH /ticket-admin/tickets/{id}` (status, priority, assignee, tags), `POST /ticket-admin/tickets/{id}/comments` with staff role, `POST /ticket-admin/tickets/{id}/move` (`group_id`, or `null` to split out), `GET /ticket-admin/groups` (status, tag, group priority, limit), `PATCH /ticket-admin/groups/{id}` (priority, `pinned`), `GET /ticket-admin/stats` (open tickets, urgent tickets, open groups).
 
 Errors: 400 with a safe message for bad input, 401 for a bad token, 404 for a missing or not-owned ticket (same response, so existence does not leak).
 
 ### Laya link
 
-Optional settings `LAYA_URL` and the shared internal token in `.env` / `.env.example`. Unset means grouping and Laya tagging are skipped. Laya answers are advisory: the confidence gate follows ai_agent's `min_confidence` semantics, and the smoke test showed many answers fall under 0.70, so expect frequent hints instead of automatic grouping at first. The admin move/split action covers that.
+The link is `LAYA_URL` (ai_agent's Laya agent MCP address); mcp_server opens one short MCP session per question and sends the shared internal token. Classifier limits live in `configs/config_tickets.json.example`. Unset means grouping and Laya tagging are skipped. Laya answers are advisory: the confidence gate follows ai_agent's `min_confidence` semantics, and the smoke test showed many answers fall under 0.70, so expect frequent hints instead of automatic grouping at first. The admin move/split action covers that.
 
 ## 2. `tickets` capability
 
@@ -111,12 +111,12 @@ Path `src/capabilities/tickets/` with `contract.py`, `domain.py`, `tool.py`, `he
 
 | Tool | Slash | Purpose |
 |---|---|---|
-| `tool_ticket_createTicket` | `/ticket create` | type, title, description, optional tags, `source`, context fields. Returns id, status and group size. |
+| `tool_ticket_createTicket` | `/ticket create` | type, title, description, optional tags, `source`, context fields. Returns id, duplicate flag and a status message. |
 | `tool_ticket_listMyTickets` | `/ticket list` | Own tickets, optional status filter. |
 | `tool_ticket_getTicket` | `/ticket show` | Own ticket with its comment thread. |
 | `tool_ticket_addComment` | `/ticket reply` | Add information to an own ticket. |
 
-No close, priority or assignee tools in chat. The slash form of create always records `source: user`. Model-supplied context (`chat_id`, `agent`, `tool_name`, `error_text`) is stored as unverified.
+No close, priority or assignee tools in chat. The `source` argument of `createTicket` defaults to `user`, so the default slash form records `user`; agents pass `ai_user_request` or `ai_auto`. Model-supplied context (`chat_id`, `agent`, `tool_name`, `error_text`) is stored as unverified.
 
 ### Agent behavior
 
