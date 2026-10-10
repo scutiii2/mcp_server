@@ -92,5 +92,7 @@ def tool_srv_readAppLogs(
 @offload
 def tool_srv_listApps() -> AppListResult:
     """List every Docker app on this box, running or not, with the exact
-    `name` to pass to the start/stop/restart tools, its status and image."""
+    `name` to pass to the start/stop/restart tools, its status, image and
+    whether it is watched (a watcher emails its owner if the app stops,
+    disappears or logs errors; one starts whenever an app is started here)."""
     return domain.list_apps()

@@ -306,3 +306,17 @@ def test_a_log_that_exactly_fits_is_not_cut(requester, monkeypatch):
 
     assert "cut" not in result.message
     assert result.lines == 1 and len(result.download_markers) == 1
+
+
+def test_list_apps_marks_the_apps_that_have_a_watcher():
+    from src.capabilities.server_manager.utils.server_watcher import ServerWatcher
+
+    client = _fake_client([_fake_container("jellyfin"), _fake_container("plex")])
+
+    with patch("docker.from_env", return_value=client), \
+            patch.object(ServerWatcher, "is_active", classmethod(lambda cls, key: key == "jellyfin")):
+        result = domain.list_apps()
+
+    assert {app.name: app.watched for app in result.apps} == {"jellyfin": True, "plex": False}
+    lines = result.message.splitlines()
+    assert "watched" in lines[0] and "watched" not in lines[1]
