@@ -413,3 +413,66 @@ def test_run_chat_without_a_tier_keeps_the_pinned_model(monkeypatch):
     result = asyncio.run(reloaded.run_chat("hi", [], []))
     assert seen["model"] == "pinned-model"
     assert result.model_tier is None
+
+
+def _recall_setup(monkeypatch, *, recall_on):
+    """A reloaded agent_config whose provider records the question it gets."""
+    import dataclasses
+
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
+    monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
+
+    from src.agents import agent_config
+
+    reloaded = importlib.reload(agent_config)
+    spec = dataclasses.replace(reloaded.agent_spec.current(), memory_recall=recall_on)
+    monkeypatch.setattr(reloaded.agent_spec, "current", lambda: spec)
+    searches = []
+    monkeypatch.setattr(reloaded.memory_recall, "_search", lambda: searches.append(1) or "1 saved note(s):\nblock")
+    seen = {}
+
+    async def _fake_run_chat(question, history, model, enabled_extensions, request_id, depth, on_event=None, caveman=False):
+        seen["question"] = question
+        return ChatResult(response="ok")
+
+    monkeypatch.setattr(reloaded._PROVIDER_MODULE, "run_chat", _fake_run_chat)
+    return reloaded, searches, seen
+
+
+def test_run_chat_gives_the_provider_the_recalled_notes_when_recall_is_on(monkeypatch):
+    import asyncio
+
+    reloaded, searches, seen = _recall_setup(monkeypatch, recall_on=True)
+    attachment_questions = []
+    real_bind = reloaded.delegation.bind_attachments
+    monkeypatch.setattr(
+        reloaded.delegation, "bind_attachments", lambda question, history: attachment_questions.append(question) or real_bind(question, history)
+    )
+
+    asyncio.run(reloaded.run_chat("hi", [], []))
+
+    assert searches == [1]
+    assert seen["question"].startswith(reloaded.memory_recall.LABEL)
+    assert seen["question"].endswith("[User message]\nhi")
+    assert attachment_questions == ["hi"]  # attachments still see the original question
+
+
+def test_run_chat_leaves_the_question_alone_when_recall_is_off(monkeypatch):
+    import asyncio
+
+    reloaded, searches, seen = _recall_setup(monkeypatch, recall_on=False)
+
+    asyncio.run(reloaded.run_chat("hi", [], []))
+
+    assert searches == [] and seen["question"] == "hi"
+
+
+def test_run_chat_does_not_recall_for_a_delegated_agent(monkeypatch):
+    import asyncio
+
+    reloaded, searches, seen = _recall_setup(monkeypatch, recall_on=True)
+
+    asyncio.run(reloaded.run_chat("hi", [], [], depth=1))
+
+    assert searches == [] and seen["question"] == "hi"
