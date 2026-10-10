@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from src.app import create_app
 from src.auth import load_token
 from src.config import AppConfig, load_config
-from src.laya_client import LayaClient, LayaError
+from src.laya_client import LayaClient
 from src.sparks.api import mount_sparks
 from src.sparks.composition import build_spark_services
 
@@ -24,7 +24,7 @@ def build_app() -> tuple[FastAPI, AppConfig]:
         try:
             laya.prepare()
             log.info("Laya loaded")
-        except LayaError as error:
+        except Exception as error:  # any load failure (missing weights, OSError, ...) degrades to heuristics
             log.warning("Laya could not be loaded; game decisions will use heuristics: %s", error)
     else:
         log.info("Laya is not installed; game decisions will use heuristics")

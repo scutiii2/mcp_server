@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 from src.auth import InternalTokenMiddleware
 
@@ -20,7 +21,8 @@ def create_app(token: str = "") -> FastAPI:
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, error: HTTPException) -> JSONResponse:
-        return JSONResponse({"error": error.detail}, status_code=error.status_code)
+        # Starlette's class, so router-raised 404 and 405 get the same {"error"} shape as everything else.
+        return JSONResponse({"error": error.detail}, status_code=error.status_code, headers=error.headers)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

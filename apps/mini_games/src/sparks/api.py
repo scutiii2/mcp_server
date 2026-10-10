@@ -126,7 +126,7 @@ def build_router(services: SparkServices) -> APIRouter:
         return await collection.profile(owner)
 
     @router.get("/species/{species_id}/personalities")
-    async def list_personalities(species_id: str, limit: int | None = Query(default=None), cursor: int = Query(default=0),
+    async def list_personalities(species_id: str, limit: int | None = Query(default=None), cursor: int = Query(default=0, ge=0, le=2**63 - 1),
                                  owner: str = Depends(requester)):
         return await collection.personalities(owner, species_id, limit, cursor)
 
