@@ -37,7 +37,6 @@ from src.routes import (
     traffic as traffic_routes,
     usage,
     user_extensions,
-    watchers,
 )
 from src.services.agent_directory import AgentDirectory, HttpRegistrySource
 from src.services.agent_gateway import AgentGateway, McpAgentGateway
@@ -186,7 +185,6 @@ def create_app(
     app.include_router(settings_routes.router)
     app.include_router(mcp.router)
     app.include_router(server_info.router)
-    app.include_router(watchers.router)
     app.include_router(logs.router)
     app.include_router(traffic_routes.router)
     app.include_router(attachments.router)

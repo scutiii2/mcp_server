@@ -32,6 +32,7 @@ from src.capabilities.server_manager.contract import (
     AppLogTextResult,
 )
 from src.capabilities.server_manager.utils.redact import redact
+from src.capabilities.server_manager.utils.server_watcher import ServerWatcher
 from src.services import downloads, identity_context
 
 MAX_LOG_LINES = 5000
@@ -173,7 +174,12 @@ def list_apps() -> AppListResult:
     client = _client()
     containers = sorted(client.containers.list(all=True), key=lambda container: container.name)
     apps = [
-        AppInfo(name=container.name, status=container.status, image=_image_label(container))
+        AppInfo(
+            name=container.name,
+            status=container.status,
+            image=_image_label(container),
+            watched=ServerWatcher.is_active(container.name),
+        )
         for container in containers
     ]
 
@@ -181,6 +187,9 @@ def list_apps() -> AppListResult:
         report = "No apps found on this host."
     else:
         width = max(len(app.name) for app in apps)
-        report = "\n".join(f"{app.name:<{width}}  {app.status:<10} {app.image}" for app in apps)
+        report = "\n".join(
+            f"{app.name:<{width}}  {app.status:<10} {'watched' if app.watched else '-':<8} {app.image}"
+            for app in apps
+        )
 
     return AppListResult(apps=apps, message=report)

@@ -27,7 +27,7 @@ function setup(permissions: string[], emailVerified = true) {
 
 describe("OverviewView", () => {
   it("only offers permitted pages, with real links and an account shortcut", async () => {
-    const { wrapper, router } = setup(["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]);
+    const { wrapper, router } = setup(["chat.use", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage", "watchers.view"]);
     expect(wrapper.find(".primary").attributes("href")).toBe("/");
     expect(wrapper.findAll(".card").map((link) => link.attributes("href"))).toEqual([
       "/agents", "/capabilities", "/usage", "/settings", "/account",
@@ -56,7 +56,7 @@ describe("OverviewView", () => {
   });
 
   it("does not offer permission-gated actions to unverified accounts", () => {
-    const { wrapper } = setup(["chat.use", "tools.view", "watchers.view", "traffic.view", "roles.manage", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"], false);
+    const { wrapper } = setup(["chat.use", "tools.view", "traffic.view", "roles.manage", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"], false);
     expect(wrapper.find(".hero").exists()).toBe(false);
     expect(wrapper.findAll(".card").map((link) => link.attributes("href"))).toEqual(["/account"]);
   });

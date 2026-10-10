@@ -1,17 +1,11 @@
-"""ember_api's own MCP client for mcp_server, for pages that gather data
-from several tools at once (the Watchers page), so the browser doesn't
-need tools.view and the result is one permission-checked request.
+"""ember_api's own MCP client for mcp_server tool parameter options.
 
 The Protocol is what routes depend on; tests swap in a fake.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import re
-from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx
@@ -24,26 +18,13 @@ from src.services.traffic import TrafficRecorder
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(30.0, read=60.0)
-# A capability with background watchers exposes tool_<alias>_listWatchers
-# returning {"watchers": [...]} (chat_app's Watchers page convention).
-LIST_WATCHERS_TOOL = re.compile(r"^tool_([A-Za-z0-9]+)_listWatchers$")
 
 
 class ServerUnavailable(Exception):
     """mcp_server couldn't be reached."""
 
 
-@dataclass
-class WatcherReport:
-    # Every watcher row, tagged with its "capability" alias.
-    watchers: list[dict[str, Any]] = field(default_factory=list)
-    # "<alias>: <problem>" for each capability that failed to answer.
-    errors: list[str] = field(default_factory=list)
-
-
 class ServerTools(Protocol):
-    async def watchers(self, caller: Caller) -> WatcherReport: ...
-
     async def options_templates(self, caller: Caller) -> set[str]: ...
 
 
@@ -52,35 +33,6 @@ class McpServerTools:
         self._url = url
         self._internal_token = internal_token
         self._traffic = traffic or TrafficRecorder()
-
-    async def watchers(self, caller: Caller) -> WatcherReport:
-        """Finds every listWatchers tool and calls them all concurrently on
-        one session. One capability failing is reported, not raised."""
-        headers = identity_headers(caller.username, caller.email, self._internal_token)
-        outcomes: list[tuple[str, Any]] = []
-        try:
-            with self._traffic.timed("mcp_server", "watchers"):
-                async with mcp_session(self._url, headers, _TIMEOUT) as session:
-                    aliases = sorted(
-                        {m.group(1) for name in await _tool_names(session) if (m := LIST_WATCHERS_TOOL.match(name))}
-                    )
-                    results = await asyncio.gather(
-                        *(session.call_tool(f"tool_{alias}_listWatchers", {}) for alias in aliases),
-                        return_exceptions=True,
-                    )
-                    outcomes = list(zip(aliases, results, strict=True))
-        except Exception as error:  # noqa: BLE001 - any transport failure is one "unreachable" outcome
-            logger.warning("mcp_server watchers failed: %s", error)
-            raise ServerUnavailable(root_cause(error)) from error
-
-        report = WatcherReport()
-        for alias, result in outcomes:
-            rows, problem = _watcher_rows(result)
-            if problem:
-                report.errors.append(f"{alias}: {problem}")
-            report.watchers.extend({**row, "capability": alias} for row in rows)
-        return report
-
 
     async def options_templates(self, caller: Caller) -> set[str]:
         """Every `options_url` a tool parameter declares (chat_app's command
@@ -112,25 +64,3 @@ async def _tools(session) -> list[Any]:
         cursor = page.nextCursor
         if not cursor:
             return tools
-
-
-async def _tool_names(session) -> list[str]:
-    return [tool.name for tool in await _tools(session)]
-
-
-def _watcher_rows(result: Any) -> tuple[list[dict[str, Any]], str | None]:
-    if isinstance(result, BaseException):
-        return [], root_cause(result)
-    text = "\n".join(getattr(block, "text", "") for block in result.content)
-    if result.isError:
-        return [], text or "the tool failed"
-    data = result.structuredContent
-    if not isinstance(data, dict) or "watchers" not in data:
-        try:
-            data = json.loads(text)
-        except ValueError:
-            return [], text[:300] or "no JSON in the reply"
-    rows = data.get("watchers") if isinstance(data, dict) else None
-    if not isinstance(rows, list):
-        return [], "the reply has no watchers list"
-    return [row for row in rows if isinstance(row, dict)], None

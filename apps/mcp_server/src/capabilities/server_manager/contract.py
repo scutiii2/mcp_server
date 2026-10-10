@@ -10,6 +10,10 @@ class AppInfo(BaseModel):
     name: str = Field(description="The container's name, as Docker knows it.")
     status: str = Field(description="Docker's own status word: running, exited, paused, restarting, etc.")
     image: str = Field(description="The image the container was created from.")
+    watched: bool = Field(
+        default=False,
+        description="True while a ServerWatcher is monitoring this app and will email its owner if it stops or logs errors.",
+    )
 
 
 class AppListResult(BaseModel):

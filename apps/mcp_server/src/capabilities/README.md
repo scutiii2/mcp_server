@@ -3,7 +3,7 @@
 One folder per tool, self-contained. See each folder's own README for
 what it does:
 
-- `server_manager/` - start/stop/restart/list Docker containers and app logs (`/server ...`).
+- `server_manager/` - start/stop/restart/list Docker containers and app logs, with owner email notifications from ServerWatcher (`/server ...`).
 - `generator/` - passwords, passphrases, PINs, TOTP (`/gen ...`).
 - `web_research/` - web search and page read through Tavily (`/web ...`).
 - `firecrawl/` - scrape and crawl through Firecrawl (`/scrape ...`).
@@ -11,7 +11,6 @@ what it does:
 - `vault/` - read-only notes vault (`/vault ...`).
 - `repo_reader/` - read-only git history and code (`/repo ...`).
 - `tables/` - questions about an attached CSV or Excel file (`/data ...`).
-- `watchers/` - background up/down watchers with one email (`/watch ...`).
 - `email/` - shared outgoing email and threaded replies (`/email ...`).
 - `memory/` - per-user saved notes the model can search and forget (`/memory ...`).
 

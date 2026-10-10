@@ -17,7 +17,7 @@ from src.config import BackupSettings, SecuritySettings, Settings, UsageSettings
 from src.services import otp_service
 from src.services.agent_gateway import AgentCallError, Caller
 from src.services.email_service import EmailDeliveryError
-from src.services.server_tools import ServerUnavailable, WatcherReport
+from src.services.server_tools import ServerUnavailable
 from src.services.traffic import TrafficRecorder
 
 ADMIN_USERNAME = "root"
@@ -273,17 +273,10 @@ class FakeAgent:
 class FakeServerTools:
     """Stands in for ember_api's own MCP client to mcp_server."""
 
-    report: WatcherReport = field(default_factory=WatcherReport)
     unreachable: bool = False
     callers: list[Caller] = field(default_factory=list)
     # options_url templates the fake's tools declare.
     templates: set[str] = field(default_factory=set)
-
-    async def watchers(self, caller: Caller) -> WatcherReport:
-        self.callers.append(caller)
-        if self.unreachable:
-            raise ServerUnavailable("connection refused (fake)")
-        return self.report
 
     async def options_templates(self, caller: Caller) -> set[str]:
         self.callers.append(caller)

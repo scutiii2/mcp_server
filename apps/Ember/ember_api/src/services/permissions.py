@@ -19,7 +19,6 @@ SETTINGS_MANAGE = "settings.manage"
 CAPABILITIES_MANAGE = "capabilities.manage"
 USAGE_ALL_VIEW = "usage.all.view"
 EXTENSIONS_MANAGE = "extensions.manage"
-WATCHERS_VIEW = "watchers.view"
 LOGS_VIEW = "logs.view"
 LOGS_ERRORS_VIEW = "logs.errors.view"
 LOGS_CHAT_VIEW = "logs.chat.view"
@@ -46,7 +45,6 @@ ALL_PERMISSIONS: dict[str, str] = {
     CAPABILITIES_MANAGE: "Enable, disable and discover shared capabilities",
     USAGE_ALL_VIEW: "View usage across all accounts",
     EXTENSIONS_MANAGE: "Add and remove mcp_server extensions (other MCP servers offered to every client)",
-    WATCHERS_VIEW: "See the status of mcp_server's background watchers",
     LOGS_VIEW: "Read the activity log (logins, account and admin changes)",
     LOGS_ERRORS_VIEW: "Read the error log",
     LOGS_CHAT_VIEW: "Read the chat-turn log (every account's questions and answers)",

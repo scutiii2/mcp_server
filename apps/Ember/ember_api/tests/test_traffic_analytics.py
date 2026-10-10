@@ -34,7 +34,7 @@ ROWS = [
     (datetime(2026, 10, 5, 13), "upstream", "ai_agent ask", "ok", 4, 8),
     (datetime(2026, 10, 5, 13), "upstream", "ai_agent ask", "failed", 7, 2),
     (datetime(2026, 10, 5, 13), "upstream", "ai_agent status", "ok", 0, 20),
-    (datetime(2026, 10, 5, 12), "upstream", "mcp_server watchers", "ok", 1, 3),
+    (datetime(2026, 10, 5, 12), "upstream", "mcp_server options_templates", "ok", 1, 3),
     (datetime(2026, 10, 4, 10), "upstream", "ai_agent ask", "failed", 4, 1),
 ]
 
@@ -151,7 +151,7 @@ def test_upstream_is_grouped_by_target_with_failure_rates(client: TestClient) ->
         ("status", 20, 0, 50),
         ("ask", 10, 2, LATENCY_CAP_MS),
     ]
-    assert upstream[1].tools[0].name == "watchers" and upstream[1].p95_ms == 100
+    assert upstream[1].tools[0].name == "options_templates" and upstream[1].p95_ms == 100
 
 
 def test_a_longer_range_uses_daily_buckets_and_reaches_further_back(client: TestClient) -> None:

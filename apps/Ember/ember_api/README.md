@@ -201,7 +201,6 @@ never grants; the MCP client's session `DELETE` has no body at all.)
 | `GET` | `/api/extensions` | `chat.use` or `tools.use` | mcp_server's extensions: `[{id, label, description, status, error, tools, web_url}]`. `web_url` is the extension's own web app (an http(s) address from mcp_server's config, or `null`); ember_web links to it. |
 | `POST` | `/api/extensions` | `extensions.manage` | `{label, url, description?}` (http/https URL) -> `201` the extension; mcp_server connects to it and saves it (an unreachable one is still added, `status: "error"`). |
 | `DELETE` | `/api/extensions/{id}` | `extensions.manage` | `204`; `404` unknown id. |
-| `GET` | `/api/watchers` | `watchers.view` | `{watchers, errors}`: every capability's background watchers (from each `tool_<alias>_listWatchers` tool), each row tagged with `capability`; `errors` names capabilities that didn't answer. `502` if mcp_server is unreachable or none answered. |
 | `GET` | `/api/logs` | any `logs.*` | `{kinds, accounts}`: the log kinds this account may read and every account to filter by. |
 | `GET` | `/api/logs/analytics?range=24h\|7d\|30d\|90d` | any `logs.*` | Counts for the Analytics page, only for the kinds this account may read (default `7d`): `{period, bucket (hour\|day), kinds, totals {kind: {current, previous}}, series [{bucket, counts}] (zero-filled), top_sources {kind: [{source, count}]}, accounts {kind: [{account_id, username, count}]}, heatmap [{weekday, hour, count}]}`. Top lists hold 10; `account_id` null is the server, `username` null a deleted account; heatmap is UTC, weekday 0 = Sunday. `422` bad range. |
 | `GET` | `/api/logs/{kind}?actor=server\|<account id>` | `logs.view` (action), `logs.errors.view` (error), `logs.chat.view` (chat_trace) | The 200 newest entries: `[{id, kind, account_id, source, message, details, created_at}]`. |
@@ -265,7 +264,7 @@ addresses only, never loopback, link-local or cloud-metadata ones).
 - **Permissions:** `chat.use`, `chat.share`, `tools.view`, `tools.execute`, `files.upload`, `files.download`,
   `accounts.view`, `accounts.manage`, `accounts.delete`, `roles.view`, `roles.manage`, `roles.assign`,
   `invites.manage`, `settings.manage`, `capabilities.manage`, `usage.all.view`,
-  `extensions.personal.manage`, `extensions.manage`, `watchers.view`,
+  `extensions.personal.manage`, `extensions.manage`,
   `logs.view`, `logs.errors.view`, `logs.chat.view`, `config.issues.view`,
   `traffic.view` (`src/services/permissions.py`). The Administrator role always holds all
   of them (new ones are added to it on startup). New registrations get `default_role` (config, default `Member`:
@@ -476,7 +475,7 @@ src/
               UsageService, summarization, McpServerInfo, McpServerTools, mcp_session, LogWriter,
               text_extraction, config_validation, DeviceService, LoginRateLimiter, McpPolicy, McpProxy,
               permissions
-  routes/     auth, account, admin, settings, chats, templates, shares, usage, mcp, server_info, watchers, logs,
+  routes/     auth, account, admin, settings, chats, templates, shares, usage, mcp, server_info, logs,
               attachments, config_issues
   utils/      config_loader
 scripts/   import_chat_app.py                   one-off move of chat_app's data (see "Moving from chat_app")

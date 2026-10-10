@@ -166,8 +166,8 @@ send it too (`identity_headers()` in `services/mcp_session.py` does).
   usage limits. A new agent tool the server needs goes on `AgentGateway`
   (and `FakeAgent` in `tests/conftest.py`); one the browser may call
   directly goes in `AGENT_POLICY.tools` with its exact argument names.
-- **Data gathered from several mcp_server tools at once** (like the
-  Watchers page) goes through `services/server_tools.py` (`ServerTools`
+- **Server-side mcp_server calls** (such as command-option metadata)
+  go through `services/server_tools.py` (`ServerTools`
   Protocol, `McpServerTools` on one MCP session; `FakeServerTools` in
   tests) behind its own permission, not through the browser proxy.
 - **Audit:** a route that changes something calls

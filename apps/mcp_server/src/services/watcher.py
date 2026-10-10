@@ -41,7 +41,7 @@ class JobWatcher(ABC):
 
     backoff_schedule: list[tuple[float, float]] = [(24 * 3600, 3600)]
 
-    _active: dict[str, dict[str, threading.Event]] = {}
+    _active: dict[str, dict[str, "JobWatcher"]] = {}
     _active_lock = threading.Lock()
 
     def __init__(self, key: str, state_dir: Path, started_at: str | None = None) -> None:
@@ -67,8 +67,7 @@ class JobWatcher(ABC):
     def on_state_change(
         self, old: WatcherPhase, new: WatcherPhase, detail: dict[str, Any]
     ) -> None:
-        """Called after every poll where phase changed. Default: no-op.
-        Reserved for a future notification hook."""
+        """Called after every poll where phase changed. Default: no-op. Use it for notifications."""
 
     @classmethod
     @abstractmethod
@@ -78,18 +77,25 @@ class JobWatcher(ABC):
 
     # --- generic loop ---------------------------------------------------
 
+    @classmethod
+    def _record_path(cls, state_dir: Path, key: str) -> Path:
+        safe_key = key.replace("/", "_").replace("\\", "_").replace(":", "_")
+        return state_dir / cls.__name__ / "instances" / f"{safe_key}.json"
+
     def _state_path(self) -> Path:
-        safe_key = self.key.replace("/", "_").replace("\\", "_").replace(":", "_")
-        return self.state_dir / type(self).__name__ / "instances" / f"{safe_key}.json"
+        return self._record_path(self.state_dir, self.key)
 
     def _save_record(self, phase: WatcherPhase, detail: dict[str, Any]) -> None:
-        record = WatcherRecord(
-            key=self.key, phase=phase, started_at=self._started_at,
-            last_polled_at=_now_iso(), detail=detail,
-        )
-        path = self._state_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(record.model_dump_json(indent=2), encoding="utf-8")
+        with type(self)._active_lock:
+            if self._stop_event.is_set():
+                return  # cancelled: a poll still in flight must not bring the record back
+            record = WatcherRecord(
+                key=self.key, phase=phase, started_at=self._started_at,
+                last_polled_at=_now_iso(), detail=detail,
+            )
+            path = self._state_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(record.model_dump_json(indent=2), encoding="utf-8")
 
     def _interval_for_elapsed(self, elapsed: float) -> float | None:
         """The poll interval for how long the watcher has been running, or
@@ -149,12 +155,12 @@ class JobWatcher(ABC):
     def start(self) -> None:
         """Spawn run() as a daemon thread, replacing any watcher already
         registered under this key."""
-        registry = type(self)._active.setdefault(type(self).__name__, {})
         with type(self)._active_lock:
+            registry = type(self)._active.setdefault(type(self).__name__, {})
             existing = registry.get(self.key)
             if existing is not None:
-                existing.set()
-            registry[self.key] = self._stop_event
+                existing._stop_event.set()
+            registry[self.key] = self
         thread = threading.Thread(
             target=self.run, daemon=True, name=f"{type(self).__name__}_{self.key}"
         )
@@ -168,7 +174,24 @@ class JobWatcher(ABC):
         registry = type(self)._active.get(type(self).__name__)
         if registry is not None:
             with type(self)._active_lock:
-                registry.pop(self.key, None)
+                if registry.get(self.key) is self:
+                    registry.pop(self.key)
+
+    @classmethod
+    def is_active(cls, key: str) -> bool:
+        """True while a watcher of this class is running under `key`."""
+        with cls._active_lock:
+            return key in cls._active.get(cls.__name__, {})
+
+    @classmethod
+    def cancel(cls, state_dir: Path, key: str) -> "JobWatcher | None":
+        """Stops the watcher and deletes its record; returns the cancelled instance, if any."""
+        with cls._active_lock:
+            watcher = cls._active.get(cls.__name__, {}).pop(key, None)
+            if watcher is not None:
+                watcher._stop_event.set()
+            cls._record_path(state_dir, key).unlink(missing_ok=True)
+            return watcher
 
     @classmethod
     def resume_all(cls, state_dir: Path) -> list["JobWatcher"]:
@@ -190,6 +213,7 @@ class JobWatcher(ABC):
                 continue
             try:
                 watcher = cls.from_record(record)
+                watcher.state_dir = state_dir
                 watcher.start()
                 started.append(watcher)
             except Exception as exc:  # noqa: BLE001

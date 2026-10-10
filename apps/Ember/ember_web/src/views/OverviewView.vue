@@ -17,12 +17,11 @@ const initial = computed(() => auth.account?.username.charAt(0).toUpperCase() ??
 const descriptions: Record<string, string> = {
   "/agents": "Explore your agents and what each one is for.",
   "/capabilities": "Discover tools, resources, and connected extensions.",
-  "/watchers": "Browse background watchers across your capabilities.",
   "/usage": "Review your token usage and account limits.",
   "/settings": "Adjust chat and appearance preferences.",
 };
 const groups = computed(() => {
-  const monitor = new Set(["/watchers", "/usage"]);
+  const monitor = new Set(["/usage"]);
   const manage = new Set(["/settings"]);
   return [
     {

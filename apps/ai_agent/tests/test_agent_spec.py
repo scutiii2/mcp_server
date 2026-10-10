@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import os
+import ast
+from pathlib import Path
 
 import pytest
 
@@ -302,3 +304,18 @@ def test_bad_url_is_refused(tmp_path, bad):
 def test_repository_agent_roster_is_valid():
     specs = agent_spec.load_dir(agent_spec.AGENTS_DIR)
     assert any(spec.entry and spec.enabled for spec in specs)
+
+
+def test_app_monitor_has_existing_tools_without_stop_or_restart_access():
+    app_dir = Path(__file__).resolve().parents[1]
+    spec = agent_spec.load_file(app_dir / "agents" / "scheduler.json")
+    tool_path = app_dir.parent / "mcp_server" / "src" / "capabilities" / "server_manager" / "tool.py"
+    names = [
+        node.name for node in ast.parse(tool_path.read_text(encoding="utf-8")).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("tool_")
+    ]
+
+    assert spec.tools.unmatched(names) == []
+    assert {name for name in names if spec.tools.allows(name)} == {"tool_srv_listApps", "tool_srv_startApp"}
+    assert not spec.tools.allows("tool_srv_stopApp")
+    assert not spec.tools.allows("tool_srv_restartApp")

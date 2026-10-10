@@ -31,7 +31,7 @@
   --http-5xx: var(--status-failed);
   --latency-p50: light-dark(#2a78d6, #3987e5);
   --latency-p95: light-dark(#8e5bd6, #a174e0);
-  /* Watcher run states: only the events stand out (failed red, running blue);
+  /* Shared status colors: failed red, running blue;
      a finished run is the quiet default. Blue and red validated together; each
      state also carries an icon and a label, so colour is never the only cue. */
   --status-running: light-dark(#2a78d6, #3987e5);

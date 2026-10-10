@@ -8,7 +8,7 @@ starting/stopping/restarting/listing managed apps. Built to be called by
 ## Requirements
 
 - Python >= 3.11
-- An SMTP account for outbound mail (Email capability, watcher notifications, Ember invites and verification)
+- An SMTP account for outbound mail (Email capability, ServerWatcher notifications, Ember invites and verification)
 
 
 ## Setup
@@ -117,7 +117,7 @@ volume mount in step if you move the deployment.
 
 The SMTP password previously embedded in this recipe must be revoked at
 the mail provider. Put a replacement password in the deployment `.env`,
-then recreate the container and verify watcher email delivery. Removing
+then recreate the container and verify ServerWatcher email delivery. Removing
 it from the recipe does not remove it from Git history or rotate it.
 
 

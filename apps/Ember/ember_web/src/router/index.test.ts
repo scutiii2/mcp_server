@@ -64,6 +64,16 @@ describe("shared chat route", () => {
   });
 });
 
+describe("removed page links", () => {
+  it("opens chat for an old Watchers link", async () => {
+    me.mockResolvedValue({ ...ACCOUNT, permissions: [...ACCOUNT.permissions, "watchers.view"] });
+
+    await router.push("/watchers");
+
+    expect(router.currentRoute.value.name).toBe("chat");
+  });
+});
+
 describe("the rest of the app stays behind the login", () => {
   it("sends a visitor who is not logged in to the login page", async () => {
     me.mockRejectedValue(new UnauthorizedError(401, "Not logged in"));
@@ -187,7 +197,7 @@ describe("the merged Capabilities page", () => {
 
 
   it("stays closed to an account with neither tools.view nor chat.use", async () => {
-    me.mockResolvedValue({ ...ACCOUNT, permissions: ["watchers.view"] });
+    me.mockResolvedValue({ ...ACCOUNT, permissions: ["files.download"] });
 
     await router.push("/capabilities");
 

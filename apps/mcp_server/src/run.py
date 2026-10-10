@@ -131,11 +131,11 @@ async def _serve() -> None:
         # warning being seen and not.
         print("\n".join(banner), flush=True)
 
-        # Restart the watchers that were running when the server last stopped.
-        if "watch" in capability_registry.names() and capability_registry.is_enabled("watch"):
-            from src.capabilities.watchers.utils.user_watcher import UserWatcher
+        # Restart the app watchers that were running when the server last stopped.
+        if "server" in capability_registry.names() and capability_registry.is_enabled("server"):
+            from src.capabilities.server_manager.utils.server_watcher import ServerWatcher
 
-            UserWatcher.resume_all(settings.watchers_dir)
+            ServerWatcher.resume_all(settings.watchers_dir)
 
         app = mcp.streamable_http_app()
         # Reads chat_app's X-Requester-Username/X-Requester-Email headers
