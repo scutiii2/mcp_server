@@ -341,3 +341,27 @@ def test_reviewer_cannot_use_memory_tools_but_keeps_everything_else():
     assert not any(spec.tools.allows(name) for name in memory_tools)
     assert spec.tools.allow == ()  # still every other tool
     assert spec.tools.allows("tool_srv_listApps")
+
+
+def test_memory_recall_defaults_to_false_and_loads_true(tmp_path):
+    base = {"port": 9103, "llm": {"provider": "anthropic"}}
+    assert agent_spec.load_file(_write(tmp_path, "calc", base)).memory_recall is False
+    assert agent_spec.load_file(_write(tmp_path, "calc", {**base, "memory_recall": True})).memory_recall is True
+
+
+def test_memory_recall_must_be_a_boolean(tmp_path):
+    path = _write(tmp_path, "calc", {"port": 9103, "llm": {"provider": "anthropic"}, "memory_recall": "yes"})
+    with pytest.raises(AgentSpecError, match="memory_recall"):
+        agent_spec.load_file(path)
+
+
+def test_laya_cannot_recall_memory(tmp_path):
+    path = _write(tmp_path, "triage", {"port": 9110, "llm": {"provider": "laya"}, "tools": {"deny": ["*"]}, "memory_recall": True})
+    with pytest.raises(AgentSpecError, match="memory_recall"):
+        agent_spec.load_file(path)
+
+
+def test_only_the_entry_agent_has_memory_recall_on():
+    specs = {spec.id: spec for spec in agent_spec.load_dir(agent_spec.AGENTS_DIR)}
+    assert specs["ember"].entry and specs["ember"].memory_recall is True
+    assert [agent_id for agent_id, spec in specs.items() if spec.memory_recall] == ["ember"]

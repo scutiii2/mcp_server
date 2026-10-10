@@ -39,7 +39,7 @@ _DEFAULT_GATEWAY = {"anthropic": "claude", "openai": "gpt", "laya": "local"}
 _LEGACY_ID_PREFIX = {"anthropic": "claude", "openai": "openai"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-_TOP_KEYS = {"label", "port", "url", "enabled", "entry", "llm", "identity", "persona", "instructions", "focus", "tools", "orchestrator"}
+_TOP_KEYS = {"label", "port", "url", "enabled", "entry", "llm", "identity", "persona", "instructions", "focus", "tools", "orchestrator", "memory_recall"}
 _LLM_KEYS = {"provider", "gateway", "model", "temperature", "reasoning_effort", "max_tokens", "max_tool_rounds", "max_turn_tokens", "max_turn_seconds", "min_tier", "max_tier", "max_effort"}
 _TOOLS_KEYS = {"allow", "deny"}
 
@@ -129,6 +129,8 @@ class AgentSpec:
     focus: str = ""
     tools: ToolScope = field(default_factory=ToolScope)
     orchestrator: bool = False
+    # Load the user's newest saved notes at the start of each top-level turn (agents/memory_recall.py).
+    memory_recall: bool = False
     # Address peers and ember_api reach this agent at (what it registers);
     # None = derived from the host and port it listens on.
     url: str | None = None
@@ -282,9 +284,12 @@ def load_file(path: Path) -> AgentSpec:
     tools = ToolScope(allow=check.globs(tools_data, "allow"), deny=check.globs(tools_data, "deny"))
 
     orchestrator = check.boolean(data, "orchestrator", False)
+    memory_recall = check.boolean(data, "memory_recall", False)
     if provider == "laya":
         if orchestrator or check.boolean(data, "entry", False):
             raise check.fail("llm.provider", "Laya triage must be a specialist, not an entry agent or orchestrator")
+        if memory_recall:
+            raise check.fail("memory_recall", "Laya triage has no tools, so it cannot recall memory")
         if llm.gateway not in (None, "local"):
             raise check.fail("llm.gateway", "Laya triage runs locally; cloud gateways are not supported")
         if llm.model not in (None, "convaiinnovations/laya"):
@@ -306,6 +311,7 @@ def load_file(path: Path) -> AgentSpec:
         focus=check.text(data, "focus", "") or "",
         tools=tools,
         orchestrator=orchestrator,
+        memory_recall=memory_recall,
         source=path,
     )
 

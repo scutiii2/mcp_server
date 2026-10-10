@@ -15,7 +15,7 @@ from typing import Any
 import anyio
 from dotenv import dotenv_values
 
-from src.agents import agent_spec, delegation
+from src.agents import agent_spec, delegation, memory_recall
 
 from src.core import approvals, internal_auth, questions, tool_filter
 from src.private_extensions import turn as private_turn
@@ -168,9 +168,15 @@ async def run_chat(
             from src.mcp_client import mcp_upstream
 
             await mcp_upstream.prefetch_private(private)
+        provider_question = question
+        if depth == 0 and agent_spec.current().memory_recall:
+            if cancellation.is_cancelled(request_id):
+                raise ChatCancelled()
+            # Only the question the model sees changes; attachments and the stored chat keep the original.
+            provider_question = await memory_recall.with_recall(question, on_event)
         if inspect.iscoroutinefunction(_PROVIDER_MODULE.run_chat):
             result = await _PROVIDER_MODULE.run_chat(
-                question, history, resolution.model, enabled_extensions, request_id, depth,
+                provider_question, history, resolution.model, enabled_extensions, request_id, depth,
                 on_event=on_event, caveman=caveman,
             )
             result.delegated_usage = delegated_usage
@@ -182,7 +188,7 @@ async def run_chat(
             # converts openai_provider the same way Task 3 did anthropic_provider).
             result = await anyio.to_thread.run_sync(
                 lambda: _PROVIDER_MODULE.run_chat(
-                    question, history, resolution.model, enabled_extensions, request_id, depth,
+                    provider_question, history, resolution.model, enabled_extensions, request_id, depth,
                     caveman=caveman,
                 )
             )

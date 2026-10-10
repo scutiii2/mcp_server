@@ -104,7 +104,7 @@ Optional follow-up features, not implemented:
    1. **Done** (`cc675cd`, `118a4b2`, `1e2a0d6`, `0c90aba`, `61c495f`): notes are keyed on a stable account uid and purged when an account is deleted (spec docs/superpowers/specs/2026-10-10-memory-owner-uid-design.md).
    2. **Done**: `apps/ai_agent/agents/reviewer.json` now has `"tools": { "deny": ["tool_mem_*"] }`, so the reviewer agent (the only specialist without a tool scope) cannot save notes from other agents' output; a test pins it against the real memory tool names.
    3. **Done**: every memory tool refuses when `MCP_HOST` is not loopback and `INTERNAL_API_TOKEN` is empty (`is_exposed_without_token` in `apps/mcp_server/src/services/internal_token.py`, also used by the startup banner); it cannot tell a container port published only to localhost, so such a setup needs the token too.
-   4. Automatic recall if the model often skips `tool_mem_search` (already listed as the known weakness).
+   4. **Done** (`a84ebbe`, `6bf32ae`): the entry agent loads the newest notes at the start of each turn (agent-file key `memory_recall`, `apps/ai_agent/src/agents/memory_recall.py`; spec docs/superpowers/specs/2026-10-10-memory-auto-recall-design.md). Relevance-ranked recall and recall for specialist agents are not built.
    5. Retry or periodically sweep failed memory purges (a purge is best effort today: orphaned notes stay when mcp_server was unreachable or had no token).
 7. **Sandboxed workspace (files and shell)**: isolated per-user directory and a limited command runner, fitted to the approval flow. Real security risk. Best as a new `mcp_server` capability, not inside `ai_agent`. Hardest.
 
