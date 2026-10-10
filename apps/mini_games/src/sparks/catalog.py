@@ -123,24 +123,42 @@ def _species(raw: Mapping[str, Any]) -> SpeciesSpec:
     return SpeciesSpec(
         id=sid, name=_require(raw, "name", where), starter=bool(raw.get("starter")), forbidden=bool(raw.get("forbidden")),
         base_price=_require(raw, "base_price", where), base=dict(base), growth=dict(growth),
-        passive=PassiveSpec(passive["kind"], dict(passive.get("params", {}))), abilities=abilities,
+        passive=PassiveSpec(_require(passive, "kind", f"{where} passive"), dict(passive.get("params", {}))), abilities=abilities,
     )
 
 
 class Catalog:
     def __init__(self, raw: Mapping[str, Any]) -> None:
+        try:
+            self._build(raw)
+        except CatalogError:
+            raise
+        except (TypeError, KeyError, AttributeError, ValueError, IndexError) as error:
+            raise CatalogError(f"malformed catalog: {type(error).__name__}: {error}") from error
+
+    def _build(self, raw: Mapping[str, Any]) -> None:
+        if not isinstance(raw, Mapping):
+            raise CatalogError("catalog must be an object")
         self.version: int = _require(raw, "version", "catalog")
         self.tiers: tuple[TierSpec, ...] = tuple(TierSpec(**t) for t in _require(raw, "tiers", "catalog"))
         self.levels = Levels(**_require(raw, "levels", "catalog"))
         economy = dict(_require(raw, "economy", "catalog"))
         economy["personality_tier_probabilities"] = tuple(economy["personality_tier_probabilities"])
         self.economy = Economy(**economy)
-        self.personalities: dict[str, PersonalitySpec] = {
-            p["id"]: PersonalitySpec(p["id"], tuple(p["categories"])) for p in _require(raw, "personalities", "catalog")
-        }
+        personalities = [PersonalitySpec(p["id"], tuple(p["categories"])) for p in _require(raw, "personalities", "catalog")]
+        self.personalities: dict[str, PersonalitySpec] = {p.id: p for p in personalities}
+        if len(self.personalities) != len(personalities):
+            raise CatalogError("personality ids must be unique")
         policy = dict(_require(raw, "policy", "catalog"))
         self.policy = PolicySpec(**policy)
-        self._species = {s.id: s for s in (_species(s) for s in _require(raw, "species", "catalog"))}
+        species = [_species(s) for s in _require(raw, "species", "catalog")]
+        self._species = {s.id: s for s in species}
+        if len(self._species) != len(species):
+            raise CatalogError("species ids must be unique")
+        # Action keys and cooldowns key on the ability id, so it is unique across species.
+        ability_ids = [a.id for s in species for a in s.abilities]
+        if len(set(ability_ids)) != len(ability_ids):
+            raise CatalogError("ability ids must be unique across all species")
         self._tiers = {t.id: t for t in self.tiers}
         self._validate()
 
@@ -149,6 +167,14 @@ class Catalog:
     def _validate(self) -> None:
         if len(self._tiers) != len(self.tiers):
             raise CatalogError("tier ids must be unique")
+        if len(self.tiers) < 2:
+            raise CatalogError("need at least one regular tier plus the Forbidden tier")
+        for tier in self.tiers:
+            if tier.stat_multiplier <= 0 or tier.capture_multiplier <= 0 or tier.encounter_probability < 0:
+                raise CatalogError(f"tier {tier.id!r}: multipliers must be positive and probability non-negative")
+        for species in self._species.values():
+            if species.base_price <= 0:
+                raise CatalogError(f"species {species.id!r}: base_price must be positive")
         if not math.isclose(sum(t.encounter_probability for t in self.tiers), 1.0, abs_tol=1e-9):
             raise CatalogError("tier encounter probabilities must sum to 1")
         if not math.isclose(sum(self.economy.personality_tier_probabilities), 1.0, abs_tol=1e-9):
@@ -228,11 +254,12 @@ class Catalog:
         return max(1, math.floor(raw + 1e-9))
 
     def tier_for_copies(self, species_id: str, copies: int) -> str:
-        """Highest regular tier whose threshold the copy count meets; Forbidden is fixed."""
+        """Highest regular tier whose threshold the copy count meets; Forbidden is fixed.
+        A negative count clamps to the lowest tier."""
         if self.species(species_id).forbidden:
             return self.forbidden_tier.id
         reached = [t for t in self.regular_tiers if copies >= t.copy_threshold]
-        return reached[-1].id
+        return (reached or self.regular_tiers[:1])[-1].id
 
     def sale_value(self, species_id: str, tier_id: str, level: int) -> int:
         """Insignia for selling one copy of a Spark at this tier and level."""
