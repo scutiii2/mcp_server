@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncContextManager, AsyncIterator, Protocol
 
-from src.sparks.errors import ActiveBattleExists, StaleBattle
+from src.sparks.errors import ActiveBattleExists, BattleAlreadyExists, StaleBattle
 from src.sparks.models import BattleSetup, BattleState, PersonalityInstance
 from src.sparks.records import (
     BattleRecord,
@@ -53,7 +53,7 @@ CREATE TABLE encounters (
 CREATE INDEX encounters_by_owner ON encounters (owner, status);
 CREATE TABLE battles (
     id TEXT PRIMARY KEY, owner TEXT NOT NULL, encounter_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL,
-    phase TEXT NOT NULL, mode TEXT NOT NULL, revision INTEGER NOT NULL, setup TEXT NOT NULL, state TEXT NOT NULL,
+    phase TEXT NOT NULL CHECK (phase IN ('choosing', 'awaiting_emblem', 'terminal')), mode TEXT NOT NULL, revision INTEGER NOT NULL, setup TEXT NOT NULL, state TEXT NOT NULL,
     player_personalities TEXT NOT NULL, wild_personalities TEXT NOT NULL, emblem_limit TEXT,
     rng_seed INTEGER NOT NULL, rng_counter INTEGER NOT NULL, pending TEXT, result TEXT,
     created_at REAL NOT NULL, updated_at REAL NOT NULL);
@@ -102,6 +102,22 @@ class SparkRepository(Protocol):
     def transaction(self) -> AsyncContextManager[SparkTransaction]: ...
 
 
+async def _in_thread(fn: Any, *args: Any) -> Any:
+    """Run blocking `fn` in a worker thread and, if the caller is cancelled meanwhile,
+    still wait for the thread to finish before re-raising, so the shared connection is
+    never used by a worker after its owner (and the transaction lock) has moved on."""
+    task = asyncio.ensure_future(asyncio.to_thread(fn, *args))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.wait([task])
+            except asyncio.CancelledError:
+                pass
+        raise
+
+
 def _dumps(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"))
 
@@ -123,7 +139,7 @@ class _SqliteTransaction:
                 return cursor.fetchall()
             return cursor.rowcount
 
-        return await asyncio.to_thread(work)
+        return await _in_thread(work)
 
     # -- players and wallet --------------------------------------------------------
 
@@ -238,7 +254,7 @@ class _SqliteTransaction:
 
     async def pending_encounter(self, owner: str) -> EncounterRecord | None:
         row = await self._run(
-            "SELECT * FROM encounters WHERE owner = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1", (owner,), "one")
+            "SELECT * FROM encounters WHERE owner = ? AND status = 'pending' ORDER BY created_at DESC, rowid DESC LIMIT 1", (owner,), "one")
         return self._encounter(row) if row else None
 
     async def set_encounter_status(self, encounter_id: str, status: str) -> None:
@@ -277,7 +293,12 @@ class _SqliteTransaction:
                 (record.id, record.owner, record.encounter_id, record.created_at, *self._battle_values(record)),
             )
         except sqlite3.IntegrityError as error:
-            raise ActiveBattleExists("finish or forfeit the active battle first") from error
+            message = str(error)
+            if "battles.owner" in message:  # the one_active_battle partial unique index
+                raise ActiveBattleExists("finish or forfeit the active battle first") from error
+            if "battles.id" in message or "battles.encounter_id" in message:
+                raise BattleAlreadyExists("a battle already exists for this id or encounter") from error
+            raise
 
     async def get_battle(self, owner: str, battle_id: str) -> BattleRecord | None:
         row = await self._run("SELECT * FROM battles WHERE owner = ? AND id = ?", (owner, battle_id), "one")
@@ -326,33 +347,53 @@ class SqliteSparkRepository:
         if self._path != ":memory:":
             Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self._path, check_same_thread=False, isolation_level=None)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version == 0:
-            conn.executescript(f"BEGIN; {SCHEMA} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;")
-        elif version != SCHEMA_VERSION:
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if version == 0:
+                conn.executescript(f"BEGIN; {SCHEMA} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;")
+            elif version != SCHEMA_VERSION:
+                raise RuntimeError(f"database schema version {version} is not supported (expected {SCHEMA_VERSION})")
+        except BaseException:
             conn.close()
-            raise RuntimeError(f"database schema version {version} is not supported (expected {SCHEMA_VERSION})")
+            raise
         return conn
+
+    @staticmethod
+    def _rollback(conn: sqlite3.Connection) -> None:
+        # Best effort: a failed rollback must not mask the error that caused it.
+        try:
+            conn.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
+
+    @staticmethod
+    def _commit(conn: sqlite3.Connection) -> None:
+        try:
+            conn.execute("COMMIT")
+        except BaseException:
+            SqliteSparkRepository._rollback(conn)
+            raise
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[SparkTransaction]:
         async with self._lock:
             if self._conn is None:
-                self._conn = await asyncio.to_thread(self._open)
+                self._conn = await _in_thread(self._open)
             conn = self._conn
-            await asyncio.to_thread(conn.execute, "BEGIN IMMEDIATE")
+            await _in_thread(conn.execute, "BEGIN IMMEDIATE")
             try:
                 yield _SqliteTransaction(conn)
             except BaseException:
-                await asyncio.to_thread(conn.execute, "ROLLBACK")
+                await _in_thread(self._rollback, conn)
                 raise
             else:
-                await asyncio.to_thread(conn.execute, "COMMIT")
+                # Commit or roll back as one step the lock outlives, even if the caller is cancelled.
+                await _in_thread(self._commit, conn)
 
     async def close(self) -> None:
         async with self._lock:
             if self._conn is not None:
-                await asyncio.to_thread(self._conn.close)
+                await _in_thread(self._conn.close)
                 self._conn = None

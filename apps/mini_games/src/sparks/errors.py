@@ -29,6 +29,10 @@ class ActiveBattleExists(Conflict):
     pass
 
 
+class BattleAlreadyExists(Conflict):
+    """A battle with this id, or for this encounter, was already stored (409)."""
+
+
 class StaleBattle(Conflict):
     """The caller's round or revision no longer matches the battle."""
 
