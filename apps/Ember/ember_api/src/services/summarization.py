@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from src.services import step_digest
 from src.services.agent_gateway import AgentCallError, AgentGateway, Caller
 
 # Keeps repeated summaries from growing back toward the history they replace.
@@ -41,9 +42,11 @@ def approx_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def render_messages(messages: list[dict[str, Any]]) -> str:
+def render_messages(messages: list[dict[str, Any]], *, include_steps: bool = False) -> str:
     """Plain-text transcript, one "--- header ---" block per message (same
-    layout as chat_app's chats_store.render_messages)."""
+    layout as chat_app's chats_store.render_messages). include_steps adds
+    each answer's tool digest, for the summarizer; the stored raw log is
+    built without it."""
     lines = []
     for message in messages:
         header = "command" if message.get("kind") == "command" else str(message.get("role", "unknown"))
@@ -55,17 +58,33 @@ def render_messages(messages: list[dict[str, Any]]) -> str:
         if meta:
             header = f"{header} ({', '.join(meta)})"
         lines += [f"--- {header} ---", str(message.get("content") or ""), ""]
+        if include_steps and message.get("role") == "assistant":
+            block = step_digest.digest(message.get("steps"), full=True)
+            if block:
+                lines += [block, ""]
     return "\n".join(lines)
 
 
 def history_for_agent(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
     """What ask() gets as history: role + content, without the raw log a
-    summary already replaced (resending it would undo the summary)."""
-    return [
-        {"role": m["role"], "content": m["content"]}
-        for m in messages
-        if m.get("kind") != LOG_ATTACHMENT and m.get("role") in ("user", "assistant")
+    summary already replaced (resending it would undo the summary). An
+    answer that ran tools carries a text digest of them, so the model
+    remembers what they returned; only the newest few get full lines."""
+    kept = [
+        m for m in messages if m.get("kind") != LOG_ATTACHMENT and m.get("role") in ("user", "assistant")
     ]
+    tooled = [
+        m for m in kept if m["role"] == "assistant" and step_digest.has_visible_steps(m.get("steps"))
+    ]
+    recent = {id(m) for m in tooled[-step_digest.RECENT_FULL_MESSAGES:]}
+    tooled_ids = {id(m) for m in tooled}
+    history = []
+    for m in kept:
+        content = m["content"]
+        if id(m) in tooled_ids:
+            content = f"{content}\n\n{step_digest.digest(m['steps'], full=id(m) in recent)}"
+        history.append({"role": m["role"], "content": content})
+    return history
 
 
 def last_context_usage(messages: list[dict[str, Any]]) -> tuple[int | None, int | None]:
@@ -151,7 +170,8 @@ async def summarize(
         return None
 
     raw_text = render_messages(new_range)
-    prompt = build_prompt(raw_text, prior_summary)
+    prompt_text = render_messages(new_range, include_steps=True)
+    prompt = build_prompt(prompt_text, prior_summary)
     results: list[dict[str, Any]] = []
     summary = ""
     for attempt in range(MAX_RECOMPRESS_ATTEMPTS + 1):
@@ -170,7 +190,7 @@ async def summarize(
         summary = text
         if approx_tokens(summary) <= SUMMARY_TOKEN_CAP:
             break
-        prompt = _recompress_prompt(raw_text, prior_summary, summary)
+        prompt = _recompress_prompt(prompt_text, prior_summary, summary)
 
     return SummaryOutcome(
         messages=[
