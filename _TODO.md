@@ -79,7 +79,7 @@ The agents are implemented. These manual checks remain unverified:
 
 - **Email Assistant** (`email-assistant`, port 9112): paste an email and check its summary, triage and draft reply.
 - **Data Analyst** (`data-analyst`, port 9113): attach a CSV, ask for a total and a top 5, and check the results.
-- **Scheduler** (`scheduler`, port 9114): no usable tools remain after the Watchers capability removal. Decide whether to repurpose or retire it.
+- **App Monitor** (`scheduler`, port 9114): verify an explicitly requested app start shows `watched`, and a crash sends the original owner an email. URL/port checks and recurring schedules are unavailable.
 - **Ember routing**: check delegation across the specialist roster with Laya routing enabled.
 
 Optional follow-up features, not implemented:

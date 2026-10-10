@@ -105,6 +105,11 @@ not its model (`ember`, `server-ops`, `reviewer`). Exactly one enabled file
 sets `entry: true`. Add
 more specialists as extra files.
 
+`scheduler.json` now defines **App Monitor** (same `scheduler` id and port 9114). It can list managed Docker apps
+and start an app when explicitly requested, which also starts its owner notifications through ServerWatcher.
+It reports watched status; URL/port monitoring and recurring schedules are unavailable. Stop/restart requests
+go to `server-ops`. Restart the supervisor to load the updated agent definition.
+
 The gateway for a supervised agent comes from `llm.gateway` in
 `agents/<id>.json`. Omitted, it is the provider's default gateway (`claude`
 for anthropic, `gpt` for openai), pinned over `AI_AGENT_GATEWAY` and
