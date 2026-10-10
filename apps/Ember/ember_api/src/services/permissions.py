@@ -25,6 +25,7 @@ LOGS_CHAT_VIEW = "logs.chat.view"
 CONFIG_ISSUES_VIEW = "config.issues.view"
 TRAFFIC_VIEW = "traffic.view"
 AGENTS_MANAGE = "agents.manage"
+EMBERLINGS_PLAY = "emberlings.play"
 
 ALL_PERMISSIONS: dict[str, str] = {
     CHAT_USE: "Chat with ai_agent instances",
@@ -51,6 +52,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     CONFIG_ISSUES_VIEW: "See problems in ember_api's config and secret files",
     TRAFFIC_VIEW: "See network traffic charts (requests, latency, upstream calls)",
     AGENTS_MANAGE: "Create, edit and remove ai_agent agents (provider, gateway, persona, tools)",
+    EMBERLINGS_PLAY: "Play Emberlings",
 }
 
 ADMIN_ROLE = "Administrator"
