@@ -10,8 +10,8 @@ import EmRing from "./ui/EmRing.vue";
 
 /** The five-second EMBLEM prompt over the arena: the tiers this battle's limit permits,
  * with owned counts, and a countdown (the store's, counted on this device). "Let my
- * Spark decide" only closes it; at zero the store calls advance and mini_games settles
- * the prompt (the Spark's choice, or a basic ATTACK). A tier you own none of is disabled. */
+ * Ascended decide" only closes it; at zero the store calls advance and mini_games settles
+ * the prompt (the Ascended's choice, or a basic ATTACK). A tier you own none of is disabled. */
 const store = useEmberlingsStore();
 const dismissed = ref(false);
 const prompt = computed(() => (store.promptOpen ? (store.battle?.prompt ?? null) : null));
@@ -31,7 +31,7 @@ watch(
     <div v-if="prompt" class="emblem-prompt">
       <EmRing :remaining="store.promptRemaining" :total="store.promptTotal" />
       <p class="lead">
-        {{ expired ? "Your Spark will decide this turn." : `${store.battle?.player.name} wants to catch ${store.battle?.wild.name}. Pick an EMBLEM, or let your Spark decide.` }}
+        {{ expired ? "Your Ascended will decide this turn." : `${store.battle?.player.name} wants to catch ${store.battle?.wild.name}. Pick an EMBLEM, or let your Ascended decide.` }}
       </p>
       <div class="tiers">
         <EmButton
@@ -48,8 +48,8 @@ watch(
       </div>
       <p v-if="prompt.permitted_tiers.length === 0" class="caption">You own no EMBLEM within this battle's limit.</p>
       <p v-else class="caption">Permitted tiers: {{ prompt.permitted_tiers.map(titleCase).join(", ") }}</p>
-      <EmButton class="decide" @click="dismissed = true">{{ expired ? "Waiting for your Spark…" : "Let my Spark decide" }}</EmButton>
-      <EmNotice>{{ expired ? "Your Spark is choosing an action." : `Choose within 5 seconds. ${seconds} s left.` }}</EmNotice>
+      <EmButton class="decide" @click="dismissed = true">{{ expired ? "Waiting for your Ascended…" : "Let my Ascended decide" }}</EmButton>
+      <EmNotice>{{ expired ? "Your Ascended is choosing an action." : `Choose within 5 seconds. ${seconds} s left.` }}</EmNotice>
     </div>
   </EmDialog>
 </template>

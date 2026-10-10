@@ -23,7 +23,7 @@ import EmTabs, { type EmTabOption } from "../components/emberlings/ui/EmTabs.vue
 import { useEmberlingsStore } from "../stores/emberlings";
 import { titleCase } from "../utils/emberlings";
 
-/** Emberlings: a main menu, then collect Sparks, battle wild ones, spend Insignia.
+/** Emberlings: a main menu, then collect Ascended, battle wild ones, spend Insignia.
  * The page has its own theme (components/emberlings/theme.css). App.vue keeps this
  * page alive across tab switches, so an open battle survives; the store's loop runs
  * only while the page is attached and the browser tab is visible. */
@@ -42,8 +42,8 @@ const encounterStage = ref<EncounterStage>("look");
 /** The page title and the line under it, from the tab and, in Battle, the step. */
 const heading = computed<{ title: string; subtitle: string }>(() => {
   if (tab.value === "collection") {
-    const n = store.profile?.sparks.length ?? 0;
-    return { title: "Your collection", subtitle: `${n} ${n === 1 ? "Spark" : "Sparks"}. Every one has a story.` };
+    const n = store.profile?.ascendeds.length ?? 0;
+    return { title: "Your collection", subtitle: `${n} Ascended. Every one has a story.` };
   }
   if (tab.value === "shop") return { title: "The forge shop", subtitle: "A little preparation goes a long way." };
   const battle = store.battle;
@@ -55,8 +55,8 @@ const heading = computed<{ title: string; subtitle: string }>(() => {
   if (encounterStage.value === "setup" && wild !== null) {
     return { title: "Prepare for battle", subtitle: `Wild ${wild.name} · ${titleCase(wild.tier_id)} · Level ${wild.level}` };
   }
-  if (encounterStage.value === "preview") return { title: "A wild Spark appeared", subtitle: "Take a look. Choose your moment." };
-  return { title: "Into the wild", subtitle: "Your next Spark is waiting." };
+  if (encounterStage.value === "preview") return { title: "A wild Ascended appeared", subtitle: "Take a look. Choose your moment." };
+  return { title: "Into the wild", subtitle: "Your next Ascended is waiting." };
 });
 
 function play(target: PlayTarget): void {
@@ -103,7 +103,7 @@ onUnmounted(() => store.detach());
 
       <EmPanel v-else-if="!store.loaded" class="state loading">
         <EmIcon name="flame" :size="40" />
-        <h2 class="em-pixel">Loading your Sparks…</h2>
+        <h2 class="em-pixel">Loading your Ascended…</h2>
         <p>Preparing your collection and wallet.</p>
         <EmNotice v-if="store.error" tone="error">Could not load Emberlings: {{ store.error }}</EmNotice>
         <EmButton v-if="store.error && !store.loading" @click="store.retry()">Retry</EmButton>

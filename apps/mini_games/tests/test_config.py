@@ -10,7 +10,7 @@ def test_example_config_loads(config):
     assert config.port == 8060
     assert config.situation_source == "heuristic"
     assert config.emblem_prompt_seconds == 5.0
-    assert config.database_path.name == "sparks.sqlite3"
+    assert config.database_path.name == "ascension.sqlite3"
 
 
 @pytest.fixture

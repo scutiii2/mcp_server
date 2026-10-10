@@ -92,7 +92,7 @@ export const useEmberlingsStore = defineStore("emberlings", () => {
     promptTick = setInterval(() => {
       promptRemaining.value = Math.max(0, (promptEndsAt - performance.now()) / 1000);
     }, PROMPT_TICK_MS);
-    // At zero mini_games settles the prompt itself (the Spark's own choice, or a basic ATTACK).
+    // At zero mini_games settles the prompt itself (the Ascended's own choice, or a basic ATTACK).
     promptTimer = setTimeout(() => {
       promptRemaining.value = 0;
       void advance();
@@ -341,9 +341,9 @@ export const useEmberlingsStore = defineStore("emberlings", () => {
     }
   }
 
-  function createProfile(starterSparkId: string): Promise<Profile | null> {
+  function createProfile(starterAscendedId: string): Promise<Profile | null> {
     return mutate(
-      () => emberlingsClient.createProfile(starterSparkId),
+      () => emberlingsClient.createProfile(starterAscendedId),
       (created) => {
         profile.value = created;
         needsStarter.value = false;
@@ -384,9 +384,9 @@ export const useEmberlingsStore = defineStore("emberlings", () => {
     );
   }
 
-  function savePreset(sparkId: string, slot: number, instanceIds: string[]): Promise<Preset | null> {
+  function savePreset(ascendedId: string, slot: number, instanceIds: string[]): Promise<Preset | null> {
     return mutate(
-      () => emberlingsClient.savePreset(sparkId, slot, instanceIds),
+      () => emberlingsClient.savePreset(ascendedId, slot, instanceIds),
       () => undefined,
     );
   }
@@ -395,12 +395,12 @@ export const useEmberlingsStore = defineStore("emberlings", () => {
     return mutate(() => emberlingsClient.buyEmblems(tier, quantity), () => refreshProfile());
   }
 
-  function buyCopies(sparkId: string, tier: string): Promise<CopyPurchase | null> {
-    return mutate(() => emberlingsClient.buyCopies(sparkId, tier), () => refreshProfile());
+  function buyCopies(ascendedId: string, tier: string): Promise<CopyPurchase | null> {
+    return mutate(() => emberlingsClient.buyCopies(ascendedId, tier), () => refreshProfile());
   }
 
-  function sellCopy(sparkId: string): Promise<Sale | null> {
-    return mutate(() => emberlingsClient.sellCopy(sparkId), () => refreshProfile());
+  function sellCopy(ascendedId: string): Promise<Sale | null> {
+    return mutate(() => emberlingsClient.sellCopy(ascendedId), () => refreshProfile());
   }
 
   /** Deletes all progress. Resolves false (state kept) when another change is

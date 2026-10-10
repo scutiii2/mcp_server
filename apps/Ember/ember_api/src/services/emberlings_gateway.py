@@ -2,7 +2,7 @@
 
 Only the fixed routes in _ROUTES are reachable; the browser never names a URL.
 Every call carries the owner (the account id as text, never the username: an
-administrator can rename an account, and its Sparks must not stay behind with
+administrator can rename an account, and its Ascended must not stay behind with
 the old name), the internal token when one is configured, and the
 Idempotency-Key of a change. Headers are built here only, so nothing the
 browser sent is ever forwarded.
@@ -34,26 +34,26 @@ _ID = r"[A-Za-z0-9_-]{1,64}"
 _ROUTES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     (method, re.compile(pattern))
     for method, pattern in (
-        ("GET", r"/sparks/catalog"),
-        ("GET", r"/sparks/profile"),
-        ("POST", r"/sparks/profile"),
-        ("POST", r"/sparks/profile/reset"),
-        ("GET", rf"/sparks/sparks/{_ID}/personalities"),
-        ("GET", rf"/sparks/sparks/{_ID}/presets/[1-5]"),
-        ("PUT", rf"/sparks/sparks/{_ID}/presets/[1-5]"),
-        ("POST", r"/sparks/encounters"),
-        ("GET", rf"/sparks/encounters/{_ID}"),
-        ("POST", rf"/sparks/encounters/{_ID}/decline"),
-        ("POST", r"/sparks/battles"),
-        ("GET", rf"/sparks/battles/{_ID}"),
-        ("POST", rf"/sparks/battles/{_ID}/(?:actions|emblem|advance|mode|forfeit)"),
-        ("POST", r"/sparks/shop/purchases"),
-        ("POST", rf"/sparks/sparks/{_ID}/sales"),
+        ("GET", r"/ascension/catalog"),
+        ("GET", r"/ascension/profile"),
+        ("POST", r"/ascension/profile"),
+        ("POST", r"/ascension/profile/reset"),
+        ("GET", rf"/ascension/ascendeds/{_ID}/personalities"),
+        ("GET", rf"/ascension/ascendeds/{_ID}/presets/[1-5]"),
+        ("PUT", rf"/ascension/ascendeds/{_ID}/presets/[1-5]"),
+        ("POST", r"/ascension/encounters"),
+        ("GET", rf"/ascension/encounters/{_ID}"),
+        ("POST", rf"/ascension/encounters/{_ID}/decline"),
+        ("POST", r"/ascension/battles"),
+        ("GET", rf"/ascension/battles/{_ID}"),
+        ("POST", rf"/ascension/battles/{_ID}/(?:actions|emblem|advance|mode|forfeit)"),
+        ("POST", r"/ascension/shop/purchases"),
+        ("POST", rf"/ascension/ascendeds/{_ID}/sales"),
     )
 )
 # Path words kept in traffic counter names; everything else (ids, slots) becomes {id}.
 _WORDS = frozenset(
-    "sparks catalog profile personalities presets encounters decline battles actions emblem advance mode "
+    "ascendeds catalog profile personalities presets encounters decline battles actions emblem advance mode "
     "forfeit shop purchases sales reset".split()
 )
 
@@ -99,7 +99,7 @@ def _message(body: Any, status: int) -> str:
 
 
 def _traffic_name(method: str, path: str) -> str:
-    """"POST /sparks/battles/abc/advance" -> "POST /sparks/battles/{id}/advance"."""
+    """"POST /ascension/battles/abc/advance" -> "POST /ascension/battles/{id}/advance"."""
     return f"{method} /" + "/".join(part if part in _WORDS else "{id}" for part in path.strip("/").split("/"))
 
 
@@ -123,7 +123,7 @@ class EmberlingsGateway:
     async def reset_profile(self, account: Account, idempotency_key: str) -> Any:
         """Wipe the account's Emberlings progress. `confirm` is sent here, never taken from the browser."""
         return await self.request(
-            "POST", "/sparks/profile/reset", account, json={"confirm": True}, idempotency_key=idempotency_key
+            "POST", "/ascension/profile/reset", account, json={"confirm": True}, idempotency_key=idempotency_key
         )
 
     async def request(

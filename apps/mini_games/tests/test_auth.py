@@ -23,15 +23,15 @@ async def _call(token: str, path: str, headers: dict[str, str]) -> int:
 
 
 def test_wrong_token_is_rejected():
-    assert asyncio.run(_call("secret", "/sparks/profile", {"X-Internal-Token": "nope"})) == 401
+    assert asyncio.run(_call("secret", "/ascension/profile", {"X-Internal-Token": "nope"})) == 401
 
 
 def test_missing_token_is_rejected():
-    assert asyncio.run(_call("secret", "/sparks/profile", {})) == 401
+    assert asyncio.run(_call("secret", "/ascension/profile", {})) == 401
 
 
 def test_right_token_passes():
-    assert asyncio.run(_call("secret", "/sparks/profile", {"X-Internal-Token": "secret"})) == 200
+    assert asyncio.run(_call("secret", "/ascension/profile", {"X-Internal-Token": "secret"})) == 200
 
 
 def test_health_is_open():
@@ -39,7 +39,7 @@ def test_health_is_open():
 
 
 def test_no_token_configured_passes_everything():
-    assert asyncio.run(_call("", "/sparks/profile", {})) == 200
+    assert asyncio.run(_call("", "/ascension/profile", {})) == 200
 
 
 def test_load_token_reads_the_file(tmp_path, monkeypatch):

@@ -14,7 +14,7 @@ export type Side = "player" | "wild";
 export interface TierInfo {
   id: string;
   stat_multiplier: number;
-  /** Copies a regular Spark needs for this tier; null for the Forbidden tier. */
+  /** Copies a regular Ascended needs for this tier; null for the Forbidden tier. */
   copy_threshold: number | null;
   copy_reward: number;
   emblem_strength: number;
@@ -32,7 +32,7 @@ export interface AbilityInfo {
   duration: number | null;
 }
 
-export interface SparkInfo {
+export interface AscendedInfo {
   id: string;
   name: string;
   starter: boolean;
@@ -51,12 +51,12 @@ export interface Catalog {
   /** Weakest first. */
   tiers: TierInfo[];
   levels: { regular_cap: number; forbidden_cap: number };
-  sparks: SparkInfo[];
+  ascendeds: AscendedInfo[];
   personalities: { id: string; categories: string[] }[];
 }
 
-export interface OwnedSpark {
-  spark_id: string;
+export interface OwnedAscended {
+  ascended_id: string;
   name: string;
   ascension_types: string[];
   level: number;
@@ -74,7 +74,7 @@ export interface Profile {
   owner: string;
   insignia: number;
   emblems: Record<string, number>;
-  sparks: OwnedSpark[];
+  ascendeds: OwnedAscended[];
   pending_encounter: string | null;
   active_battle: string | null;
   next_roll_at: number | null;
@@ -92,14 +92,14 @@ export interface PersonalityPage {
 }
 
 export interface Preset {
-  spark_id: string;
+  ascended_id: string;
   slot: number;
   instance_ids: string[];
 }
 
 export interface EncounterPreview {
   id: string;
-  spark_id: string;
+  ascended_id: string;
   name: string;
   tier_id: string;
   level: number;
@@ -131,7 +131,7 @@ export interface FighterAbility {
 }
 
 export interface Fighter {
-  spark_id: string;
+  ascended_id: string;
   name: string;
   tier_id: string;
   level: number;
@@ -185,7 +185,7 @@ export interface BattleResult {
   insignia?: number;
   level_before?: number;
   level_after?: number;
-  spark_id?: string;
+  ascended_id?: string;
   copies_granted?: number;
   copies?: number;
   tier_id?: string;
@@ -225,7 +225,7 @@ export interface ActionChoice {
 
 export interface StartBattleInput {
   encounter_id: string;
-  spark_id: string;
+  ascended_id: string;
   preset_slot: number | null;
   mode: BattleMode;
   emblem_limit: string | null;
@@ -240,7 +240,7 @@ export interface EmblemPurchase {
 
 export interface CopyPurchase {
   kind: "copies";
-  spark_id: string;
+  ascended_id: string;
   tier_id: string;
   copies_granted: number;
   price: number;
@@ -249,7 +249,7 @@ export interface CopyPurchase {
 
 export interface Sale {
   kind: "sale";
-  spark_id: string;
+  ascended_id: string;
   value: number;
   copies: number;
   tier_id: string;
@@ -273,21 +273,21 @@ export const emberlingsClient = {
   catalog: () => apiRequest<Catalog>("GET", `${BASE}/catalog`),
   /** 404 (ApiError) until the account has chosen a starter. */
   profile: () => apiRequest<Profile>("GET", `${BASE}/profile`),
-  createProfile: (starterSparkId: string, key: string = newIdempotencyKey()) =>
-    apiRequest<Profile>("POST", `${BASE}/profile`, { starter_spark_id: starterSparkId }, withKey(key)),
-  /** Deletes every Spark, personality, preset, EMBLEM and Insignia. 404: no profile; 409: a battle is active. */
+  createProfile: (starterAscendedId: string, key: string = newIdempotencyKey()) =>
+    apiRequest<Profile>("POST", `${BASE}/profile`, { starter_ascended_id: starterAscendedId }, withKey(key)),
+  /** Deletes every Ascended, personality, preset, EMBLEM and Insignia. 404: no profile; 409: a battle is active. */
   resetProfile: (key: string = newIdempotencyKey()) =>
     apiRequest<{ reset: boolean }>("POST", `${BASE}/profile/reset`, {}, withKey(key)),
-  personalities: (sparkId: string, cursor: number | null = null, limit?: number) => {
+  personalities: (ascendedId: string, cursor: number | null = null, limit?: number) => {
     const query = new URLSearchParams();
     if (limit !== undefined) query.set("limit", String(limit));
     if (cursor !== null) query.set("cursor", String(cursor));
     const text = query.toString();
-    return apiRequest<PersonalityPage>("GET", `${BASE}/sparks/${part(sparkId)}/personalities${text ? `?${text}` : ""}`);
+    return apiRequest<PersonalityPage>("GET", `${BASE}/ascendeds/${part(ascendedId)}/personalities${text ? `?${text}` : ""}`);
   },
-  preset: (sparkId: string, slot: number) => apiRequest<Preset>("GET", `${BASE}/sparks/${part(sparkId)}/presets/${slot}`),
-  savePreset: (sparkId: string, slot: number, instanceIds: string[], key: string = newIdempotencyKey()) =>
-    apiRequest<Preset>("PUT", `${BASE}/sparks/${part(sparkId)}/presets/${slot}`, { instance_ids: instanceIds }, withKey(key)),
+  preset: (ascendedId: string, slot: number) => apiRequest<Preset>("GET", `${BASE}/ascendeds/${part(ascendedId)}/presets/${slot}`),
+  savePreset: (ascendedId: string, slot: number, instanceIds: string[], key: string = newIdempotencyKey()) =>
+    apiRequest<Preset>("PUT", `${BASE}/ascendeds/${part(ascendedId)}/presets/${slot}`, { instance_ids: instanceIds }, withKey(key)),
   rollEncounter: (key: string = newIdempotencyKey()) =>
     apiRequest<EncounterPreview>("POST", `${BASE}/encounters`, undefined, withKey(key)),
   encounter: (id: string) => apiRequest<EncounterPreview>("GET", `${BASE}/encounters/${part(id)}`),
@@ -314,8 +314,8 @@ export const emberlingsClient = {
     apiRequest<BattleView>("POST", `${BASE}/battles/${part(id)}/forfeit`, undefined, withKey(key)),
   buyEmblems: (tier: string, quantity: number, key: string = newIdempotencyKey()) =>
     apiRequest<EmblemPurchase>("POST", `${BASE}/shop/purchases`, { kind: "emblem", tier, quantity }, withKey(key)),
-  buyCopies: (sparkId: string, tier: string, key: string = newIdempotencyKey()) =>
-    apiRequest<CopyPurchase>("POST", `${BASE}/shop/purchases`, { kind: "copies", spark_id: sparkId, tier }, withKey(key)),
-  sellCopy: (sparkId: string, key: string = newIdempotencyKey()) =>
-    apiRequest<Sale>("POST", `${BASE}/sparks/${part(sparkId)}/sales`, undefined, withKey(key)),
+  buyCopies: (ascendedId: string, tier: string, key: string = newIdempotencyKey()) =>
+    apiRequest<CopyPurchase>("POST", `${BASE}/shop/purchases`, { kind: "copies", ascended_id: ascendedId, tier }, withKey(key)),
+  sellCopy: (ascendedId: string, key: string = newIdempotencyKey()) =>
+    apiRequest<Sale>("POST", `${BASE}/ascendeds/${part(ascendedId)}/sales`, undefined, withKey(key)),
 };

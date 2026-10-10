@@ -145,7 +145,7 @@ class Settings:
     # another machine. Wins over agents_registry_path when set.
     agents_registry_url: str | None = None
     mcp_server_url: str = "http://127.0.0.1:8010/mcp"
-    # mini_games' root URL (the Emberlings game; its routes sit under /sparks).
+    # mini_games' root URL (the Emberlings game; its routes sit under /ascension).
     emberlings_url: str = DEFAULT_EMBERLINGS_URL
     security: SecuritySettings = field(default_factory=SecuritySettings)
     usage: UsageSettings = field(default_factory=UsageSettings)

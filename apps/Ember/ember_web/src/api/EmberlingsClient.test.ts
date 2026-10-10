@@ -28,9 +28,9 @@ describe("emberlingsClient", () => {
       ["GET", "/api/emberlings/profile"],
       ["GET", "/api/emberlings/encounters/e%201"],
       ["GET", "/api/emberlings/battles/b1"],
-      ["GET", "/api/emberlings/sparks/guardian/presets/2"],
-      ["GET", "/api/emberlings/sparks/guardian/personalities"],
-      ["GET", "/api/emberlings/sparks/guardian/personalities?limit=50&cursor=40"],
+      ["GET", "/api/emberlings/ascendeds/guardian/presets/2"],
+      ["GET", "/api/emberlings/ascendeds/guardian/personalities"],
+      ["GET", "/api/emberlings/ascendeds/guardian/personalities?limit=50&cursor=40"],
     ]);
   });
 
@@ -39,7 +39,7 @@ describe("emberlingsClient", () => {
     await emberlingsClient.savePreset("guardian", 1, ["p1"], "k");
     await emberlingsClient.rollEncounter("k");
     await emberlingsClient.declineEncounter("e1", "k");
-    await emberlingsClient.startBattle({ encounter_id: "e1", spark_id: "guardian", preset_slot: null, mode: "manual", emblem_limit: null }, "k");
+    await emberlingsClient.startBattle({ encounter_id: "e1", ascended_id: "guardian", preset_slot: null, mode: "manual", emblem_limit: null }, "k");
     await emberlingsClient.action("b1", AT, { kind: "ability", ability_id: "guardian_strike" }, "k");
     await emberlingsClient.emblem("b1", AT, "rare", "k");
     await emberlingsClient.advance("b1", AT, "k");
@@ -52,11 +52,11 @@ describe("emberlingsClient", () => {
     await emberlingsClient.resetProfile("k");
 
     expect(request.mock.calls).toEqual([
-      ["POST", "/api/emberlings/profile", { starter_spark_id: "guardian" }, KEY],
-      ["PUT", "/api/emberlings/sparks/guardian/presets/1", { instance_ids: ["p1"] }, KEY],
+      ["POST", "/api/emberlings/profile", { starter_ascended_id: "guardian" }, KEY],
+      ["PUT", "/api/emberlings/ascendeds/guardian/presets/1", { instance_ids: ["p1"] }, KEY],
       ["POST", "/api/emberlings/encounters", undefined, KEY],
       ["POST", "/api/emberlings/encounters/e1/decline", undefined, KEY],
-      ["POST", "/api/emberlings/battles", { encounter_id: "e1", spark_id: "guardian", preset_slot: null, mode: "manual", emblem_limit: null }, KEY],
+      ["POST", "/api/emberlings/battles", { encounter_id: "e1", ascended_id: "guardian", preset_slot: null, mode: "manual", emblem_limit: null }, KEY],
       ["POST", "/api/emberlings/battles/b1/actions", { round: 3, revision: 7, action: { kind: "ability", ability_id: "guardian_strike" } }, KEY],
       ["POST", "/api/emberlings/battles/b1/emblem", { round: 3, revision: 7, tier: "rare" }, KEY],
       ["POST", "/api/emberlings/battles/b1/advance", { round: 3, revision: 7 }, KEY],
@@ -64,8 +64,8 @@ describe("emberlingsClient", () => {
       ["POST", "/api/emberlings/battles/b1/mode", { round: 3, revision: 7, mode: "autonomous", emblem_limit: "rare" }, KEY],
       ["POST", "/api/emberlings/battles/b1/forfeit", undefined, KEY],
       ["POST", "/api/emberlings/shop/purchases", { kind: "emblem", tier: "common", quantity: 3 }, KEY],
-      ["POST", "/api/emberlings/shop/purchases", { kind: "copies", spark_id: "bruiser", tier: "rare" }, KEY],
-      ["POST", "/api/emberlings/sparks/guardian/sales", undefined, KEY],
+      ["POST", "/api/emberlings/shop/purchases", { kind: "copies", ascended_id: "bruiser", tier: "rare" }, KEY],
+      ["POST", "/api/emberlings/ascendeds/guardian/sales", undefined, KEY],
       ["POST", "/api/emberlings/profile/reset", {}, KEY],
     ]);
   });

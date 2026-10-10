@@ -13,6 +13,6 @@ const COPY: Record<string, StarterCopy> = {
 
 const FALLBACK: StarterCopy = { motto: "A new companion.", blurb: "A companion for the journey ahead." };
 
-export function starterCopy(sparkId: string): StarterCopy {
-  return COPY[sparkId] ?? FALLBACK;
+export function starterCopy(ascendedId: string): StarterCopy {
+  return COPY[ascendedId] ?? FALLBACK;
 }

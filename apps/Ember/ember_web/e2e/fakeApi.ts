@@ -181,7 +181,7 @@ const EMBERLINGS_CATALOG = {
     { id: "rare", stat_multiplier: 1.2, copy_threshold: 3, copy_reward: 2, emblem_strength: 1.5, emblem_price: 40 },
   ],
   levels: { regular_cap: 30, forbidden_cap: 50 },
-  sparks: ["guardian", "striker"].map((id) => ({
+  ascendeds: ["guardian", "striker"].map((id) => ({
     id,
     name: id.charAt(0).toUpperCase() + id.slice(1),
     starter: true,
@@ -204,9 +204,9 @@ function emberlingsProfile(starter: string): Record<string, unknown> {
     owner: "1",
     insignia: 0,
     emblems: { common: 3 },
-    sparks: [
+    ascendeds: [
       {
-        spark_id: starter,
+        ascended_id: starter,
         name: starter.charAt(0).toUpperCase() + starter.slice(1),
         ascension_types: ["enchant"],
         level: 1,
@@ -520,8 +520,8 @@ export async function installFakeApi(page: Page, options: { admin?: boolean; emb
     }
     if (method === "POST" && path === "/api/emberlings/profile") {
       api.emberlings.keys.push(request.headers()["idempotency-key"] ?? "");
-      const { starter_spark_id } = request.postDataJSON() as { starter_spark_id: string };
-      api.emberlings.profile = emberlingsProfile(starter_spark_id);
+      const { starter_ascended_id } = request.postDataJSON() as { starter_ascended_id: string };
+      api.emberlings.profile = emberlingsProfile(starter_ascended_id);
       return json(route, api.emberlings.profile, 201);
     }
     if (method === "POST" && path === "/api/emberlings/profile/reset") {

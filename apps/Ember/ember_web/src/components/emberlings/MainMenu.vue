@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useEmberlingsStore } from "../../stores/emberlings";
-import SparkTemplateCard from "./SparkTemplateCard.vue";
+import AscendedTemplateCard from "./AscendedTemplateCard.vue";
 import EmButton from "./ui/EmButton.vue";
 import EmConfirm from "./ui/EmConfirm.vue";
 import EmDialog from "./ui/EmDialog.vue";
@@ -11,7 +11,7 @@ import EmNotice from "./ui/EmNotice.vue";
 
 /** The Emberlings main menu, the first screen: the title, the menu rows and a fanned
  * hand of small cards. Without a save it offers New game and previews the starters;
- * with one it offers Continue, Quick battle and Shop and shows your first Sparks.
+ * with one it offers Continue, Quick battle and Shop and shows your first Ascended.
  * Reset progress lives here, behind a type-to-confirm. */
 export type PlayTarget = "collection" | "battle" | "shop";
 const emit = defineEmits<{ newGame: []; play: [target: PlayTarget] }>();
@@ -24,15 +24,15 @@ const inBattle = computed(() => store.profile?.active_battle != null || store.ba
 const confirmingReset = ref(false);
 const showingHelp = ref(false);
 
-/** The Sparks of the hand: your first ones (level, tier), or the starters to pick from.
+/** The Ascended of the hand: your first ones (level, tier), or the starters to pick from.
  * `rot` and `lift` place a card in the fan, the middle one raised and on top. */
 const hand = computed(() => {
-  const catalog = store.catalog?.sparks ?? [];
+  const catalog = store.catalog?.ascendeds ?? [];
   const entries =
     store.profile !== null
-      ? store.profile.sparks.slice(0, HAND_SIZE).map((s) => ({
-          id: s.spark_id,
-          info: catalog.find((c) => c.id === s.spark_id),
+      ? store.profile.ascendeds.slice(0, HAND_SIZE).map((s) => ({
+          id: s.ascended_id,
+          info: catalog.find((c) => c.id === s.ascended_id),
           level: s.level,
           tierId: s.tier_id,
         }))
@@ -46,8 +46,8 @@ const hand = computed(() => {
     return [{ ...e, info: e.info, rot: `${offset * 11}deg`, lift: `${-25 + Math.abs(offset) * 25}px`, z: 10 - Math.round(Math.abs(offset) * 4) }];
   });
 });
-const handCaption = computed(() => (hasSave.value ? "Your first Sparks" : hand.value.map((h) => h.info.name).join(" · ")));
-const sparkCount = computed(() => store.profile?.sparks.length ?? 0);
+const handCaption = computed(() => (hasSave.value ? "Your first Ascended" : hand.value.map((h) => h.info.name).join(" · ")));
+const ascendedCount = computed(() => store.profile?.ascendeds.length ?? 0);
 
 async function reset(): Promise<void> {
   if (await store.resetProgress()) confirmingReset.value = false;
@@ -59,9 +59,9 @@ async function reset(): Promise<void> {
     <div class="intro">
       <p class="em-eyebrow">A little fire. A big adventure.</p>
       <h2 class="em-pixel title">EMBERLINGS</h2>
-      <p class="tagline">Find your Spark.<br />Forge a legend, one battle at a time.</p>
-      <p v-if="hasSave" class="save em-num">{{ sparkCount }} {{ sparkCount === 1 ? "Spark" : "Sparks" }}, {{ store.profile?.insignia }} Insignia</p>
-      <p v-else class="save">Three Sparks. Your first choice.</p>
+      <p class="tagline">Find your Ascended.<br />Forge a legend, one battle at a time.</p>
+      <p v-if="hasSave" class="save em-num">{{ ascendedCount }} Ascended, {{ store.profile?.insignia }} Insignia</p>
+      <p v-else class="save">Three Ascended. Your first choice.</p>
 
       <EmNotice v-if="store.error" tone="error">{{ store.error }}</EmNotice>
 
@@ -80,9 +80,9 @@ async function reset(): Promise<void> {
     </div>
 
     <div class="hand-wrap">
-      <ul class="hand" :aria-label="hasSave ? 'Your first Sparks' : 'Starter Sparks'">
-        <li v-for="spark in hand" :key="spark.id" class="spark" :style="{ '--rot': spark.rot, '--lift': spark.lift, zIndex: spark.z }">
-          <SparkTemplateCard :spark="spark.info" :level="spark.level" :tier-id="spark.tierId" compact :show-level="hasSave" />
+      <ul class="hand" :aria-label="hasSave ? 'Your first Ascended' : 'Starter Ascended'">
+        <li v-for="ascended in hand" :key="ascended.id" class="ascended" :style="{ '--rot': ascended.rot, '--lift': ascended.lift, zIndex: ascended.z }">
+          <AscendedTemplateCard :ascended="ascended.info" :level="ascended.level" :tier-id="ascended.tierId" compact :show-level="hasSave" />
         </li>
       </ul>
       <p class="hand-caption">{{ handCaption }}</p>
@@ -91,7 +91,7 @@ async function reset(): Promise<void> {
     <EmConfirm
       :open="confirmingReset"
       title="Reset all Emberlings progress?"
-      message="You will start again with a new starter Spark."
+      message="You will start again with a new starter Ascended."
       confirm-label="Reset progress"
       cancel-label="Keep my progress"
       danger
@@ -100,14 +100,14 @@ async function reset(): Promise<void> {
       @confirm="reset"
       @close="confirmingReset = false"
     >
-      <EmNotice tone="error" class="reset-notice">This permanently removes your Sparks, Insignia, EMBLEMs and presets.</EmNotice>
+      <EmNotice tone="error" class="reset-notice">This permanently removes your Ascended, Insignia, EMBLEMs and presets.</EmNotice>
     </EmConfirm>
 
     <EmDialog :open="showingHelp" title="Keep the fire going" @close="showingHelp = false">
       <ol class="rules">
         <li><strong>Choose a starter.</strong> Guardian, Scout or Striker begins your collection.</li>
-        <li><strong>Find a wild Spark.</strong> Preview it, then fight or decline for free.</li>
-        <li><strong>Make your move.</strong> Play manually or let your Spark act autonomously.</li>
+        <li><strong>Find a wild Ascended.</strong> Preview it, then fight or decline for free.</li>
+        <li><strong>Make your move.</strong> Play manually or let your Ascended act autonomously.</li>
         <li><strong>Throw an EMBLEM.</strong> Choose a permitted tier before the five-second timer ends.</li>
         <li><strong>Forge your collection.</strong> Earn XP and Insignia; copies raise tiers. Levels cap at 30, or 50 for Forbidden.</li>
       </ol>
@@ -164,7 +164,7 @@ async function reset(): Promise<void> {
   padding: 0;
   list-style: none;
 }
-.spark {
+.ascended {
   --card-width: 170px;
   flex: none;
   margin: 0 -12px;
@@ -172,7 +172,7 @@ async function reset(): Promise<void> {
   box-shadow: 0 20px 35px #0008;
   transition: transform 160ms ease;
 }
-.spark:hover {
+.ascended:hover {
   z-index: 20 !important;
   transform: rotate(0deg) translateY(-30px);
 }
@@ -225,7 +225,7 @@ async function reset(): Promise<void> {
   .hand {
     height: 270px;
   }
-  .spark {
+  .ascended {
     --card-width: 128px;
     margin: 0 -16px;
   }

@@ -39,7 +39,7 @@ function forfeit(): void {
     <EmConfirm
       :open="forfeitOpen"
       title="Forfeit this battle?"
-      message="It counts as a loss and your Spark faints for a while."
+      message="It counts as a loss and your Ascended faints for a while."
       confirm-label="Forfeit battle"
       cancel-label="Keep battling"
       danger

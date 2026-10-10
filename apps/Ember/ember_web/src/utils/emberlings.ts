@@ -68,10 +68,10 @@ export function formatCountdown(seconds: number): string {
 
 export const RESULT_LABELS: Record<ResultKind, string> = {
   won: "You won",
-  knocked_out: "Your Spark was knocked out",
+  knocked_out: "Your Ascended was knocked out",
   captured: "Captured",
   escaped: "You escaped",
-  wild_escaped: "The wild Spark escaped",
+  wild_escaped: "The wild Ascended escaped",
   forfeited: "You forfeited",
 };
 

@@ -52,7 +52,7 @@ const manual = () =>
   });
 
 describe("BattleArena", () => {
-  it("shows both Sparks with their health written out, and what affects them", () => {
+  it("shows both Ascended with their health written out, and what affects them", () => {
     const view = battleView({
       wild: fighter("bruiser", { hp: 20, buffs: [{ source: "bruiser_rally", stat: "essence", amount: 4, rounds_left: 2 }] }),
     });
@@ -217,7 +217,7 @@ describe("EmblemPrompt", () => {
 
     expect(wrapper.text()).toContain("Time is up");
     expect(wrapper.findAll("button.tier").find((b) => b.text().startsWith("Common"))!.attributes("disabled")).toBeDefined();
-    expect(wrapper.text()).toContain("Your Spark will decide this turn.");
+    expect(wrapper.text()).toContain("Your Ascended will decide this turn.");
   });
 });
 
@@ -232,7 +232,7 @@ describe("BattleResult", () => {
         insignia: 12,
         level_before: 3,
         level_after: 4,
-        spark_id: "bruiser",
+        ascended_id: "bruiser",
         copies_granted: 2,
         copies: 2,
         tier_id: "rare",
@@ -261,13 +261,13 @@ describe("BattleResult", () => {
     expect(client.profile).toHaveBeenCalledOnce();
   });
 
-  it("says when the Spark fainted", () => {
+  it("says when the Ascended fainted", () => {
     const view = battleView({ status: "terminal", phase: "terminal", result: { kind: "knocked_out", faint_until: 1_700_000_600 } });
     withBattle(view);
 
     const text = mount(BattleResult, { props: { battle: view } }).text();
 
-    expect(text).toContain("Your Spark was knocked out");
+    expect(text).toContain("Your Ascended was knocked out");
     expect(text).toContain("Guardian fainted and needs rest before its next battle.");
   });
 });

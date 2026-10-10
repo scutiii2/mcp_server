@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { useEmberlingsStore } from "../../stores/emberlings";
 import { abilityEffect } from "../../utils/emberlings";
-import SparkTemplateCard from "./SparkTemplateCard.vue";
+import AscendedTemplateCard from "./AscendedTemplateCard.vue";
 import { starterCopy } from "./starterCopy";
 import EmButton from "./ui/EmButton.vue";
 import EmIcon from "./ui/EmIcon.vue";
@@ -10,16 +10,16 @@ import EmPageHead from "./ui/EmPageHead.vue";
 import EmPanel from "./ui/EmPanel.vue";
 import type { IconName } from "./ui/icons";
 
-/** New game: pick the first Spark from a column of small cards (the chosen one has the
+/** New game: pick the first Ascended from a column of small cards (the chosen one has the
  * copper outline and says "Selected"); the large card and a side panel show the chosen
- * Spark in full. The first starter is chosen on open. "Main menu" goes back. */
+ * Ascended in full. The first starter is chosen on open. "Main menu" goes back. */
 const emit = defineEmits<{ back: []; started: [] }>();
 
-const CATEGORY_ICONS: Record<string, IconName> = { ATTACK: "sword", DEFENSE: "shield", SUPPORT: "arrow", FLEE: "arrow", INTERCEPT: "spark" };
+const CATEGORY_ICONS: Record<string, IconName> = { ATTACK: "sword", DEFENSE: "shield", SUPPORT: "arrow", FLEE: "arrow", INTERCEPT: "ascended" };
 
 const store = useEmberlingsStore();
 const picked = ref<string | null>(null);
-const starters = computed(() => (store.catalog?.sparks ?? []).filter((s) => s.starter));
+const starters = computed(() => (store.catalog?.ascendeds ?? []).filter((s) => s.starter));
 /** The first starter shows until another is chosen, so the big card is never empty. */
 const current = computed(() => starters.value.find((s) => s.id === picked.value) ?? starters.value[0] ?? null);
 const copy = computed(() => starterCopy(current.value?.id ?? ""));
@@ -45,12 +45,12 @@ async function start(): Promise<void> {
 
 <template>
   <section class="starters">
-    <EmPageHead title="Choose your first Spark" subtitle="One companion. A whole world of possibilities.">
+    <EmPageHead title="Choose your first Ascended" subtitle="One companion. A whole world of possibilities.">
       <button type="button" class="back" @click="emit('back')"><EmIcon name="arrow" class="back-arrow" /> Main menu</button>
     </EmPageHead>
 
     <div v-if="current" class="picker">
-      <div class="choices" role="radiogroup" aria-label="Starter Sparks">
+      <div class="choices" role="radiogroup" aria-label="Starter Ascended">
         <div v-for="s in starters" :key="s.id" class="item">
           <div
             class="choice"
@@ -63,7 +63,7 @@ async function start(): Promise<void> {
             @keydown.enter.prevent="pick(s.id)"
             @keydown.space.prevent="pick(s.id)"
           >
-            <SparkTemplateCard :spark="s" compact />
+            <AscendedTemplateCard :ascended="s" compact />
           </div>
           <p class="note">
             <span v-if="current.id === s.id" class="selected-label"><EmIcon name="check" :size="14" /> Selected</span>
@@ -72,7 +72,7 @@ async function start(): Promise<void> {
         </div>
       </div>
 
-      <SparkTemplateCard :spark="current" class="detail" />
+      <AscendedTemplateCard :ascended="current" class="detail" />
 
       <EmPanel class="info">
         <p class="em-eyebrow">Your chosen starter</p>
@@ -84,7 +84,7 @@ async function start(): Promise<void> {
             <p class="em-num">{{ hp.base }} HP · +{{ hp.growth }} / lvl</p>
           </div>
           <div v-if="firstAbility">
-            <strong><EmIcon :name="CATEGORY_ICONS[firstAbility.category] ?? 'spark'" /> {{ firstAbility.name }}</strong>
+            <strong><EmIcon :name="CATEGORY_ICONS[firstAbility.category] ?? 'ascended'" /> {{ firstAbility.name }}</strong>
             <p>{{ abilityEffect(firstAbility) }}</p>
           </div>
           <div>

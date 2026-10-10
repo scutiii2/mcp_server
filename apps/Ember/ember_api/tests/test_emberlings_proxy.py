@@ -67,7 +67,7 @@ def test_owner_and_token_come_from_ember_api_not_the_browser(real_client: TestCl
 
     assert response.status_code == 200, response.text
     [sent] = sent_to_games(upstream)
-    assert str(sent.url) == f"{DEFAULT_EMBERLINGS_URL}/sparks/battles/b1/advance"
+    assert str(sent.url) == f"{DEFAULT_EMBERLINGS_URL}/ascendeds/battles/b1/advance"
     assert sent.headers["X-Requester-Username"] == str(me["id"]) != me["username"]
     assert sent.headers["X-Internal-Token"] == TOKEN
     assert sent.headers["Idempotency-Key"] == "key-1"
@@ -106,10 +106,10 @@ def test_a_refusal_reaches_the_browser_as_detail(real_client: TestClient, upstre
     ("method", "path", "body"),
     [
         ("GET", "/api/emberlings/catalog", None),
-        ("GET", "/api/emberlings/sparks/guardian/personalities?limit=5", None),
+        ("GET", "/api/emberlings/ascendeds/guardian/personalities?limit=5", None),
         ("POST", "/api/emberlings/encounters", {}),
         ("POST", "/api/emberlings/battles/b1/forfeit", {}),
-        ("PUT", "/api/emberlings/sparks/guardian/presets/1", {"instance_ids": ["i1"]}),
+        ("PUT", "/api/emberlings/ascendeds/guardian/presets/1", {"instance_ids": ["i1"]}),
     ],
 )
 def test_browser_identity_headers_never_reach_mini_games(

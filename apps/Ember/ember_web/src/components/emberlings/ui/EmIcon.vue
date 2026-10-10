@@ -5,7 +5,7 @@ import { ICONS, type IconName } from "./icons";
 /** One of the page's icons, drawn in the surrounding text colour. Decorative:
  * the meaning is always also written as text. */
 const props = withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 18 });
-const path = computed(() => ICONS[props.name] ?? ICONS.spark);
+const path = computed(() => ICONS[props.name] ?? ICONS.ascended);
 </script>
 
 <template>

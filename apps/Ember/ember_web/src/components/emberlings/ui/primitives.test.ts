@@ -222,10 +222,10 @@ describe("EmNotice", () => {
 
 describe("EmPageHead", () => {
   it("shows the eyebrow, the title, the subtitle and the side slot", () => {
-    const wrapper = mount(EmPageHead, { props: { title: "Your collection", subtitle: "6 Sparks." }, slots: { default: "<a>Main menu</a>" } });
+    const wrapper = mount(EmPageHead, { props: { title: "Your collection", subtitle: "6 Ascended." }, slots: { default: "<a>Main menu</a>" } });
     expect(wrapper.find(".em-eyebrow").text()).toBe("The forge is yours");
     expect(wrapper.find("h2").text()).toBe("Your collection");
-    expect(wrapper.find(".subtitle").text()).toBe("6 Sparks.");
+    expect(wrapper.find(".subtitle").text()).toBe("6 Ascended.");
     expect(wrapper.find(".side").text()).toBe("Main menu");
   });
 });

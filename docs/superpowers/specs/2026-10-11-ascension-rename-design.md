@@ -54,18 +54,23 @@ Six types, a multi-select set per Ascended (zero or more): `pure`, `abyss` (Dark
 |---|---|
 | Emberlings | Ascension |
 | Spark / Sparks | Ascended |
-| `spark_id`, `sparks` (API fields, DB) | `ascended_id`, `ascended` |
+| `spark_id`, `sparks` (API fields, DB) | `ascended_id`, `ascendeds` |
 | `apps/mini_games/src/sparks`, `tests/sparks` | `src/ascension`, `tests/ascension` |
 | `apps/mini_games/sparks/<id>/` | `apps/mini_games/ascended/<id>/` |
 | `configs/spark_catalog.json` | `configs/ascension_catalog.json` |
+| `data/sparks.sqlite3` | `data/ascension.sqlite3` |
+| mini_games routes `/sparks/...` | `/ascension/...` |
 | `/api/emberlings` | `/api/ascension` |
 | permission `emberlings.play` | `ascension.play` |
 | route `/emberlings`, `components/emberlings` | `/ascension`, `components/ascension` |
 | `SparkCard`, `SparkTemplateCard`, `sparkArt` | `AscendedCard`, `AscendedTemplateCard`, `ascendedArt` |
 | `.em-root`, `--em-*`, `Em*` primitives | unchanged (short prefix, not the game name) |
 
-Plural note: the singular and plural are both "Ascended". Identifiers use `ascended` for a single record
-and `ascended_list` or `ascendeds` is avoided; collections are named `roster` or by what they hold.
+Plural note: "Ascended" is both singular and plural in the UI and the docs ("1 Ascended", "3 Ascended").
+In code the plural is `ascendeds` (variables, JSON keys, URL segments such as `/ascendeds/{id}/presets/{slot}`),
+so a loop never shadows its own list. The data folder is `ascended/`, the game's own URL prefix in mini_games is
+`/ascension`, and the Python package is `ascension`. The shared card placeholders were renamed
+`ascended_common_front_template.png` and `ascended_common_back_template.png` to match the new tier.
 
 ## Stored data
 

@@ -19,7 +19,7 @@ export const ICONS = {
   clock: "M12 3A9 9 0 1 1 11.99 3M12 7V12L16 14",
   lock: "M6 10V7A6 6 0 0 1 18 7V10M4 10H20V22H4ZM12 15V18",
   warning: "M12 3L22 21H2ZM12 9V14M12 17V18",
-  spark: "M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9",
+  ascended: "M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9",
 } as const;
 
 export type IconName = keyof typeof ICONS;

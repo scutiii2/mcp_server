@@ -2,7 +2,7 @@ import { flushPromises, mount, type DOMWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { emberlingsClient, type EncounterPreview, type Profile } from "../../api/EmberlingsClient";
-import { CATALOG, ENCOUNTER, PROFILE, battleView, ownedSpark } from "../../api/EmberlingsClient.fixtures";
+import { CATALOG, ENCOUNTER, PROFILE, battleView, ownedAscended } from "../../api/EmberlingsClient.fixtures";
 import { useEmberlingsStore } from "../../stores/emberlings";
 import EncounterPanel from "./EncounterPanel.vue";
 
@@ -43,11 +43,11 @@ function button(buttons: DOMWrapper<HTMLButtonElement>[], text: string | RegExp)
 }
 
 describe("EncounterPanel", () => {
-  it("looks for a wild Spark once the cooldown is over", async () => {
+  it("looks for a wild Ascended once the cooldown is over", async () => {
     client.rollEncounter.mockResolvedValue(ENCOUNTER);
     const { store, wrapper } = mountPanel();
 
-    const look = button(wrapper.findAll("button"), "Look for a wild Spark");
+    const look = button(wrapper.findAll("button"), "Look for a wild Ascended");
     expect(look.attributes("disabled")).toBeUndefined();
     await look.trigger("click");
     await flushPromises();
@@ -78,14 +78,14 @@ describe("EncounterPanel", () => {
     expect(store.encounter).toBeNull();
   });
 
-  it("cannot fight while every Spark is fainted", () => {
+  it("cannot fight while every Ascended is fainted", () => {
     const { wrapper } = mountPanel(
-      { ...PROFILE, sparks: [ownedSpark("guardian", { faint_until: Date.now() / 1000 + 600, fainted: true })] },
+      { ...PROFILE, ascendeds: [ownedAscended("guardian", { faint_until: Date.now() / 1000 + 600, fainted: true })] },
       ENCOUNTER,
     );
 
     expect(button(wrapper.findAll("button"), "Fight").attributes("disabled")).toBeDefined();
-    expect(wrapper.text()).toContain("All your Sparks are fainted");
+    expect(wrapper.text()).toContain("All your Ascended are fainted");
   });
 
   it("starts an autonomous battle only with a preset and an EMBLEM limit", async () => {
@@ -108,7 +108,7 @@ describe("EncounterPanel", () => {
 
     expect(client.startBattle).toHaveBeenCalledExactlyOnceWith({
       encounter_id: "e1",
-      spark_id: "guardian",
+      ascended_id: "guardian",
       preset_slot: 2,
       mode: "autonomous",
       emblem_limit: "rare",
@@ -125,7 +125,7 @@ describe("EncounterPanel", () => {
 
     expect(client.startBattle).toHaveBeenCalledExactlyOnceWith({
       encounter_id: "e1",
-      spark_id: "guardian",
+      ascended_id: "guardian",
       preset_slot: null,
       mode: "manual",
       emblem_limit: null,

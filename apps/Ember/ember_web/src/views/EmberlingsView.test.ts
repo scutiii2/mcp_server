@@ -36,7 +36,7 @@ beforeEach(() => {
   client.catalog.mockResolvedValue(CATALOG);
   client.profile.mockResolvedValue(PROFILE);
   client.personalities.mockResolvedValue({ items: [], next_cursor: null });
-  client.preset.mockResolvedValue({ spark_id: "guardian", slot: 1, instance_ids: [] });
+  client.preset.mockResolvedValue({ ascended_id: "guardian", slot: 1, instance_ids: [] });
 });
 
 afterEach(() => {
@@ -63,7 +63,7 @@ describe("EmberlingsView", () => {
     expect(wrapper.findAll("nav .label").map((t) => t.text())).toEqual(["New game", "How to play"]);
 
     await wrapper.find("button.primary").trigger("click");
-    expect(wrapper.text()).toContain("Choose your first Spark");
+    expect(wrapper.text()).toContain("Choose your first Ascended");
     expect(wrapper.findAll("[role=radio]").map((c) => c.attributes("aria-label"))).toEqual(["Guardian", "Striker"]);
 
     client.createProfile.mockResolvedValue(PROFILE);
@@ -72,7 +72,7 @@ describe("EmberlingsView", () => {
     await flushPromises();
 
     expect(client.createProfile).toHaveBeenCalledExactlyOnceWith("guardian");
-    expect(wrapper.findAll(".spark-card")).toHaveLength(1);
+    expect(wrapper.findAll(".ascended-card")).toHaveLength(1);
     expect(tab(wrapper, "Collection").classes()).toContain("active");
   });
 
@@ -94,11 +94,11 @@ describe("EmberlingsView", () => {
     await wrapper.findAll("nav button")[0]!.trigger("click");
 
     expect(wrapper.find(".wallet").text()).toBe("100 Insignia");
-    expect(wrapper.find(".subtitle").text()).toBe("1 Spark. Every one has a story.");
+    expect(wrapper.find(".subtitle").text()).toBe("1 Ascended. Every one has a story.");
 
     await tab(wrapper, "Battle").trigger("click");
     expect(wrapper.find("h2").text()).toBe("Into the wild");
-    expect(wrapper.find(".subtitle").text()).toBe("Your next Spark is waiting.");
+    expect(wrapper.find(".subtitle").text()).toBe("Your next Ascended is waiting.");
   });
 
   it("restores an active battle on the Battle tab instead of rolling", async () => {

@@ -1,6 +1,6 @@
 [project]
 name = "mini-games"
-description = "Game backend for Ember: Emberlings (Spark collecting and battling) with a Laya-assisted action policy; chess and Tetris plug in later"
+description = "Game backend for Ember: Emberlings (Ascended collecting and battling) with a Laya-assisted action policy; chess and Tetris plug in later"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [

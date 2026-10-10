@@ -8,7 +8,7 @@ import EmIcon from "./ui/EmIcon.vue";
 import EmPanel from "./ui/EmPanel.vue";
 import EmTierBadge from "./ui/EmTierBadge.vue";
 
-/** The Shop tab: the wallet, EMBLEMs per tier, copies of a regular Spark at a tier, and
+/** The Shop tab: the wallet, EMBLEMs per tier, copies of a regular Ascended at a tier, and
  * selling one absorbed copy. EMBLEM buttons are disabled when Insignia would not cover
  * the price, and a line says which tiers are out of reach. A copy's price depends on
  * numbers only mini_games knows, so it says itself (a 409 with the cost) when Insignia
@@ -48,30 +48,30 @@ async function buyEmblems(tierId: string): Promise<void> {
   }
 }
 
-const regularSparks = computed(() => (store.catalog?.sparks ?? []).filter((s) => !s.forbidden));
+const regularAscendeds = computed(() => (store.catalog?.ascendeds ?? []).filter((s) => !s.forbidden));
 const regularTiers = computed(() => tiers.value.filter((t) => t.copy_threshold !== null));
-const copySpark = ref("");
+const copyAscended = ref("");
 const copyTier = ref("");
 
 async function buyCopies(): Promise<void> {
   message.value = "";
-  const bought = await store.buyCopies(copySpark.value, copyTier.value);
+  const bought = await store.buyCopies(copyAscended.value, copyTier.value);
   if (bought) {
     const copies = `${bought.copies_granted} ${bought.copies_granted === 1 ? "copy" : "copies"}`;
     message.value = `Bought ${copies} for ${bought.price} Insignia; it is now ${titleCase(bought.resulting_tier_id)}.`;
   }
 }
 
-const sellable = computed(() => (store.profile?.sparks ?? []).filter((s) => s.copies > 0));
+const sellable = computed(() => (store.profile?.ascendeds ?? []).filter((s) => s.copies > 0));
 const selling = ref<string | null>(null);
-const sellingName = computed(() => sellable.value.find((s) => s.spark_id === selling.value)?.name ?? "");
+const sellingName = computed(() => sellable.value.find((s) => s.ascended_id === selling.value)?.name ?? "");
 
 async function sell(): Promise<void> {
-  const sparkId = selling.value;
+  const ascendedId = selling.value;
   selling.value = null;
-  if (sparkId === null) return;
+  if (ascendedId === null) return;
   message.value = "";
-  const sale = await store.sellCopy(sparkId);
+  const sale = await store.sellCopy(ascendedId);
   if (sale) {
     message.value = `Sold one copy for ${sale.value} Insignia${sale.downgraded ? `; it is now ${titleCase(sale.tier_id)}` : ""}.`;
   }
@@ -124,12 +124,12 @@ async function sell(): Promise<void> {
 
     <div class="lower">
       <EmPanel>
-        <h3 class="em-pixel">Buy Spark copies</h3>
+        <h3 class="em-pixel">Buy Ascended copies</h3>
         <label class="field">
-          <span>Spark</span>
-          <select v-model="copySpark" name="copy-spark" aria-label="Spark">
-            <option value="" disabled>Choose a Spark</option>
-            <option v-for="s in regularSparks" :key="s.id" :value="s.id">{{ s.name }}</option>
+          <span>Ascended</span>
+          <select v-model="copyAscended" name="copy-ascended" aria-label="Ascended">
+            <option value="" disabled>Choose an Ascended</option>
+            <option v-for="s in regularAscendeds" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </label>
         <label class="field">
@@ -140,10 +140,10 @@ async function sell(): Promise<void> {
           </select>
         </label>
         <p class="hint">
-          Absorbed copies raise a Spark's tier. The price depends on the copies you already have and the Spark's level; the shop
+          Absorbed copies raise an Ascended's tier. The price depends on the copies you already have and the Ascended's level; the shop
           tells you when your Insignia falls short.
         </p>
-        <EmButton variant="primary" class="block" :disabled="store.busy || !copySpark || !copyTier" @click="buyCopies">
+        <EmButton variant="primary" class="block" :disabled="store.busy || !copyAscended || !copyTier" @click="buyCopies">
           <EmIcon name="shop" /> Buy copies
         </EmButton>
       </EmPanel>
@@ -152,14 +152,14 @@ async function sell(): Promise<void> {
         <h3 class="em-pixel">Sell an absorbed copy</h3>
         <p v-if="sellable.length === 0" class="empty">No absorbed copies to sell.</p>
         <template v-else>
-          <p class="hint">Sell one absorbed copy. Your collected Spark stays with you.</p>
+          <p class="hint">Sell one absorbed copy. Your collected Ascended stays with you.</p>
           <ul class="rows sell">
-            <li v-for="s in sellable" :key="s.spark_id" class="row" :data-sell="s.spark_id">
+            <li v-for="s in sellable" :key="s.ascended_id" class="row" :data-sell="s.ascended_id">
               <div class="what">
                 <strong>{{ s.name }}</strong>
                 <span class="em-num">{{ s.copies }} {{ s.copies === 1 ? "copy" : "copies" }} · {{ titleCase(s.tier_id) }}</span>
               </div>
-              <EmButton :disabled="store.busy" @click="selling = s.spark_id"><EmIcon name="coin" /> Sell one copy</EmButton>
+              <EmButton :disabled="store.busy" @click="selling = s.ascended_id"><EmIcon name="coin" /> Sell one copy</EmButton>
             </li>
           </ul>
         </template>

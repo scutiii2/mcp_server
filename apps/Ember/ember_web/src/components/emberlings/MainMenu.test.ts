@@ -39,7 +39,7 @@ describe("MainMenu", () => {
     const wrapper = mountMenu(null);
 
     expect(labels(wrapper)).toEqual(["New game", "How to play"]);
-    expect(wrapper.find(".save").text()).toBe("Three Sparks. Your first choice.");
+    expect(wrapper.find(".save").text()).toBe("Three Ascended. Your first choice.");
     expect(wrapper.find(".hand-caption").text()).toBe("Guardian · Striker");
     await wrapper.find("button.primary").trigger("click");
     expect(wrapper.emitted("newGame")).toHaveLength(1);
@@ -49,8 +49,8 @@ describe("MainMenu", () => {
     const wrapper = mountMenu();
 
     expect(labels(wrapper)).toEqual(["Continue", "Quick battle", "Shop", "How to play", "Reset progress"]);
-    expect(wrapper.find(".save").text()).toBe("1 Spark, 100 Insignia");
-    expect(wrapper.find(".hand-caption").text()).toBe("Your first Sparks");
+    expect(wrapper.find(".save").text()).toBe("1 Ascended, 100 Insignia");
+    expect(wrapper.find(".hand-caption").text()).toBe("Your first Ascended");
     const buttons = wrapper.findAll("nav button");
     await buttons[0]!.trigger("click");
     await buttons[1]!.trigger("click");
@@ -59,13 +59,13 @@ describe("MainMenu", () => {
   });
 
   it("previews the starters without a save and shows your team with one", () => {
-    const names = (w: ReturnType<typeof mountMenu>) => w.findAll(".spark .spark-name").map((n) => n.text());
+    const names = (w: ReturnType<typeof mountMenu>) => w.findAll(".ascended .ascended-name").map((n) => n.text());
 
     expect(names(mountMenu(null))).toEqual(["Guardian", "Striker"]);
     const team = mountMenu();
     expect(names(team)).toEqual(["Guardian"]);
-    expect(team.find(".spark .level").text()).toBe("Lv 3");
-    expect(mountMenu(null).find(".spark .level").exists()).toBe(false);
+    expect(team.find(".ascended .level").text()).toBe("Lv 3");
+    expect(mountMenu(null).find(".ascended .level").exists()).toBe(false);
   });
 
   it("opens How to play in a dialog", async () => {

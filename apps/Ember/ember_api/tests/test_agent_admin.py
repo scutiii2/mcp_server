@@ -107,9 +107,9 @@ def test_shared_prompts_read_change_log_and_preview(client, upstream: FakeUpstre
     as_admin(client)
 
     assert client.get("/api/admin/agent-prompts").json()["values"] == {"app_name": "Ember"}
-    changed = client.put("/api/admin/agent-prompts", json={"app_name": "Spark", "roster_intro": None})
+    changed = client.put("/api/admin/agent-prompts", json={"app_name": "Ascended", "roster_intro": None})
     assert (changed.status_code, changed.json()["overridden"]) == (200, ["app_name", "roster_intro"])
-    assert json.loads(upstream.requests[-1].content) == {"app_name": "Spark", "roster_intro": None}
+    assert json.loads(upstream.requests[-1].content) == {"app_name": "Ascended", "roster_intro": None}
     assert client.put("/api/admin/agent-prompts", json={"bogus": "x"}).status_code == 400
     assert client.put("/api/admin/agent-prompts", json={"app_name": 5}).status_code == 422
 

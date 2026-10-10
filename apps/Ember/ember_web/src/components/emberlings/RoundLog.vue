@@ -6,7 +6,7 @@ import EmIcon from "./ui/EmIcon.vue";
 import EmPanel from "./ui/EmPanel.vue";
 
 /** The battle's revealed rounds in words, latest first. Each round lists what both
- * Sparks chose, then what happened. It is a polite live region and does not scroll by
+ * Ascended chose, then what happened. It is a polite live region and does not scroll by
  * itself. */
 const props = defineProps<{ battle: BattleView }>();
 const names = computed(() => ({ player: props.battle.player.name, wild: props.battle.wild.name }));

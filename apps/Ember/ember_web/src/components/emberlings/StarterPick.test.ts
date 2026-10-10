@@ -24,7 +24,7 @@ describe("StarterPick", () => {
     expect(choices.map((c) => c.attributes("aria-label"))).toEqual(["Guardian", "Striker"]);
     expect(choices.map((c) => c.attributes("aria-checked"))).toEqual(["true", "false"]);
     expect(choices[0]!.classes()).toContain("selected");
-    expect(wrapper.find(".detail .spark-name").text()).toBe("Guardian");
+    expect(wrapper.find(".detail .ascended-name").text()).toBe("Guardian");
     expect(wrapper.find(".detail .passive").exists()).toBe(true);
     expect(wrapper.find(".choice .passive").exists()).toBe(false);
     expect(wrapper.find("button.start").text()).toBe("Start with Guardian");
@@ -36,7 +36,7 @@ describe("StarterPick", () => {
 
     await wrapper.findAll("[role=radio]")[1]!.trigger("click");
     expect(wrapper.findAll("[role=radio]").map((c) => c.classes().includes("selected"))).toEqual([false, true]);
-    expect(wrapper.find(".detail .spark-name").text()).toBe("Striker");
+    expect(wrapper.find(".detail .ascended-name").text()).toBe("Striker");
     expect(client.createProfile).not.toHaveBeenCalled();
 
     await wrapper.find("button.start").trigger("click");

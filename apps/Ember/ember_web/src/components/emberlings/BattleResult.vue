@@ -20,7 +20,7 @@ const result = computed(() => props.battle.result);
 const TONES: Record<ResultKind, { tone: "success" | "danger" | "accent" | "warning"; icon: IconName }> = {
   won: { tone: "success", icon: "shield" },
   knocked_out: { tone: "danger", icon: "heart" },
-  captured: { tone: "accent", icon: "spark" },
+  captured: { tone: "accent", icon: "ascended" },
   escaped: { tone: "warning", icon: "arrow" },
   wild_escaped: { tone: "warning", icon: "arrow" },
   forfeited: { tone: "danger", icon: "battle" },

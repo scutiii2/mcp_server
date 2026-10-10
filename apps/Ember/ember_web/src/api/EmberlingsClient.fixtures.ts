@@ -1,5 +1,5 @@
 import type { Account } from "./AuthClient";
-import type { BattleView, Catalog, EncounterPreview, Fighter, OwnedSpark, Profile, SparkInfo, TierInfo } from "./EmberlingsClient";
+import type { BattleView, Catalog, EncounterPreview, Fighter, OwnedAscended, Profile, AscendedInfo, TierInfo } from "./EmberlingsClient";
 
 /** Test data shaped like mini_games' answers, for the Emberlings tests. */
 
@@ -9,7 +9,7 @@ export function tier(id: string, emblemPrice: number, copyThreshold: number | nu
   return { id, stat_multiplier: 1, copy_threshold: copyThreshold, copy_reward: 1, emblem_strength: 1, emblem_price: emblemPrice };
 }
 
-export function sparkInfo(id: string, extra: Partial<SparkInfo> = {}): SparkInfo {
+export function ascendedInfo(id: string, extra: Partial<AscendedInfo> = {}): AscendedInfo {
   return {
     id,
     name: nameOf(id),
@@ -39,11 +39,11 @@ export const CATALOG: Catalog = {
     tier("forbidden", 500, null),
   ],
   levels: { regular_cap: 30, forbidden_cap: 50 },
-  sparks: [
-    sparkInfo("guardian", { starter: true }),
-    sparkInfo("striker", { starter: true }),
-    sparkInfo("bruiser"),
-    sparkInfo("forbidden", { forbidden: true }),
+  ascendeds: [
+    ascendedInfo("guardian", { starter: true }),
+    ascendedInfo("striker", { starter: true }),
+    ascendedInfo("bruiser"),
+    ascendedInfo("forbidden", { forbidden: true }),
   ],
   personalities: [
     { id: "AGGRESSIVE", categories: ["ATTACK"] },
@@ -51,9 +51,9 @@ export const CATALOG: Catalog = {
   ],
 };
 
-export function ownedSpark(id: string, extra: Partial<OwnedSpark> = {}): OwnedSpark {
+export function ownedAscended(id: string, extra: Partial<OwnedAscended> = {}): OwnedAscended {
   return {
-    spark_id: id,
+    ascended_id: id,
     name: nameOf(id),
     ascension_types: ["enchant"],
     level: 3,
@@ -72,7 +72,7 @@ export const PROFILE: Profile = {
   owner: "1",
   insignia: 100,
   emblems: { common: 2 },
-  sparks: [ownedSpark("guardian")],
+  ascendeds: [ownedAscended("guardian")],
   pending_encounter: null,
   active_battle: null,
   next_roll_at: null,
@@ -80,7 +80,7 @@ export const PROFILE: Profile = {
 
 export const ENCOUNTER: EncounterPreview = {
   id: "e1",
-  spark_id: "bruiser",
+  ascended_id: "bruiser",
   name: "Bruiser",
   tier_id: "rare",
   level: 4,
@@ -88,10 +88,10 @@ export const ENCOUNTER: EncounterPreview = {
   created_at: 1_700_000_000,
 };
 
-export function fighter(sparkId: string, extra: Partial<Fighter> = {}): Fighter {
+export function fighter(ascendedId: string, extra: Partial<Fighter> = {}): Fighter {
   return {
-    spark_id: sparkId,
-    name: nameOf(sparkId),
+    ascended_id: ascendedId,
+    name: nameOf(ascendedId),
     tier_id: "common",
     level: 3,
     hp: 80,
@@ -100,7 +100,7 @@ export function fighter(sparkId: string, extra: Partial<Fighter> = {}): Fighter 
     speed: 9,
     buffs: [],
     defense: null,
-    abilities: [{ id: `${sparkId}_strike`, name: "Strike", category: "ATTACK", percentage: 120, cooldown: 1, ready: true }],
+    abilities: [{ id: `${ascendedId}_strike`, name: "Strike", category: "ATTACK", percentage: 120, cooldown: 1, ready: true }],
     ...extra,
   };
 }

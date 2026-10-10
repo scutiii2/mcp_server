@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { BattleView, Buff, Fighter } from "../../api/EmberlingsClient";
-import { sparkArt } from "./sparkArt";
+import { ascendedArt } from "./ascendedArt";
 import EmBar from "./ui/EmBar.vue";
 import EmTierBadge from "./ui/EmTierBadge.vue";
 
-/** Both Sparks facing each other across a VS marker: name, level, tier, health, their
+/** Both Ascended facing each other across a VS marker: name, level, tier, health, their
  * portrait, and what is affecting them (buffs, defense). The numbers are always written. */
 const props = defineProps<{ battle: BattleView }>();
 
@@ -30,7 +30,7 @@ function effects(fighter: Fighter): string[] {
 }
 
 function art(fighter: Fighter): string | null {
-  return sparkArt(fighter.spark_id)?.url ?? null;
+  return ascendedArt(fighter.ascended_id)?.url ?? null;
 }
 </script>
 

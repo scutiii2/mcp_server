@@ -2,7 +2,7 @@
 REM mini_games dev launcher - serves the game backend (Emberlings) over HTTP on the
 REM port in configs\config_app.json (8060 by default).
 REM LABEL: Mini Games
-REM DESCRIPTION: Game backend for Ember (Emberlings: collect and battle Sparks). Battle engine, Laya-assisted AI and saved progress. No LLM, no billing.
+REM DESCRIPTION: Game backend for Ember (Emberlings: collect and battle Ascended). Battle engine, Laya-assisted AI and saved progress. No LLM, no billing.
 
 cd /d "%~dp0"
 

@@ -64,7 +64,7 @@ function throwEmblem(tier: string): void {
       <small class="em-num">Round {{ battle.round }}</small>
     </div>
 
-    <p v-if="battle.mode === 'autonomous'" class="muted">Your Spark chooses on its own, one round every {{ paceSeconds }} seconds.</p>
+    <p v-if="battle.mode === 'autonomous'" class="muted">Your Ascended chooses on its own, one round every {{ paceSeconds }} seconds.</p>
     <div v-else class="actions">
       <button
         v-for="action in battle.actions"

@@ -6,7 +6,7 @@ import types
 import pytest
 
 from src.laya_client import LayaClient, LayaError, LayaUnavailable, noul_question
-from src.sparks.repository import SqliteSparkRepository
+from src.ascension.repository import SqliteAscendedRepository
 from tests.fake_laya import FakeEngine
 
 Q = {"yes": noul_question("Is it so?", "No.", "Yes.")}
@@ -54,7 +54,7 @@ def test_a_failed_load_is_attempted_once(monkeypatch):
 def test_the_repository_works_while_laya_is_stuck(tmp_path):
     async def scenario():
         client = LayaClient(FakeEngine(delay=0.8), timeout=0.1)
-        repo = SqliteSparkRepository(tmp_path / "s.sqlite3")
+        repo = SqliteAscendedRepository(tmp_path / "s.sqlite3")
         with pytest.raises(LayaError):
             await client.ask("Text.", Q)
         async with asyncio.timeout(0.5):
@@ -68,7 +68,7 @@ def test_the_repository_works_while_laya_is_stuck(tmp_path):
 
 def test_repository_close_shuts_its_worker_down(tmp_path):
     async def scenario():
-        repo = SqliteSparkRepository(tmp_path / "s.sqlite3")
+        repo = SqliteAscendedRepository(tmp_path / "s.sqlite3")
         async with repo.transaction():
             pass
         pool = repo._executor

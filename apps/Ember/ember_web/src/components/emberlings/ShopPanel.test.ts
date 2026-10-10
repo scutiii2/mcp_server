@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { emberlingsClient } from "../../api/EmberlingsClient";
-import { CATALOG, PROFILE, ownedSpark } from "../../api/EmberlingsClient.fixtures";
+import { CATALOG, PROFILE, ownedAscended } from "../../api/EmberlingsClient.fixtures";
 import { ApiError } from "../../api/http";
 import { useEmberlingsStore } from "../../stores/emberlings";
 import ShopPanel from "./ShopPanel.vue";
@@ -31,7 +31,7 @@ beforeEach(() => {
 function mountShop(insignia = 25) {
   const store = useEmberlingsStore();
   store.catalog = CATALOG;
-  store.profile = { ...PROFILE, insignia, sparks: [ownedSpark("guardian", { copies: 2 })] };
+  store.profile = { ...PROFILE, insignia, ascendeds: [ownedAscended("guardian", { copies: 2 })] };
   return { store, wrapper: mount(ShopPanel) };
 }
 
@@ -68,7 +68,7 @@ describe("ShopPanel", () => {
     const buy = () => wrapper.findAll("button").find((b) => b.text() === "Buy copies")!;
     expect(buy().attributes("disabled")).toBeDefined();
 
-    await wrapper.find("select[name='copy-spark']").setValue("bruiser");
+    await wrapper.find("select[name='copy-ascended']").setValue("bruiser");
     await wrapper.find("select[name='copy-tier']").setValue("rare");
     expect(buy().attributes("disabled")).toBeUndefined();
     await buy().trigger("click");
@@ -79,7 +79,7 @@ describe("ShopPanel", () => {
   });
 
   it("sells one copy after confirming", async () => {
-    client.sellCopy.mockResolvedValue({ kind: "sale", spark_id: "guardian", value: 12, copies: 1, tier_id: "common", downgraded: false });
+    client.sellCopy.mockResolvedValue({ kind: "sale", ascended_id: "guardian", value: 12, copies: 1, tier_id: "common", downgraded: false });
     const { wrapper } = mountShop();
 
     await wrapper.find('[data-sell="guardian"] button').trigger("click");

@@ -309,7 +309,7 @@ class FakeEmberlings:
         return self.responses.get((method, path), {"ok": True})
 
     async def reset_profile(self, account, idempotency_key):
-        return await self.request("POST", "/sparks/profile/reset", account, json={"confirm": True}, idempotency_key=idempotency_key)
+        return await self.request("POST", "/ascension/profile/reset", account, json={"confirm": True}, idempotency_key=idempotency_key)
 
 
 def make_settings(

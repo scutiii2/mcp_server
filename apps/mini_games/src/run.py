@@ -11,8 +11,8 @@ from src.app import create_app
 from src.auth import load_token
 from src.config import AppConfig, load_config
 from src.laya_client import LayaClient
-from src.sparks.api import mount_sparks
-from src.sparks.composition import build_spark_services
+from src.ascension.api import mount_ascendeds
+from src.ascension.composition import build_ascended_services
 
 log = logging.getLogger("mini_games")
 
@@ -32,7 +32,7 @@ def build_app() -> tuple[FastAPI, AppConfig]:
     if not token:
         log.warning("INTERNAL_API_TOKEN is empty; the API is unauthenticated")
     app = create_app(token)
-    mount_sparks(app, build_spark_services(config, laya))
+    mount_ascendeds(app, build_ascended_services(config, laya))
     return app, config
 
 

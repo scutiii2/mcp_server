@@ -15,61 +15,61 @@ from tests.test_registration import as_admin
 
 KEY = {"Idempotency-Key": "key-1"}
 ROUND = {"round": 1, "revision": 2}
-START = {"encounter_id": "enc_1", "spark_id": "guardian", "preset_slot": 1, "mode": "autonomous", "emblem_limit": "rare"}
+START = {"encounter_id": "enc_1", "ascended_id": "guardian", "preset_slot": 1, "mode": "autonomous", "emblem_limit": "rare"}
 
 # (ember_api path, mini_games path, forwarded query)
 READS = [
-    ("/api/emberlings/catalog", "/sparks/catalog", None),
-    ("/api/emberlings/profile", "/sparks/profile", None),
+    ("/api/emberlings/catalog", "/ascension/catalog", None),
+    ("/api/emberlings/profile", "/ascension/profile", None),
     (
-        "/api/emberlings/sparks/guardian/personalities?limit=10&cursor=5",
-        "/sparks/sparks/guardian/personalities",
+        "/api/emberlings/ascendeds/guardian/personalities?limit=10&cursor=5",
+        "/ascension/ascendeds/guardian/personalities",
         {"limit": 10, "cursor": 5},
     ),
-    ("/api/emberlings/sparks/guardian/personalities", "/sparks/sparks/guardian/personalities", None),
-    ("/api/emberlings/sparks/guardian/presets/2", "/sparks/sparks/guardian/presets/2", None),
-    ("/api/emberlings/encounters/enc_1", "/sparks/encounters/enc_1", None),
-    ("/api/emberlings/battles/bat-1", "/sparks/battles/bat-1", None),
+    ("/api/emberlings/ascendeds/guardian/personalities", "/ascension/ascendeds/guardian/personalities", None),
+    ("/api/emberlings/ascendeds/guardian/presets/2", "/ascension/ascendeds/guardian/presets/2", None),
+    ("/api/emberlings/encounters/enc_1", "/ascension/encounters/enc_1", None),
+    ("/api/emberlings/battles/bat-1", "/ascension/battles/bat-1", None),
 ]
 
 ACTION = {**ROUND, "action": {"kind": "ability", "ability_id": "guardian_bulwark"}}
 # (method, ember_api path, body sent, mini_games path, body forwarded, status)
 MUTATIONS: list[tuple[str, str, dict[str, Any], str, Any, int]] = [
-    ("POST", "/api/emberlings/profile", {"starter_spark_id": "guardian"}, "/sparks/profile", {"starter_spark_id": "guardian"}, 201),
+    ("POST", "/api/emberlings/profile", {"starter_ascended_id": "guardian"}, "/ascension/profile", {"starter_ascended_id": "guardian"}, 201),
     (
         "PUT",
-        "/api/emberlings/sparks/guardian/presets/1",
+        "/api/emberlings/ascendeds/guardian/presets/1",
         {"instance_ids": ["p1", "p2"]},
-        "/sparks/sparks/guardian/presets/1",
+        "/ascension/ascendeds/guardian/presets/1",
         {"instance_ids": ["p1", "p2"]},
         200,
     ),
-    ("POST", "/api/emberlings/profile/reset", {}, "/sparks/profile/reset", {"confirm": True}, 200),
-    ("POST", "/api/emberlings/encounters", {}, "/sparks/encounters", None, 201),
-    ("POST", "/api/emberlings/encounters/enc_1/decline", {}, "/sparks/encounters/enc_1/decline", None, 200),
-    ("POST", "/api/emberlings/battles", START, "/sparks/battles", START, 201),
-    ("POST", "/api/emberlings/battles/b1/actions", ACTION, "/sparks/battles/b1/actions", ACTION, 200),
-    ("POST", "/api/emberlings/battles/b1/emblem", {**ROUND, "tier": "common"}, "/sparks/battles/b1/emblem", {**ROUND, "tier": "common"}, 200),
-    ("POST", "/api/emberlings/battles/b1/advance", ROUND, "/sparks/battles/b1/advance", ROUND, 200),
-    ("POST", "/api/emberlings/battles/b1/mode", {**ROUND, "mode": "manual"}, "/sparks/battles/b1/mode", {**ROUND, "mode": "manual"}, 200),
-    ("POST", "/api/emberlings/battles/b1/forfeit", {}, "/sparks/battles/b1/forfeit", None, 200),
+    ("POST", "/api/emberlings/profile/reset", {}, "/ascension/profile/reset", {"confirm": True}, 200),
+    ("POST", "/api/emberlings/encounters", {}, "/ascension/encounters", None, 201),
+    ("POST", "/api/emberlings/encounters/enc_1/decline", {}, "/ascension/encounters/enc_1/decline", None, 200),
+    ("POST", "/api/emberlings/battles", START, "/ascension/battles", START, 201),
+    ("POST", "/api/emberlings/battles/b1/actions", ACTION, "/ascension/battles/b1/actions", ACTION, 200),
+    ("POST", "/api/emberlings/battles/b1/emblem", {**ROUND, "tier": "common"}, "/ascension/battles/b1/emblem", {**ROUND, "tier": "common"}, 200),
+    ("POST", "/api/emberlings/battles/b1/advance", ROUND, "/ascension/battles/b1/advance", ROUND, 200),
+    ("POST", "/api/emberlings/battles/b1/mode", {**ROUND, "mode": "manual"}, "/ascension/battles/b1/mode", {**ROUND, "mode": "manual"}, 200),
+    ("POST", "/api/emberlings/battles/b1/forfeit", {}, "/ascension/battles/b1/forfeit", None, 200),
     (
         "POST",
         "/api/emberlings/shop/purchases",
         {"kind": "emblem", "tier": "common", "quantity": 2},
-        "/sparks/shop/purchases",
+        "/ascension/shop/purchases",
         {"kind": "emblem", "tier": "common", "quantity": 2},
         201,
     ),
     (
         "POST",
         "/api/emberlings/shop/purchases",
-        {"kind": "copies", "tier": "rare", "spark_id": "bruiser"},
-        "/sparks/shop/purchases",
-        {"kind": "copies", "tier": "rare", "quantity": 1, "spark_id": "bruiser"},
+        {"kind": "copies", "tier": "rare", "ascended_id": "bruiser"},
+        "/ascension/shop/purchases",
+        {"kind": "copies", "tier": "rare", "quantity": 1, "ascended_id": "bruiser"},
         201,
     ),
-    ("POST", "/api/emberlings/sparks/guardian/sales", {}, "/sparks/sparks/guardian/sales", None, 201),
+    ("POST", "/api/emberlings/ascendeds/guardian/sales", {}, "/ascension/ascendeds/guardian/sales", None, 201),
 ]
 
 
@@ -201,7 +201,7 @@ def test_a_valid_key_is_accepted(client: TestClient, emberlings: FakeEmberlings,
 def test_bad_personality_paging_is_refused_and_never_forwarded(client: TestClient, emberlings: FakeEmberlings, query) -> None:
     as_admin(client)
 
-    response = client.get(f"/api/emberlings/sparks/guardian/personalities?{query}")
+    response = client.get(f"/api/emberlings/ascendeds/guardian/personalities?{query}")
 
     assert response.status_code in (400, 422), response.text
     assert emberlings.calls == []
@@ -210,7 +210,7 @@ def test_bad_personality_paging_is_refused_and_never_forwarded(client: TestClien
 def test_only_limit_and_cursor_are_forwarded(client: TestClient, emberlings: FakeEmberlings) -> None:
     as_admin(client)
 
-    response = client.get("/api/emberlings/sparks/guardian/personalities?limit=100&cursor=0&owner=bob&sort=x")
+    response = client.get("/api/emberlings/ascendeds/guardian/personalities?limit=100&cursor=0&owner=bob&sort=x")
 
     assert response.status_code == 200
     assert emberlings.calls[0]["params"] == {"limit": 100, "cursor": 0}
@@ -222,12 +222,12 @@ def test_only_limit_and_cursor_are_forwarded(client: TestClient, emberlings: Fak
         ("/api/emberlings/battles/b1/advance", {**ROUND, "hp": 999}, "hp"),
         ("/api/emberlings/battles/b1/actions", {**ROUND, "action": {"kind": "attack", "damage": 50}}, "damage"),
         ("/api/emberlings/battles", {**START, "rewards": 1}, "rewards"),
-        ("/api/emberlings/profile", {"starter_spark_id": "guardian", "owner": "bob"}, "owner"),
+        ("/api/emberlings/profile", {"starter_ascended_id": "guardian", "owner": "bob"}, "owner"),
         ("/api/emberlings/battles/b1/advance", {"round": True, "revision": 2}, "round"),
         ("/api/emberlings/battles/b1/actions", {**ROUND, "action": {"kind": "steal"}}, "kind"),
-        ("/api/emberlings/shop/purchases", {"kind": "copies", "tier": "rare"}, "spark_id"),
+        ("/api/emberlings/shop/purchases", {"kind": "copies", "tier": "rare"}, "ascended_id"),
         ("/api/emberlings/shop/purchases", {"kind": "emblem", "tier": "common", "quantity": 100}, "quantity"),
-        ("/api/emberlings/battles", {**START, "spark_id": "../profile"}, "spark_id"),
+        ("/api/emberlings/battles", {**START, "ascended_id": "../profile"}, "ascended_id"),
     ],
 )
 def test_bad_bodies_are_400_and_never_forwarded(client: TestClient, emberlings: FakeEmberlings, path, body, word) -> None:
@@ -245,9 +245,9 @@ def test_bad_bodies_are_400_and_never_forwarded(client: TestClient, emberlings: 
     [
         ("GET", "/api/emberlings/battles/bad.id"),
         ("GET", "/api/emberlings/encounters/" + "x" * 65),
-        ("GET", "/api/emberlings/sparks/guardian/presets/9"),
-        ("GET", "/api/emberlings/sparks/guardian/presets/one"),
-        ("POST", "/api/emberlings/sparks/bad.spark/sales"),
+        ("GET", "/api/emberlings/ascendeds/guardian/presets/9"),
+        ("GET", "/api/emberlings/ascendeds/guardian/presets/one"),
+        ("POST", "/api/emberlings/ascendeds/bad.ascended/sales"),
         ("POST", "/api/emberlings/battles/bad.id/forfeit"),
     ],
 )
@@ -271,9 +271,9 @@ def action_log(client: TestClient) -> list[dict[str, Any]]:
 
 def test_only_changes_of_value_are_audited(client: TestClient, emberlings: FakeEmberlings) -> None:
     as_admin(client)
-    emberlings.responses[("POST", "/sparks/battles")] = {"id": "b1", "wild": {"name": "Bruiser", "level": 4}}
-    emberlings.responses[("POST", "/sparks/shop/purchases")] = {"kind": "emblems", "tier_id": "common", "quantity": 2, "price": 20}
-    emberlings.responses[("POST", "/sparks/sparks/guardian/sales")] = {"kind": "sale", "spark_id": "guardian", "value": 12}
+    emberlings.responses[("POST", "/ascension/battles")] = {"id": "b1", "wild": {"name": "Bruiser", "level": 4}}
+    emberlings.responses[("POST", "/ascension/shop/purchases")] = {"kind": "emblems", "tier_id": "common", "quantity": 2, "price": 20}
+    emberlings.responses[("POST", "/ascension/ascendeds/guardian/sales")] = {"kind": "sale", "ascended_id": "guardian", "value": 12}
 
     for method, path, body, *_ in MUTATIONS:
         assert client.request(method, path, json=body, headers=KEY).status_code < 300
@@ -288,7 +288,7 @@ def test_only_changes_of_value_are_audited(client: TestClient, emberlings: FakeE
         "emberlings.profile_reset",
         "emberlings.shop_buy",
         "emberlings.shop_buy",
-        "emberlings.spark_sell",
+        "emberlings.ascended_sell",
     ]
     messages = {e["message"] for e in entries}
     assert "Started Emberlings with the starter 'guardian'" in messages
@@ -369,7 +369,7 @@ def test_a_forfeit_is_audited_with_its_battle_id(client: TestClient, emberlings:
 
 def test_a_reset_sends_confirm_itself_and_is_audited_once(client: TestClient, emberlings: FakeEmberlings) -> None:
     as_admin(client)
-    emberlings.responses[("POST", "/sparks/profile/reset")] = {"reset": True}
+    emberlings.responses[("POST", "/ascension/profile/reset")] = {"reset": True}
 
     response = client.post("/api/emberlings/profile/reset", json={}, headers={"Idempotency-Key": "reset-1"})
 
@@ -377,7 +377,7 @@ def test_a_reset_sends_confirm_itself_and_is_audited_once(client: TestClient, em
     assert emberlings.calls == [
         {
             "method": "POST",
-            "path": "/sparks/profile/reset",
+            "path": "/ascension/profile/reset",
             "owner": str(my_id(client)),
             "json": {"confirm": True},
             "params": None,

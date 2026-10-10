@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { emberlingsClient, type OwnedSpark, type PersonalityItem } from "../../api/EmberlingsClient";
+import { emberlingsClient, type OwnedAscended, type PersonalityItem } from "../../api/EmberlingsClient";
 import cardBackUrl from "../../assets/emberlings/card_back.png";
 import { useEmberlingsStore } from "../../stores/emberlings";
 import { errorMessage } from "../../utils/errors";
 import { filterByType, groupByType, typeLabel, typesPresent } from "../../utils/ascensionTypes";
 import { titleCase } from "../../utils/emberlings";
 import PresetEditor from "./PresetEditor.vue";
-import SparkCard from "./SparkCard.vue";
-import SparkTemplateCard from "./SparkTemplateCard.vue";
+import AscendedCard from "./AscendedCard.vue";
+import AscendedTemplateCard from "./AscendedTemplateCard.vue";
 import EmBar from "./ui/EmBar.vue";
 import EmDialog from "./ui/EmDialog.vue";
 import EmNotice from "./ui/EmNotice.vue";
 import EmSwitch from "./ui/EmSwitch.vue";
 import EmTierBadge from "./ui/EmTierBadge.vue";
 
-/** The Collection tab: owned Sparks as small cards with a caption, the rest of the
+/** The Collection tab: owned Ascended as small cards with a caption, the rest of the
  * catalog as face-down cards, and a card's details (the full card, personalities,
  * presets) in a dialog. */
 const store = useEmberlingsStore();
@@ -23,32 +23,32 @@ const PAGE_SIZE = 50;
 
 const typeFilter = ref<string | null>(null);
 const grouped = ref(false);
-const allOwned = computed(() => store.profile?.sparks ?? []);
+const allOwned = computed(() => store.profile?.ascendeds ?? []);
 const allNotOwned = computed(() => {
-  const ids = new Set(allOwned.value.map((s) => s.spark_id));
-  return (store.catalog?.sparks ?? []).filter((s) => !ids.has(s.id));
+  const ids = new Set(allOwned.value.map((s) => s.ascended_id));
+  return (store.catalog?.ascendeds ?? []).filter((s) => !ids.has(s.id));
 });
 /** The types to offer as filters: those any Ascended in the catalog has. */
-const types = computed(() => typesPresent(store.catalog?.sparks ?? []));
+const types = computed(() => typesPresent(store.catalog?.ascendeds ?? []));
 const owned = computed(() => filterByType(allOwned.value, typeFilter.value));
 const notOwned = computed(() => filterByType(allNotOwned.value, typeFilter.value));
 const groups = computed(() => groupByType(owned.value));
 
-const open = ref<OwnedSpark | null>(null);
-const openInfo = computed(() => store.catalog?.sparks.find((s) => s.id === open.value?.spark_id) ?? null);
+const open = ref<OwnedAscended | null>(null);
+const openInfo = computed(() => store.catalog?.ascendeds.find((s) => s.id === open.value?.ascended_id) ?? null);
 const personalities = ref<PersonalityItem[]>([]);
 const nextCursor = ref<number | null>(null);
 const loadingMore = ref(false);
 const detailError = ref("");
 
 async function loadPersonalities(cursor: number | null): Promise<void> {
-  const spark = open.value;
-  if (spark === null) return;
+  const ascended = open.value;
+  if (ascended === null) return;
   loadingMore.value = true;
   detailError.value = "";
   try {
-    const page = await emberlingsClient.personalities(spark.spark_id, cursor, PAGE_SIZE);
-    if (open.value?.spark_id !== spark.spark_id) return;
+    const page = await emberlingsClient.personalities(ascended.ascended_id, cursor, PAGE_SIZE);
+    if (open.value?.ascended_id !== ascended.ascended_id) return;
     personalities.value = cursor === null ? page.items : [...personalities.value, ...page.items];
     nextCursor.value = page.next_cursor;
   } catch (err) {
@@ -58,8 +58,8 @@ async function loadPersonalities(cursor: number | null): Promise<void> {
   }
 }
 
-function show(spark: OwnedSpark): void {
-  open.value = spark;
+function show(ascended: OwnedAscended): void {
+  open.value = ascended;
   personalities.value = [];
   nextCursor.value = null;
   void loadPersonalities(null);
@@ -86,21 +86,21 @@ function show(spark: OwnedSpark): void {
     </div>
 
     <div class="section-head">
-      <h3 class="em-pixel">Collected Sparks</h3>
+      <h3 class="em-pixel">Collected Ascended</h3>
       <small>Choose a card to manage presets</small>
     </div>
     <template v-if="grouped">
       <section v-for="group in groups" :key="group.typeId ?? 'none'" class="group" :data-type="group.typeId ?? 'none'">
         <h4 class="group-name">{{ group.label }} <small class="em-num">{{ group.items.length }}</small></h4>
         <div class="grid">
-          <SparkCard v-for="spark in group.items" :key="spark.spark_id" :spark="spark" @open="show(spark)" />
+          <AscendedCard v-for="ascended in group.items" :key="ascended.ascended_id" :ascended="ascended" @open="show(ascended)" />
         </div>
       </section>
     </template>
     <div v-else class="grid">
-      <SparkCard v-for="spark in owned" :key="spark.spark_id" :spark="spark" @open="show(spark)" />
+      <AscendedCard v-for="ascended in owned" :key="ascended.ascended_id" :ascended="ascended" @open="show(ascended)" />
     </div>
-    <p v-if="owned.length === 0" class="empty">{{ typeFilter === null ? "None collected yet." : `No ${typeLabel(typeFilter)} Sparks collected yet.` }}</p>
+    <p v-if="owned.length === 0" class="empty">{{ typeFilter === null ? "None collected yet." : `No ${typeLabel(typeFilter)} Ascended collected yet.` }}</p>
 
     <template v-if="notOwned.length">
       <div class="section-head">
@@ -108,17 +108,17 @@ function show(spark: OwnedSpark): void {
         <small>{{ notOwned.length }} still to find</small>
       </div>
       <ul class="grid missing">
-        <li v-for="spark in notOwned" :key="spark.id" class="missing-spark">
+        <li v-for="ascended in notOwned" :key="ascended.id" class="missing-ascended">
           <img class="back" :src="cardBackUrl" alt="" draggable="false" />
-          <h4 class="missing-name">{{ spark.name }}</h4>
-          <p class="hint">{{ spark.forbidden ? "Only by capture" : "Catch one, or buy copies in the shop" }}</p>
+          <h4 class="missing-name">{{ ascended.name }}</h4>
+          <p class="hint">{{ ascended.forbidden ? "Only by capture" : "Catch one, or buy copies in the shop" }}</p>
         </li>
       </ul>
     </template>
 
-    <EmDialog :open="open !== null" title="Spark details" wide @close="open = null">
+    <EmDialog :open="open !== null" title="Ascended details" wide @close="open = null">
       <div v-if="open" class="details">
-        <SparkTemplateCard v-if="openInfo" class="big-card" :spark="openInfo" :level="open.level" :tier-id="open.tier_id" />
+        <AscendedTemplateCard v-if="openInfo" class="big-card" :ascended="openInfo" :level="open.level" :tier-id="open.tier_id" />
         <div class="side">
           <h3 class="em-pixel name">{{ open.name }}</h3>
           <p class="level em-num">Level {{ open.level }} of {{ open.level_cap }}</p>
@@ -150,7 +150,7 @@ function show(spark: OwnedSpark): void {
             Show more
           </button>
 
-          <PresetEditor :spark-id="open.spark_id" :spark-name="open.name" :personalities="personalities" />
+          <PresetEditor :ascended-id="open.ascended_id" :ascended-name="open.name" :personalities="personalities" />
         </div>
       </div>
     </EmDialog>
@@ -188,7 +188,7 @@ function show(spark: OwnedSpark): void {
 .empty {
   color: var(--em-muted);
 }
-.missing-spark {
+.missing-ascended {
   display: flex;
   flex-direction: column;
   gap: 4px;

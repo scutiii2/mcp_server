@@ -126,13 +126,13 @@ Items 1 to 6 are complete; item 7 remains open.
 
 ## Emberlings card images in the UI (added 2026-10-10)
 
-**Context**: Every Spark will get card art. For now two shared placeholders stand in for each card: `apps/mini_games/sparks/spark_normal_front_template.png` and `apps/mini_games/sparks/spark_normal_back_template.png` (tracked, `e212f9a`). Each Spark has its own folder `apps/mini_games/sparks/<id>/` (with `catalog.json`) where its own assets will be added later. Today the Ember page shows no images: Spark cards are text, and the menu showcase uses a letter in a circle.
+**Context**: Every Ascended will get card art. For now two shared placeholders stand in for each card: `apps/mini_games/ascended/ascended_common_front_template.png` and `apps/mini_games/ascended/ascended_common_back_template.png` (tracked, `e212f9a`). Each Ascended has its own folder `apps/mini_games/ascended/<id>/` (with `catalog.json`) where its own assets will be added later. Today the Ember page shows no images: Ascended cards are text, and the menu showcase uses a letter in a circle.
 
 **Plan**:
-- mini_games: a route that serves a Spark's card image (front or back). It serves `sparks/<id>/` assets when they exist and falls back to the shared placeholder. The catalog or the route decides the file names, never the client; reject any path outside `sparks/`.
+- mini_games: a route that serves an Ascended's card image (front or back). It serves `ascended/<id>/` assets when they exist and falls back to the shared placeholder. The catalog or the route decides the file names, never the client; reject any path outside `ascendeds/`.
 - ember_api: a pass-through route for the image. The existing gateway handles JSON only, so it needs a binary response with a content type and cache headers, still behind `emberlings.play`, still fixed routes. An `<img>` tag cannot send custom headers, so check how the session cookie reaches the route.
-- ember_web: show the front on Spark cards, the menu showcase, the starter pick and the battle arena; the back for Sparks not collected yet or a flip on the details dialog (decide in the design). Keep the letter orb as the fallback when an image fails to load.
+- ember_web: show the front on Ascended cards, the menu showcase, the starter pick and the battle arena; the back for Ascended not collected yet or a flip on the details dialog (decide in the design). Keep the letter orb as the fallback when an image fails to load.
 
-**Open points**: card tier or rarity frames over the placeholder, image size and format for the real art, and whether the front or back shows for a fainted Spark.
+**Open points**: card tier or rarity frames over the placeholder, image size and format for the real art, and whether the front or back shows for a fainted Ascended.
 
 **Revisit when**: user wants it built. Brainstorm the design first, then write the spec and plan.

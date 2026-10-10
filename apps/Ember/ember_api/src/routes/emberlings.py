@@ -49,7 +49,7 @@ class _In(BaseModel):
 
 
 class ProfileIn(_In):
-    starter_spark_id: Id
+    starter_ascended_id: Id
 
 
 class PresetIn(_In):
@@ -58,7 +58,7 @@ class PresetIn(_In):
 
 class BattleStartIn(_In):
     encounter_id: Id
-    spark_id: Id
+    ascended_id: Id
     preset_slot: StrictInt | None = Field(default=None, ge=1, le=5)
     mode: Mode = "manual"
     emblem_limit: Id | None = None
@@ -92,12 +92,12 @@ class PurchaseIn(_In):
     kind: Literal["emblem", "copies"]
     tier: Id
     quantity: StrictInt = Field(default=1, ge=1, le=EMBLEM_MAX)
-    spark_id: Id | None = None
+    ascended_id: Id | None = None
 
     @model_validator(mode="after")
-    def copies_name_a_spark(self) -> PurchaseIn:
-        if self.kind == "copies" and self.spark_id is None:
-            raise ValueError("copies need a spark_id")
+    def copies_name_a_ascended(self) -> PurchaseIn:
+        if self.kind == "copies" and self.ascended_id is None:
+            raise ValueError("copies need a ascended_id")
         return self
 
 
@@ -152,17 +152,17 @@ def _field(result: Any, key: str, default: Any = "?") -> Any:
 
 @router.get("/catalog")
 async def catalog(account: Account = Depends(require_play), game: EmberlingsApi = Depends(get_emberlings)) -> Any:
-    return await _forward(game.request("GET", "/sparks/catalog", account))
+    return await _forward(game.request("GET", "/ascension/catalog", account))
 
 
 @router.get("/profile")
 async def get_profile(account: Account = Depends(require_play), game: EmberlingsApi = Depends(get_emberlings)) -> Any:
-    return await _forward(game.request("GET", "/sparks/profile", account))
+    return await _forward(game.request("GET", "/ascension/profile", account))
 
 
-@router.get("/sparks/{spark_id}/personalities")
+@router.get("/ascendeds/{ascended_id}/personalities")
 async def personalities(
-    spark_id: str,
+    ascended_id: str,
     limit: int | None = Query(default=None, ge=1, le=PAGE_MAX),
     cursor: int | None = Query(default=None, ge=0, le=2**63 - 1),
     account: Account = Depends(require_play),
@@ -170,15 +170,15 @@ async def personalities(
 ) -> Any:
     # Only these two, as validated integers; any other query parameter is dropped.
     params = {name: value for name, value in (("limit", limit), ("cursor", cursor)) if value is not None}
-    path = f"/sparks/sparks/{_id(spark_id, 'spark_id')}/personalities"
+    path = f"/ascension/ascendeds/{_id(ascended_id, 'ascended_id')}/personalities"
     return await _forward(game.request("GET", path, account, params=params or None))
 
 
-@router.get("/sparks/{spark_id}/presets/{slot}")
+@router.get("/ascendeds/{ascended_id}/presets/{slot}")
 async def get_preset(
-    spark_id: str, slot: str, account: Account = Depends(require_play), game: EmberlingsApi = Depends(get_emberlings)
+    ascended_id: str, slot: str, account: Account = Depends(require_play), game: EmberlingsApi = Depends(get_emberlings)
 ) -> Any:
-    path = f"/sparks/sparks/{_id(spark_id, 'spark_id')}/presets/{_slot(slot)}"
+    path = f"/ascension/ascendeds/{_id(ascended_id, 'ascended_id')}/presets/{_slot(slot)}"
     return await _forward(game.request("GET", path, account))
 
 
@@ -186,14 +186,14 @@ async def get_preset(
 async def get_encounter(
     encounter_id: str, account: Account = Depends(require_play), game: EmberlingsApi = Depends(get_emberlings)
 ) -> Any:
-    return await _forward(game.request("GET", f"/sparks/encounters/{_id(encounter_id, 'encounter_id')}", account))
+    return await _forward(game.request("GET", f"/ascension/encounters/{_id(encounter_id, 'encounter_id')}", account))
 
 
 @router.get("/battles/{battle_id}")
 async def get_battle(
     battle_id: str, account: Account = Depends(require_play), game: EmberlingsApi = Depends(get_emberlings)
 ) -> Any:
-    return await _forward(game.request("GET", f"/sparks/battles/{_id(battle_id, 'battle_id')}", account))
+    return await _forward(game.request("GET", f"/ascension/battles/{_id(battle_id, 'battle_id')}", account))
 
 
 # --- changes --------------------------------------------------------------------
@@ -209,9 +209,9 @@ async def create_profile(
 ) -> Any:
     body = _parse(ProfileIn, raw)
     result = await _forward(
-        game.request("POST", "/sparks/profile", account, json=body.model_dump(exclude_none=True), idempotency_key=key)
+        game.request("POST", "/ascension/profile", account, json=body.model_dump(exclude_none=True), idempotency_key=key)
     )
-    await logs.action(account, "emberlings.profile_create", f"Started Emberlings with the starter '{body.starter_spark_id}'")
+    await logs.action(account, "emberlings.profile_create", f"Started Emberlings with the starter '{body.starter_ascended_id}'")
     return result
 
 
@@ -228,16 +228,16 @@ async def reset_profile(
     return result
 
 
-@router.put("/sparks/{spark_id}/presets/{slot}")
+@router.put("/ascendeds/{ascended_id}/presets/{slot}")
 async def put_preset(
-    spark_id: str,
+    ascended_id: str,
     slot: str,
     raw: Any = Body(default=None),
     account: Account = Depends(require_play),
     key: str = Depends(idempotency_key),
     game: EmberlingsApi = Depends(get_emberlings),
 ) -> Any:
-    path = f"/sparks/sparks/{_id(spark_id, 'spark_id')}/presets/{_slot(slot)}"
+    path = f"/ascension/ascendeds/{_id(ascended_id, 'ascended_id')}/presets/{_slot(slot)}"
     body = _parse(PresetIn, raw)
     return await _forward(game.request("PUT", path, account, json=body.model_dump(exclude_none=True), idempotency_key=key))
 
@@ -248,7 +248,7 @@ async def roll_encounter(
     key: str = Depends(idempotency_key),
     game: EmberlingsApi = Depends(get_emberlings),
 ) -> Any:
-    return await _forward(game.request("POST", "/sparks/encounters", account, idempotency_key=key))
+    return await _forward(game.request("POST", "/ascension/encounters", account, idempotency_key=key))
 
 
 @router.post("/encounters/{encounter_id}/decline")
@@ -258,7 +258,7 @@ async def decline_encounter(
     key: str = Depends(idempotency_key),
     game: EmberlingsApi = Depends(get_emberlings),
 ) -> Any:
-    path = f"/sparks/encounters/{_id(encounter_id, 'encounter_id')}/decline"
+    path = f"/ascension/encounters/{_id(encounter_id, 'encounter_id')}/decline"
     return await _forward(game.request("POST", path, account, idempotency_key=key))
 
 
@@ -272,13 +272,13 @@ async def start_battle(
 ) -> Any:
     body = _parse(BattleStartIn, raw)
     result = await _forward(
-        game.request("POST", "/sparks/battles", account, json=body.model_dump(exclude_none=True), idempotency_key=key)
+        game.request("POST", "/ascension/battles", account, json=body.model_dump(exclude_none=True), idempotency_key=key)
     )
     wild = _field(result, "wild", {})
     await logs.action(
         account,
         "emberlings.battle_start",
-        f"Started a battle against {_field(wild, 'name', 'a wild Spark')} (level {_field(wild, 'level')})",
+        f"Started a battle against {_field(wild, 'name', 'a wild Ascended')} (level {_field(wild, 'level')})",
     )
     return result
 
@@ -286,7 +286,7 @@ async def start_battle(
 async def _round_change(
     battle_id: str, verb: str, model: type[RoundIn], raw: Any, account: Account, key: str, game: EmberlingsApi
 ) -> Any:
-    path = f"/sparks/battles/{_id(battle_id, 'battle_id')}/{verb}"
+    path = f"/ascension/battles/{_id(battle_id, 'battle_id')}/{verb}"
     body = _parse(model, raw)
     return await _forward(game.request("POST", path, account, json=body.model_dump(exclude_none=True), idempotency_key=key))
 
@@ -344,7 +344,7 @@ async def forfeit(
     logs: LogWriter = Depends(get_log_writer),
 ) -> Any:
     battle = _id(battle_id, "battle_id")
-    result = await _forward(game.request("POST", f"/sparks/battles/{battle}/forfeit", account, idempotency_key=key))
+    result = await _forward(game.request("POST", f"/ascension/battles/{battle}/forfeit", account, idempotency_key=key))
     await logs.action(account, "emberlings.battle_forfeit", f"Forfeited battle {battle}")
     return result
 
@@ -359,7 +359,7 @@ async def purchase(
 ) -> Any:
     body = _parse(PurchaseIn, raw)
     result = await _forward(
-        game.request("POST", "/sparks/shop/purchases", account, json=body.model_dump(exclude_none=True), idempotency_key=key)
+        game.request("POST", "/ascension/shop/purchases", account, json=body.model_dump(exclude_none=True), idempotency_key=key)
     )
     if body.kind == "emblem":
         message = (
@@ -368,22 +368,22 @@ async def purchase(
         )
     else:
         message = (
-            f"Bought {_field(result, 'copies_granted')} {body.spark_id} copies ({body.tier}) "
+            f"Bought {_field(result, 'copies_granted')} {body.ascended_id} copies ({body.tier}) "
             f"for {_field(result, 'price')} Insignia"
         )
     await logs.action(account, "emberlings.shop_buy", message)
     return result
 
 
-@router.post("/sparks/{spark_id}/sales", status_code=status.HTTP_201_CREATED)
+@router.post("/ascendeds/{ascended_id}/sales", status_code=status.HTTP_201_CREATED)
 async def sell_copy(
-    spark_id: str,
+    ascended_id: str,
     account: Account = Depends(require_play),
     key: str = Depends(idempotency_key),
     game: EmberlingsApi = Depends(get_emberlings),
     logs: LogWriter = Depends(get_log_writer),
 ) -> Any:
-    spark = _id(spark_id, "spark_id")
-    result = await _forward(game.request("POST", f"/sparks/sparks/{spark}/sales", account, idempotency_key=key))
-    await logs.action(account, "emberlings.spark_sell", f"Sold a {spark} copy for {_field(result, 'value')} Insignia")
+    ascended = _id(ascended_id, "ascended_id")
+    result = await _forward(game.request("POST", f"/ascension/ascendeds/{ascended}/sales", account, idempotency_key=key))
+    await logs.action(account, "emberlings.ascended_sell", f"Sold a {ascended} copy for {_field(result, 'value')} Insignia")
     return result
