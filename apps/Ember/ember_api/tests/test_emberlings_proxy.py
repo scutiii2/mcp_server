@@ -101,3 +101,50 @@ def test_a_refusal_reaches_the_browser_as_detail(real_client: TestClient, upstre
 
     assert (response.status_code, response.json()) == (409, {"detail": "a new encounter can be rolled in 12 seconds"})
 
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("GET", "/api/emberlings/catalog", None),
+        ("GET", "/api/emberlings/sparks/guardian/personalities?limit=5", None),
+        ("POST", "/api/emberlings/encounters", {}),
+        ("POST", "/api/emberlings/battles/b1/forfeit", {}),
+        ("PUT", "/api/emberlings/sparks/guardian/presets/1", {"instance_ids": ["i1"]}),
+    ],
+)
+def test_browser_identity_headers_never_reach_mini_games(
+    real_client: TestClient, upstream: FakeUpstream, method: str, path: str, body: dict | None
+) -> None:
+    upstream.handler = games
+    as_admin(real_client)
+    me = real_client.get("/api/auth/me").json()
+
+    response = real_client.request(
+        method,
+        path,
+        json=body,
+        headers={
+            "Idempotency-Key": "k",
+            "X-Requester-Username": "mallory",
+            "x-requester-email": "mallory@evil.example",
+            "x-internal-token": "guess",
+        },
+    )
+
+    assert response.status_code in (200, 201), response.text
+    [sent] = sent_to_games(upstream)
+    assert sent.headers.get_list("X-Requester-Username") == [str(me["id"])]
+    assert sent.headers.get_list("X-Internal-Token") == [TOKEN]
+    assert "X-Requester-Email" not in sent.headers
+    assert "mallory" not in str(sent.headers)
+
+
+def test_the_gateway_never_follows_a_redirect(real_client: TestClient, upstream: FakeUpstream) -> None:
+    upstream.handler = lambda r: httpx.Response(302, json={"id": "x"}, headers={"Location": "http://evil.example/steal"})
+    as_admin(real_client)
+
+    response = real_client.get("/api/emberlings/catalog")
+
+    assert response.status_code == 502
+    assert not any("evil.example" in str(r.url) for r in upstream.requests)
+    assert real_client.app.state.emberlings._client.follow_redirects is False

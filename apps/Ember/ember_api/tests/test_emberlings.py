@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -300,3 +301,62 @@ def test_a_refused_change_is_not_audited(client: TestClient, emberlings: FakeEmb
 
     assert client.post("/api/emberlings/shop/purchases", json={"kind": "emblem", "tier": "rare"}, headers=KEY).status_code == 409
     assert action_log(client) == []
+
+
+# --- every route ----------------------------------------------------------------
+
+
+def emberlings_routes(client: TestClient) -> list[tuple[str, str]]:
+    """(method, concrete path) for every route under /api/emberlings; a new handler is picked up by itself."""
+    found = []
+    # The OpenAPI document lists every registered operation, however FastAPI nests its routers.
+    for path, operations in client.app.openapi()["paths"].items():
+        if not path.startswith("/api/emberlings"):
+            continue
+        concrete = path.replace("{slot}", "1")
+        concrete = re.sub(r"\{[a-z_]+\}", "abc", concrete)
+        found.extend((method.upper(), concrete) for method in operations)
+    return found
+
+
+def test_the_route_walk_sees_the_whole_api(client: TestClient) -> None:
+    assert len(emberlings_routes(client)) == 18
+
+
+def test_every_route_is_401_logged_out(client: TestClient, emberlings: FakeEmberlings) -> None:
+    for method, path in emberlings_routes(client):
+        response = client.request(method, path, json={}, headers=KEY)
+        assert response.status_code == 401, (method, path)
+    assert emberlings.calls == []
+
+
+def test_every_route_is_403_without_emberlings_play(
+    client: TestClient, email: FakeEmailSender, emberlings: FakeEmberlings
+) -> None:
+    make_member(client, email)
+    login(client, "alice")
+
+    for method, path in emberlings_routes(client):
+        response = client.request(method, path, json={}, headers=KEY)
+        assert response.status_code == 403, (method, path)
+    assert emberlings.calls == []
+
+
+def test_every_change_without_a_key_is_400_and_never_forwarded(client: TestClient, emberlings: FakeEmberlings) -> None:
+    as_admin(client)
+    changes = [(m, p) for m, p in emberlings_routes(client) if m in ("POST", "PUT", "PATCH", "DELETE")]
+    assert len(changes) == 12
+
+    for method, path in changes:
+        response = client.request(method, path, json={})
+        assert response.status_code == 400, (method, path)
+        assert "Idempotency-Key" in response.json()["detail"], (method, path)
+    assert emberlings.calls == []
+
+
+def test_a_forfeit_is_audited_with_its_battle_id(client: TestClient, emberlings: FakeEmberlings) -> None:
+    as_admin(client)
+
+    assert client.post("/api/emberlings/battles/b_9-x/forfeit", json={}, headers=KEY).status_code == 200
+
+    assert [e["message"] for e in action_log(client)] == ["Forfeited battle b_9-x"]

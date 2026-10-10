@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 10.0
 UNAVAILABLE_MESSAGE = "Emberlings is not available right now"
 _PASSED_THROUGH = (400, 404, 409)
+MESSAGE_MAX = 300
 # mini_games' ids: server-made tokens and catalog ids.
 _ID = r"[A-Za-z0-9_-]{1,64}"
 _ROUTES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
@@ -90,7 +91,7 @@ def _message(body: Any, status: int) -> str:
         for field in ("error", "detail"):
             value = body.get(field)
             if isinstance(value, str) and value:
-                return value
+                return value[:MESSAGE_MAX]
     return f"Emberlings answered {status}"
 
 
@@ -138,10 +139,13 @@ class EmberlingsGateway:
                     headers=self._headers(account, idempotency_key),
                     timeout=TIMEOUT_SECONDS,
                 )
-                timing.ok = response.status_code < 500
-        except httpx.HTTPError as error:
-            logger.warning("mini_games %s %s unreachable: %s", method, path, error)
-            raise EmberlingsUnavailable(str(error)) from error
+                code = response.status_code
+                # A token refusal, a server error and a redirect are failures of the link; a 4xx refusal is the game working.
+                timing.ok = 200 <= code < 300 or (400 <= code < 500 and code != 401)
+        except (httpx.HTTPError, httpx.InvalidURL) as error:
+            # Only the error's class: its text can embed the address.
+            logger.warning("mini_games %s %s unreachable: %s", method, path, type(error).__name__)
+            raise EmberlingsUnavailable(UNAVAILABLE_MESSAGE) from error
         status = response.status_code
         if status == 204:
             return None
@@ -153,11 +157,13 @@ class EmberlingsGateway:
             logger.warning(
                 "mini_games refused ember_api's internal token: INTERNAL_API_TOKEN differs between the two .env files"
             )
-            raise EmberlingsUnavailable("mini_games refused the internal token")
+            raise EmberlingsUnavailable(UNAVAILABLE_MESSAGE)
         if status in _PASSED_THROUGH:
             raise EmberlingsRefused(status, _message(body, status))
         if 400 <= status < 500:
             raise EmberlingsRefused(400, _message(body, status))
-        if status >= 500 or body is None:
-            raise EmberlingsUnavailable(f"mini_games answered {status}")
+        if not 200 <= status < 300 or body is None:
+            # 5xx, a redirect (never followed) or anything else unexpected.
+            logger.warning("mini_games %s %s answered %s", method, path, status)
+            raise EmberlingsUnavailable(UNAVAILABLE_MESSAGE)
         return body

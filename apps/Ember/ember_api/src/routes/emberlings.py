@@ -330,9 +330,9 @@ async def forfeit(
     game: EmberlingsApi = Depends(get_emberlings),
     logs: LogWriter = Depends(get_log_writer),
 ) -> Any:
-    path = f"/sparks/battles/{_id(battle_id, 'battle_id')}/forfeit"
-    result = await _forward(game.request("POST", path, account, idempotency_key=key))
-    await logs.action(account, "emberlings.battle_forfeit", f"Forfeited battle {battle_id}")
+    battle = _id(battle_id, "battle_id")
+    result = await _forward(game.request("POST", f"/sparks/battles/{battle}/forfeit", account, idempotency_key=key))
+    await logs.action(account, "emberlings.battle_forfeit", f"Forfeited battle {battle}")
     return result
 
 

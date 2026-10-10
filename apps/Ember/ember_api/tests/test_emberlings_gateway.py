@@ -15,6 +15,7 @@ import pytest
 from src.models import Account
 from src.services.emberlings_gateway import (
     TIMEOUT_SECONDS,
+    UNAVAILABLE_MESSAGE,
     EmberlingsGateway,
     EmberlingsRefused,
     EmberlingsUnavailable,
@@ -176,3 +177,62 @@ def test_nothing_else_is_reachable(method: str, path: str) -> None:
     assert not is_allowed(method, path)
     with pytest.raises(ValueError):
         call(lambda r: httpx.Response(200, json={}), method, path)
+
+
+# --- hardening ------------------------------------------------------------------
+
+SECRET_URL = "http://10.9.8.7:8060/sparks/catalog?token=hunter2"
+
+
+def test_a_transport_error_is_neither_logged_nor_raised_with_its_text(caplog: pytest.LogCaptureFixture) -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(f"cannot connect to {SECRET_URL}", request=request)
+
+    with caplog.at_level(logging.WARNING, logger="src.services.emberlings_gateway"):
+        with pytest.raises(EmberlingsUnavailable) as raised:
+            call(refuse, "GET", "/sparks/catalog")
+
+    assert str(raised.value) == UNAVAILABLE_MESSAGE
+    assert "10.9.8.7" not in caplog.text and "hunter2" not in caplog.text
+    assert "ConnectError" in caplog.text and "GET" in caplog.text and "/sparks/catalog" in caplog.text
+
+
+def test_an_invalid_url_is_unavailable() -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.InvalidURL(f"bad url {SECRET_URL}")
+
+    with pytest.raises(EmberlingsUnavailable) as raised:
+        call(refuse, "GET", "/sparks/catalog")
+
+    assert str(raised.value) == UNAVAILABLE_MESSAGE
+
+
+@pytest.mark.parametrize("status", [301, 302, 307, 308])
+def test_a_redirect_is_unavailable_even_with_a_json_body(status: int) -> None:
+    with pytest.raises(EmberlingsUnavailable):
+        call(lambda r: httpx.Response(status, json={"id": "x"}, headers={"Location": "http://evil.example/"}), "GET", "/sparks/catalog")
+
+
+def traffic_status(status: int) -> list[str]:
+    traffic = TrafficRecorder()
+    handler = lambda r: httpx.Response(status, json={"error": "x"})  # noqa: E731
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises((EmberlingsUnavailable, EmberlingsRefused)):
+                await EmberlingsGateway(client, BASE, "tok", traffic).request("GET", "/sparks/catalog", ACCOUNT)
+
+    asyncio.run(run())
+    return [key[2] for key in traffic.pending()]
+
+
+@pytest.mark.parametrize(("status", "expected"), [(401, "failed"), (500, "failed"), (503, "failed"), (302, "failed"), (409, "ok"), (404, "ok")])
+def test_traffic_counts_a_token_refusal_and_server_errors_as_failed(status: int, expected: str) -> None:
+    assert traffic_status(status) == [expected]
+
+
+def test_a_long_message_from_mini_games_is_cut_to_300_characters() -> None:
+    with pytest.raises(EmberlingsRefused) as raised:
+        call(lambda r: httpx.Response(409, json={"error": "x" * 5000}), "POST", "/sparks/profile", json={}, idempotency_key="k")
+
+    assert len(str(raised.value)) == 300
