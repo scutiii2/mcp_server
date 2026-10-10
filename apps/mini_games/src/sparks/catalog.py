@@ -16,6 +16,10 @@ from typing import Any, Mapping
 from src.sparks.models import ABILITY_CATEGORIES, CATEGORIES, AbilitySpec, PassiveSpec
 
 ABILITY_UNLOCK_LEVELS = (1, 10, 20)
+# The catalog always sits in the same place in the project tree, so it has no config entry.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CATALOG_PATH = PROJECT_ROOT / "configs" / "spark_catalog.json"
+SPARKS_PATH = PROJECT_ROOT / "catalogs" / "sparks"
 STATS = ("hp", "essence", "speed")
 
 
@@ -203,7 +207,7 @@ class Catalog:
     # -- lookups -------------------------------------------------------------------
 
     @classmethod
-    def load(cls, catalog_path: Path, sparks_path: Path) -> "Catalog":
+    def load(cls, catalog_path: Path = CATALOG_PATH, sparks_path: Path = SPARKS_PATH) -> "Catalog":
         """Global rules from one file, the Sparks from one file each (sorted by
         name, so the Spark order and every draw over it stay deterministic)."""
         try:

@@ -12,7 +12,6 @@ from src.seed import seed_from_example
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "configs" / "config_app.json"
-DEFAULT_SPARKS_PATH = "catalogs/sparks"
 SITUATION_SOURCES = ("heuristic", "laya")
 
 
@@ -25,8 +24,6 @@ class AppConfig:
     host: str
     port: int
     database_path: Path
-    catalog_path: Path
-    sparks_path: Path
     situation_source: str
     laya_timeout_seconds: float
     laya_min_confidence: float
@@ -70,8 +67,6 @@ def parse_config(raw: Any, root: Path = PROJECT_ROOT) -> AppConfig:
         host=_text(raw, "host"),
         port=_number(raw, "port", int, 1, 65535),
         database_path=_path(raw, "database_path", root),
-        catalog_path=_path(raw, "catalog_path", root),
-        sparks_path=_path(raw, "sparks_path", root) if "sparks_path" in raw else root / DEFAULT_SPARKS_PATH,
         situation_source=source,
         laya_timeout_seconds=_number(raw, "laya_timeout_seconds", float, 0.1),
         laya_min_confidence=_number(raw, "laya_min_confidence", float, 0.01, 1.0),

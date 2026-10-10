@@ -43,27 +43,6 @@ def test_error_text_says_at_least_only_for_range_errors(raw):
         parse_config(raw)
 
 
-def test_sparks_path_defaults_when_absent(raw):
-    raw.pop("sparks_path")
-    config = parse_config(raw, root=Path("/proj"))
-    assert config.sparks_path == Path("/proj") / "catalogs" / "sparks"
-
-
-def test_sparks_path_resolves_against_the_root_and_keeps_absolute_paths(raw):
-    raw["sparks_path"] = "custom/sparks"
-    assert parse_config(raw, root=Path("/proj")).sparks_path == Path("/proj") / "custom" / "sparks"
-    absolute = Path("/elsewhere").resolve()
-    raw["sparks_path"] = str(absolute)
-    assert parse_config(raw, root=Path("/proj")).sparks_path == absolute
-
-
-@pytest.mark.parametrize("bad", ["", 5, None, ["x"]])
-def test_a_bad_sparks_path_is_rejected(raw, bad):
-    raw["sparks_path"] = bad
-    with pytest.raises(ConfigError, match="sparks_path"):
-        parse_config(raw)
-
-
 def test_empty_token_logs_a_warning(monkeypatch, caplog):
     monkeypatch.setattr(run, "load_token", lambda: "")
     with caplog.at_level(logging.WARNING, logger="mini_games"):

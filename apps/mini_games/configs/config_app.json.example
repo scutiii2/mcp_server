@@ -2,8 +2,6 @@
   "host": "127.0.0.1",
   "port": 8060,
   "database_path": "data/sparks.sqlite3",
-  "catalog_path": "configs/spark_catalog.json",
-  "sparks_path": "catalogs/sparks",
   "situation_source": "heuristic",
   "laya_timeout_seconds": 2.0,
   "laya_min_confidence": 0.7,

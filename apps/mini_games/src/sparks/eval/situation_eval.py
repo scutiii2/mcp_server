@@ -181,7 +181,7 @@ async def run(views: int, battles: int, seed: int, out: Path) -> str:
     if not laya.is_available():
         raise SystemExit('Laya is not installed: pip install -e ".[laya]"')
     laya.prepare()
-    report = await evaluate(Catalog.load(config.catalog_path, config.sparks_path), laya, views, battles, seed)
+    report = await evaluate(Catalog.load(), laya, views, battles, seed)
     text = render_report(report, seed, date.today())
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")

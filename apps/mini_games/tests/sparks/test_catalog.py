@@ -91,3 +91,7 @@ def test_inconsistent_catalogs_are_rejected(raw, mutate, message):
 def test_unreadable_file_is_a_catalog_error(tmp_path):
     with pytest.raises(CatalogError, match="cannot load"):
         Catalog.load(tmp_path / "missing.json", SPARKS_PATH)
+
+
+def test_the_default_locations_load_the_shipped_catalog():
+    assert [s.id for s in Catalog.load().all_sparks()] == [s.id for s in Catalog.load(CATALOG_PATH, SPARKS_PATH).all_sparks()]

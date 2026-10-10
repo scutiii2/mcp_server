@@ -115,8 +115,8 @@ The global rules (tiers, levels, economy, personalities, action policy) live in
 `configs/spark_catalog.json`. Each Spark has its own file in `catalogs/sparks/`,
 named after its id (`guardian.json` holds `"id": "guardian"`). Files load in
 alphabetical order, which is the Spark order and keeps random draws
-deterministic. The directory comes from the optional `sparks_path` key in
-`configs/config_app.json` (default `catalogs/sparks`).
+deterministic. Both locations are fixed in the project tree and have no config
+entry.
 
 ## Layout
 

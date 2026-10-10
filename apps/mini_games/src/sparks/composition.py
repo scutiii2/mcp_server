@@ -33,7 +33,7 @@ def build_spark_services(
     clock: Clock | None = None, rng: RandomSource | None = None,
 ) -> SparkServices:
     """Everything is injected, so tests and other front ends can swap any part."""
-    catalog = catalog or Catalog.load(config.catalog_path, config.sparks_path)
+    catalog = catalog or Catalog.load()
     clock, rng = clock or SystemClock(), rng or SystemRandom()
     repository = repository or SqliteSparkRepository(config.database_path)
     writer = IdempotentWriter(repository, clock)
