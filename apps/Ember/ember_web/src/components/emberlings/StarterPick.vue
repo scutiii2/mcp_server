@@ -73,7 +73,7 @@ async function start(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 300px;
+  width: 340px;
 }
 .starter-card {
   border-radius: var(--radius-md);

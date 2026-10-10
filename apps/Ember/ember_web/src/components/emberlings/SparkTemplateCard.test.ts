@@ -37,6 +37,14 @@ describe("SparkTemplateCard", () => {
     expect(wrapper.find(".header-end").text()).toContain("Lv 7");
   });
 
+  it("keeps the whole passive sentence in its tooltip, since the box cuts it after five lines", () => {
+    const wrapper = mount(SparkTemplateCard, { props: { spark: striker } });
+
+    expect(wrapper.find(".passive span:not(.slot)").attributes("title")).toBe(
+      "Below 50% HP, attacks deal extra damage equal to 20% of its Essence.",
+    );
+  });
+
   it("falls back to the passive's name for a kind it has no sentence for", () => {
     const wrapper = mount(SparkTemplateCard, { props: { spark: sparkInfo("odd") } });
 

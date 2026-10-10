@@ -67,7 +67,9 @@ const stats = computed(() =>
       </span>
       <div>
         <strong>{{ titleCase(spark.passive.kind) }}</strong>
-        <span>{{ passiveText(spark.passive.kind, spark.passive.params) }}</span>
+        <span :title="passiveText(spark.passive.kind, spark.passive.params)">{{
+          passiveText(spark.passive.kind, spark.passive.params)
+        }}</span>
       </div>
     </div>
 
@@ -91,7 +93,9 @@ const stats = computed(() =>
 </template>
 
 <style scoped>
-/* The template is 263 x 371; this keeps its proportions at a size the text can read at. */
+/* The template is 263 x 371; this keeps its proportions at a size the text can read at.
+ * Every section has a fixed height (the artwork takes what is left), so a long
+ * passive never moves the rest: it is cut after five lines, in full in its tooltip. */
 .card {
   --frame: #565b64;
   --frame-edge: #1b1d21;
@@ -107,8 +111,8 @@ const stats = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: 300px;
-  height: 424px;
+  width: 340px;
+  height: 480px;
   padding: 9px;
   border: 3px solid var(--frame-edge);
   border-radius: var(--radius-md);
@@ -119,6 +123,9 @@ const stats = computed(() =>
   text-align: left;
 }
 .header {
+  flex: none;
+  box-sizing: border-box;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -177,6 +184,7 @@ const stats = computed(() =>
   text-transform: uppercase;
 }
 .stats {
+  flex: none;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   margin: 0;
@@ -239,6 +247,10 @@ const stats = computed(() =>
   border-radius: var(--radius-sm);
 }
 .passive {
+  flex: none;
+  box-sizing: border-box;
+  height: 104px;
+  overflow: hidden;
   align-items: flex-start;
   padding: 5px 7px;
   border: 2px solid var(--ink-soft);
@@ -254,7 +266,11 @@ const stats = computed(() =>
   text-transform: uppercase;
 }
 .passive span:not(.slot) {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  overflow: hidden;
   font-size: 11px;
   line-height: 1.35;
   color: var(--ink-soft);
@@ -268,6 +284,9 @@ const stats = computed(() =>
   list-style: none;
 }
 .ability {
+  flex: none;
+  box-sizing: border-box;
+  height: 40px;
   padding: 4px 7px;
   border: 2px solid var(--frame-edge);
   background: var(--panel-dark);
@@ -278,6 +297,9 @@ const stats = computed(() =>
 }
 .ability-text span {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--panel-light);
 }
@@ -291,6 +313,7 @@ const stats = computed(() =>
   background: var(--slot);
 }
 .plate {
+  flex: none;
   align-self: center;
   padding: 1px 14px;
   border: 2px solid #0f1012;
