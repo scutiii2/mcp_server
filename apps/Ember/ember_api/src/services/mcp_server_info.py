@@ -94,6 +94,13 @@ class McpServerInfo:
             raise McpServerUnavailable(f"mcp_server answered {response.status_code}")
         return body
 
+    async def request(
+        self, method: str, path: str, account: Account, *,
+        params: dict[str, str] | None = None, json: Any = None,
+    ) -> Any:
+        """A call to one of mcp_server's fixed plain routes, for gateways that wrap one feature."""
+        return await self._request(method, path, account, params=params, json=json)
+
     async def commands(self, account: Account) -> list[dict[str, Any]]:
         body = await self._request("GET", "/commands", account)
         return body if isinstance(body, list) else []
