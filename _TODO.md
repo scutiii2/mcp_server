@@ -97,14 +97,14 @@ Optional follow-up features, not implemented:
 1. **Budget and stuck-loop guard — done** (`160df65`): shared guard in both provider loops; per-agent `llm.max_turn_tokens` and `llm.max_turn_seconds` beside `max_tool_rounds` (defaults 100,000 tokens / 300 seconds). Stops before a third consecutive identical tool call; intervening work resets the repetition count. Tokens are checked at response boundaries, so one response can exceed the cap.
 2. **Cancel through delegation — done** (`1d8f203`): unique child request IDs linked to the parent; forwards Stop to each peer's MCP `cancel` tool. Deadline cancellation survives parent cleanup and late delegate startup; late worker events are dropped. Cancellation remains cooperative for tools already running.
 3. **Plan/todo tool — done** (`5069200`): local `update_plan` tool with per-turn pending / in_progress / done checklists, offered by both providers. Live `plan_update` snapshots retain delegated-agent identity; small Ember API pass-through, reconnect snapshots, and Ember web panel make them visible.
-4. **Tool-activity persistence across turns**: `validate_history` (`src/core/chat_history.py`) accepts text only, so earlier tool calls are lost. Store calls and results in `ember_api` in a provider-neutral format, send them back, relax the validator. Medium.
-5. **Compaction/summarizing**: replace `token_limits.trim_history_to_fit` (drops old messages) with a summary; needs an extra LLM call, a trigger rule and a place to keep summaries. Works better after item 4. Medium to hard.
+4. **Tool-activity persistence across turns — done** (`55f1a1f`, `705340f`, `a92e059`): an answer's stored `steps` now reach the model as a text digest (`apps/Ember/ember_api/src/services/step_digest.py`). The last 3 tool-using answers carry full lines (args cut to 200, results to 300, block to 1,500 characters); older ones carry tool names only, also capped at 1,500 characters. `update_plan` and `ask_user` are skipped. The block is labelled as a record, not instructions; built at send time and never stored. Spec: `docs/superpowers/specs/2026-10-09-tool-activity-digest-design.md`.
+5. **Compaction/summarizing — mostly existed, remainder done**: summarizing already lived in `ember_api` (`services/summarization.py`: auto at `auto_summarize_ratio` 0.6, manual button, 2,000-token cap, raw `log_attachment`), and `ai_agent`'s `trim_history_to_fit` is only a fallback. What was missing, the summarizer seeing tool results, is covered by item 4 (`render_messages(include_steps=True)` in the summary prompt only).
 6. **Persistent memory**: facts that outlive a chat; store, read/write tools, per-user scoping, forget rules. Retrieval quality is the hard part. Hard.
 7. **Sandboxed workspace (files and shell)**: isolated per-user directory and a limited command runner, fitted to the approval flow. Real security risk. Best as a new `mcp_server` capability, not inside `ai_agent`. Hardest.
 
-Items 1 to 3 are cheap; 4 and 5 fit together; 6 and 7 are separate projects.
+Items 1 to 5 are complete; items 6 and 7 remain open.
 
-**Revisit when**: user wants to start; brainstorm a design, then take 1 to 3 first.
+**Revisit when**: user wants to tackle persistent memory or a sandboxed workspace; brainstorm that design first.
 
 ## Build mini_games: chess and Tetris against a Laya-assisted bot (added 2026-10-09)
 
