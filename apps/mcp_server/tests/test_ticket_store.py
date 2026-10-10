@@ -20,6 +20,7 @@ def add(store, **over):
         tags=["email"], context={}, fingerprint=None, group_id=None, possible_group_id=None, now=T0,
     )
     args.update(over)
+    args.setdefault("owner", f"uid-{args['reporter']}")
     return store.insert_ticket(**args)
 
 
@@ -59,8 +60,8 @@ def test_open_auto_ticket_with_same_fingerprint_is_returned_not_duplicated(store
     again, created_again, _ = add(store, source="ai_auto", fingerprint="abc", now=T1)
 
     assert created and not created_again and again == first
-    assert store.find_open_auto("alice", "abc") == first
-    assert store.find_open_auto("bob", "abc") is None
+    assert store.find_open_auto("uid-alice", "abc") == first
+    assert store.find_open_auto("uid-bob", "abc") is None
 
 
 def test_closed_auto_ticket_allows_a_new_one(store):
@@ -70,7 +71,7 @@ def test_closed_auto_ticket_allows_a_new_one(store):
     second, created, _ = add(store, source="ai_auto", fingerprint="abc", now=T2)
 
     assert created and second != first
-    assert store.find_open_auto("alice", "abc") == second
+    assert store.find_open_auto("uid-alice", "abc") == second
 
 
 def test_auto_cap_counts_only_the_reporters_recent_auto_tickets(store):
@@ -89,7 +90,7 @@ def test_list_filters_and_ownership(store):
     b, _, _ = add(store, reporter="bob", type="feature", title="Dark mode", tags=["ui"], now=T1)
 
     assert [t["id"] for t in store.list_tickets()] == [b, a]
-    assert [t["id"] for t in store.list_tickets(reporter="alice")] == [a]
+    assert [t["id"] for t in store.list_tickets(owner="uid-alice")] == [a]
     assert [t["id"] for t in store.list_tickets(tag="ui")] == [b]
     assert [t["id"] for t in store.list_tickets(type="bug")] == [a]
     assert store.list_tickets(status="closed") == []
@@ -202,3 +203,38 @@ def test_stats(store):
     store.update_ticket(closed, {"status": "closed"}, T2)
 
     assert store.stats() == {"open": 2, "urgent": 1, "groups": 2}
+
+
+def test_a_database_from_before_owners_is_upgraded_in_place(tmp_path):
+    import sqlite3
+    from contextlib import closing
+
+    path = tmp_path / "old.db"
+    with closing(sqlite3.connect(path)) as db, db:
+        db.executescript(
+            """
+            CREATE TABLE ticket_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'normal', priority_pinned INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL,
+                type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open', priority TEXT NOT NULL DEFAULT 'normal',
+                assignee TEXT, reporter TEXT NOT NULL, source TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '[]', context TEXT NOT NULL DEFAULT '{}',
+                fingerprint TEXT, possible_group_id INTEGER,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT);
+            CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL,
+                author TEXT NOT NULL, author_role TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);
+            INSERT INTO ticket_groups (title, created_at, updated_at) VALUES ('Old', '2026-10-10T10:00:00+00:00', '2026-10-10T10:00:00+00:00');
+            INSERT INTO tickets (group_id, type, title, description, reporter, source, created_at, updated_at)
+                VALUES (1, 'bug', 'Old', 'd', 'alice', 'user', '2026-10-10T10:00:00+00:00', '2026-10-10T10:00:00+00:00');
+            """
+        )
+    store = TicketStore(path)
+
+    old = store.get_ticket(1)
+    assert old["reporter"] == "alice" and old["owner"] == "alice"  # the old key was the name
+    assert store.list_tickets(owner="alice")[0]["id"] == 1
+    new, _, _ = add(store, reporter="alice")  # a ticket filed under the uid after the upgrade
+    assert store.get_ticket(new)["owner"] == "uid-alice"
+    assert [t["id"] for t in store.list_tickets(owner="uid-alice")] == [new]

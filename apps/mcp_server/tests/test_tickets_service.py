@@ -60,6 +60,7 @@ def make(tmp_path, config, clock):
 def create(service, **over):
     args = dict(reporter="alice", type="bug", title="Email fails", description="It does not send")
     args.update(over)
+    args.setdefault("owner", f"uid-{args['reporter'].strip()}" if args["reporter"].strip() else "")
     return asyncio.run(service.create(**args))
 
 
@@ -70,7 +71,7 @@ def test_basic_create(make):
 
     ticket = outcome.ticket
     assert ticket["status"] == "open" and ticket["source"] == "user"
-    assert ticket["tags"] == ["email"]
+    assert ticket["tags"] == ["email", "bogus"]
     assert ticket["context"] == {"reported": {"chat_id": "c1"}, "verified": {"page": "/chat"}}
     assert outcome.duplicate is False and outcome.group_size == 1
 
@@ -78,7 +79,7 @@ def test_basic_create(make):
 @pytest.mark.parametrize(
     "over,message",
     [
-        ({"reporter": " "}, "reporter"),
+        ({"owner": " "}, "reporter"),
         ({"type": "complaint"}, "type"),
         ({"title": " "}, "title"),
         ({"title": "x" * 121}, "title"),
@@ -233,10 +234,10 @@ def test_reporter_sees_only_own_tickets_and_gets_404_for_others(make):
     mine = create(service).ticket["id"]
     theirs = create(service, reporter="bob").ticket["id"]
 
-    assert [t["id"] for t in run(service.list_tickets(reporter="alice"))] == [mine]
-    assert run(service.get_ticket(mine, reporter="alice"))["id"] == mine
+    assert [t["id"] for t in run(service.list_tickets(owner="uid-alice"))] == [mine]
+    assert run(service.get_ticket(mine, owner="uid-alice"))["id"] == mine
     with pytest.raises(TicketNotFound):
-        run(service.get_ticket(theirs, reporter="alice"))
+        run(service.get_ticket(theirs, owner="uid-alice"))
     with pytest.raises(TicketNotFound):
         run(service.get_ticket(999))
     assert run(service.get_ticket(theirs))["reporter"] == "bob"  # staff scope
@@ -246,12 +247,12 @@ def test_comments_roles_and_ownership(make):
     service = make()
     ticket_id = create(service).ticket["id"]
 
-    run(service.add_comment(ticket_id, author="alice", role="reporter", body="the log says X", reporter="alice"))
+    run(service.add_comment(ticket_id, author="alice", role="reporter", body="the log says X", owner="uid-alice"))
     ticket = run(service.add_comment(ticket_id, author="root", role="staff", body="thanks"))
 
     assert [c["author_role"] for c in ticket["comments"]] == ["reporter", "staff"]
     with pytest.raises(TicketNotFound):
-        run(service.add_comment(ticket_id, author="bob", role="reporter", body="hi", reporter="bob"))
+        run(service.add_comment(ticket_id, author="bob", role="reporter", body="hi", owner="uid-bob"))
     with pytest.raises(TicketError, match="role"):
         run(service.add_comment(ticket_id, author="alice", role="admin", body="hi"))
     with pytest.raises(TicketError, match="comment"):
@@ -262,9 +263,9 @@ def test_close_own(make):
     service = make()
     ticket_id = create(service).ticket["id"]
 
-    assert run(service.close_own(ticket_id, "alice"))["status"] == "closed"
+    assert run(service.close_own(ticket_id, "uid-alice"))["status"] == "closed"
     with pytest.raises(TicketNotFound):
-        run(service.close_own(ticket_id, "bob"))
+        run(service.close_own(ticket_id, "uid-bob"))
 
 
 def test_staff_update_validates_values_and_clears_assignee(make):
@@ -272,7 +273,7 @@ def test_staff_update_validates_values_and_clears_assignee(make):
     ticket_id = create(service).ticket["id"]
 
     updated = run(service.update_ticket(ticket_id, status="in_progress", priority="high", assignee="root", tags=["config", "x"]))
-    assert (updated["status"], updated["priority"], updated["assignee"], updated["tags"]) == ("in_progress", "high", "root", ["config"])
+    assert (updated["status"], updated["priority"], updated["assignee"], updated["tags"]) == ("in_progress", "high", "root", ["config", "x"])
     assert run(service.update_ticket(ticket_id, assignee=""))["assignee"] is None
     with pytest.raises(TicketError, match="status"):
         run(service.update_ticket(ticket_id, status="done"))
@@ -358,7 +359,7 @@ def test_elevation_preserves_concurrent_pin_or_higher_priority(make, monkeypatch
 
         monkeypatch.setattr(service, "_db", pause_after_counts)
         filing = asyncio.create_task(service.create(
-            reporter="bob", type="bug", title="Email fails", description="Still broken", tags=["email"],
+            owner="uid-bob", reporter="bob", type="bug", title="Email fails", description="Still broken", tags=["email"],
         ))
         await asyncio.wait_for(counts_read.wait(), timeout=5)
         await original_db(service._store.update_group, group_id, priority=priority,
@@ -370,3 +371,52 @@ def test_elevation_preserves_concurrent_pin_or_higher_priority(make, monkeypatch
         assert group["priority_pinned"] is pinned
 
     run(interleave())
+
+
+def test_ai_reports_still_use_configured_tags(make):
+    service = make()
+    outcome = create(service, source="ai_user_request", tags=["email", "custom"])
+    assert outcome.ticket["tags"] == ["email"]
+
+
+def test_tickets_follow_the_owner_uid_not_the_display_name(make):
+    service = make()
+    mine = create(service, owner="uid-1", reporter="alice").ticket["id"]
+    renamed = create(service, owner="uid-1", reporter="alice2").ticket["id"]  # same account after a rename
+    stranger = create(service, owner="uid-2", reporter="alice").ticket["id"]  # a new account that reuses the old name
+
+    own = [t["id"] for t in run(service.list_tickets(owner="uid-1"))]
+    assert sorted(own) == sorted([mine, renamed])
+    assert run(service.get_ticket(mine, owner="uid-1"))["reporter"] == "alice"  # display name as filed
+    with pytest.raises(TicketNotFound):
+        run(service.get_ticket(mine, owner="uid-2"))
+    with pytest.raises(TicketNotFound):
+        run(service.get_ticket(stranger, owner="uid-1"))
+    assert [t["id"] for t in run(service.list_tickets(owner="uid-2"))] == [stranger]
+
+
+def test_the_display_name_falls_back_to_the_owner(make):
+    ticket = create(make(), owner="uid-9", reporter="").ticket
+
+    assert ticket["reporter"] == "uid-9"
+
+
+def test_auto_reports_dedupe_and_cap_per_owner_not_per_name(make):
+    service = make()
+    ctx = {"tool_name": "tool_x", "error_text": "boom"}
+    first = create(service, source="ai_auto", owner="uid-1", reporter="alice", context=ctx)
+    again = create(service, source="ai_auto", owner="uid-1", reporter="alice2", context=ctx)
+    other = create(service, source="ai_auto", owner="uid-2", reporter="alice", context=ctx)
+
+    assert again.duplicate and again.ticket["id"] == first.ticket["id"]
+    assert not other.duplicate
+
+
+def test_tag_options_include_only_the_owners_custom_tags(make):
+    service = make()
+    create(service, owner="uid-1", reporter="alice", tags=["my-tag"])
+    create(service, owner="uid-2", reporter="bob", tags=["bobs-tag"])
+
+    values = [o["value"] for o in run(service.tag_options("uid-1"))]
+
+    assert "my-tag" in values and "bobs-tag" not in values

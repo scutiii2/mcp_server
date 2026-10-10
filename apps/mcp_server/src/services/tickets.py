@@ -75,6 +75,13 @@ class TicketService:
         self._laya = laya
         self._clock = clock or _utc_now
 
+    async def tag_options(self, owner: str) -> list[dict[str, str]]:
+        """Configured vocabulary and tags used on this owner's own tickets."""
+        options = [{"value": tag, "label": tag, "description": description} for tag, description in self._config.tags.items()]
+        custom = await self._db(self._store.owner_tags, owner)
+        options.extend({"value": tag, "label": tag, "description": "A tag from your tickets."} for tag in custom if tag not in self._config.tags)
+        return options
+
     def _now(self) -> datetime:
         return self._clock()
 
@@ -85,13 +92,16 @@ class TicketService:
     # ---- create -------------------------------------------------------
 
     async def create(
-        self, *, reporter: str, type: str, title: str, description: str, source: str = "user",
+        self, *, owner: str, reporter: str = "", type: str, title: str, description: str, source: str = "user",
         tags: list[str] | None = None, context: dict[str, Any] | None = None,
         verified_context: dict[str, Any] | None = None,
     ) -> CreateOutcome:
-        reporter = str(reporter or "").strip()
-        if not reporter:
+        """File a ticket. `owner` is the account's stable uid and decides who can see it; `reporter` is
+        only the name shown to staff (it falls back to the owner) and may change later."""
+        owner = str(owner or "").strip()
+        if not owner:
             raise TicketError("No signed-in reporter is known for this request, so a ticket cannot be filed.")
+        reporter = str(reporter or "").strip() or owner
         if type not in rules.TYPES:
             raise TicketError(f"The type must be one of: {', '.join(rules.TYPES)}.")
         if source not in rules.SOURCES:
@@ -105,12 +115,15 @@ class TicketService:
         fingerprint = None
         if source == "ai_auto":
             fingerprint = rules.fingerprint(reported.get("tool_name"), reported.get("error_text") or title)
-            existing = await self._db(self._store.find_open_auto, reporter, fingerprint)
+            existing = await self._db(self._store.find_open_auto, owner, fingerprint)
             if existing:
                 return await self._outcome(existing, duplicate=True)
 
         draft = {"type": type, "title": title, "description": description}
-        tag_list = rules.clean_tags(tags, self._config.tags)
+        try:
+            tag_list = rules.clean_tags(tags, self._config.tags, allow_custom=source == "user")
+        except ValueError as error:
+            raise TicketError(str(error)) from None
         laya_ok = self._laya is not None
         if not tag_list and laya_ok:
             tag_list, laya_ok = await self._laya_tag(draft)
@@ -121,7 +134,7 @@ class TicketService:
         now = self._now()
         try:
             ticket_id, created, group_id = await self._db(
-                self._store.insert_ticket, reporter=reporter, type=type, title=title, description=description,
+                self._store.insert_ticket, owner=owner, reporter=reporter, type=type, title=title, description=description,
                 source=source, tags=tag_list,
                 context={"reported": reported, "verified": _verified_context(verified_context)},
                 fingerprint=fingerprint, group_id=group_id, possible_group_id=possible, now=now.isoformat(),
@@ -181,10 +194,10 @@ class TicketService:
 
     # ---- reads --------------------------------------------------------
 
-    async def _visible(self, ticket_id: int, reporter: str | None) -> dict[str, Any]:
+    async def _visible(self, ticket_id: int, owner: str | None) -> dict[str, Any]:
         ticket = await self._db(self._store.get_ticket, ticket_id)
         # Someone else's ticket looks exactly like a missing one.
-        if ticket is None or (reporter is not None and ticket["reporter"] != reporter):
+        if ticket is None or (owner is not None and ticket["owner"] != owner):
             raise TicketNotFound(f"No ticket {ticket_id}.")
         return ticket
 
@@ -193,8 +206,8 @@ class TicketService:
         ticket["comments"] = await self._db(self._store.list_comments, ticket_id)
         return ticket
 
-    async def get_ticket(self, ticket_id: int, *, reporter: str | None = None) -> dict[str, Any]:
-        await self._visible(ticket_id, reporter)
+    async def get_ticket(self, ticket_id: int, *, owner: str | None = None) -> dict[str, Any]:
+        await self._visible(ticket_id, owner)
         return await self._with_comments(ticket_id)
 
     @staticmethod
@@ -203,7 +216,7 @@ class TicketService:
             raise TicketError(f"The {name} must be one of: {', '.join(allowed)}.")
 
     async def list_tickets(
-        self, *, reporter: str | None = None, status: str | None = None, type: str | None = None,
+        self, *, owner: str | None = None, status: str | None = None, type: str | None = None,
         tag: str | None = None, priority: str | None = None, assignee: str | None = None,
         group_id: int | None = None, possible_only: bool = False, limit: int = 100,
     ) -> list[dict[str, Any]]:
@@ -211,7 +224,7 @@ class TicketService:
         self._check(type, rules.TYPES, "type")
         self._check(priority, rules.PRIORITIES, "priority")
         return await self._db(
-            self._store.list_tickets, reporter=reporter, status=status, type=type, tag=tag, priority=priority,
+            self._store.list_tickets, owner=owner, status=status, type=type, tag=tag, priority=priority,
             assignee=assignee, group_id=group_id, possible_only=possible_only, limit=max(1, min(limit, 500)),
         )
 
@@ -231,9 +244,9 @@ class TicketService:
     # ---- changes ------------------------------------------------------
 
     async def add_comment(
-        self, ticket_id: int, *, author: str, role: str, body: str, reporter: str | None = None,
+        self, ticket_id: int, *, author: str, role: str, body: str, owner: str | None = None,
     ) -> dict[str, Any]:
-        await self._visible(ticket_id, reporter)
+        await self._visible(ticket_id, owner)
         self._check(role, ("reporter", "staff", "ai"), "role")
         text = _text(body, "comment", COMMENT_MAX)
         if role == "ai":
@@ -241,8 +254,8 @@ class TicketService:
         await self._db(self._store.add_comment, ticket_id, author, role, text, self._now().isoformat())
         return await self._with_comments(ticket_id)
 
-    async def close_own(self, ticket_id: int, reporter: str) -> dict[str, Any]:
-        await self._visible(ticket_id, reporter)
+    async def close_own(self, ticket_id: int, owner: str) -> dict[str, Any]:
+        await self._visible(ticket_id, owner)
         await self._db(self._store.update_ticket, ticket_id, {"status": "closed"}, self._now().isoformat())
         return await self._with_comments(ticket_id)
 
@@ -263,7 +276,10 @@ class TicketService:
                 raise TicketError("The assignee must be a username string or null.")
             changes["assignee"] = assignee.strip() or None
         if tags is not None:
-            changes["tags"] = rules.clean_tags(tags, self._config.tags)
+            try:
+                changes["tags"] = rules.clean_tags(tags, self._config.tags, allow_custom=True)
+            except ValueError as error:
+                raise TicketError(str(error)) from None
         if changes:
             await self._db(self._store.update_ticket, ticket_id, changes, self._now().isoformat())
         return await self._with_comments(ticket_id)

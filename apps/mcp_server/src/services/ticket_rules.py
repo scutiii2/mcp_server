@@ -37,13 +37,17 @@ def fingerprint(tool_name: str | None, error_text: str | None) -> str:
     return digest[:16]
 
 
-def clean_tags(tags: Iterable[str] | None, vocabulary: Iterable[str]) -> list[str]:
-    """The tags that are in the vocabulary, lower-cased, unique, in order, at most five."""
+def clean_tags(tags: Iterable[str] | None, vocabulary: Iterable[str], *, allow_custom: bool = False) -> list[str]:
+    """Normalize unique tags, at most five; manual tickets may add custom names."""
     allowed = set(vocabulary)
     result: list[str] = []
     for tag in tags or []:
         name = str(tag).strip().lower()
-        if name in allowed and name not in result:
+        if allow_custom and name not in allowed:
+            name = re.sub(r"\s+", "-", name)
+            if name and (len(name) > 64 or not re.fullmatch(r"[\w-]+", name)):
+                raise ValueError("Custom tags must use letters, numbers, hyphens or underscores, up to 64 characters.")
+        if name and (name in allowed or allow_custom) and name not in result:
             result.append(name)
         if len(result) == MAX_TAGS_PER_TICKET:
             break

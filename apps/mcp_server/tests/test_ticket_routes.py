@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -27,12 +28,17 @@ def client(tmp_path, monkeypatch):
         yield test_client
 
 
-def headers(user="alice", token=TOKEN):
+def headers(user="alice", token=TOKEN, uid="default"):
+    """Requester headers: the username is only a display name; the uid (uid-<user> unless given) owns tickets."""
     result = {}
     if token is not None:
         result["X-Internal-Token"] = token
     if user is not None:
         result["X-Requester-Username"] = user
+    if uid == "default":
+        uid = f"uid-{user}" if user is not None else None
+    if uid is not None:
+        result["X-Requester-Uid"] = uid
     return result
 
 
@@ -152,3 +158,65 @@ def test_staff_assignee_requires_a_string(client, assignee):
     assert "assignee" in response.json()["error"]
     unchanged = client.get(f"/tickets/{ticket['id']}", headers=headers()).json()["ticket"]
     assert unchanged["assignee"] is None
+
+
+def test_tag_choices_use_the_service_vocabulary_and_require_identity(client):
+    response = client.get("/tickets/tags", headers=headers())
+    assert response.status_code == 200
+    assert {item["value"] for item in response.json()} == set(tickets.get_service()._config.tags)
+    assert all(item["label"] == item["value"] and item["description"] for item in response.json())
+    assert client.get("/tickets/tags", headers=headers(token=None)).status_code == 401
+    assert client.get("/tickets/tags", headers=headers(user=None)).status_code == 400
+
+
+def test_tag_choices_follow_custom_configuration(client, monkeypatch):
+    service = tickets.get_service()
+    monkeypatch.setattr(service, "_config", replace(service._config, tags={"storage": "Database issues", "network": "Connection issues"}))
+    response = client.get("/tickets/tags", headers=headers())
+    assert [item["value"] for item in response.json()] == ["storage", "network"]
+
+
+def test_custom_tags_are_saved_and_choices_belong_to_the_reporter(client):
+    created = file_ticket(client, tags=[" Mobile Bug ", "ui", "mobile-bug"])
+    assert created["tags"] == ["mobile-bug", "ui"]
+    alice_tags = client.get("/tickets/tags", headers=headers()).json()
+    assert "mobile-bug" in {tag["value"] for tag in alice_tags}
+    bob_tags = client.get("/tickets/tags", headers=headers("bob")).json()
+    assert "mobile-bug" not in {tag["value"] for tag in bob_tags}
+
+
+def test_invalid_custom_tag_reports_a_validation_error(client):
+    response = client.post("/tickets", json={**BODY, "tags": ["x" * 65]}, headers=headers())
+    assert response.status_code == 400
+    assert "tag" in response.json()["error"].lower()
+
+
+def test_reporter_routes_need_a_uid(client):
+    no_uid = headers("alice", uid=None)
+
+    assert client.get("/tickets", headers=no_uid).status_code == 400
+    assert client.post("/tickets", json=BODY, headers=no_uid).status_code == 400
+    assert client.get("/tickets/1", headers=no_uid).status_code == 400
+    assert client.get("/tickets/tags", headers=no_uid).status_code == 400
+
+
+def test_tickets_follow_the_uid_through_a_rename_and_name_reuse(client):
+    ticket = file_ticket(client, user="alice")
+    renamed = headers("alice-renamed", uid="uid-alice")
+    stranger = headers("alice", uid="uid-someone-else")
+
+    assert ticket["reporter"] == "alice"  # the name it was filed under
+    assert [t["id"] for t in client.get("/tickets", headers=renamed).json()["tickets"]] == [ticket["id"]]
+    assert client.get(f"/tickets/{ticket['id']}", headers=renamed).status_code == 200
+    assert client.post(f"/tickets/{ticket['id']}/comments", json={"body": "still mine"}, headers=renamed).status_code == 200
+    assert client.get("/tickets", headers=stranger).json() == {"tickets": []}
+    assert client.get(f"/tickets/{ticket['id']}", headers=stranger).status_code == 404
+    assert client.post(f"/tickets/{ticket['id']}/close", headers=stranger).status_code == 404
+
+
+def test_staff_comment_is_signed_with_the_display_name(client):
+    ticket = file_ticket(client, user="alice")
+
+    response = client.post(f"/ticket-admin/tickets/{ticket['id']}/comments", json={"body": "hello"}, headers=headers("root"))
+
+    assert response.json()["ticket"]["comments"][-1]["author"] == "root"

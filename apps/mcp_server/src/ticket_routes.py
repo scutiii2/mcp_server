@@ -2,7 +2,7 @@
 
 Plain HTTP, not tools: ember_api is the caller. Every request needs
 X-Internal-Token. The requester comes from X-Requester-Username and is the only
-source of the reporter's identity. Reporter routes (/tickets) only ever touch
+source of the reporter's display name; their uid (X-Requester-Uid) is the owner key. Reporter routes (/tickets) only ever touch
 the requester's own tickets; staff routes (/ticket-admin) see everything and
 are called by ember_api only for accounts allowed to manage tickets. These
 routes stay up when the `tickets` capability is switched off.
@@ -20,7 +20,7 @@ from starlette.responses import JSONResponse
 
 from src.config import settings
 from src.services import tickets
-from src.services.identity_context import REQUESTER_USERNAME_HEADER
+from src.services.identity_context import REQUESTER_UID_HEADER, REQUESTER_USERNAME_HEADER
 from src.services.tickets import TicketError, TicketNotFound
 
 
@@ -32,10 +32,24 @@ def _token_valid(request: Request) -> bool:
 
 
 def _requester(request: Request) -> str:
+    """The requester's display name (staff comments are signed with it)."""
     username = request.headers.get(REQUESTER_USERNAME_HEADER, "").strip()
     if not username:
         raise TicketError("No requester was named for this request.")
     return username
+
+
+def _owner(request: Request) -> str:
+    """The requester's stable uid: the only thing that decides whose tickets they are.
+    A username can be changed by an admin or taken over by someone else."""
+    uid = request.headers.get(REQUESTER_UID_HEADER, "").strip()
+    if not uid:
+        raise TicketError("No requester id was sent for this request.")
+    return uid
+
+
+def _display_name(request: Request, owner: str) -> str:
+    return request.headers.get(REQUESTER_USERNAME_HEADER, "").strip() or owner
 
 
 async def _body(request: Request) -> dict[str, Any]:
@@ -89,11 +103,16 @@ def _guarded(handler: Handler) -> Handler:
 # ---- reporter routes -----------------------------------------------------
 
 @_guarded
+async def tag_options(request: Request) -> JSONResponse:
+    return JSONResponse(await tickets.get_service().tag_options(_owner(request)))
+
+
+@_guarded
 async def create_ticket(request: Request) -> JSONResponse:
-    reporter = _requester(request)
+    owner = _owner(request)
     data = await _body(request)
     outcome = await tickets.get_service().create(
-        reporter=reporter, type=str(data.get("type", "")), title=data.get("title", ""),
+        owner=owner, reporter=_display_name(request, owner), type=str(data.get("type", "")), title=data.get("title", ""),
         description=data.get("description", ""), source=str(data.get("source") or "user"),
         tags=data.get("tags") if isinstance(data.get("tags"), list) else None,
         context=data.get("context") if isinstance(data.get("context"), dict) else None,
@@ -107,30 +126,30 @@ async def create_ticket(request: Request) -> JSONResponse:
 async def list_own(request: Request) -> JSONResponse:
     filters = _filters(request)
     filters["possible_only"] = False
-    result = await tickets.get_service().list_tickets(reporter=_requester(request), **filters)
+    result = await tickets.get_service().list_tickets(owner=_owner(request), **filters)
     return JSONResponse({"tickets": result})
 
 
 @_guarded
 async def get_own(request: Request) -> JSONResponse:
-    ticket = await tickets.get_service().get_ticket(request.path_params["ticket_id"], reporter=_requester(request))
+    ticket = await tickets.get_service().get_ticket(request.path_params["ticket_id"], owner=_owner(request))
     return JSONResponse({"ticket": ticket})
 
 
 @_guarded
 async def comment_own(request: Request) -> JSONResponse:
-    reporter = _requester(request)
+    owner = _owner(request)
     data = await _body(request)
     ticket = await tickets.get_service().add_comment(
-        request.path_params["ticket_id"], author=reporter, role="ai" if data.get("role") == "ai" else "reporter",
-        body=data.get("body", ""), reporter=reporter,
+        request.path_params["ticket_id"], author=_display_name(request, owner),
+        role="ai" if data.get("role") == "ai" else "reporter", body=data.get("body", ""), owner=owner,
     )
     return JSONResponse({"ticket": ticket})
 
 
 @_guarded
 async def close_own(request: Request) -> JSONResponse:
-    ticket = await tickets.get_service().close_own(request.path_params["ticket_id"], _requester(request))
+    ticket = await tickets.get_service().close_own(request.path_params["ticket_id"], _owner(request))
     return JSONResponse({"ticket": ticket})
 
 
@@ -203,6 +222,7 @@ async def staff_stats(request: Request) -> JSONResponse:
 
 
 def install_ticket_routes(app: Starlette) -> None:
+    app.add_route("/tickets/tags", tag_options, methods=["GET"])
     app.add_route("/tickets", create_ticket, methods=["POST"])
     app.add_route("/tickets", list_own, methods=["GET"])
     app.add_route("/tickets/{ticket_id:int}", get_own, methods=["GET"])

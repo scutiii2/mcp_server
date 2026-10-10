@@ -32,6 +32,7 @@ def capability(tmp_path, monkeypatch):
     service = TicketService(TicketStore(tmp_path / "t.db"), load_ticket_config(tmp_path / "none.json"))
     monkeypatch.setattr(tickets, "_service", service)
     monkeypatch.setattr(identity_context, "current_username", lambda: "alice")
+    monkeypatch.setattr(identity_context, "current_uid", lambda: "uid-alice")
     return server
 
 
@@ -77,7 +78,7 @@ def test_tools_refuse_without_an_identity_and_unknown_tickets(capability, monkey
     missing = call(capability, "tool_ticket_getTicket", {"ticket_id": 99})
     assert "No ticket 99" in missing["message"]
 
-    monkeypatch.setattr(identity_context, "current_username", lambda: "")
+    monkeypatch.setattr(identity_context, "current_uid", lambda: "")
     refused = call(capability, "tool_ticket_createTicket", {"type": "bug", "title": "t", "description": "d"})
     assert refused["id"] == 0 and "signed-in" in refused["message"]
 
@@ -85,3 +86,35 @@ def test_tools_refuse_without_an_identity_and_unknown_tickets(capability, monkey
 def test_validation_errors_come_back_as_messages(capability):
     result = call(capability, "tool_ticket_createTicket", {"type": "bug", "title": "x" * 200, "description": "d"})
     assert result["id"] == 0 and "title" in result["message"]
+
+
+def test_ticket_tags_declare_picker_metadata(capability):
+    tool = next(tool for tool in asyncio.run(capability.list_tools()) if tool.name == "tool_ticket_createTicket")
+    tags = tool.inputSchema["properties"]["tags"]
+    assert tags["input"] == "tags"
+    assert tags["options_url"] == "/tickets/tags"
+    assert tags["maxItems"] == 5
+
+
+def test_a_renamed_account_keeps_its_tickets_and_a_name_reuser_sees_none(capability, monkeypatch):
+    call(capability, "tool_ticket_createTicket", {"type": "bug", "title": "Email fails", "description": "d"})
+
+    monkeypatch.setattr(identity_context, "current_username", lambda: "alice-renamed")
+    assert call(capability, "tool_ticket_listMyTickets", {})["count"] == 1
+
+    monkeypatch.setattr(identity_context, "current_username", lambda: "alice")
+    monkeypatch.setattr(identity_context, "current_uid", lambda: "uid-someone-else")
+    assert call(capability, "tool_ticket_listMyTickets", {})["count"] == 0
+    assert "No ticket 1" in call(capability, "tool_ticket_getTicket", {"ticket_id": 1})["message"]
+
+
+def test_tools_refuse_when_the_server_is_exposed_without_a_token(capability, monkeypatch):
+    import dataclasses
+    import sys
+
+    domain = sys.modules["src.capabilities.tickets.domain"]
+    monkeypatch.setattr(domain, "settings", dataclasses.replace(domain.settings, host="0.0.0.0", internal_api_token=""))
+
+    refused = call(capability, "tool_ticket_createTicket", {"type": "bug", "title": "t", "description": "d"})
+
+    assert refused["id"] == 0 and "INTERNAL_API_TOKEN" in refused["message"]

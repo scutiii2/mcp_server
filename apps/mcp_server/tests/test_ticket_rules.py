@@ -53,3 +53,8 @@ def test_elevation_never_lowers():
 
 def test_elevation_with_no_rules_changes_nothing():
     assert rules.elevated_priority("low", 100, 100, {}) == "low"
+
+
+def test_custom_tags_are_normalized_unique_and_capped():
+    tags = [" Mobile Bug ", "mobile-bug", "ui", "", "new-one", "new-two", "new-three", "new-four"]
+    assert rules.clean_tags(tags, ["ui"], allow_custom=True) == ["mobile-bug", "ui", "new-one", "new-two", "new-three"]

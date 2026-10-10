@@ -12,7 +12,7 @@ from src.server import mcp
 Kind = Annotated[Literal["bug", "feature", "other"], Field(description="bug = something broken, feature = a suggestion, other = anything else.")]
 Title = Annotated[str, Field(description="Short summary, at most 120 characters.")]
 Description = Annotated[str, Field(description="What happened or what is wanted: steps, what was expected, what occurred (max 4000 characters).", json_schema_extra={"input": "textarea"})]
-Tags = Annotated[list[str] | None, Field(description="Optional tags such as config, tool-failure, auth, ui, chat, performance, email, feature-request. Unknown tags are dropped; leave empty to let the server choose.")]
+Tags = Annotated[list[str] | None, Field(description="Optional tags such as config, tool-failure, auth, ui, chat, performance, email, feature-request. Choose up to five; leave empty to let the server choose.", json_schema_extra={"input": "tags", "options_url": "/tickets/tags", "maxItems": 5})]
 Source = Annotated[Literal["user", "ai_user_request", "ai_auto"], Field(description="Leave as 'user' for slash use. AI: 'ai_user_request' when the user asked you to report something, 'ai_auto' when you file a failure yourself.")]
 ChatId = Annotated[str, Field(description="Optional id of the current chat, for the admins.")]
 AgentName = Annotated[str, Field(description="Optional name of the agent that hit the problem.")]

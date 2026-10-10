@@ -26,19 +26,23 @@ CREATE TABLE IF NOT EXISTS tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL REFERENCES ticket_groups(id),
     type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'open', priority TEXT NOT NULL DEFAULT 'normal',
-    assignee TEXT, reporter TEXT NOT NULL, source TEXT NOT NULL,
+    assignee TEXT, reporter TEXT NOT NULL, owner TEXT NOT NULL DEFAULT '', source TEXT NOT NULL,
     tags TEXT NOT NULL DEFAULT '[]', context TEXT NOT NULL DEFAULT '{}',
     fingerprint TEXT, possible_group_id INTEGER,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT
 );
-CREATE INDEX IF NOT EXISTS tickets_reporter ON tickets (reporter, id);
 CREATE INDEX IF NOT EXISTS tickets_group ON tickets (group_id);
-CREATE INDEX IF NOT EXISTS tickets_fingerprint ON tickets (reporter, fingerprint, status);
 CREATE TABLE IF NOT EXISTS ticket_comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id),
     author TEXT NOT NULL, author_role TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS comments_ticket ON ticket_comments (ticket_id, id);
+"""
+
+# Created after `owner` exists, which an older database only gets in _connect.
+_OWNER_INDEXES = """
+CREATE INDEX IF NOT EXISTS tickets_owner ON tickets (owner, id);
+CREATE INDEX IF NOT EXISTS tickets_owner_fingerprint ON tickets (owner, fingerprint, status);
 """
 
 _OPEN = "status NOT IN ('resolved', 'closed')"
@@ -50,7 +54,7 @@ _UPDATABLE = ("status", "priority", "assignee", "tags")
 
 
 class AutoLimit(Exception):
-    """The reporter reached the cap for automatic tickets."""
+    """The owner reached the cap for automatic tickets."""
 
 
 def _rank_sql(column: str) -> str:
@@ -83,32 +87,44 @@ class TicketStore:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
         db.executescript(_SCHEMA)
+        self._add_owner_column(db)
+        db.executescript(_OWNER_INDEXES)
         return db
+
+    @staticmethod
+    def _add_owner_column(db: sqlite3.Connection) -> None:
+        """A database from before tickets had an owner key gets one. `reporter` is the display
+        name the ticket was filed under; those rows used it as the key, so it seeds `owner`."""
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(tickets)")}
+        if "owner" not in columns:
+            db.execute("ALTER TABLE tickets ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
+        db.execute("UPDATE tickets SET owner = reporter WHERE owner = ''")
+        db.commit()
 
     # ---- writes -------------------------------------------------------
 
     def insert_ticket(
-        self, *, reporter: str, type: str, title: str, description: str, source: str, tags: list[str],
+        self, *, owner: str, reporter: str, type: str, title: str, description: str, source: str, tags: list[str],
         context: dict[str, Any], fingerprint: str | None, group_id: int | None,
         possible_group_id: int | None, now: str, auto_cap: int | None = None, auto_since: str | None = None,
     ) -> tuple[int, bool, int]:
-        """(ticket id, created, group id). An open automatic ticket with the same reporter and
+        """(ticket id, created, group id). An open automatic ticket with the same owner and
         fingerprint is returned instead of a new one; AutoLimit when the cap is reached."""
         with closing(self._connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             if source == "ai_auto":
                 if fingerprint:
                     row = db.execute(
-                        f"SELECT id, group_id FROM tickets WHERE reporter = ? AND fingerprint = ? AND {_OPEN} "
+                        f"SELECT id, group_id FROM tickets WHERE owner = ? AND fingerprint = ? AND {_OPEN} "
                         "ORDER BY id DESC LIMIT 1",
-                        (reporter, fingerprint),
+                        (owner, fingerprint),
                     ).fetchone()
                     if row is not None:
                         return row["id"], False, row["group_id"]
                 if auto_cap is not None:
                     count = db.execute(
-                        "SELECT COUNT(*) FROM tickets WHERE reporter = ? AND source = 'ai_auto' AND created_at >= ?",
-                        (reporter, auto_since or ""),
+                        "SELECT COUNT(*) FROM tickets WHERE owner = ? AND source = 'ai_auto' AND created_at >= ?",
+                        (owner, auto_since or ""),
                     ).fetchone()[0]
                     if count >= auto_cap:
                         raise AutoLimit()
@@ -121,9 +137,9 @@ class TicketStore:
             else:
                 db.execute("UPDATE ticket_groups SET updated_at = ? WHERE id = ?", (now, group_id))
             ticket_id = db.execute(
-                "INSERT INTO tickets (group_id, type, title, description, reporter, source, tags, context, "
-                "fingerprint, possible_group_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (group_id, type, title, description, reporter, source, json.dumps(tags), json.dumps(context),
+                "INSERT INTO tickets (group_id, type, title, description, owner, reporter, source, tags, context, "
+                "fingerprint, possible_group_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (group_id, type, title, description, owner, reporter, source, json.dumps(tags), json.dumps(context),
                  fingerprint, possible_group_id, now, now),
             ).lastrowid
             return ticket_id, True, group_id
@@ -197,13 +213,24 @@ class TicketStore:
 
     # ---- reads --------------------------------------------------------
 
-    def find_open_auto(self, reporter: str, fingerprint: str) -> int | None:
+    def owner_tags(self, owner: str) -> list[str]:
+        """Distinct tag names from this owner's tickets, without creating a database."""
+        if not self._path.exists():
+            return []
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                "SELECT DISTINCT tag.value AS name FROM tickets t, json_each(t.tags) tag "
+                "WHERE t.owner = ? ORDER BY tag.value", (owner,),
+            ).fetchall()
+        return [row["name"] for row in rows]
+
+    def find_open_auto(self, owner: str, fingerprint: str) -> int | None:
         if not self._path.exists():
             return None
         with closing(self._connect()) as db:
             row = db.execute(
-                f"SELECT id FROM tickets WHERE reporter = ? AND fingerprint = ? AND {_OPEN} ORDER BY id DESC LIMIT 1",
-                (reporter, fingerprint),
+                f"SELECT id FROM tickets WHERE owner = ? AND fingerprint = ? AND {_OPEN} ORDER BY id DESC LIMIT 1",
+                (owner, fingerprint),
             ).fetchone()
         return row["id"] if row else None
 
@@ -215,7 +242,7 @@ class TicketStore:
         return _ticket(row) if row else None
 
     def list_tickets(
-        self, *, reporter: str | None = None, status: str | None = None, type: str | None = None,
+        self, *, owner: str | None = None, status: str | None = None, type: str | None = None,
         tag: str | None = None, priority: str | None = None, assignee: str | None = None,
         group_id: int | None = None, possible_only: bool = False, limit: int = 100,
     ) -> list[dict[str, Any]]:
@@ -228,8 +255,8 @@ class TicketStore:
             where.append(condition)
             args.extend(values)
 
-        if reporter:
-            add("t.reporter = ?", reporter)
+        if owner:
+            add("t.owner = ?", owner)
         if status:
             add("t.status = ?", status)
         if type:
