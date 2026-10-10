@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,8 +35,12 @@ class AppConfig:
 
 def _number(raw: dict[str, Any], key: str, kind: type, minimum: float, maximum: float | None = None) -> Any:
     value = raw.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < minimum:
-        raise ConfigError(f"{key} must be a number of at least {minimum}")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ConfigError(f"{key} must be a finite number")
+    if kind is int and value != int(value):
+        raise ConfigError(f"{key} must be a whole number")
+    if value < minimum:
+        raise ConfigError(f"{key} must be at least {minimum}")
     if maximum is not None and value > maximum:
         raise ConfigError(f"{key} must be at most {maximum}")
     return kind(value)

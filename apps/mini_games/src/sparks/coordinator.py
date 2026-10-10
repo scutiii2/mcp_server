@@ -17,11 +17,13 @@ Rules this class keeps:
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, AsyncIterator
 
 from src.sparks.battle_view import BattleViewBuilder
 from src.sparks.catalog import Catalog, CatalogError
+from src.sparks.collection import check_preset_slot
 from src.sparks.decider import ActionDecider, Decision
 from src.sparks.emblem_picker import EmblemPicker
 from src.sparks.engine import ActionError, BattleEngine
@@ -62,12 +64,31 @@ class RoundCoordinator:
         self._emblem_picker, self._progression, self._battle_views = emblem_picker, progression, battle_views
         self._clock, self._settings = clock, settings
         self._locks: dict[str, asyncio.Lock] = {}
+        self._users: dict[str, int] = {}  # requests holding or awaiting each lock
 
     def _lock(self, battle_id: str) -> asyncio.Lock:
         lock = self._locks.get(battle_id)
         if lock is None:
             lock = self._locks[battle_id] = asyncio.Lock()
         return lock
+
+    @asynccontextmanager
+    async def _serialized(self, battle_id: str) -> AsyncIterator[None]:
+        """Serialize work on one battle. An id that turns out unknown, foreign or already
+        finished keeps no lock entry, so probing ids cannot grow the table."""
+        lock = self._lock(battle_id)
+        self._users[battle_id] = self._users.get(battle_id, 0) + 1
+        try:
+            async with lock:
+                yield
+        except (NotFound, BattleFinished):
+            if self._users[battle_id] == 1:  # nobody else holds or awaits it: a queued twin must keep this lock
+                self._locks.pop(battle_id, None)
+            raise
+        finally:
+            self._users[battle_id] -= 1
+            if not self._users[battle_id]:
+                del self._users[battle_id]
 
     def _release_if_finished(self, battle_id: str, view: dict[str, Any]) -> dict[str, Any]:
         """A finished battle takes no more moves, so its lock entry can go."""
@@ -113,6 +134,8 @@ class RoundCoordinator:
             self._catalog.species(species_id)
         except CatalogError as error:
             raise InvalidRequest(str(error)) from error
+        if preset_slot is not None:
+            check_preset_slot(preset_slot)
         if mode == "autonomous" and (emblem_limit is None or preset_slot is None):
             raise InvalidRequest("autonomous play needs a personality preset and an EMBLEM tier limit")
 
@@ -198,7 +221,7 @@ class RoundCoordinator:
         cached = await self._writer.lookup(owner, key, "battle.action", payload)
         if cached is not None:
             return cached
-        async with self._lock(battle_id):
+        async with self._serialized(battle_id):
             cached = await self._writer.lookup(owner, key, "battle.action", payload)  # a twin may have finished while we waited
             if cached is not None:
                 return cached
@@ -226,7 +249,7 @@ class RoundCoordinator:
         cached = await self._writer.lookup(owner, key, "battle.advance", payload)
         if cached is not None:
             return cached
-        async with self._lock(battle_id):
+        async with self._serialized(battle_id):
             cached = await self._writer.lookup(owner, key, "battle.advance", payload)
             if cached is not None:
                 return cached
@@ -298,7 +321,7 @@ class RoundCoordinator:
         cached = await self._writer.lookup(owner, key, "battle.emblem", payload)
         if cached is not None:
             return cached
-        async with self._lock(battle_id):
+        async with self._serialized(battle_id):
             cached = await self._writer.lookup(owner, key, "battle.emblem", payload)
             if cached is not None:
                 return cached
@@ -326,7 +349,7 @@ class RoundCoordinator:
         payload = {"battle": battle_id, "round": round, "revision": revision, "mode": mode, "limit": emblem_limit}
         if mode not in MODES:
             raise InvalidRequest(f"mode must be one of {', '.join(MODES)}")
-        async with self._lock(battle_id):
+        async with self._serialized(battle_id):
             async def work(tx: SparkTransaction) -> dict[str, Any]:
                 record = await tx.get_battle(owner, battle_id)
                 if record is None:
@@ -349,7 +372,7 @@ class RoundCoordinator:
 
     async def forfeit(self, owner: str, key: str, battle_id: str) -> dict[str, Any]:
         """End the battle as a loss. Serialized with resolution, so a finished result is never replaced."""
-        async with self._lock(battle_id):
+        async with self._serialized(battle_id):
             async def work(tx: SparkTransaction) -> dict[str, Any]:
                 record = await tx.get_battle(owner, battle_id)
                 if record is None:

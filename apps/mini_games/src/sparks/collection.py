@@ -16,6 +16,12 @@ PRESET_SIZE = 3
 DEFAULT_PAGE, MAX_PAGE = 50, 100
 
 
+def check_preset_slot(slot: int) -> None:
+    """The one rule for preset slots, shared by the collection and the battle start."""
+    if slot not in PRESET_SLOTS:
+        raise InvalidRequest(f"preset slot must be from {PRESET_SLOTS.start} to {PRESET_SLOTS.stop - 1}")
+
+
 class CollectionService:
     def __init__(self, repository: SparkRepository, writer: IdempotentWriter, catalog: Catalog,
                  clock: Clock, rng: RandomSource, roll_cooldown_seconds: float) -> None:
@@ -105,8 +111,7 @@ class CollectionService:
 
     @staticmethod
     def _check_slot(slot: int) -> None:
-        if slot not in PRESET_SLOTS:
-            raise InvalidRequest(f"preset slot must be from {PRESET_SLOTS.start} to {PRESET_SLOTS.stop - 1}")
+        check_preset_slot(slot)
 
     async def put_preset(self, owner: str, key: str, species_id: str, slot: int, instance_ids: list[str]) -> dict[str, Any]:
         """Equip up to three distinct personality instances of this species. The same

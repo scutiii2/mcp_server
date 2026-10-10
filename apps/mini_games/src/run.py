@@ -28,7 +28,10 @@ def build_app() -> tuple[FastAPI, AppConfig]:
             log.warning("Laya could not be loaded; game decisions will use heuristics: %s", error)
     else:
         log.info("Laya is not installed; game decisions will use heuristics")
-    app = create_app(load_token())
+    token = load_token()
+    if not token:
+        log.warning("INTERNAL_API_TOKEN is empty; the API is unauthenticated")
+    app = create_app(token)
     mount_sparks(app, build_spark_services(config, laya))
     return app, config
 
