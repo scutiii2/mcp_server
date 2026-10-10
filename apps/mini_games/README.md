@@ -115,11 +115,13 @@ hand and writes `docs/emberlings-laya-eval.md`.
 ## Catalog
 
 The global rules (tiers, levels, economy, personalities, action policy) live in
-`configs/spark_catalog.json`. Each Spark has its own file in `catalogs/sparks/`,
-named after its id (`guardian.json` holds `"id": "guardian"`). Files load in
-alphabetical order, which is the Spark order and keeps random draws
-deterministic. Both locations are fixed in the project tree and have no config
-entry.
+`configs/spark_catalog.json`. Each Spark has its own folder in `sparks/`, named
+after its id, holding its `catalog.json` (`sparks/guardian/catalog.json` has
+`"id": "guardian"`); its assets will sit beside it. Folders load in alphabetical
+order, which is the Spark order and keeps random draws deterministic. Folders
+without a `catalog.json` and loose files (the shared card placeholders
+`spark_normal_front_template.png` and `spark_normal_back_template.png`) are
+skipped. Both locations are fixed in the project tree and have no config entry.
 
 ## Layout
 

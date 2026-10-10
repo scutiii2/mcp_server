@@ -90,7 +90,7 @@ def test_a_missing_sparks_directory_is_a_catalog_error(tmp_path):
 
 
 def test_an_empty_sparks_directory_is_a_catalog_error(tmp_path):
-    with pytest.raises(CatalogError, match="no .json files|holds no"):
+    with pytest.raises(CatalogError, match="holds no"):
         Catalog.load(CATALOG_PATH, tmp_path)
 
 
@@ -100,29 +100,33 @@ def test_a_sparks_path_that_is_a_file_is_a_catalog_error():
 
 
 def test_a_malformed_spark_file_is_named(sparks_dir):
-    (sparks_dir / "scout.json").write_text("{not json", encoding="utf-8")
-    with pytest.raises(CatalogError, match="scout.json"):
+    (sparks_dir / "scout" / "catalog.json").write_text("{not json", encoding="utf-8")
+    with pytest.raises(CatalogError, match="scout/catalog.json"):
         Catalog.load(CATALOG_PATH, sparks_dir)
 
 
 def test_a_spark_file_that_is_not_an_object_is_named(sparks_dir):
-    (sparks_dir / "scout.json").write_text("[1, 2]", encoding="utf-8")
-    with pytest.raises(CatalogError, match="scout.json"):
+    (sparks_dir / "scout" / "catalog.json").write_text("[1, 2]", encoding="utf-8")
+    with pytest.raises(CatalogError, match="scout/catalog.json"):
         Catalog.load(CATALOG_PATH, sparks_dir)
 
 
-def test_a_file_name_that_differs_from_the_id_is_rejected(sparks_dir):
-    (sparks_dir / "scout.json").rename(sparks_dir / "tracker.json")
-    with pytest.raises(CatalogError, match="tracker.json.*must equal the file name"):
+def test_a_folder_name_that_differs_from_the_id_is_rejected(sparks_dir):
+    (sparks_dir / "scout").rename(sparks_dir / "tracker")
+    with pytest.raises(CatalogError, match="tracker/catalog.json.*must equal the folder name"):
         Catalog.load(CATALOG_PATH, sparks_dir)
 
 
 def test_a_duplicate_spark_id_is_rejected(sparks_dir):
-    # A second file claiming the same id fails the stem check; a duplicate in the raw data fails the unique check.
-    data = json.loads((sparks_dir / "scout.json").read_text(encoding="utf-8"))
-    (sparks_dir / "scout2.json").write_text(json.dumps(data), encoding="utf-8")
-    with pytest.raises(CatalogError, match="scout2.json"):
+    shutil.copytree(sparks_dir / "scout", sparks_dir / "scout2")
+    with pytest.raises(CatalogError, match="scout2/catalog.json"):
         Catalog.load(CATALOG_PATH, sparks_dir)
+
+
+def test_folders_without_a_catalog_file_and_loose_files_are_skipped(sparks_dir):
+    (sparks_dir / "empty_draft").mkdir()
+    (sparks_dir / "spark_normal_front_template.png").write_bytes(b"png")
+    assert len(Catalog.load(CATALOG_PATH, sparks_dir).all_sparks()) == 7
 
 
 def test_the_load_order_is_alphabetical(sparks_dir):

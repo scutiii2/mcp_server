@@ -20,14 +20,14 @@ from tests.sparks.helpers import FixedClock
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = PROJECT_ROOT / "configs" / "spark_catalog.json"
-SPARKS_PATH = PROJECT_ROOT / "catalogs" / "sparks"
+SPARKS_PATH = PROJECT_ROOT / "sparks"
 CATALOG = Catalog.load(CATALOG_PATH, SPARKS_PATH)
 
 
 def load_raw() -> dict:
-    """The shipped catalog as the raw dict Catalog() takes: the rules plus the Sparks, by file name."""
+    """The shipped catalog as the raw dict Catalog() takes: the rules plus the Sparks, by folder name."""
     raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-    raw["sparks"] = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(SPARKS_PATH.glob("*.json"), key=lambda f: f.name)]
+    raw["sparks"] = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(SPARKS_PATH.glob("*/catalog.json"), key=lambda f: f.parent.name)]
     return raw
 COOLDOWN = 30.0
 FAINT = 300.0

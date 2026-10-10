@@ -19,7 +19,8 @@ ABILITY_UNLOCK_LEVELS = (1, 10, 20)
 # The catalog always sits in the same place in the project tree, so it has no config entry.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = PROJECT_ROOT / "configs" / "spark_catalog.json"
-SPARKS_PATH = PROJECT_ROOT / "catalogs" / "sparks"
+SPARKS_PATH = PROJECT_ROOT / "sparks"
+SPARK_FILE = "catalog.json"
 STATS = ("hp", "essence", "speed")
 
 
@@ -208,8 +209,8 @@ class Catalog:
 
     @classmethod
     def load(cls, catalog_path: Path = CATALOG_PATH, sparks_path: Path = SPARKS_PATH) -> "Catalog":
-        """Global rules from one file, the Sparks from one file each (sorted by
-        name, so the Spark order and every draw over it stay deterministic)."""
+        """Global rules from one file, the Sparks from one folder each (sorted by
+        folder name, so the Spark order and every draw over it stay deterministic)."""
         try:
             raw = json.loads(catalog_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
@@ -223,18 +224,19 @@ class Catalog:
     def _load_sparks(sparks_path: Path) -> list[Any]:
         if not sparks_path.is_dir():
             raise CatalogError(f"sparks directory {sparks_path} does not exist")
-        files = sorted(sparks_path.glob("*.json"), key=lambda f: f.name)
-        if not files:
-            raise CatalogError(f"sparks directory {sparks_path} holds no *.json files")
+        folders = sorted((d for d in sparks_path.iterdir() if (d / SPARK_FILE).is_file()), key=lambda d: d.name)
+        if not folders:
+            raise CatalogError(f"sparks directory {sparks_path} holds no <spark>/{SPARK_FILE} files")
         sparks: list[Any] = []
-        for file in files:
+        for folder in folders:
+            label = f"{folder.name}/{SPARK_FILE}"
             try:
-                spark = json.loads(file.read_text(encoding="utf-8"))
+                spark = json.loads((folder / SPARK_FILE).read_text(encoding="utf-8"))
             except (OSError, ValueError) as error:
-                raise CatalogError(f"cannot load spark file {file.name}: {error}") from error
-            if not isinstance(spark, dict) or spark.get("id") != file.stem:
+                raise CatalogError(f"cannot load spark file {label}: {error}") from error
+            if not isinstance(spark, dict) or spark.get("id") != folder.name:
                 found = spark.get("id") if isinstance(spark, dict) else spark
-                raise CatalogError(f"spark file {file.name}: id {found!r} must equal the file name {file.stem!r}")
+                raise CatalogError(f"spark file {label}: id {found!r} must equal the folder name {folder.name!r}")
             sparks.append(spark)
         return sparks
 

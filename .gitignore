@@ -93,7 +93,7 @@ dev_rfc.log
 *.zip
 
 # mini_games: real config, secrets and game data stay local; the .example twins and the game catalog are tracked.
-# catalogs/ (one file per Spark) is versioned game data: it ships with every deployment, so it has no dot prefix and no ignore rule.
+# sparks/ (one folder per Spark) is versioned game data: it ships with every deployment, so it has no dot prefix and no ignore rule.
 /apps/mini_games/configs/*
 !/apps/mini_games/configs/*.example
 !/apps/mini_games/configs/spark_catalog.json
