@@ -17,7 +17,7 @@ import json
 from typing import Any
 
 # Local tools: plans and questions are not knowledge about the world.
-SKIPPED_TOOLS = frozenset({"update_plan", "ask_user"})
+SKIPPED_TOOLS = frozenset({"update_plan", "ask_user", "memory_recall"})
 
 # How many of the newest tool-using answers get full lines; older ones get names only.
 RECENT_FULL_MESSAGES = 3

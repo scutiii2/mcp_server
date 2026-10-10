@@ -476,3 +476,68 @@ def test_run_chat_does_not_recall_for_a_delegated_agent(monkeypatch):
     asyncio.run(reloaded.run_chat("hi", [], [], depth=1))
 
     assert searches == [] and seen["question"] == "hi"
+
+
+def _recall_chat(monkeypatch, recall_calls, cancel_first=False):
+    """A reloaded run_chat with an entry agent that has memory_recall on and a fake provider."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "anthropic")
+    monkeypatch.setenv("CLAUDE_API_KEY", "test-key")
+
+    from src.agents import agent_config
+
+    reloaded = importlib.reload(agent_config)
+    spec = SimpleNamespace(id="ember", memory_recall=True, llm=SimpleNamespace(max_effort=None))
+    monkeypatch.setattr(reloaded.agent_spec, "current", lambda: spec)
+
+    async def fake_recall(question, on_event=None):
+        recall_calls.append(question)
+        return "NOTES " + question
+
+    monkeypatch.setattr(reloaded.memory_recall, "with_recall", fake_recall)
+    provider = AsyncMock(return_value=ChatResult(response="ok"))
+    monkeypatch.setattr(reloaded._PROVIDER_MODULE, "run_chat", provider)
+    if cancel_first:
+        monkeypatch.setattr(reloaded.cancellation, "is_cancelled", lambda rid: True)
+    return reloaded, provider
+
+
+def test_a_cancelled_request_does_not_run_the_recall_search(monkeypatch):
+    import asyncio
+
+    recall_calls = []
+    reloaded, provider = _recall_chat(monkeypatch, recall_calls, cancel_first=True)
+
+    with pytest.raises(reloaded.ChatCancelled):
+        asyncio.run(reloaded.run_chat("hi", [], [], "req-1"))
+
+    assert recall_calls == []
+    provider.assert_not_awaited()
+
+
+def test_recall_runs_once_per_turn_and_only_changes_the_provider_question(monkeypatch):
+    import asyncio
+
+    recall_calls = []
+    reloaded, provider = _recall_chat(monkeypatch, recall_calls)
+
+    asyncio.run(reloaded.run_chat("hi", [], [], "req-1"))
+
+    assert recall_calls == ["hi"]
+    provider.assert_awaited_once()
+    assert provider.call_args.args[0] == "NOTES hi"
+
+
+def test_a_delegated_turn_does_not_recall(monkeypatch):
+    import asyncio
+
+    recall_calls = []
+    reloaded, provider = _recall_chat(monkeypatch, recall_calls)
+
+    asyncio.run(reloaded.run_chat("hi", [], [], "req-1", depth=1))
+
+    assert recall_calls == []
+    assert provider.call_args.args[0] == "hi"

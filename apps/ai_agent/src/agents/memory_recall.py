@@ -8,6 +8,7 @@ apply. Best effort: any failure means no recall and the turn goes on.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
@@ -20,9 +21,10 @@ _log = logging.getLogger(__name__)
 
 # The registry prefix of the one upstream server ("main__", see mcp_upstream) plus the tool name.
 TOOL = "main__tool_mem_search"
-# tool_mem_search answers "<N> saved note(s):\n<fenced block>" when notes exist and
-# "No saved notes yet." / "No saved notes match." otherwise. ai_agent cannot import
-# mcp_server, so this first-line wording is a contract (pinned by tests).
+# Over MCP, tool_mem_search answers a JSON envelope {"count": N, "message": "..."}. The message
+# is "<N> saved note(s):\n<fenced block>" when notes exist and "No saved notes yet." /
+# "No saved notes match." otherwise. ai_agent cannot import mcp_server, so the first line of
+# `message` is a contract (pinned by tests on both sides).
 _FOUND = re.compile(r"^(\d+) saved note\(s\):")
 LABEL = (
     "[Your saved notes about this user, loaded automatically. "
@@ -30,6 +32,18 @@ LABEL = (
 )
 STEP_TOOL = "memory_recall"
 STEP_LABEL = "Loading saved notes"
+SEARCH_TIMEOUT_SECONDS = 5
+
+
+def _message(raw: str) -> str:
+    """The envelope's `message` text; the raw text itself when it is not such an envelope."""
+    try:
+        envelope = json.loads(raw)
+    except ValueError:
+        return raw
+    if isinstance(envelope, dict) and isinstance(envelope.get("message"), str):
+        return envelope["message"].strip()
+    return raw
 
 
 def _search() -> str:
@@ -44,7 +58,10 @@ async def with_recall(question: str, on_event: OnEvent | None = None) -> str:
     try:
         # call_tool is synchronous; the worker thread inherits this turn's context
         # (requester identity, tool switches), which it needs.
-        text = (await anyio.to_thread.run_sync(_search)).strip()
+        # A slow memory service must not hold the turn: a timeout is just another quiet failure.
+        with anyio.fail_after(SEARCH_TIMEOUT_SECONDS):
+            raw = await anyio.to_thread.run_sync(_search, abandon_on_cancel=True)
+        text = _message(raw.strip())
     except Exception as error:  # noqa: BLE001 - recall is best effort; the turn must go on
         _log.debug("memory recall skipped: %s", type(error).__name__)
         return question

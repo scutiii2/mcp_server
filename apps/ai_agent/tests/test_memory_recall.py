@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 
 import pytest
 
@@ -103,3 +105,40 @@ def test_the_default_search_calls_the_memory_tool_through_the_upstream_client(mo
 
     assert memory_recall._search() == FOUND
     assert calls == [("main__tool_mem_search", {})]
+
+
+def envelope(message, count=0):
+    # The real MCP shape: call_tool returns the pydantic SearchResult as indented JSON text.
+    return json.dumps({"count": count, "message": message}, indent=2)
+
+
+def test_the_real_json_envelope_is_unwrapped_and_the_message_is_injected(monkeypatch):
+    fake_search(monkeypatch, envelope(FOUND, 2))
+
+    out = run("what units?")
+
+    assert out.startswith(memory_recall.LABEL + "\n2 saved note(s):")
+    assert '"count"' not in out and '"message"' not in out
+    assert out.endswith("[User message]\nwhat units?")
+
+
+@pytest.mark.parametrize("message", ["No saved notes yet.", "No saved notes match."])
+def test_the_no_notes_envelopes_leave_the_question_alone(monkeypatch, message):
+    fake_search(monkeypatch, envelope(message))
+    assert run("hello") == "hello"
+
+
+@pytest.mark.parametrize("raw", ["{not json", "[1, 2]", '{"count": 1}', '{"message": 5}', "null", None])
+def test_malformed_answers_are_a_quiet_no_op(monkeypatch, raw):
+    fake_search(monkeypatch, raw)
+    assert run("hello") == "hello"
+
+
+def test_a_slow_search_times_out_quietly(monkeypatch):
+    monkeypatch.setattr(memory_recall, "SEARCH_TIMEOUT_SECONDS", 0.05)
+    fake_search(monkeypatch, FOUND)
+    monkeypatch.setattr(memory_recall, "_search", lambda: time.sleep(0.5) or FOUND)
+
+    started = time.monotonic()
+    assert run("hello") == "hello"
+    assert time.monotonic() - started < 0.4

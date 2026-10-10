@@ -170,6 +170,8 @@ async def run_chat(
             await mcp_upstream.prefetch_private(private)
         provider_question = question
         if depth == 0 and agent_spec.current().memory_recall:
+            if cancellation.is_cancelled(request_id):
+                raise ChatCancelled()
             # Only the question the model sees changes; attachments and the stored chat keep the original.
             provider_question = await memory_recall.with_recall(question, on_event)
         if inspect.iscoroutinefunction(_PROVIDER_MODULE.run_chat):

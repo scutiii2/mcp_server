@@ -138,3 +138,17 @@ def test_memory_works_on_an_exposed_host_once_a_token_is_set(capability, monkeyp
     monkeypatch.setattr(domain, "settings", dataclasses.replace(domain.settings, host="0.0.0.0", internal_api_token="secret"))
 
     assert structured(call(capability, "tool_mem_save", {"text": "fine"}))["id"] == 1
+
+
+def test_search_text_over_mcp_is_a_json_envelope_whose_message_starts_with_the_count(capability):
+    # ai_agent's automatic recall parses exactly this: JSON text, first line of `message`.
+    import json
+
+    call(capability, "tool_mem_save", {"text": "My server is called app-01"})
+    call(capability, "tool_mem_save", {"text": "I prefer metric units"})
+
+    text = call(capability, "tool_mem_search", {})[0][0].text
+    assert json.loads(text)["message"].splitlines()[0] == "2 saved note(s):"
+
+    none = json.loads(call(capability, "tool_mem_search", {"query": "zebra"})[0][0].text)["message"]
+    assert none == "No saved notes match."
