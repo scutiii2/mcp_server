@@ -24,16 +24,6 @@ describe("usageClient", () => {
     expect(request).toHaveBeenCalledExactlyOnceWith("GET", "/api/usage?days=30&since=2026-10-01");
   });
 
-  it("does the same for every account's totals", async () => {
-    await usageClient.allAccounts(7);
-    await usageClient.allAccounts(30, "2026-10-01");
-
-    expect(request.mock.calls).toEqual([
-      ["GET", "/api/admin/usage?days=7"],
-      ["GET", "/api/admin/usage?days=30&since=2026-10-01"],
-    ]);
-  });
-
   it("leaves out an empty since", async () => {
     await usageClient.mine(7, "");
 

@@ -21,7 +21,6 @@ declare module "vue-router" {
 const HOME_PAGES: { name: string; permission: string }[] = [
   { name: "chat", permission: "chat.use" },
   { name: "capabilities", permission: "tools.view" },
-  { name: "usage", permission: "usage.all.view" },
 ];
 
 export const router = createRouter({
@@ -75,7 +74,7 @@ export const router = createRouter({
       path: "/usage",
       name: "usage",
       component: () => import("../views/UsageView.vue"),
-      meta: { permission: ["chat.use", "usage.all.view"] },
+      meta: { permission: "chat.use" },
     },
     {
       path: "/settings",

@@ -13,7 +13,7 @@ vi.mock("../utils/chatExport", async (importOriginal) => ({
 }));
 
 const mine = vi.mocked(usageClient.mine);
-const allAccounts = vi.mocked(usageClient.allAccounts);
+const allAccounts = vi.mocked(usageClient as typeof usageClient & { allAccounts: ReturnType<typeof vi.fn> }).allAccounts;
 const records = vi.mocked(usageClient.records);
 const download = vi.mocked(downloadText);
 
@@ -114,14 +114,15 @@ describe("the period buttons", () => {
     expect(mine).toHaveBeenLastCalledWith(days, undefined, { groupBy: "agent" });
   });
 
-  it("asks for every account's totals with the same period, for an admin", async () => {
+  it("keeps an administrator's usage personal for every period", async () => {
     const wrapper = await mountView(["chat.use", "usage.all.view", "tools.execute", "files.upload", "files.download", "chat.share", "extensions.personal.manage"]);
-    expect(allAccounts).toHaveBeenLastCalledWith(30, undefined);
+    expect(allAccounts).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain("All accounts");
 
     await rangeButton(wrapper, "This month").trigger("click");
     await flushPromises();
 
-    expect(allAccounts).toHaveBeenLastCalledWith(30, "2026-10-01");
+    expect(allAccounts).not.toHaveBeenCalled();
   });
 
   it("does not ask for them without usage.all.view", async () => {
@@ -426,9 +427,9 @@ describe("activity line chart", () => {
 });
 
 
-it("opens all-account usage without chat access", async () => {
+it("does not fetch workspace usage without chat access", async () => {
   const wrapper = await mountView(["usage.all.view"]);
-  expect(allAccounts).toHaveBeenCalledWith(30, undefined);
+  expect(allAccounts).not.toHaveBeenCalled();
   expect(mine).not.toHaveBeenCalled();
-  expect(wrapper.text()).toContain("All accounts");
+  expect(wrapper.text()).not.toContain("All accounts");
 });

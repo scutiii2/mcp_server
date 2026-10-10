@@ -20,6 +20,7 @@ const descriptions: Record<string, string> = {
   "/extensions": "Manage shared extensions and explore their tools.",
   "/agents": "Create agents, choose their provider and gateway, and write their configs.",
   "/analytics": "Review logs, errors, chat activity, and traffic.",
+  "/usage": "Review each user's token usage, activity, and account limits.",
   "/admin/settings": "Control approval requirements for every account.",
 };
 onMounted(async () => {
