@@ -25,6 +25,8 @@ LOGS_CHAT_VIEW = "logs.chat.view"
 CONFIG_ISSUES_VIEW = "config.issues.view"
 TRAFFIC_VIEW = "traffic.view"
 AGENTS_MANAGE = "agents.manage"
+TICKETS_CREATE = "tickets.create"
+TICKETS_MANAGE = "tickets.manage"
 EMBERLINGS_PLAY = "emberlings.play"
 
 ALL_PERMISSIONS: dict[str, str] = {
@@ -52,6 +54,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     CONFIG_ISSUES_VIEW: "See problems in ember_api's config and secret files",
     TRAFFIC_VIEW: "See network traffic charts (requests, latency, upstream calls)",
     AGENTS_MANAGE: "Create, edit and remove ai_agent agents (provider, gateway, persona, tools)",
+    TICKETS_CREATE: "Report bugs, suggest features and follow your own tickets",
+    TICKETS_MANAGE: "See every ticket, triage them and set status, priority and assignee",
     EMBERLINGS_PLAY: "Play Emberlings",
 }
 
@@ -61,7 +65,7 @@ ADMIN_ROLE = "Administrator"
 # has to be created. Only applied on creation: later edits by an admin stick.
 DEFAULT_ROLE_PERMISSIONS = (
     CHAT_USE, TOOLS_VIEW, TOOLS_EXECUTE, CHAT_SHARE,
-    EXTENSIONS_PERSONAL_MANAGE, FILES_UPLOAD, FILES_DOWNLOAD,
+    EXTENSIONS_PERSONAL_MANAGE, FILES_UPLOAD, FILES_DOWNLOAD, TICKETS_CREATE,
 )
 
 ADMIN_PERMISSIONS = (

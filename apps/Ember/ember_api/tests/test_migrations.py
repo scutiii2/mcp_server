@@ -18,8 +18,8 @@ from src.db import Base, Database
 from src.services.migrations import BASELINE, MIGRATIONS_DIR, MigrationRunner
 
 # The newest real migration; the tests' throwaway one comes after it.
-HEAD = "0010"
-NEXT = "0011"
+HEAD = "0011"
+NEXT = "0012"
 
 
 def test_permission_split_preserves_access_once_and_keeps_revocations(tmp_path: Path) -> None:
@@ -57,6 +57,41 @@ def test_permission_split_preserves_access_once_and_keeps_revocations(tmp_path: 
         conn.commit()
     assert run_with(make_database(tmp_path)) == "current"
     assert "chat.share" not in grants("chat.use")
+
+
+def test_ticket_permission_is_granted_to_chat_roles_once(tmp_path: Path) -> None:
+    run_with(make_database(tmp_path))
+    path = tmp_path / "ember.db"
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("UPDATE alembic_version SET version_num = '0010'")
+        for name in ("chatters", "readers"):
+            conn.execute("INSERT INTO roles (name) VALUES (?)", (name,))
+        conn.execute("INSERT INTO permissions (name) VALUES ('chat.use')")
+        conn.execute(
+            "INSERT INTO role_permission SELECT r.id, p.id FROM roles r, permissions p "
+            "WHERE r.name = 'chatters' AND p.name = 'chat.use'"
+        )
+        conn.commit()
+
+    assert run_with(make_database(tmp_path)) == "upgraded"
+
+    def grants(name: str) -> set[str]:
+        with closing(sqlite3.connect(path)) as conn:
+            return {row[0] for row in conn.execute(
+                "SELECT p.name FROM role_permission rp JOIN roles r ON r.id = rp.role_id "
+                "JOIN permissions p ON p.id = rp.permission_id WHERE r.name = ?", (name,)
+            )}
+
+    assert "tickets.create" in grants("chatters")
+    assert "tickets.create" not in grants("readers")
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute(
+            "DELETE FROM role_permission WHERE role_id = (SELECT id FROM roles WHERE name = 'chatters') "
+            "AND permission_id = (SELECT id FROM permissions WHERE name = 'tickets.create')"
+        )
+        conn.commit()
+    assert run_with(make_database(tmp_path)) == "current"
+    assert "tickets.create" not in grants("chatters")  # a later revocation sticks
 
 
 def make_database(tmp_path: Path) -> Database:
@@ -221,7 +256,7 @@ class TestDatabaseFromBeforeMigrations:
     def test_it_is_only_stamped_when_the_baseline_is_the_newest_revision(self, tmp_path: Path) -> None:
         path = self.build_legacy(tmp_path)
         scripts = tmp_path / "baseline_only"
-        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*", "0010*"))
+        shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__", "0002*", "0003*", "0004*", "0005*", "0006*", "0007*", "0008*", "0009*", "0010*", "0011*"))
         calls: list[int] = []
 
         async def backup() -> None:
@@ -245,9 +280,9 @@ def scripts_with_a_new_migration(tmp_path: Path) -> Path:
     """The real migrations plus a throwaway one adding a column."""
     scripts = tmp_path / "migrations"
     shutil.copytree(MIGRATIONS_DIR, scripts, ignore=shutil.ignore_patterns("__pycache__"))
-    (scripts / "versions" / "0011_add_nickname.py").write_text(
-        'revision = "0011"\n'
-        'down_revision = "0010"\n'
+    (scripts / "versions" / f"{NEXT}_add_nickname.py").write_text(
+        f'revision = "{NEXT}"\n'
+        f'down_revision = "{HEAD}"\n'
         "branch_labels = None\n"
         "depends_on = None\n"
         "import sqlalchemy as sa\n"
