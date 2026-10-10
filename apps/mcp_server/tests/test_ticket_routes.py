@@ -141,3 +141,14 @@ def test_staff_errors(client):
     assert client.patch(f"/ticket-admin/tickets/{ticket['id']}", json={"status": "done"}, headers=staff).status_code == 400
     assert client.post(f"/ticket-admin/tickets/{ticket['id']}/move", json={"group_id": 999}, headers=staff).status_code == 404
     assert client.patch("/ticket-admin/groups/999", json={"priority": "low"}, headers=staff).status_code == 404
+
+
+@pytest.mark.parametrize("assignee", [42, [], {}, True])
+def test_staff_assignee_requires_a_string(client, assignee):
+    ticket = file_ticket(client)
+    response = client.patch(f"/ticket-admin/tickets/{ticket['id']}",
+                            json={"assignee": assignee}, headers=headers("root"))
+    assert response.status_code == 400
+    assert "assignee" in response.json()["error"]
+    unchanged = client.get(f"/tickets/{ticket['id']}", headers=headers()).json()["ticket"]
+    assert unchanged["assignee"] is None

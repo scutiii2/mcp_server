@@ -332,3 +332,41 @@ def test_list_groups_and_stats(make):
     assert run(service.stats()) == {"open": 2, "urgent": 0, "groups": 2}
     with pytest.raises(TicketError, match="status"):
         run(service.list_tickets(status="done"))
+
+
+@pytest.mark.parametrize("priority,pinned", [("low", True), ("urgent", False)])
+def test_elevation_preserves_concurrent_pin_or_higher_priority(make, monkeypatch, priority, pinned):
+    laya = FakeLaya()
+    service = make(laya)
+    first = create(service, tags=["email"])
+    group_id = first.ticket["group_id"]
+    laya.verdicts = {group_id: "yes"}
+
+    async def interleave():
+        counts_read, staff_finished = asyncio.Event(), asyncio.Event()
+        original_db = service._db
+        paused = False
+
+        async def pause_after_counts(function, *args, **kwargs):
+            nonlocal paused
+            result = await original_db(function, *args, **kwargs)
+            if function == service._store.group_counts and not paused:
+                paused = True
+                counts_read.set()
+                await staff_finished.wait()
+            return result
+
+        monkeypatch.setattr(service, "_db", pause_after_counts)
+        filing = asyncio.create_task(service.create(
+            reporter="bob", type="bug", title="Email fails", description="Still broken", tags=["email"],
+        ))
+        await asyncio.wait_for(counts_read.wait(), timeout=5)
+        await original_db(service._store.update_group, group_id, priority=priority,
+                          pinned=pinned, now=service._now().isoformat())
+        staff_finished.set()
+        await filing
+        group = await original_db(service._store.get_group, group_id)
+        assert group["priority"] == priority
+        assert group["priority_pinned"] is pinned
+
+    run(interleave())

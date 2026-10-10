@@ -176,7 +176,7 @@ class TicketService:
         total, recent = await self._db(self._store.group_counts, group_id, self._since())
         raised = rules.elevated_priority(group["priority"], total, recent, self._config.elevation)
         if raised != group["priority"]:
-            await self._db(self._store.update_group, group_id, priority=raised, now=self._now().isoformat())
+            await self._db(self._store.elevate_group, group_id, raised, self._now().isoformat())
 
 
     # ---- reads --------------------------------------------------------
@@ -259,6 +259,8 @@ class TicketService:
         if priority is not None:
             changes["priority"] = priority
         if assignee is not None:
+            if not isinstance(assignee, str):
+                raise TicketError("The assignee must be a username string or null.")
             changes["assignee"] = assignee.strip() or None
         if tags is not None:
             changes["tags"] = rules.clean_tags(tags, self._config.tags)

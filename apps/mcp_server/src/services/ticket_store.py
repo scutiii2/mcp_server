@@ -185,6 +185,16 @@ class TicketStore:
             cursor = db.execute(f"UPDATE ticket_groups SET {', '.join(sets)} WHERE id = ?", (*args, group_id))
             return cursor.rowcount == 1
 
+    def elevate_group(self, group_id: int, priority: str, now: str) -> bool:
+        """Raise an unpinned group atomically, preserving concurrent staff changes."""
+        with closing(self._connect()) as db, db:
+            cursor = db.execute(
+                "UPDATE ticket_groups SET priority = ?, updated_at = ? "
+                f"WHERE id = ? AND priority_pinned = 0 AND {_rank_sql('priority')} < ?",
+                (priority, now, group_id, rules.priority_rank(priority)),
+            )
+            return cursor.rowcount == 1
+
     # ---- reads --------------------------------------------------------
 
     def find_open_auto(self, reporter: str, fingerprint: str) -> int | None:
