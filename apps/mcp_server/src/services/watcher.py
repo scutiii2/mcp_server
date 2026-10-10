@@ -67,8 +67,7 @@ class JobWatcher(ABC):
     def on_state_change(
         self, old: WatcherPhase, new: WatcherPhase, detail: dict[str, Any]
     ) -> None:
-        """Called after every poll where phase changed. Default: no-op.
-        Reserved for a future notification hook."""
+        """Called after every poll where phase changed. Default: no-op. Use it for notifications."""
 
     @classmethod
     @abstractmethod
@@ -78,11 +77,17 @@ class JobWatcher(ABC):
 
     # --- generic loop ---------------------------------------------------
 
+    @classmethod
+    def _record_path(cls, state_dir: Path, key: str) -> Path:
+        safe_key = key.replace("/", "_").replace("\\", "_").replace(":", "_")
+        return state_dir / cls.__name__ / "instances" / f"{safe_key}.json"
+
     def _state_path(self) -> Path:
-        safe_key = self.key.replace("/", "_").replace("\\", "_").replace(":", "_")
-        return self.state_dir / type(self).__name__ / "instances" / f"{safe_key}.json"
+        return self._record_path(self.state_dir, self.key)
 
     def _save_record(self, phase: WatcherPhase, detail: dict[str, Any]) -> None:
+        if self._stop_event.is_set():
+            return  # cancelled: a poll still in flight must not bring the record back
         record = WatcherRecord(
             key=self.key, phase=phase, started_at=self._started_at,
             last_polled_at=_now_iso(), detail=detail,
@@ -171,6 +176,21 @@ class JobWatcher(ABC):
                 registry.pop(self.key, None)
 
     @classmethod
+    def is_active(cls, key: str) -> bool:
+        """True while a watcher of this class is running under `key`."""
+        with cls._active_lock:
+            return key in cls._active.get(cls.__name__, {})
+
+    @classmethod
+    def cancel(cls, state_dir: Path, key: str) -> None:
+        """Stops the running watcher with this key, if any, and deletes its record."""
+        with cls._active_lock:
+            event = cls._active.get(cls.__name__, {}).pop(key, None)
+        if event is not None:
+            event.set()
+        cls._record_path(state_dir, key).unlink(missing_ok=True)
+
+    @classmethod
     def resume_all(cls, state_dir: Path) -> list["JobWatcher"]:
         """Reload every persisted RUNNING record for this subclass and
         restart it. A record that fails to read/reconstruct is logged
@@ -190,6 +210,7 @@ class JobWatcher(ABC):
                 continue
             try:
                 watcher = cls.from_record(record)
+                watcher.state_dir = state_dir
                 watcher.start()
                 started.append(watcher)
             except Exception as exc:  # noqa: BLE001

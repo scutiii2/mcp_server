@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -126,3 +128,49 @@ def test_state_path_sanitizes_colons_in_key(tmp_path):
     resumed = _FakeWatcher.resume_all(tmp_path)
     # this key's phase is COMPLETED (terminal), so resume_all should NOT restart it
     assert resumed == []
+
+
+def test_is_active_follows_start_and_cancel(tmp_path):
+    watcher = _FakeWatcher("job-a", tmp_path, [])
+    assert not _FakeWatcher.is_active("job-a")
+
+    watcher.start()
+    assert _FakeWatcher.is_active("job-a")
+
+    _FakeWatcher.cancel(tmp_path, "job-a")
+    assert not _FakeWatcher.is_active("job-a")
+
+
+def test_cancel_deletes_the_record_and_it_does_not_come_back(tmp_path):
+    watcher = _FakeWatcher("job-b", tmp_path, [])
+    watcher.start()
+    path = tmp_path / "_FakeWatcher" / "instances" / "job-b.json"
+    deadline = time.time() + 2
+    while not path.exists() and time.time() < deadline:
+        time.sleep(0.01)
+    assert path.exists()
+
+    _FakeWatcher.cancel(tmp_path, "job-b")
+    time.sleep(0.2)
+
+    assert not path.exists()
+
+
+def test_a_stopped_watcher_does_not_write_its_record(tmp_path):
+    watcher = _FakeWatcher("job-c", tmp_path, [])
+    watcher.stop()
+
+    watcher._save_record(WatcherPhase.RUNNING, {})
+
+    assert not watcher._state_path().exists()
+
+
+def test_resume_all_points_rebuilt_watchers_at_the_real_state_directory(tmp_path):
+    _FakeWatcher("job-d", tmp_path, [])._save_record(WatcherPhase.RUNNING, {})
+
+    started = _FakeWatcher.resume_all(tmp_path)
+    try:
+        assert [watcher.state_dir for watcher in started] == [tmp_path]
+    finally:
+        for watcher in started:
+            watcher.stop()
