@@ -289,6 +289,58 @@ def test_second_turn_sends_history_without_raw_logs(client: TestClient, agent: F
     assert chat(client, chat_id)["message_count"] == 6
 
 
+def _chat_with_tool_answer(client: TestClient, chat_id: str) -> None:
+    client.put(
+        f"/api/chats/{chat_id}",
+        json={
+            "title": "t",
+            "messages": [
+                {"role": "user", "content": "find it"},
+                {
+                    "role": "assistant",
+                    "content": "I found 3 results.",
+                    "steps": [
+                        {"tool": "search", "arguments": {"q": "x"}, "ok": True, "result": "found 3 items"},
+                        {"tool": "update_plan", "arguments": {}, "ok": True, "result": "plan saved"},
+                    ],
+                },
+            ],
+        },
+    )
+
+
+def test_next_turn_history_carries_the_tool_digest(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    _chat_with_tool_answer(client, chat_id)
+
+    start(client, chat_id, "and then?")
+    events(client, chat_id)
+
+    sent = agent.asks[0]["history"]
+    assert sent[0] == {"role": "user", "content": "find it"}
+    assert sent[1]["content"].startswith("I found 3 results.\n\n[Earlier tool activity")
+    assert '- search({"q":"x"}) -> found 3 items' in sent[1]["content"]
+    assert "update_plan" not in sent[1]["content"]
+    # Stored text is untouched: the digest is built only when sending.
+    assert chat(client, chat_id)["messages"][1]["content"] == "I found 3 results."
+
+
+def test_summary_prompt_sees_tool_results_but_the_stored_log_does_not(client: TestClient, agent: FakeAgent) -> None:
+    as_admin(client)
+    chat_id = new_id()
+    _chat_with_tool_answer(client, chat_id)
+
+    response = client.post(f"/api/chats/{chat_id}/summarize", json={})
+
+    assert response.status_code == 200
+    assert "found 3 items" in agent.interprets[0]
+    log = response.json()["messages"][1]
+    assert log["kind"] == "log_attachment"
+    assert "found 3 items" not in log["content"]
+    assert "I found 3 results." in log["content"]
+
+
 def _two_exchanges(client: TestClient, chat_id: str, agent: FakeAgent) -> None:
     start(client, chat_id, "q1")
     events(client, chat_id)
