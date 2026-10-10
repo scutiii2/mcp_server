@@ -3,6 +3,7 @@
   "port": 9100,
   "entry": true,
   "orchestrator": true,
+  "memory_recall": true,
   "llm": {
     "provider": "anthropic",
     "gateway": "openrouter"
