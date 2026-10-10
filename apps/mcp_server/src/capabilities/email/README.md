@@ -57,5 +57,5 @@ Audit stores timestamp, caller, outcome, recipient count and generated Message-I
 in `specifics/email/.data/audit.db` (override `MCP_EMAIL_AUDIT_PATH`). It stores no
 addresses, subjects, bodies, codes or raw errors. The history tool returns only
 the authenticated caller's records; no identity returns no records. Internal
-watcher producers attribute delivery to the watcher owner; Ember system emails
+capability-owned job watchers attribute delivery to the watcher owner; Ember system emails
 use service identity `ember`.

@@ -161,9 +161,9 @@ def test_refresh_returns_the_capability_list(client):
     assert response.status_code == 200
     # The scan also finds the real folders of src.capabilities (as offline entries).
     names = [entry["name"] for entry in response.json()]
-    assert {"gadgets", "widgets", "watch"} <= set(names)
+    assert {"gadgets", "widgets", "server"} <= set(names)
     assert names == sorted(names)
-    assert next(e for e in response.json() if e["name"] == "watch")["loaded"] is False
+    assert next(e for e in response.json() if e["name"] == "server")["loaded"] is False
 
 
 def test_patch_online_that_fails_to_load_is_409_with_the_message(test_mcp, config_path, tmp_path, monkeypatch):

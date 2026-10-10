@@ -74,8 +74,8 @@ class Settings:
     # that expects a real server-side path gets one.
     # Relative to CWD by default, same convention as every path above.
     uploads_dir: Path = Path(_env("MCP_UPLOADS_DIR", ".data/uploads"))
-    # Where user-defined watchers (capabilities/watchers) keep their state
-    # records and recipient lists. Relative to CWD, like uploads_dir.
+    # Where capability-owned job watchers keep their state
+    # records. Relative to CWD, like uploads_dir.
     watchers_dir: Path = Path(_env("MCP_WATCHERS_DIR", ".data/watchers"))
     email_audit_path: Path = Path(_env("MCP_EMAIL_AUDIT_PATH", "specifics/email/.data/audit.db"))
     # Per-user memory notes (capabilities/memory). Runtime state: gitignored.
