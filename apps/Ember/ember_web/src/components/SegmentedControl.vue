@@ -4,7 +4,7 @@ import { onBeforeUnmount, onMounted, ref, watchPostEffect } from "vue";
 // A neutral button group with an accent highlight that slides between choices.
 // Measure the selected button so labels can have different widths.
 const props = defineProps<{
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; disabled?: boolean }[];
   ariaLabel?: string;
   label?: string;
 }>();
@@ -55,6 +55,7 @@ onBeforeUnmount(() => observer?.disconnect());
       class="segment"
       :class="{ active: o.value === model }"
       :aria-pressed="o.value === model"
+      :disabled="o.disabled"
       @click="model = o.value"
     >
       {{ o.label }}
@@ -106,8 +107,12 @@ button.segment.active {
   color: var(--accent);
   font-weight: 600;
 }
-button.segment:hover {
+button.segment:hover:not(:disabled) {
   color: var(--accent);
+}
+button.segment:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 button.segment:focus-visible {
   outline: 2px solid var(--accent);
