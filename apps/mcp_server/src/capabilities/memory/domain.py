@@ -2,9 +2,17 @@
 from src.capabilities.memory.contract import ForgetResult, SaveResult, SearchResult
 from src.config import settings
 from src.services import identity_context, memory_store, untrusted
+from src.services.internal_token import is_exposed_without_token
 
 
 def _owner() -> str:
+    """The caller's uid, after checking that the identity can be trusted at all."""
+    if is_exposed_without_token(settings.host, settings.internal_api_token):
+        # Without the token any machine that can reach the port could claim any uid.
+        raise memory_store.MemoryStoreError(
+            f"Memory is disabled: this server listens on {settings.host!r} without INTERNAL_API_TOKEN, "
+            "so anyone on the network could read saved notes. Set INTERNAL_API_TOKEN, or bind to 127.0.0.1."
+        )
     return identity_context.current_uid()
 
 

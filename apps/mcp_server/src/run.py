@@ -19,7 +19,7 @@ from src.config import settings  # noqa: E402
 from src.services import capability_registry  # noqa: E402
 from src.services.capability_loader import CapabilityLoader  # noqa: E402
 from src.services.identity_context import IdentityContextMiddleware  # noqa: E402
-from src.services.internal_token import InternalTokenMiddleware  # noqa: E402
+from src.services.internal_token import InternalTokenMiddleware, is_exposed_without_token  # noqa: E402
 from src.utils.logging_setup import configure_logging  # noqa: E402
 from src.server import mcp  # noqa: E402
 
@@ -115,7 +115,7 @@ async def _serve() -> None:
             if settings.internal_api_token
             else "  /mcp auth : none (set INTERNAL_API_TOKEN in .env)"
         )
-        if settings.host not in {"127.0.0.1", "localhost", "::1"} and not settings.internal_api_token:
+        if is_exposed_without_token(settings.host, settings.internal_api_token):
             # Worth shouting about: there is no authentication on this
             # server, so a non-loopback bind means anything that can
             # route to this port can call every tool above with arguments
