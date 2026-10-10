@@ -44,10 +44,12 @@ describe("CollectionPanel", () => {
     const cards = wrapper.findAll(".spark-card");
     expect(cards).toHaveLength(1);
     const text = cards[0]!.text();
-    expect(text).toContain("Guardian");
-    expect(text).toContain("Rare");
-    expect(text).toContain("3 copies");
+    expect(text).toContain("Rare · 3 copies");
     expect(text).toContain("40 / 300 XP");
+    expect(cards[0]!.find(".spark-name").text()).toBe("Guardian");
+    expect(cards[0]!.find(".level").text()).toBe("Lv 3");
+    expect(cards[0]!.find(".tint").exists()).toBe(true);
+    expect(cards[0]!.find(".passive").exists()).toBe(false);
     expect(wrapper.findAll(".missing-spark").map((row) => row.find(".missing-name").text())).toEqual([
       "Striker",
       "Bruiser",
@@ -64,6 +66,7 @@ describe("CollectionPanel", () => {
     const text = wrapper.find(".spark-card").text();
     expect(text).toContain("Highest level reached");
     expect(text).toMatch(/Fainted · ready in 1:0[56]/);
+    expect(wrapper.find(".spark-card").classes()).toContain("down");
   });
 
   it("opens a Spark's abilities, personalities (paged) and presets", async () => {
@@ -76,8 +79,8 @@ describe("CollectionPanel", () => {
     expect(client.personalities).toHaveBeenCalledWith("guardian", null, 50);
     expect(client.preset).toHaveBeenCalledWith("guardian", 1);
     const details = wrapper.find(".details");
-    expect(details.text()).toContain("Strike");
-    expect(details.text()).toContain("Unlocks at level 5");
+    expect(details.find(".big-card .spark-name").text()).toBe("Guardian");
+    expect(details.findAll(".big-card .ability").map((a) => a.find("strong").text())).toEqual(["Strike", "Rally"]);
     expect(details.text()).toContain("Aggressive · tier 2");
 
     client.personalities.mockResolvedValueOnce({ items: [{ id: "p2", type: "CAUTIOUS", tier: 1 }], next_cursor: null });
@@ -87,6 +90,17 @@ describe("CollectionPanel", () => {
     expect(client.personalities).toHaveBeenLastCalledWith("guardian", 7, 50);
     expect(wrapper.find(".details").text()).toContain("Cautious · tier 1");
     expect(wrapper.find(".details").findAll("button").some((b) => b.text() === "Show more")).toBe(false);
+  });
+});
+
+describe("not collected", () => {
+  it("shows a face-down card with the Spark's name and how to get it", () => {
+    const wrapper = mountPanel();
+
+    const rows = wrapper.findAll(".missing-spark");
+    expect(rows[0]!.find("img.back").exists()).toBe(true);
+    expect(rows[0]!.text()).toContain("Catch one, or buy copies in the shop");
+    expect(rows[rows.length - 1]!.text()).toContain("Only by capture");
   });
 });
 

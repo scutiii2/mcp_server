@@ -12,11 +12,14 @@ import { abilityEffect, passiveText, titleCase } from "../../utils/emberlings";
  * ability, a colour for its category. The frame's metal is tinted for the
  * Spark's tier; the Emberlings plate keeps its own colours. `compact` is the
  * small version for lists: the frame, the name and the artwork box, with the
- * ability slots still coloured by category, and no stats or text. */
-const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierId?: string; compact?: boolean }>(), {
+ * ability slots still coloured by category, and no stats or text; `showLevel`
+ * adds the level to its header. The width is `--card-width` (440 px, or 150 px
+ * compact). */
+const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierId?: string; compact?: boolean; showLevel?: boolean }>(), {
   level: 1,
   tierId: "normal",
   compact: false,
+  showLevel: false,
 });
 
 const FRAME_W = 1060;
@@ -116,7 +119,7 @@ const abilities = computed(() =>
 
     <header class="header" :style="HEADER">
       <h4 class="spark-name">{{ spark.name }}</h4>
-      <span v-if="!compact" class="level">Lv {{ level }}</span>
+      <span v-if="!compact || showLevel" class="level">Lv {{ level }}</span>
     </header>
 
     <dl v-if="!compact" class="stat-list">
@@ -156,13 +159,16 @@ const abilities = computed(() =>
   container-type: inline-size;
   position: relative;
   isolation: isolate;
-  width: 440px;
+  width: var(--card-width, 440px);
   aspect-ratio: 1060 / 1484;
   color: #e8e8ea;
   text-align: left;
 }
 .card.compact {
-  width: 150px;
+  width: var(--card-width, 150px);
+}
+.compact .level {
+  font-size: 5.5cqw;
 }
 .compact .spark-name {
   font-size: 7.5cqw;
@@ -306,7 +312,7 @@ const abilities = computed(() =>
   width: 6.4cqw;
   height: 6.4cqw;
   border: 0.4cqw solid #0f1012;
-  border-radius: 0.8cqw;
+  border-radius: var(--radius-sm);
   color: #ffb27a;
   background: #23262b;
 }
@@ -334,7 +340,7 @@ const abilities = computed(() =>
   flex: none;
   padding: 0.2cqw 1.8cqw;
   border: 0.35cqw solid #0f1012;
-  border-radius: 2cqw;
+  border-radius: var(--radius-full);
   font-size: 2.4cqw;
   color: #ffb27a;
   background: #23262b;

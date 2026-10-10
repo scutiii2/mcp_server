@@ -4,7 +4,7 @@ import { nextTick, ref, watch } from "vue";
 /** A modal dialog the parent opens and closes with `open`. It closes itself on
  * Escape, on the × and on a click outside the panel, by asking the parent
  * (`close`) rather than hiding on its own. The default slot is the body. */
-const props = defineProps<{ open: boolean; title: string }>();
+const props = defineProps<{ open: boolean; title: string; wide?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
 const dialog = ref<HTMLDialogElement | null>(null);
@@ -26,7 +26,7 @@ function onClick(event: MouseEvent): void {
 </script>
 
 <template>
-  <dialog ref="dialog" class="modal" :aria-label="title" @close="emit('close')" @cancel.prevent="emit('close')" @click="onClick">
+  <dialog ref="dialog" class="modal" :class="{ wide }" :aria-label="title" @close="emit('close')" @cancel.prevent="emit('close')" @click="onClick">
     <header>
       <h3>{{ title }}</h3>
       <button type="button" class="close" aria-label="Close" @click="emit('close')">×</button>
@@ -45,6 +45,9 @@ function onClick(event: MouseEvent): void {
   border-radius: var(--radius-xl);
   color: var(--text);
   background: var(--surface);
+}
+.modal.wide {
+  width: min(1000px, calc(100vw - 32px));
 }
 .modal::backdrop {
   background: rgb(0 0 0 / 45%);

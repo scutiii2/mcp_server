@@ -2,13 +2,18 @@
 import { computed } from "vue";
 import type { OwnedSpark } from "../../api/EmberlingsClient";
 import { useNowSeconds } from "../../composables/useNowSeconds";
-import { formatCountdown } from "../../utils/emberlings";
-import TierBadge from "./TierBadge.vue";
+import { useEmberlingsStore } from "../../stores/emberlings";
+import { formatCountdown, titleCase } from "../../utils/emberlings";
+import SparkTemplateCard from "./SparkTemplateCard.vue";
 
-/** One owned Spark on the Collection tab; a click opens its details. */
+/** One owned Spark on the Collection tab: its small card (tier colour, level)
+ * with a caption of tier, copies and XP; a click or Enter opens its details.
+ * A fainted Spark is greyed out with a countdown. */
 const props = defineProps<{ spark: OwnedSpark }>();
 const emit = defineEmits<{ open: [] }>();
+const store = useEmberlingsStore();
 const now = useNowSeconds();
+const info = computed(() => store.catalog?.sparks.find((s) => s.id === props.spark.spark_id) ?? null);
 const faintLeft = computed(() => (props.spark.faint_until === null ? 0 : Math.max(0, props.spark.faint_until - now.value)));
 const xpPercent = computed(() =>
   props.spark.xp_needed ? Math.min(100, (props.spark.xp / props.spark.xp_needed) * 100) : 100,
@@ -16,51 +21,60 @@ const xpPercent = computed(() =>
 </script>
 
 <template>
-  <button type="button" class="spark-card" @click="emit('open')">
-    <span class="head">
-      <span class="spark-name">{{ spark.name }}</span>
-      <TierBadge :tier-id="spark.tier_id" />
+  <div
+    class="spark-card"
+    :class="{ down: faintLeft > 0 }"
+    role="button"
+    tabindex="0"
+    :aria-label="`${spark.name}, ${titleCase(spark.tier_id)}, level ${spark.level}`"
+    @click="emit('open')"
+    @keydown.enter.prevent="emit('open')"
+    @keydown.space.prevent="emit('open')"
+  >
+    <SparkTemplateCard v-if="info" class="face" :spark="info" :level="spark.level" :tier-id="spark.tier_id" compact show-level />
+    <span v-else class="spark-name">{{ spark.name }}</span>
+    <span class="caption">
+      <span class="tier-line">{{ titleCase(spark.tier_id) }} · {{ spark.copies }} {{ spark.copies === 1 ? "copy" : "copies" }}</span>
+      <span v-if="spark.xp_needed !== null" class="xp">
+        <span class="xp-track" aria-hidden="true"><span class="xp-fill" :style="{ width: `${xpPercent}%` }" /></span>
+        <span class="meta">{{ spark.xp }} / {{ spark.xp_needed }} XP</span>
+      </span>
+      <span v-else class="meta">Highest level reached</span>
+      <span v-if="faintLeft > 0" class="fainted">Fainted · ready in {{ formatCountdown(faintLeft) }}</span>
     </span>
-    <span class="meta">Level {{ spark.level }} · {{ spark.copies }} {{ spark.copies === 1 ? "copy" : "copies" }}</span>
-    <span v-if="spark.xp_needed !== null" class="xp">
-      <span class="xp-track" aria-hidden="true"><span class="xp-fill" :style="{ width: `${xpPercent}%` }" /></span>
-      <span class="meta">{{ spark.xp }} / {{ spark.xp_needed }} XP</span>
-    </span>
-    <span v-else class="meta">Highest level reached</span>
-    <span v-if="faintLeft > 0" class="fainted">Fainted · ready in {{ formatCountdown(faintLeft) }}</span>
-  </button>
+  </div>
 </template>
 
 <style scoped>
 .spark-card {
+  --card-width: 180px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
+  gap: 8px;
+  width: var(--card-width);
   border-radius: var(--radius-lg);
   color: var(--text);
-  background: var(--surface);
-  font: inherit;
-  text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  transition: filter 0.15s ease;
 }
 .spark-card:hover {
-  border-color: var(--accent);
+  filter: brightness(1.1);
 }
 .spark-card:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 4px;
 }
-.head {
+.spark-card.down .face {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+.caption {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 2px;
 }
-.spark-name {
+.tier-line {
   font-weight: 600;
 }
 .meta {
@@ -74,7 +88,7 @@ const xpPercent = computed(() =>
 }
 .xp-track {
   display: block;
-  height: 6px;
+  height: 5px;
   overflow: hidden;
   border-radius: var(--radius-sm);
   background: var(--code-bg);
