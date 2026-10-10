@@ -22,6 +22,17 @@ import json
 INTERNAL_TOKEN_HEADER = b"x-internal-token"
 PROTECTED_PATH = "/mcp"
 
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def is_exposed_without_token(host: str, token: str) -> bool:
+    """True when the server listens beyond loopback and no internal token is
+    set: anything that can route to the port can then call every tool, and
+    the identity it sends is whatever it claims. Any host not in
+    LOOPBACK_HOSTS counts (0.0.0.0, a LAN address, even 127.0.0.2), the safe
+    direction."""
+    return not token and host not in LOOPBACK_HOSTS
+
 
 class InternalTokenMiddleware:
     """Plain ASGI middleware: rejects a request to /mcp whose
