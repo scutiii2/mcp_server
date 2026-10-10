@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useEmberlingsStore } from "../../stores/emberlings";
-import { titleCase } from "../../utils/emberlings";
+import SparkTemplateCard from "./SparkTemplateCard.vue";
 
 /** New game: pick the first Spark, then start. Back returns to the menu. */
 const emit = defineEmits<{ back: []; started: [] }>();
@@ -10,6 +10,10 @@ const store = useEmberlingsStore();
 const picked = ref<string | null>(null);
 const starters = computed(() => (store.catalog?.sparks ?? []).filter((s) => s.starter));
 const pickedName = computed(() => starters.value.find((s) => s.id === picked.value)?.name ?? "");
+
+function pick(id: string): void {
+  if (!store.busy) picked.value = id;
+}
 
 async function start(): Promise<void> {
   if (picked.value === null) return;
@@ -23,19 +27,20 @@ async function start(): Promise<void> {
     <h3>Choose your first Spark</h3>
     <p class="muted">It stays yours. Other Sparks can be caught in battle or bought in the shop later.</p>
     <div class="starter-grid">
-      <button
-        v-for="s in starters"
-        :key="s.id"
-        type="button"
-        class="starter"
-        :class="{ picked: picked === s.id }"
-        :aria-pressed="picked === s.id"
-        :disabled="store.busy"
-        @click="picked = s.id"
-      >
-        <span class="starter-name">{{ s.name }}</span>
-        <span class="muted">{{ s.abilities.length }} abilities · passive: {{ titleCase(s.passive.kind) }}</span>
-      </button>
+      <div v-for="s in starters" :key="s.id" class="starter" :class="{ picked: picked === s.id }">
+        <div class="starter-card" @click="pick(s.id)">
+          <SparkTemplateCard :spark="s" />
+        </div>
+        <button
+          type="button"
+          class="starter-pick"
+          :aria-pressed="picked === s.id"
+          :disabled="store.busy"
+          @click="pick(s.id)"
+        >
+          {{ picked === s.id ? "Picked" : `Pick ${s.name}` }}
+        </button>
+      </div>
     </div>
     <button type="button" class="primary start" :disabled="picked === null || store.busy" @click="start">
       {{ picked === null ? "Pick a Spark" : `Start with ${pickedName}` }}
@@ -59,43 +64,45 @@ async function start(): Promise<void> {
   content: "\2190  ";
 }
 .starter-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
   margin-top: 12px;
 }
 .starter {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 14px;
+  gap: 8px;
+  width: 300px;
+}
+.starter-card {
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.starter.picked .starter-card {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.starter-pick {
+  padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--surface);
   font: inherit;
-  text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease;
 }
-.starter:hover:not(:disabled),
-.starter.picked {
+.starter-pick:hover:not(:disabled),
+.starter-pick:focus-visible {
   border-color: var(--accent);
 }
-.starter:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.starter-name {
+.starter.picked .starter-pick {
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  background: var(--accent);
   font-weight: 600;
 }
 .start {
   margin-top: 16px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .starter {
-    transition: none;
-  }
 }
 </style>

@@ -64,10 +64,10 @@ describe("EmberlingsView", () => {
 
     await wrapper.find("button.primary").trigger("click");
     expect(wrapper.text()).toContain("Choose your first Spark");
-    expect(wrapper.findAll(".starter-name").map((n) => n.text())).toEqual(["Guardian", "Striker"]);
+    expect(wrapper.findAll(".spark-name").map((n) => n.text())).toEqual(["Guardian", "Striker"]);
 
     client.createProfile.mockResolvedValue(PROFILE);
-    await wrapper.findAll("button.starter")[0]!.trigger("click");
+    await wrapper.findAll("button.starter-pick")[0]!.trigger("click");
     await wrapper.find("button.start").trigger("click");
     await flushPromises();
 

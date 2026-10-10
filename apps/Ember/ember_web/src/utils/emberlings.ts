@@ -1,4 +1,4 @@
-import type { BattleEvent, FighterAbility, ResultKind, TierInfo } from "../api/EmberlingsClient";
+import type { AbilityInfo, BattleEvent, FighterAbility, ResultKind, TierInfo } from "../api/EmberlingsClient";
 
 /** How a tier badge is drawn: the three strongest tiers with the accent, the
  * one below them in full text colour, the rest muted. The tier name is always
@@ -21,6 +21,39 @@ export function titleCase(id: string): string {
     .map((word) => word.toLowerCase())
     .join(" ");
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function count(value: unknown, fallback: number, noun: string): string {
+  const n = typeof value === "number" ? value : fallback;
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/** A passive in one sentence, from its catalog kind and params (mini_games'
+ * passives.py). An unknown kind falls back to its name. */
+export function passiveText(kind: string, params: Record<string, unknown>): string {
+  switch (kind) {
+    case "defense_extension":
+      return `Defense shields ${count(params.protected_attacks, 1, "attack")} for ${count(params.rounds, 1, "round")}.`;
+    case "low_hp_attack_bonus":
+      return `Below ${percent(params.hp_below)} HP, attacks deal extra damage equal to ${percent(params.essence_fraction)} of its Essence.`;
+    case "battle_start_speed":
+      return `At battle start, gains Speed equal to ${percent(params.essence_fraction)} of its Essence.`;
+    case "defense_rating_bonus":
+      return `Defense rating rises by ${percent(params.essence_fraction)} of its Essence.`;
+    case "attack_bonus_vs_defense":
+      return `Attacks deal extra damage equal to ${percent(params.essence_fraction)} of its Essence against a defending target.`;
+    case "support_duration_bonus":
+      return `Support effects last ${count(params.rounds, 1, "round")} longer.`;
+    case "cooldown_reduction":
+      return `Ability cooldowns are ${count(params.rounds, 1, "round")} shorter, down to ${params.minimum ?? 1}.`;
+    default:
+      return titleCase(kind);
+  }
+}
+
+/** An ability's effect line: "Attack 150% · cd 1". */
+export function abilityEffect(ability: Pick<AbilityInfo, "category" | "percentage" | "cooldown">): string {
+  return `${titleCase(ability.category)} ${ability.percentage}% · cd ${ability.cooldown}`;
 }
 
 /** Seconds as m:ss (h:mm:ss from an hour), rounded up so 0:00 means done. */

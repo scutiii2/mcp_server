@@ -236,7 +236,7 @@ URL, token or key.
   progress with a save). In the game a header shows Insignia and EMBLEM counts, a Menu button goes back; tabs: Collection (Spark cards with tier badge, level, XP, copies and a faint countdown; a card opens
   its abilities, collected personalities and five presets), Battle (look for a wild Spark, decline or fight; an arena
   with health bars, round log and actions; autonomous rounds every 1.5 s; the five-second EMBLEM prompt counts down on
-  this device) and Shop (EMBLEMs, copies, selling a copy). New game picks a starter. The battle loop pauses while
+  this device) and Shop (EMBLEMs, copies, selling a copy). New game picks a starter from three full cards (stats, passive, abilities). The battle loop pauses while
   the browser tab is hidden or another page is open and resumes where the battle is; a lost connection shows
   "Reconnecting..." and retries every 3 s; a stale action is refreshed, never resent. Kept alive across page switches.
   Every change sends a fresh `Idempotency-Key`.
@@ -408,7 +408,7 @@ src/
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, ConfirmModal, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
     analytics/  shared LineChart, hover/keyboard state in useBucketCursor and chart.css, used by Usage
     infoPage.css  shared look of the Agents / Config pages
-    emberlings/   the Emberlings page: MainMenu, StarterPick, CollectionPanel, SparkCard, TierBadge, PresetEditor, EncounterPanel,
+    emberlings/   the Emberlings page: MainMenu, StarterPick, SparkTemplateCard, CollectionPanel, SparkCard, TierBadge, PresetEditor, EncounterPanel,
                   BattleArena, HealthBar, RoundLog, ActionBar, EmblemPrompt, BattleResult, ShopPanel
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,

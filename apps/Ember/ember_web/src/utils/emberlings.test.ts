@@ -1,8 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "../api/EmberlingsClient.fixtures";
-import { describeAction, describeEvent, formatCountdown, tierStanding, titleCase } from "./emberlings";
+import { abilityEffect, describeAction, describeEvent, formatCountdown, passiveText, tierStanding, titleCase } from "./emberlings";
 
 const NAMES = { player: "Guardian", wild: "Bruiser" };
+
+describe("passiveText and abilityEffect", () => {
+  it("writes every shipped passive kind as a sentence", () => {
+    expect(passiveText("defense_extension", { protected_attacks: 2, rounds: 2 })).toBe("Defense shields 2 attacks for 2 rounds.");
+    expect(passiveText("defense_extension", {})).toBe("Defense shields 1 attack for 1 round.");
+    expect(passiveText("low_hp_attack_bonus", { hp_below: 0.5, essence_fraction: 0.2 })).toBe(
+      "Below 50% HP, attacks deal extra damage equal to 20% of its Essence.",
+    );
+    expect(passiveText("battle_start_speed", { essence_fraction: 0.5 })).toBe("At battle start, gains Speed equal to 50% of its Essence.");
+    expect(passiveText("defense_rating_bonus", { essence_fraction: 0.5 })).toContain("50% of its Essence");
+    expect(passiveText("attack_bonus_vs_defense", { essence_fraction: 0.25 })).toContain("25% of its Essence");
+    expect(passiveText("support_duration_bonus", { rounds: 1 })).toBe("Support effects last 1 round longer.");
+    expect(passiveText("cooldown_reduction", { rounds: 1, minimum: 1 })).toBe("Ability cooldowns are 1 round shorter, down to 1.");
+  });
+
+  it("falls back to the kind's name, and writes an ability's effect line", () => {
+    expect(passiveText("something_new", {})).toBe("Something new");
+    expect(abilityEffect({ category: "ATTACK", percentage: 150, cooldown: 1 })).toBe("Attack 150% · cd 1");
+  });
+});
 
 describe("emberlings helpers", () => {
   it("draws the three strongest tiers as top and the one below as middle", () => {

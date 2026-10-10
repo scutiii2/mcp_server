@@ -21,11 +21,11 @@ describe("StarterPick", () => {
     client.createProfile.mockResolvedValue(PROFILE);
     const wrapper = mount(StarterPick);
 
-    expect(wrapper.findAll(".starter-name").map((n) => n.text())).toEqual(["Guardian", "Striker"]);
+    expect(wrapper.findAll(".spark-name").map((n) => n.text())).toEqual(["Guardian", "Striker"]);
     const start = wrapper.find("button.start");
     expect((start.element as HTMLButtonElement).disabled).toBe(true);
 
-    await wrapper.findAll("button.starter")[0]!.trigger("click");
+    await wrapper.findAll("button.starter-pick")[0]!.trigger("click");
     expect(client.createProfile).not.toHaveBeenCalled();
     expect(start.text()).toBe("Start with Guardian");
 
