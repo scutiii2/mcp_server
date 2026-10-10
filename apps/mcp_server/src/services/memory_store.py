@@ -21,7 +21,7 @@ MAX_NOTES = 200
 DEFAULT_LIMIT = 10
 MAX_QUERY_WORDS = 10
 
-_NO_OWNER = "No signed-in user is known for this request, so memory is unavailable."
+_NO_OWNER = "No account identity is known for this request, so memory is unavailable."
 
 
 class MemoryStoreError(ValueError):
@@ -134,3 +134,17 @@ def forget(path: Path, owner: str, note_id: int) -> bool:
         db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         db.execute("DELETE FROM notes_fts WHERE rowid = ?", (note_id,))
         return True
+
+
+@catalog
+def purge_owner(path: Path, owner: str) -> int:
+    """Delete every note of `owner` (their account was deleted); returns how many."""
+    owner = _owner(owner)
+    if not path.exists():
+        return 0
+    with closing(_connect(path)) as db, db:
+        db.execute("BEGIN IMMEDIATE")
+        ids = [row["id"] for row in db.execute("SELECT id FROM notes WHERE owner = ?", (owner,))]
+        db.executemany("DELETE FROM notes_fts WHERE rowid = ?", [(note_id,) for note_id in ids])
+        db.execute("DELETE FROM notes WHERE owner = ?", (owner,))
+    return len(ids)

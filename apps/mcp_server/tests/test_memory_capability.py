@@ -33,7 +33,7 @@ def capability(tmp_path, monkeypatch):
     domain = sys.modules["src.capabilities.memory.domain"]
     monkeypatch.setattr(domain, "settings", dataclasses.replace(settings, memory_db_path=tmp_path / "memory.db"))
     assert domain.settings.memory_db_path.parent == tmp_path
-    monkeypatch.setattr(identity_context, "current_username", lambda: "alice")
+    monkeypatch.setattr(identity_context, "current_uid", lambda: "uid-alice")
     return server
 
 
@@ -78,19 +78,20 @@ def test_forgetting_an_unknown_id_reports_it(capability):
 
 
 def test_every_tool_refuses_without_an_identity(capability, monkeypatch):
-    monkeypatch.setattr(identity_context, "current_username", lambda: "")
+    monkeypatch.setattr(identity_context, "current_uid", lambda: "")
+    monkeypatch.setattr(identity_context, "current_username", lambda: "alice")
     for name, args in (
         ("tool_mem_save", {"text": "x"}),
         ("tool_mem_search", {}),
         ("tool_mem_forget", {"note_id": 1}),
     ):
-        with pytest.raises(Exception, match="signed-in user"):
+        with pytest.raises(Exception, match="account identity"):
             call(capability, name, args)
 
 
 def test_notes_are_private_to_their_owner(capability, monkeypatch):
     call(capability, "tool_mem_save", {"text": "alice only"})
-    monkeypatch.setattr(identity_context, "current_username", lambda: "bob")
+    monkeypatch.setattr(identity_context, "current_uid", lambda: "uid-bob")
     assert structured(call(capability, "tool_mem_search", {}))["count"] == 0
     assert structured(call(capability, "tool_mem_forget", {"note_id": 1}))["forgotten"] is False
 

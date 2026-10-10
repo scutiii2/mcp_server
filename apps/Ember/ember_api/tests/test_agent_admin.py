@@ -54,6 +54,7 @@ def test_admin_lists_creates_updates_and_deletes(client, upstream: FakeUpstream)
     sent = upstream.requests[-1]
     assert str(sent.url) == "http://agent-a.internal/agents/files"
     assert sent.headers["x-requester-username"] == "root"
+    assert len(sent.headers["x-requester-uid"]) == 32
 
     assert client.put("/api/admin/agents/calc", json={"config": CONFIG}).json()["id"] == "calc"
     assert json.loads(upstream.requests[-1].content) == CONFIG

@@ -149,3 +149,36 @@ def test_registry_requires_the_token_like_mcp():
     assert client.get("/registry").status_code == 401
     assert client.get("/registry", headers={"X-Internal-Token": "guess"}).status_code == 401
     assert client.get("/registry", headers={"X-Internal-Token": "shared-secret"}).text == "agents"
+
+
+def test_the_uid_is_read_from_headers_and_carried_in_meta_and_outbound_headers(monkeypatch):
+    monkeypatch.setattr(internal_auth, "TOKEN", "")
+    requester = Requester.from_headers(
+        {"X-Requester-Username": "alice", "X-Requester-Email": "a@x.com", "X-Requester-Uid": "u-1"}
+    )
+    assert requester == Requester("alice", "a@x.com", "u-1")
+
+    token = internal_auth.bind_requester(requester)
+    try:
+        assert internal_auth.requester_meta() == {
+            "requester": {"username": "alice", "email": "a@x.com", "uid": "u-1"}
+        }
+        assert internal_auth.outbound_headers()["X-Requester-Uid"] == "u-1"
+    finally:
+        internal_auth.reset_requester(token)
+
+
+def test_without_a_uid_the_old_shapes_are_unchanged(monkeypatch):
+    monkeypatch.setattr(internal_auth, "TOKEN", "")
+    token = internal_auth.bind_requester(Requester("alice", "a@x.com"))
+    try:
+        assert internal_auth.requester_meta() == {"requester": {"username": "alice", "email": "a@x.com"}}
+        assert "X-Requester-Uid" not in internal_auth.outbound_headers()
+    finally:
+        internal_auth.reset_requester(token)
+
+
+def test_a_uid_alone_makes_the_requester_truthy():
+    assert Requester(uid="u-1")
+    assert not Requester()
+    assert Requester.from_headers({"X-Requester-Uid": 5}) == Requester()  # non-strings are ignored

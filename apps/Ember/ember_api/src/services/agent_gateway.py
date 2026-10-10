@@ -41,6 +41,7 @@ class Caller:
 
     username: str
     email: str
+    uid: str = ""
 
 
 class AgentGateway(Protocol):
@@ -83,7 +84,7 @@ class McpAgentGateway:
         self._traffic = traffic or TrafficRecorder()
 
     def _headers(self, caller: Caller) -> dict[str, str]:
-        return identity_headers(caller.username, caller.email, self._internal_token)
+        return identity_headers(caller.username, caller.email, self._internal_token, caller.uid)
 
     async def _call(
         self,

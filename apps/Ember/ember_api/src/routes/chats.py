@@ -428,7 +428,7 @@ def _replaced_from(existing: list[ChatMessage], index: int) -> list[ChatMessage]
 
 
 def _caller(account: Account) -> Caller:
-    return Caller(username=account.username, email=account.email)
+    return Caller(username=account.username, email=account.email, uid=account.uid)
 
 
 # --- history -----------------------------------------------------------------

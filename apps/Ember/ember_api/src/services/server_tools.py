@@ -37,7 +37,7 @@ class McpServerTools:
     async def options_templates(self, caller: Caller) -> set[str]:
         """Every `options_url` a tool parameter declares (chat_app's command
         form hint): the only paths /api/commands/options may fetch."""
-        headers = identity_headers(caller.username, caller.email, self._internal_token)
+        headers = identity_headers(caller.username, caller.email, self._internal_token, caller.uid)
         try:
             with self._traffic.timed("mcp_server", "options_templates"):
                 async with mcp_session(self._url, headers, _TIMEOUT) as session:
