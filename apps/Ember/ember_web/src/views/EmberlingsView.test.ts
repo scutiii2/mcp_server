@@ -52,14 +52,14 @@ async function mountView() {
 }
 
 type Wrapper = Awaited<ReturnType<typeof mountView>>;
-const tab = (wrapper: Wrapper, label: string) => wrapper.findAll("button.segment").find((b) => b.text() === label)!;
+const tab = (wrapper: Wrapper, label: string) => wrapper.findAll("[role=tab]").find((b) => b.text() === label)!;
 
 describe("EmberlingsView", () => {
   it("a first visit opens the menu, then New game picks a starter and opens the collection", async () => {
     client.profile.mockRejectedValue(new ApiError(404, "no profile yet; choose a starter first"));
     const wrapper = await mountView();
 
-    expect(wrapper.find("button.segment").exists()).toBe(false);
+    expect(wrapper.find("[role=tab]").exists()).toBe(false);
     expect(wrapper.findAll("nav .t").map((t) => t.text())).toEqual(["New game", "How to play"]);
 
     await wrapper.find("button.primary").trigger("click");
@@ -79,23 +79,25 @@ describe("EmberlingsView", () => {
   it("a returning player sees the menu first; Continue and Menu move between the screens", async () => {
     const wrapper = await mountView();
 
-    expect(wrapper.find("button.segment").exists()).toBe(false);
+    expect(wrapper.find("[role=tab]").exists()).toBe(false);
     await wrapper.findAll("nav button")[0]!.trigger("click");
     expect(tab(wrapper, "Collection").classes()).toContain("active");
 
-    await wrapper.find("button.chip").trigger("click");
-    expect(wrapper.find("button.segment").exists()).toBe(false);
+    await wrapper.find("button.menu-link").trigger("click");
+    expect(wrapper.find("[role=tab]").exists()).toBe(false);
     await wrapper.findAll("nav button")[2]!.trigger("click");
     expect(tab(wrapper, "Shop").classes()).toContain("active");
   });
 
-  it("shows Insignia and EMBLEM counts in the header", async () => {
+  it("shows Insignia in the masthead and EMBLEM counts under the page title", async () => {
     const wrapper = await mountView();
     await wrapper.findAll("nav button")[0]!.trigger("click");
 
-    const wallet = wrapper.find(".wallet").text();
-    expect(wallet).toContain("100");
-    expect(wallet).toContain("Normal 2");
+    expect(wrapper.find(".wallet").text()).toBe("100 Insignia");
+    expect(wrapper.find(".page-sub").text()).toBe("1 Spark. Every one has a story.");
+
+    await tab(wrapper, "Battle").trigger("click");
+    expect(wrapper.find(".page-sub").text()).toContain("Normal 2");
   });
 
   it("restores an active battle on the Battle tab instead of rolling", async () => {
