@@ -314,8 +314,15 @@ def test_app_monitor_has_existing_tools_without_stop_or_restart_access():
         node.name for node in ast.parse(tool_path.read_text(encoding="utf-8")).body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("tool_")
     ]
+    ticket_tool_path = app_dir.parent / "mcp_server" / "src" / "capabilities" / "tickets" / "tool.py"
+    names.extend(
+        node.name for node in ast.parse(ticket_tool_path.read_text(encoding="utf-8")).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("tool_")
+    )
 
     assert spec.tools.unmatched(names) == []
-    assert {name for name in names if spec.tools.allows(name)} == {"tool_srv_listApps", "tool_srv_startApp"}
+    assert {name for name in names if spec.tools.allows(name)} == {
+        "tool_srv_listApps", "tool_srv_startApp", "tool_ticket_createTicket",
+    }
     assert not spec.tools.allows("tool_srv_stopApp")
     assert not spec.tools.allows("tool_srv_restartApp")
