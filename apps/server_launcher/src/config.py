@@ -111,6 +111,7 @@ _PROJECT_PORT_ENV = {
     "pdf_merger_web": ("PDF_MERGER_WEB_PORT", 5174),
     "video_downloader": ("VIDEO_DOWNLOADER_PORT", 8050),
     "video_downloader_web": ("VIDEO_DOWNLOADER_WEB_PORT", 5175),
+    "mini_games": ("MINI_GAMES_PORT", 8060),
 }
 
 _POLL_MS = 500

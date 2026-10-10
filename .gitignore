@@ -91,3 +91,11 @@ dev_rfc.log
 
 # Archive snapshots are never tracked
 *.zip
+
+# mini_games: real config, secrets and game data stay local; the .example twins and the game catalog are tracked.
+/apps/mini_games/configs/*
+!/apps/mini_games/configs/*.example
+!/apps/mini_games/configs/spark_catalog.json
+/apps/mini_games/secrets/*
+!/apps/mini_games/secrets/*.example
+/apps/mini_games/data/
