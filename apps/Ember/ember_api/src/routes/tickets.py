@@ -105,3 +105,131 @@ async def close_own_ticket(
     ticket_id: TicketId, account: Account = Depends(require_create), gateway: TicketGateway = Depends(get_ticket_gateway),
 ) -> Any:
     return await _call(gateway.close_own(account, ticket_id))
+
+
+# ---- staff routes ----------------------------------------------------------
+
+class TicketPatch(BaseModel):
+    """What staff can change on one ticket. An empty assignee clears it."""
+
+    model_config = ConfigDict(extra="forbid")
+    status: TicketStatus | None = None
+    priority: TicketPriority | None = None
+    assignee: str | None = Field(default=None, max_length=64)
+    tags: list[str] | None = Field(default=None, max_length=5)
+
+
+class MoveIn(BaseModel):
+    """Move to an existing group, or split out into a new one with group_id null."""
+
+    model_config = ConfigDict(extra="forbid")
+    group_id: Annotated[int, Field(ge=1)] | None
+
+
+class GroupPatch(BaseModel):
+    """Setting a priority pins it; pinned false hands it back to automatic elevation."""
+
+    model_config = ConfigDict(extra="forbid")
+    priority: TicketPriority | None = None
+    pinned: bool | None = None
+
+
+@admin_router.get("/tickets")
+async def list_all_tickets(
+    status_filter: Annotated[TicketStatus | None, Query(alias="status")] = None,
+    type: TicketType | None = None,
+    tag: Annotated[str | None, Query(max_length=50)] = None,
+    priority: TicketPriority | None = None,
+    assignee: Annotated[str | None, Query(max_length=64)] = None,
+    group_id: Annotated[int | None, Query(ge=1)] = None,
+    possible: bool = False,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+) -> Any:
+    filters = {
+        "status": status_filter, "type": type, "tag": tag, "priority": priority, "assignee": assignee,
+        "group_id": group_id, "possible": possible, "limit": limit,
+    }
+    return await _call(gateway.list_all(account, filters))
+
+
+@admin_router.get("/tickets/stats")
+async def ticket_stats(
+    account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+) -> Any:
+    return await _call(gateway.stats(account))
+
+
+@admin_router.get("/tickets/{ticket_id}")
+async def get_any_ticket(
+    ticket_id: TicketId, account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+) -> Any:
+    return await _call(gateway.get_any(account, ticket_id))
+
+
+@admin_router.patch("/tickets/{ticket_id}")
+async def update_ticket(
+    ticket_id: TicketId, body: TicketPatch,
+    account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+    logs: LogWriter = Depends(get_log_writer),
+) -> Any:
+    changes = body.model_dump(exclude_none=True)
+    if not changes:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Nothing to change")
+    result = await _call(gateway.update(account, ticket_id, changes))
+    await logs.action(account, "tickets.update", f"Updated ticket {ticket_id} ({', '.join(sorted(changes))})")
+    return result
+
+
+@admin_router.post("/tickets/{ticket_id}/comments")
+async def comment_any_ticket(
+    ticket_id: TicketId, body: CommentIn,
+    account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+    logs: LogWriter = Depends(get_log_writer),
+) -> Any:
+    result = await _call(gateway.comment_staff(account, ticket_id, body.body))
+    await logs.action(account, "tickets.comment", f"Commented on ticket {ticket_id}")
+    return result
+
+
+@admin_router.post("/tickets/{ticket_id}/move")
+async def move_ticket(
+    ticket_id: TicketId, body: MoveIn,
+    account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+    logs: LogWriter = Depends(get_log_writer),
+) -> Any:
+    result = await _call(gateway.move(account, ticket_id, body.group_id))
+    target = f"group {body.group_id}" if body.group_id else "a new group"
+    await logs.action(account, "tickets.move", f"Moved ticket {ticket_id} to {target}")
+    return result
+
+
+@admin_router.get("/ticket-groups")
+async def list_ticket_groups(
+    status_filter: Annotated[TicketStatus | None, Query(alias="status")] = None,
+    tag: Annotated[str | None, Query(max_length=50)] = None,
+    priority: TicketPriority | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+) -> Any:
+    filters = {"status": status_filter, "tag": tag, "priority": priority, "limit": limit}
+    return await _call(gateway.list_groups(account, filters))
+
+
+@admin_router.patch("/ticket-groups/{group_id}")
+async def update_ticket_group(
+    group_id: TicketId, body: GroupPatch,
+    account: Account = Depends(require_manage), gateway: TicketGateway = Depends(get_ticket_gateway),
+    logs: LogWriter = Depends(get_log_writer),
+) -> Any:
+    changes = body.model_dump(exclude_none=True)
+    if not changes:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Nothing to change")
+    result = await _call(gateway.update_group(account, group_id, changes))
+    if "priority" in changes:
+        pinned = " (pinned)" if changes.get("pinned", True) else ""
+        message = f"Set ticket group {group_id} priority to {changes['priority']}{pinned}"
+    else:
+        message = f"Changed ticket group {group_id} pin to {'on' if changes['pinned'] else 'off'}"
+    await logs.action(account, "tickets.group_priority", message)
+    return result

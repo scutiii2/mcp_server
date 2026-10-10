@@ -183,3 +183,135 @@ def test_mcp_server_answers_map_to_http_errors(client_factory, email, upstream) 
     upstream.unreachable = True
     down = member.get("/api/tickets")
     assert (down.status_code, down.json()["detail"]) == (502, "mcp_server is unreachable")
+
+
+# ---- staff routes ----------------------------------------------------------
+
+def test_staff_list_forwards_filters_and_reads_everything(client, upstream) -> None:
+    upstream.handler = tickets_server
+    admin = as_admin(client)
+
+    listing = admin.get(
+        "/api/admin/tickets",
+        params={"status": "open", "type": "bug", "tag": "email", "priority": "high", "assignee": "root",
+                "group_id": 3, "possible": "true", "limit": 20},
+    )
+
+    assert listing.json() == {"tickets": [TICKET]}
+    request = upstream.requests[-1]
+    assert request.url.path == "/ticket-admin/tickets"
+    assert dict(request.url.params) == {
+        "status": "open", "type": "bug", "tag": "email", "priority": "high", "assignee": "root",
+        "group_id": "3", "possible": "1", "limit": "20",
+    }
+    assert request.headers["x-requester-username"] == "root"
+    assert admin.get("/api/admin/tickets", params={"status": "done"}).status_code == 422
+    assert admin.get("/api/admin/tickets", params={"limit": 501}).status_code == 422
+
+
+def test_staff_stats_is_not_read_as_a_ticket_id(client, upstream) -> None:
+    upstream.handler = tickets_server
+    admin = as_admin(client)
+
+    assert admin.get("/api/admin/tickets/stats").json() == {"open": 1, "urgent": 0, "groups": 1}
+    assert upstream.requests[-1].url.path == "/ticket-admin/stats"
+    assert admin.get("/api/admin/tickets/7").json()["ticket"]["id"] == 7
+    assert upstream.requests[-1].url.path == "/ticket-admin/tickets/7"
+
+
+def test_staff_groups_list_and_priority(client, upstream) -> None:
+    upstream.handler = tickets_server
+    admin = as_admin(client)
+
+    assert admin.get("/api/admin/ticket-groups", params={"tag": "email"}).json() == {"groups": [GROUP]}
+    assert dict(upstream.requests[-1].url.params) == {"tag": "email", "limit": "100"}
+
+    pinned = admin.patch("/api/admin/ticket-groups/3", json={"priority": "urgent"})
+    assert pinned.status_code == 200 and pinned.json()["group"]["priority"] == "urgent"
+    assert body_of(upstream.requests[-1]) == {"priority": "urgent"}
+    assert admin.patch("/api/admin/ticket-groups/3", json={"pinned": False}).status_code == 200
+    assert body_of(upstream.requests[-1]) == {"pinned": False}
+    assert admin.patch("/api/admin/ticket-groups/3", json={"priority": "critical"}).status_code == 422
+    assert admin.patch("/api/admin/ticket-groups/3", json={}).status_code == 422
+
+
+def test_staff_ticket_changes_are_proxied_and_logged_without_text(client, upstream) -> None:
+    upstream.handler = tickets_server
+    admin = as_admin(client)
+
+    patched = admin.patch("/api/admin/tickets/7", json={"status": "in_progress", "assignee": "root", "tags": ["config"]})
+    assert patched.status_code == 200
+    assert body_of(upstream.requests[-1]) == {"status": "in_progress", "assignee": "root", "tags": ["config"]}
+    assert admin.post("/api/admin/tickets/7/comments", json={"body": "secret log text"}).status_code == 200
+    assert admin.post("/api/admin/tickets/7/move", json={"group_id": 3}).status_code == 200
+    assert body_of(upstream.requests[-1]) == {"group_id": 3}
+    assert admin.post("/api/admin/tickets/7/move", json={"group_id": None}).status_code == 200
+    assert admin.patch("/api/admin/ticket-groups/3", json={"priority": "urgent"}).status_code == 200
+    assert admin.patch("/api/admin/ticket-groups/3", json={"pinned": False}).status_code == 200
+
+    messages = [entry["message"] for entry in admin.get("/api/logs/action", params={"actor": admin.get("/api/auth/me").json()["id"]}).json()]
+    assert messages[:6] == [
+        "Changed ticket group 3 pin to off",
+        "Set ticket group 3 priority to urgent (pinned)",
+        "Moved ticket 7 to a new group",
+        "Moved ticket 7 to group 3",
+        "Commented on ticket 7",
+        "Updated ticket 7 (assignee, status, tags)",
+    ]
+    assert not any("secret log text" in message for message in messages)
+
+
+def test_staff_request_validation(client, upstream) -> None:
+    upstream.handler = tickets_server
+    admin = as_admin(client)
+
+    assert admin.patch("/api/admin/tickets/7", json={"status": "done"}).status_code == 422
+    assert admin.patch("/api/admin/tickets/7", json={"priority": "critical"}).status_code == 422
+    assert admin.patch("/api/admin/tickets/7", json={"reporter": "x"}).status_code == 422
+    assert admin.patch("/api/admin/tickets/7", json={"tags": ["a", "b", "c", "d", "e", "f"]}).status_code == 422
+    assert admin.patch("/api/admin/tickets/7", json={}).status_code == 422
+    assert admin.post("/api/admin/tickets/7/move", json={}).status_code == 422
+    assert admin.post("/api/admin/tickets/7/move", json={"group_id": 0}).status_code == 422
+    assert admin.post("/api/admin/tickets/7/comments", json={"body": ""}).status_code == 422
+    assert len(upstream.requests) == 0
+
+
+def test_failed_staff_change_is_not_logged(client, upstream) -> None:
+    upstream.handler = tickets_server
+    admin = as_admin(client)
+
+    assert admin.patch("/api/admin/tickets/404", json={"status": "closed"}).status_code == 404
+    assert upstream.requests[-1].url.path == "/ticket-admin/tickets/404"
+    messages = [entry["message"] for entry in admin.get("/api/logs/action", params={"actor": admin.get("/api/auth/me").json()["id"]}).json()]
+    assert not any("ticket 404" in message for message in messages)
+
+
+def test_staff_routes_need_tickets_manage_and_own_routes_need_create(client_factory, email, upstream) -> None:
+    upstream.handler = tickets_server
+    member, _ = member_client(client_factory, email, upstream)
+    for method, path in [("get", "/api/admin/tickets"), ("get", "/api/admin/tickets/stats"),
+                         ("get", "/api/admin/tickets/7"), ("get", "/api/admin/ticket-groups")]:
+        refused = getattr(member, method)(path)
+        assert (refused.status_code, refused.json()["detail"]) == (403, "Missing permission: tickets.manage")
+    assert member.patch("/api/admin/tickets/7", json={"status": "closed"}).status_code == 403
+    assert member.patch("/api/admin/ticket-groups/3", json={"priority": "low"}).status_code == 403
+    assert len(upstream.requests) == 0
+
+
+def test_manage_without_create_can_triage_but_not_file(client_factory, email, upstream) -> None:
+    upstream.handler = tickets_server
+    client = client_factory()
+    limited_account(client, email, "tickets.manage")
+
+    assert client.get("/api/admin/tickets").status_code == 200
+    assert client.get("/api/tickets").status_code == 403
+    assert client.post("/api/tickets", json={"type": "bug", "title": "t", "description": "d"}).status_code == 403
+
+
+def test_staff_routes_report_an_unreachable_mcp_server(client, upstream) -> None:
+    admin = as_admin(client)
+    upstream.unreachable = True
+
+    down = admin.get("/api/admin/tickets")
+
+    assert (down.status_code, down.json()["detail"]) == (502, "mcp_server is unreachable")
