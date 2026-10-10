@@ -118,3 +118,20 @@ hand and writes `docs/emberlings-laya-eval.md`.
 - `configs/`, `secrets/` - gitignored real files with `.example` twins, plus the
   tracked `spark_catalog.json`.
 - `data/` - SQLite database (created at runtime).
+
+## Behaviour notes
+
+- **EMBLEM fallback.** When an autonomous battle's EMBLEM prompt expires, the
+  picker chooses among the tiers the player may spend. With exactly one permitted
+  tier it uses that tier. With two or more and no Laya, the autonomous CATCH
+  becomes a basic ATTACK.
+- **Port.** The launcher's `MINI_GAMES_PORT` entry is only a launcher default.
+  The real port is `port` in `configs/config_app.json`; keep the two equal.
+
+## Known gaps
+
+Deferred to the Ember UI spec:
+
+- The mood draw is stored in `rounds`, but no route reveals it after a battle has
+  finished.
+- There is no game-discovery route.
