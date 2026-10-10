@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import pytest
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -215,10 +216,10 @@ def test_watch_app_starts_a_watcher_for_the_caller(tmp_path, monkeypatch):
 
 def test_pause_watch_cancels_first_and_restores_it_when_the_action_fails(tmp_path, monkeypatch):
     calls = []
+    watcher = make(ServerWatcher, tmp_path)
     monkeypatch.setattr(server_watcher, "settings", replace(server_watcher.settings, watchers_dir=tmp_path))
-    monkeypatch.setattr(ServerWatcher, "is_active", classmethod(lambda cls, key: True))
-    monkeypatch.setattr(ServerWatcher, "cancel", classmethod(lambda cls, state_dir, key: calls.append(("cancel", key))))
-    monkeypatch.setattr(server_watcher, "watch_app", lambda name: calls.append(("watch", name)))
+    monkeypatch.setattr(ServerWatcher, "cancel", classmethod(lambda cls, state_dir, key: calls.append(("cancel", key)) or watcher))
+    monkeypatch.setattr(ServerWatcher, "start", lambda self: calls.append(("watch", self.key)))
 
     def failing():
         calls.append(("action", None))
@@ -241,3 +242,35 @@ def test_pause_watch_leaves_the_watcher_off_when_the_action_succeeds(tmp_path, m
 
     assert server_watcher.pause_watch("web", lambda: "stopped") == "stopped"
     assert calls == [("cancel", "web")]
+
+
+def test_failed_pause_restores_original_owner_and_monitoring_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(server_watcher, "settings", replace(server_watcher.settings, watchers_dir=tmp_path))
+    monkeypatch.setattr(server_watcher.identity_context, "current_username", lambda: "bob")
+    monkeypatch.setattr(server_watcher.identity_context, "current_email", lambda: "bob@x.io")
+    monkeypatch.setattr(ServerWatcher, "run", lambda self: self._stop_event.wait(5))
+    original = make(
+        ServerWatcher, tmp_path, started_at=T0.isoformat(), since=line(6, "").split()[0].replace("Z", "+00:00"),
+        pending=[line(5, "held error")], last_email_at=T0.isoformat(), checks=4,
+    )
+    original.start()  # Restore must also work before the first record has been written.
+    started = []
+    monkeypatch.setattr(ServerWatcher, "start", lambda self: started.append(self))
+
+    def failing():
+        assert not ServerWatcher.is_active("web")
+        raise RuntimeError("stop failed")
+
+    try:
+        with pytest.raises(RuntimeError, match="stop failed"):
+            server_watcher.pause_watch("web", failing)
+    finally:
+        original.stop()
+
+    (restored,) = started
+    assert restored is not original and not restored._stop_event.is_set()
+    assert (restored.owner, restored.email) == ("alice", "alice@x.io")
+    assert restored.state_dir == tmp_path and restored._started_at == original._started_at
+    assert restored._since == original._since
+    assert restored._pending == original._pending
+    assert restored._last_email_at == original._last_email_at and restored._checks == 4

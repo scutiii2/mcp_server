@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -174,3 +175,54 @@ def test_resume_all_points_rebuilt_watchers_at_the_real_state_directory(tmp_path
     finally:
         for watcher in started:
             watcher.stop()
+
+
+def test_cancel_waits_for_an_in_flight_save_then_deletes_it(tmp_path, monkeypatch):
+    writing, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    original_write = Path.write_text
+    monkeypatch.setattr(_FakeWatcher, "run", lambda self: self._stop_event.wait(5))
+    watcher = _FakeWatcher("saving", tmp_path, [])
+    watcher.start()
+
+    def blocked_write(path, *args, **kwargs):
+        writing.set()
+        assert release.wait(5)
+        return original_write(path, *args, **kwargs)
+
+    def cancel():
+        _FakeWatcher.cancel(tmp_path, watcher.key)
+        cancelled.set()
+
+    monkeypatch.setattr(Path, "write_text", blocked_write)
+    writer = threading.Thread(target=watcher._save_record, args=(WatcherPhase.RUNNING, {}))
+    canceller = threading.Thread(target=cancel)
+    writer.start()
+    try:
+        assert writing.wait(2)
+        canceller.start()
+        cancelled.wait(0.2)
+    finally:
+        release.set()
+        writer.join(2)
+        if canceller.ident is not None:
+            canceller.join(2)
+        watcher.stop()
+
+    assert not writer.is_alive() and not canceller.is_alive()
+    assert cancelled.is_set()
+    assert not watcher._state_path().exists()
+
+
+def test_old_watcher_cleanup_leaves_its_replacement_active(tmp_path, monkeypatch):
+    monkeypatch.setattr(_FakeWatcher, "run", lambda self: self._stop_event.wait(5))
+    old = _FakeWatcher("replaced", tmp_path, [])
+    replacement = _FakeWatcher("replaced", tmp_path, [])
+    old.start()
+    replacement.start()
+    try:
+        old.stop()
+        assert _FakeWatcher.is_active("replaced")
+        _FakeWatcher.cancel(tmp_path, "replaced")
+        assert replacement._stop_event.is_set()
+    finally:
+        replacement.stop()

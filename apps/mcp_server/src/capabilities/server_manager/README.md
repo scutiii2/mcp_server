@@ -10,7 +10,10 @@ Starting an app (`tool_srv_startApp`, `tool_srv_restartApp`) starts a `ServerWat
 - App missing from `tool_srv_listApps` data (removed) or listed but not `running` (crashed): one email with the last
   20 log lines, then the watcher ends. Restarting the app starts a new one.
 - New log lines containing "error" while running: one email with all new lines, at most one per app per hour; lines
-  found during the cool-down go out in the next email.
+  found during the cool-down go out in the next email. Each scan reads at most 200 log lines; at most the newest
+  100 pending error lines are retained, so heavier logging can omit older lines.
+
+If a stop or restart fails, watching resumes with the original owner, log cursor, held lines and email cooldown.
 
 `tool_srv_stopApp` ends the watcher first, so a deliberate stop sends no email. `tool_srv_listApps` shows which apps
 are watched. Mail goes to the address of whoever started the app, through the Email capability (`notification`

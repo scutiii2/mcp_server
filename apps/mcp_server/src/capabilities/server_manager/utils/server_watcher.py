@@ -192,12 +192,18 @@ def watch_app(name: str) -> None:
 
 def pause_watch(name: str, action: Callable[[], T]) -> T:
     """Runs `action` (a deliberate stop or restart) with the app's watcher cancelled, so it is not reported as a crash.
-    If `action` fails the app is still running, so the watcher is put back."""
-    was_watched = ServerWatcher.is_active(name)
-    ServerWatcher.cancel(settings.watchers_dir, name)
+    If `action` fails, restore the original owner and monitoring state."""
+    watcher = ServerWatcher.cancel(settings.watchers_dir, name)
+    restored = None
+    if isinstance(watcher, ServerWatcher):
+        restored = ServerWatcher.from_record(WatcherRecord(
+            key=watcher.key, phase=WatcherPhase.RUNNING, started_at=watcher._started_at,
+            last_polled_at=watcher.clock().isoformat(), detail=watcher._detail(),
+        ))
+        restored.state_dir = watcher.state_dir
     try:
         return action()
     except Exception:
-        if was_watched:
-            watch_app(name)
+        if restored is not None:
+            restored.start()
         raise
