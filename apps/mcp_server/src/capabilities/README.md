@@ -13,6 +13,7 @@ what it does:
 - `tables/` - questions about an attached CSV or Excel file (`/data ...`).
 - `watchers/` - background up/down watchers with one email (`/watch ...`).
 - `email/` - shared outgoing email and threaded replies (`/email ...`).
+- `memory/` - per-user saved notes the model can search and forget (`/memory ...`).
 
 ## Shape of a capability
 

@@ -28,5 +28,8 @@
   },
   "watch": {
     "enabled": true
+  },
+  "memory": {
+    "enabled": true
   }
 }

@@ -99,12 +99,17 @@ Optional follow-up features, not implemented:
 3. **Plan/todo tool — done** (`5069200`): local `update_plan` tool with per-turn pending / in_progress / done checklists, offered by both providers. Live `plan_update` snapshots retain delegated-agent identity; small Ember API pass-through, reconnect snapshots, and Ember web panel make them visible.
 4. **Tool-activity persistence across turns — done** (`55f1a1f`, `705340f`, `a92e059`): an answer's stored `steps` now reach the model as a text digest (`apps/Ember/ember_api/src/services/step_digest.py`). The last 3 tool-using answers carry full lines (args cut to 200, results to 300, block to 1,500 characters); older ones carry tool names only, also capped at 1,500 characters. `update_plan` and `ask_user` are skipped. The block is labelled as a record, not instructions; built at send time and never stored. Spec: `docs/superpowers/specs/2026-10-09-tool-activity-digest-design.md`.
 5. **Compaction/summarizing — mostly existed, remainder done**: summarizing already lived in `ember_api` (`services/summarization.py`: auto at `auto_summarize_ratio` 0.6, manual button, 2,000-token cap, raw `log_attachment`), and `ai_agent`'s `trim_history_to_fit` is only a fallback. What was missing, the summarizer seeing tool results, is covered by item 4 (`render_messages(include_steps=True)` in the summary prompt only).
-6. **Persistent memory**: facts that outlive a chat; store, read/write tools, per-user scoping, forget rules. Retrieval quality is the hard part. Hard.
+6. **Persistent memory — done** (`9cf776f`, `6950a67`): a `memory` capability in `apps/mcp_server/src/capabilities/memory/` (tools `tool_mem_save`, `tool_mem_search`, `tool_mem_forget`; slash commands `/memory save|search|forget`); per-user notes in SQLite with FTS5 at `specifics/memory/.data/memory.db`, 500 characters per note and 200 notes per user; the model saves only user-stated facts (a tool-description rule, not enforced by code); recall is on demand. Known weakness: the model must remember to search. Next step if that proves unreliable: automatic recall injected each turn. Spec: `docs/superpowers/specs/2026-10-10-persistent-memory-design.md`.
+   Follow-ups:
+   1. ember_api should purge or move a user's memory notes on account delete or rename (for example through a hidden admin tool in the memory capability).
+   2. `apps/ai_agent/agents/reviewer.json` has no tool scope, so the reviewer agent is offered `tool_mem_save` although it reads other agents' output; add `"deny": ["tool_mem_*"]` (or scope it properly) in a follow-up (ai_agent edits were out of scope here).
+   3. Consider refusing memory calls when `INTERNAL_API_TOKEN` is empty and the host is not loopback.
+   4. Automatic recall if the model often skips `tool_mem_search` (already listed as the known weakness).
 7. **Sandboxed workspace (files and shell)**: isolated per-user directory and a limited command runner, fitted to the approval flow. Real security risk. Best as a new `mcp_server` capability, not inside `ai_agent`. Hardest.
 
-Items 1 to 5 are complete; items 6 and 7 remain open.
+Items 1 to 6 are complete; item 7 remains open.
 
-**Revisit when**: user wants to tackle persistent memory or a sandboxed workspace; brainstorm that design first.
+**Revisit when**: user wants to tackle a sandboxed workspace; brainstorm that design first.
 
 ## Build mini_games: chess and Tetris against a Laya-assisted bot (added 2026-10-09)
 

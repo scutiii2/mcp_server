@@ -78,6 +78,8 @@ class Settings:
     # records and recipient lists. Relative to CWD, like uploads_dir.
     watchers_dir: Path = Path(_env("MCP_WATCHERS_DIR", ".data/watchers"))
     email_audit_path: Path = Path(_env("MCP_EMAIL_AUDIT_PATH", "specifics/email/.data/audit.db"))
+    # Per-user memory notes (capabilities/memory). Runtime state: gitignored.
+    memory_db_path: Path = Path(_env("MCP_MEMORY_DB_PATH", "specifics/memory/.data/memory.db"))
     # Tavily API key for the web_research capability. Blank until set in .env;
     # the tools then fail with a message naming the variable.
     tavily_api_key: str = _env("TAVILY_API_KEY", "")
