@@ -366,3 +366,23 @@ def test_dispatch_forwards_reasoning_effort_and_ignores_non_strings():
     assert calls[0].args == ("calc", "q", 1) and calls[0].kwargs == {"reasoning_effort": "low"}
     assert calls[1].args == ("calc", "q", 1) and calls[1].kwargs == {}
     assert calls[2].kwargs == {"model_tier": "light", "reasoning_effort": "off"}
+
+
+def test_interpret_reports_its_own_agent_usage():
+    from unittest.mock import patch
+
+    from src import server
+    from src.llm.base_provider import ChatResult
+
+    fake = ChatResult(
+        response="summary", provider_id="anthropic", model="m",
+        total_tokens=30, input_tokens=20, output_tokens=10,
+    )
+    with patch("src.server.agent_config.run_interpret", return_value=fake), \
+         patch("src.server.agent_config.status", return_value={"model": "m", "context_window": 1}):
+        result = server.interpret("text")
+
+    (row,) = result["agent_usage"]
+    assert row["agent_id"] == server._AGENT_ID
+    assert row["total_tokens"] == 30
+    assert (row["input_tokens"], row["output_tokens"]) == (20, 10)

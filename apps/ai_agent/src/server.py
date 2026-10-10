@@ -409,12 +409,21 @@ def interpret(text: str) -> dict[str, Any]:
     offered. Used by chat_app's summarization (see services/summarization.py)
     for a plain prompt-in, text-out step; `ask()` remains what a free-form
     chat question goes through, tool selection and all."""
+    started_at = agent_events.now_iso()
     result = agent_config.run_interpret(text)
+    own_usage = usage_log.own_row(
+        result, agent_id=_AGENT_ID, agent_label=_AGENT_LABEL, gateway=SPEC.effective_gateway(),
+        started_at=started_at, finished_at=agent_events.now_iso(), delegated_by=None,
+    )
     return {
         "response": result.response,
         "provider_id": result.provider_id,
         "model": result.model,
         "total_tokens": result.total_tokens,
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
+        # Same shape as ask(), so the caller books this call under this agent.
+        "agent_usage": [own_usage],
         "context_tokens": result.context_tokens,
         "context_window": agent_config.status()["context_window"],
     }

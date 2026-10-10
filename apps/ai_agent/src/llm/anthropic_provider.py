@@ -467,6 +467,8 @@ def run_interpret(text: str, model: str | None = None) -> ChatResult:
             model=model_name,
             total_tokens=total_tokens,
             context_tokens=response.usage.input_tokens,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
         )
     except RateLimitError as error:
         seconds = cooldown.extract_retry_after_seconds(error) or cooldown.DEFAULT_COOLDOWN_SECONDS
