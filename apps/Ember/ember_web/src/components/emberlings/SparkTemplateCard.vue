@@ -3,6 +3,7 @@ import { computed } from "vue";
 import type { SparkInfo } from "../../api/EmberlingsClient";
 import frameUrl from "../../assets/emberlings/card_frame.webp";
 import { abilityEffect, passiveText, titleCase } from "../../utils/emberlings";
+import { sparkArt } from "./sparkArt";
 
 /** A Spark's card, drawn on the card frame (assets/emberlings/card_frame.webp,
  * the text-free front template, 1060 x 1484). The frame is the whole
@@ -10,11 +11,12 @@ import { abilityEffect, passiveText, titleCase } from "../../utils/emberlings";
  * in frame pixels and turned into percentages, so the card scales with its
  * width. The frame's see-through holes show the artwork box and, for each
  * ability, a colour for its category. The frame's metal is tinted for the
- * Spark's tier; the Emberlings plate keeps its own colours. `compact` is the
- * small version for lists: the frame, the name and the artwork box, with the
- * ability slots still coloured by category, and no stats or text; `showLevel`
- * adds the level to its header. The width is `--card-width` (440 px, or 150 px
- * compact). */
+ * Spark's tier; the Emberlings plate keeps its own colours. The Spark's portrait
+ * (sparkArt.ts) shows in the artwork window, or its first letter when it has none.
+ * `compact` is the small version for lists: the frame cropped to its top part so the
+ * artwork is larger, the name, and a plate with the tier's name at the bottom, no stats
+ * or text; `showLevel` adds the level to its header. The width is `--card-width` (440 px,
+ * or 150 px compact). */
 const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierId?: string; compact?: boolean; showLevel?: boolean }>(), {
   level: 1,
   tierId: "normal",
@@ -25,14 +27,19 @@ const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierI
 const FRAME_W = 1060;
 const FRAME_H = 1484;
 
-/** A box in frame pixels as CSS percentages of the card. */
-function box(x0: number, y0: number, x1: number, y1: number): Record<string, string> {
+/** The compact card draws the frame this much taller than the card and shows its top. */
+const COMPACT_ZOOM = 1.9;
+
+/** A box in frame pixels as CSS percentages of the card; `zoom` for the cropped compact frame. */
+function box(x0: number, y0: number, x1: number, y1: number, zoom = 1): Record<string, string> {
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
-  return { left: pct(x0, FRAME_W), top: pct(y0, FRAME_H), width: pct(x1 - x0, FRAME_W), height: pct(y1 - y0, FRAME_H) };
+  return { left: pct(x0, FRAME_W), top: pct(y0 * zoom, FRAME_H), width: pct(x1 - x0, FRAME_W), height: pct((y1 - y0) * zoom, FRAME_H) };
 }
 
 const HEADER = box(235, 62, 850, 135);
+const HEADER_COMPACT = box(235, 62, 850, 135, COMPACT_ZOOM);
 const ART = box(81, 167, 978, 631);
+const ART_COMPACT = box(81, 167, 978, 631, COMPACT_ZOOM);
 const STAT_COLUMNS = [box(70, 668, 375, 800), box(375, 668, 686, 800), box(686, 668, 990, 800)];
 const PASSIVE = box(100, 820, 960, 938);
 /** The three ability holes in the frame (see-through). */
@@ -92,6 +99,9 @@ const tintStyle = computed(() => ({
   maskImage: `url(${frameUrl})`,
   WebkitMaskImage: `url(${frameUrl})`,
 }));
+const art = computed(() => sparkArt(props.spark.id));
+const artPosition = computed(() => `50% ${(props.compact ? art.value?.focusCompact : art.value?.focus) ?? 50}%`);
+const tierVar = computed(() => `var(--em-tier-${props.tierId}, var(--em-tier-normal))`);
 const passiveName = computed(() => titleCase(props.spark.passive.kind));
 const passive = computed(() => passiveText(props.spark.passive.kind, props.spark.passive.params));
 const abilities = computed(() =>
@@ -106,18 +116,30 @@ const abilities = computed(() =>
 </script>
 
 <template>
-  <article class="card" :class="[`tier-${tierId}`, { compact }]" :aria-label="`${spark.name}, ${titleCase(tierId)}, level ${level}`">
-    <div class="behind art-fill" :style="ART" aria-hidden="true">
-      <span class="letter">{{ spark.name.slice(0, 1) }}</span>
-      <small v-if="!compact">Artwork</small>
+  <article
+    class="card"
+    :class="[`tier-${tierId}`, { compact }]"
+    :style="{ '--tier': tierVar }"
+    :aria-label="`${spark.name}, ${titleCase(tierId)}, level ${level}`"
+  >
+    <div class="behind art-fill" :style="compact ? ART_COMPACT : ART" aria-hidden="true">
+      <img v-if="art" class="portrait" :src="art.url" :style="{ objectPosition: artPosition }" alt="" draggable="false" />
+      <template v-else>
+        <span class="letter">{{ spark.name.slice(0, 1) }}</span>
+        <small v-if="!compact">Artwork</small>
+      </template>
     </div>
-    <div v-for="a in abilities" :key="a.ability.id" class="behind" :style="a.fill" aria-hidden="true" />
+    <template v-if="!compact">
+      <div v-for="a in abilities" :key="a.ability.id" class="behind" :style="a.fill" aria-hidden="true" />
+    </template>
 
     <img class="frame" :src="frameUrl" alt="" draggable="false" />
     <div v-if="tint" class="tint" :style="tintStyle" aria-hidden="true" />
-    <img v-if="tint" class="frame plate" :src="frameUrl" alt="" draggable="false" :style="{ clipPath: PLATE_CLIP }" />
+    <img v-if="tint && !compact" class="frame plate" :src="frameUrl" alt="" draggable="false" :style="{ clipPath: PLATE_CLIP }" />
 
-    <header class="header" :style="HEADER">
+    <footer v-if="compact" class="tier-plate em-pixel">{{ titleCase(tierId) }}</footer>
+
+    <header class="header" :style="compact ? HEADER_COMPACT : HEADER">
       <h4 class="spark-name">{{ spark.name }}</h4>
       <span v-if="!compact || showLevel" class="level">Lv {{ level }}</span>
     </header>
@@ -166,6 +188,36 @@ const abilities = computed(() =>
 }
 .card.compact {
   width: var(--card-width, 150px);
+  overflow: hidden;
+}
+.compact .frame,
+.compact .tint {
+  height: 190%;
+}
+.portrait {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+.tier-plate {
+  position: absolute;
+  right: 9%;
+  bottom: 5%;
+  left: 9%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 14%;
+  border: 1px solid var(--tier);
+  background: #17222e;
+  box-shadow: inset 0 0 0 2px #101720;
+  font-size: 5.8cqw;
+  letter-spacing: 0.3cqw;
+  text-transform: uppercase;
+  color: var(--tier);
 }
 .compact .level {
   font-size: 5.5cqw;

@@ -63,6 +63,26 @@ describe("SparkTemplateCard", () => {
     expect(new Set(tints).size).toBe(5);
   });
 
+  it("shows the Spark's portrait in the artwork window, or its letter when it has none", () => {
+    const guardian = mount(SparkTemplateCard, { props: { spark: sparkInfo("guardian") } });
+    expect(guardian.find("img.portrait").exists()).toBe(true);
+    expect(guardian.find(".letter").exists()).toBe(false);
+    expect((guardian.find("img.portrait").element as HTMLElement).style.objectPosition).toBe("50% 21%");
+
+    const bruiser = mount(SparkTemplateCard, { props: { spark: sparkInfo("bruiser") } });
+    expect(bruiser.find("img.portrait").exists()).toBe(false);
+    expect(bruiser.find(".letter").text()).toBe("B");
+  });
+
+  it("the small card has a tier plate, no ability slots, and its own portrait focus", () => {
+    const wrapper = mount(SparkTemplateCard, { props: { spark: sparkInfo("sentinel"), tierId: "royalty", compact: true } });
+
+    expect(wrapper.find(".tier-plate").text()).toBe("Royalty");
+    expect(wrapper.find(".ability").exists()).toBe(false);
+    expect(wrapper.findAll(".behind")).toHaveLength(1);
+    expect((wrapper.find("img.portrait").element as HTMLElement).style.objectPosition).toBe("50% 14%");
+  });
+
   it("colours each ability's slot by its category", () => {
     const spark = sparkInfo("mixed", {
       abilities: ["ATTACK", "DEFENSE", "SUPPORT"].map((category, i) => ({
