@@ -137,6 +137,12 @@ async def _serve() -> None:
 
             UserWatcher.resume_all(settings.watchers_dir)
 
+        # Restart the app watchers that were running when the server last stopped.
+        if "server" in capability_registry.names() and capability_registry.is_enabled("server"):
+            from src.capabilities.server_manager.utils.server_watcher import ServerWatcher
+
+            ServerWatcher.resume_all(settings.watchers_dir)
+
         app = mcp.streamable_http_app()
         # Reads chat_app's X-Requester-Username/X-Requester-Email headers
         # (see services/commands.py's _IDENTITY_INJECTED_TOOLS) into
