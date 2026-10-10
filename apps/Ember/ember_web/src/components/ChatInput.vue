@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, nextTick, ref, watch } from "vue";
 import { useAuthStore } from "../stores/auth";
 import { attachmentsClient } from "../api/AttachmentsClient";
 import type { CommandInfo } from "../api/CommandsClient";
+import { EXTENSION_SEPARATOR } from "../api/ExtensionsClient";
 import type { PromptTemplate } from "../api/TemplatesClient";
 import type { JsonSchema } from "../api/types";
 import { BUILTIN_COMMANDS } from "../utils/builtinCommands";
@@ -208,6 +209,9 @@ function onPaste(event: ClipboardEvent): void {
 }
 
 const MAX_SUGGESTIONS = 8;
+/** Slash commands are grouped, and the group headers are not counted. */
+const MAX_SLASH_SUGGESTIONS = 12;
+const BUILTIN_GROUP = "Built-in";
 
 interface Suggestion {
   text: string;
@@ -219,6 +223,8 @@ interface Suggestion {
   /** Set for a parameter ("key=" or "key=value"): picking it replaces the
    * word being typed, which starts here, instead of the whole box. */
   replaceFrom?: number;
+  /** Set for a slash command: the header it is listed under. */
+  group?: string;
 }
 
 /** The command being filled in ("/<capability> <command> " typed, parameters
@@ -273,18 +279,29 @@ const suggestions = computed<Suggestion[]>(() => {
   }
   if (!/^\/\S*( \S*)?$/.test(typed)) return [];
   const needle = typed.toLowerCase();
+  // Grouped: the built-ins and /help first, then each capability's help and commands.
   const all: Suggestion[] = [
     // The built-ins work without any tools, so they are offered even before commands load.
-    ...BUILTIN_COMMANDS.map((c) => ({ text: `/${c.name}`, description: c.description })),
-    ...(props.commands.length ? [{ text: "/help", description: "Every capability and its commands" }] : []),
-    ...[...new Set(props.commands.map((c) => c.capability))].map((cap) => ({
-      text: `/${cap} help`,
-      description: `How to use ${cap}`,
-    })),
-    ...props.commands.map((c) => ({ text: `/${c.capability} ${c.name}`, description: c.description, command: c })),
+    ...BUILTIN_COMMANDS.map((c) => ({ text: `/${c.name}`, description: c.description, group: BUILTIN_GROUP })),
+    ...(props.commands.length ? [{ text: "/help", description: "Every capability and its commands", group: BUILTIN_GROUP }] : []),
   ];
-  return all.filter((s) => s.text.toLowerCase().startsWith(needle) && s.text !== typed).slice(0, MAX_SUGGESTIONS);
+  const byCapability = new Map<string, CommandInfo[]>();
+  for (const c of props.commands) byCapability.set(c.capability, [...(byCapability.get(c.capability) ?? []), c]);
+  for (const [cap, commands] of byCapability) {
+    const group = commands.every((c) => c.tool_name.includes(EXTENSION_SEPARATOR)) ? `${cap} (extension)` : cap;
+    all.push(
+      { text: `/${cap} help`, description: `How to use ${cap}`, group },
+      ...commands.map((c) => ({ text: `/${cap} ${c.name}`, description: c.description, command: c, group })),
+    );
+  }
+  return all.filter((s) => s.text.toLowerCase().startsWith(needle) && s.text !== typed).slice(0, MAX_SLASH_SUGGESTIONS);
 });
+
+/** A header row goes above the first suggestion of each group. */
+function startsGroup(index: number): boolean {
+  const group = suggestions.value[index]?.group;
+  return !!group && group !== suggestions.value[index - 1]?.group;
+}
 const highlighted = ref(0);
 const list = ref<HTMLUListElement | null>(null);
 watch(suggestions, () => (highlighted.value = 0));
@@ -296,8 +313,11 @@ watch(highlighted, () => {
     const box = list.value;
     const row = box?.querySelector<HTMLElement>("li.active");
     if (!box || !row) return;
-    const pad = row.offsetTop - box.scrollTop;
-    if (pad < 0) box.scrollTop = row.offsetTop - 4;
+    // The first row of a group scrolls its header into view too.
+    const header = row.previousElementSibling?.classList.contains("group") ? (row.previousElementSibling as HTMLElement) : null;
+    const top = header ? header.offsetTop : row.offsetTop;
+    const pad = top - box.scrollTop;
+    if (pad < 0) box.scrollTop = top - 4;
     else if (pad + row.offsetHeight > box.clientHeight) box.scrollTop = row.offsetTop + row.offsetHeight - box.clientHeight + 4;
   });
 });
@@ -479,17 +499,18 @@ function onKeydown(event: KeyboardEvent): void {
   <form class="composer" @submit.prevent="submit" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <div v-if="suggestions.length" class="suggestions">
       <ul ref="list" class="options" role="listbox" aria-label="Commands">
-        <li
-          v-for="(s, i) in suggestions"
-          :key="s.text"
-          role="option"
-          :aria-selected="i === highlighted"
-          :class="{ active: i === highlighted }"
-          @mousedown.prevent="complete(s)"
-        >
-          <code>{{ s.text }}</code>
-          <span>{{ s.description }}</span>
-        </li>
+        <template v-for="(s, i) in suggestions" :key="s.text">
+          <li v-if="startsGroup(i)" class="group" role="presentation">{{ s.group }}</li>
+          <li
+            role="option"
+            :aria-selected="i === highlighted"
+            :class="{ active: i === highlighted }"
+            @mousedown.prevent="complete(s)"
+          >
+            <code>{{ s.text }}</code>
+            <span>{{ s.description }}</span>
+          </li>
+        </template>
       </ul>
       <p v-if="lookingUpTemplate" class="hint" aria-hidden="true">Tab or Enter inserts the prompt</p>
       <p v-else-if="paramContext" class="hint" aria-hidden="true">Tab picks · Enter runs</p>
@@ -628,6 +649,16 @@ function onKeydown(event: KeyboardEvent): void {
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 0.9em;
+}
+.suggestions li.group {
+  display: block;
+  padding: 8px 10px 2px;
+  cursor: default;
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .suggestions li.active {
   /* --bg on the --surface popup is barely different; the accent tint is clearly visible in both themes. */

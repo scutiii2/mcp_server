@@ -548,6 +548,51 @@ describe("saved prompts", () => {
     expect(rows(wrapper).slice(0, 5)).toEqual(["/clear", "/compact", "/export", "/share", "/help"]);
   });
 
+  describe("slash command groups", () => {
+    const COMMANDS = [
+      { capability: "cal", name: "now", description: "Time", tool_name: "cal_now" },
+      { capability: "email", name: "send", description: "Send", tool_name: "email_send" },
+      { capability: "email", name: "list", description: "List", tool_name: "email_list" },
+      { capability: "notes", name: "add", description: "Add", tool_name: "notes__add" },
+    ];
+    const headers = (wrapper: ReturnType<typeof mountInput>) => wrapper.findAll(".suggestions li.group").map((h) => h.text());
+
+    it("puts a header above each group, with the capability's help first", async () => {
+      const wrapper = mountInput({ commands: COMMANDS });
+
+      await wrapper.find("textarea").setValue("/");
+
+      expect(headers(wrapper)).toEqual(["Built-in", "cal", "email", "notes (extension)"]);
+      expect(rows(wrapper)).toEqual([
+        "/clear", "/compact", "/export", "/share", "/help",
+        "/cal help", "/cal now",
+        "/email help", "/email send", "/email list",
+        "/notes help", "/notes add",
+      ]);
+    });
+
+    it("shows only the groups that match", async () => {
+      const wrapper = mountInput({ commands: COMMANDS });
+
+      await wrapper.find("textarea").setValue("/em");
+
+      expect(headers(wrapper)).toEqual(["email"]);
+      expect(rows(wrapper)).toEqual(["/email help", "/email send", "/email list"]);
+    });
+
+    it("caps the rows at 12 and headers are not rows for the arrow keys", async () => {
+      const many = Array.from({ length: 14 }, (_, i) => ({ capability: "apps", name: `c${i}`, description: "", tool_name: `t${i}` }));
+      const wrapper = mountInput({ commands: many });
+
+      await wrapper.find("textarea").setValue("/apps");
+      expect(rows(wrapper)).toHaveLength(12);
+
+      await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" });
+      expect(wrapper.findAll(".suggestions li[role=option]")[1]!.classes()).toContain("active");
+      expect(wrapper.find(".suggestions li.group").attributes("role")).toBe("presentation");
+    });
+  });
+
   it("picking a built-in puts it in the box, and Enter sends it", async () => {
     const wrapper = mountInput();
     await wrapper.find("textarea").setValue("/exp");
@@ -580,7 +625,7 @@ describe("saved prompts", () => {
       const box = wrapper.find<HTMLElement>(".options").element;
       for (let i = 0; i < 3; i++) await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" });
       await flushPromises();
-      expect(box.scrollTop).toBe(64); // row 3 ends at 120: 120 - 60 + 4 padding
+      expect(box.scrollTop).toBe(94); // row 3 sits below the group header and ends at 150: 150 - 60 + 4 padding
 
       const rows = wrapper.findAll(".suggestions li[role=option]").length;
       for (let i = 3; i < rows; i++) await wrapper.find("textarea").trigger("keydown", { key: "ArrowDown" }); // wraps to row 0
