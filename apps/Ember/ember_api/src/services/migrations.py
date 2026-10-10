@@ -55,7 +55,7 @@ class MigrationRunner:
         starts_at = BASELINE if legacy else current
         if has_data and starts_at != head and self._before_upgrade is not None:
             await self._before_upgrade()
-        async with self._engine.begin() as conn:
+        async with self._engine.connect() as conn:
             await conn.run_sync(self._apply, legacy)
         if not has_data:
             return "created"
@@ -65,7 +65,7 @@ class MigrationRunner:
         """Writes a new migration from the difference between the models and
         the database (brought up to date first); returns the file's path."""
         await self.run()
-        async with self._engine.begin() as conn:
+        async with self._engine.connect() as conn:
             script = await conn.run_sync(self._autogenerate, message)
         return str(script.path)
 
