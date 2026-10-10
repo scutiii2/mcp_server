@@ -109,6 +109,15 @@ deadline. Timers run in real time while the service is stopped.
 The tests use a fake Laya engine. The evaluation needs the real model, is run by
 hand and writes `docs/emberlings-laya-eval.md`.
 
+## Catalog
+
+The global rules (tiers, levels, economy, personalities, action policy) live in
+`configs/spark_catalog.json`. Each Spark has its own file in `.catalogs/.sparks/`,
+named after its id (`guardian.json` holds `"id": "guardian"`). Files load in
+alphabetical order, which is the Spark order and keeps random draws
+deterministic. The directory comes from the optional `sparks_path` key in
+`configs/config_app.json` (default `.catalogs/.sparks`).
+
 ## Layout
 
 - `src/` - shared shell: config, auth, the Laya client, the FastAPI app.

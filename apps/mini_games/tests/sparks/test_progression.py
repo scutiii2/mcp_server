@@ -1,18 +1,16 @@
 import asyncio
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
-from src.sparks.catalog import Catalog
 from src.sparks.engine import BattleEngine
 from src.sparks.models import PLAYER, WILD, BattleSetup, PersonalityInstance
 from src.sparks.progression import ProgressionService
 from src.sparks.records import SparkRecord
 from src.sparks.repository import SqliteSparkRepository
 from tests.sparks.helpers import FixedClock, ScriptedRandom, battle_record
+from tests.sparks.env import CATALOG
 
-CATALOG = Catalog.load(Path(__file__).resolve().parents[2] / "configs" / "spark_catalog.json")
 engine = BattleEngine(CATALOG)
 clock = FixedClock(1000.0)
 progression = ProgressionService(CATALOG, clock, faint_seconds=300)

@@ -151,7 +151,7 @@ class Catalog:
             raise CatalogError("personality ids must be unique")
         policy = dict(_require(raw, "policy", "catalog"))
         self.policy = PolicySpec(**policy)
-        species = [_species(s) for s in _require(raw, "species", "catalog")]
+        species = [_species(s) for s in _require(raw, "sparks", "catalog")]
         self._species = {s.id: s for s in species}
         if len(self._species) != len(species):
             raise CatalogError("species ids must be unique")
@@ -203,11 +203,36 @@ class Catalog:
     # -- lookups -------------------------------------------------------------------
 
     @classmethod
-    def load(cls, path: Path) -> "Catalog":
+    def load(cls, catalog_path: Path, sparks_path: Path) -> "Catalog":
+        """Global rules from one file, the Sparks from one file each (sorted by
+        name, so the Spark order and every draw over it stay deterministic)."""
         try:
-            return cls(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError, TypeError, KeyError) as error:
-            raise CatalogError(f"cannot load catalog {path}: {error}") from error
+            raw = json.loads(catalog_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise CatalogError(f"cannot load catalog {catalog_path}: {error}") from error
+        if not isinstance(raw, dict):
+            raise CatalogError(f"cannot load catalog {catalog_path}: must be an object")
+        raw["sparks"] = cls._load_sparks(sparks_path)
+        return cls(raw)
+
+    @staticmethod
+    def _load_sparks(sparks_path: Path) -> list[Any]:
+        if not sparks_path.is_dir():
+            raise CatalogError(f"sparks directory {sparks_path} does not exist")
+        files = sorted(sparks_path.glob("*.json"), key=lambda f: f.name)
+        if not files:
+            raise CatalogError(f"sparks directory {sparks_path} holds no *.json files")
+        sparks: list[Any] = []
+        for file in files:
+            try:
+                spark = json.loads(file.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as error:
+                raise CatalogError(f"cannot load spark file {file.name}: {error}") from error
+            if not isinstance(spark, dict) or spark.get("id") != file.stem:
+                found = spark.get("id") if isinstance(spark, dict) else spark
+                raise CatalogError(f"spark file {file.name}: id {found!r} must equal the file name {file.stem!r}")
+            sparks.append(spark)
+        return sparks
 
     @property
     def regular_tiers(self) -> tuple[TierSpec, ...]:

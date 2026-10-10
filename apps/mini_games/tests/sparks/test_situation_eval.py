@@ -1,10 +1,8 @@
 import asyncio
 from datetime import date
-from pathlib import Path
 
 
 from src.laya_client import LayaClient
-from src.sparks.catalog import Catalog
 from src.sparks.eval import situation_eval as ev
 from src.sparks.simulation import BattleSimulator
 from src.sparks.situation import (
@@ -14,8 +12,8 @@ from src.sparks.situation import (
     SituationView,
 )
 from tests.fake_laya import FakeEngine
+from tests.sparks.env import CATALOG
 
-CATALOG = Catalog.load(Path(__file__).resolve().parents[2] / "configs" / "spark_catalog.json")
 sim = BattleSimulator(CATALOG)
 heuristic = HeuristicSituationReader()
 

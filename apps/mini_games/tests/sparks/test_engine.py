@@ -1,14 +1,12 @@
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
-from src.sparks.catalog import Catalog
 from src.sparks.engine import ActionError, BattleEngine
 from src.sparks.models import PLAYER, WILD, Action, BattleSetup, BattleState, Buff, FighterState, PassiveSpec
 from tests.sparks.helpers import ScriptedRandom, ability, fighter, setup
+from tests.sparks.env import CATALOG
 
-CATALOG = Catalog.load(Path(__file__).resolve().parents[2] / "configs" / "spark_catalog.json")
 engine = BattleEngine(CATALOG)
 
 ATTACK = Action("attack", "ATTACK")

@@ -22,7 +22,7 @@ def test_tier_follows_the_encounter_probabilities(u, tier):
 
 def test_regular_tiers_pick_uniformly_among_the_six_regular_species():
     picked = [roll(10, 0.3, u, 0.0, 0.0, 0.0, 0.0).species_id for u in (0.0, 0.17, 0.34, 0.5, 0.67, 0.99)]
-    assert picked == ["guardian", "striker", "scout", "sentinel", "bruiser", "channeler"]
+    assert picked == ["bruiser", "channeler", "guardian", "scout", "sentinel", "striker"]  # file-name order
 
 
 def test_forbidden_tier_is_always_the_forbidden_species_and_uses_one_fewer_draw():

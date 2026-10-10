@@ -1,0 +1,51 @@
+{
+  "id": "bruiser",
+  "name": "Bruiser",
+  "starter": false,
+  "forbidden": false,
+  "base_price": 130,
+  "base": {
+    "hp": 140,
+    "essence": 28,
+    "speed": 12
+  },
+  "growth": {
+    "hp": 14,
+    "essence": 2.8,
+    "speed": 1.2
+  },
+  "passive": {
+    "kind": "attack_bonus_vs_defense",
+    "params": {
+      "essence_fraction": 0.25
+    }
+  },
+  "abilities": [
+    {
+      "id": "bruiser_crushing_blow",
+      "name": "Crushing Blow",
+      "unlock_level": 1,
+      "category": "ATTACK",
+      "percentage": 175,
+      "cooldown": 1
+    },
+    {
+      "id": "bruiser_guard_up",
+      "name": "Guard Up",
+      "unlock_level": 10,
+      "category": "DEFENSE",
+      "percentage": 100,
+      "cooldown": 1
+    },
+    {
+      "id": "bruiser_rage",
+      "name": "Rage",
+      "unlock_level": 20,
+      "category": "SUPPORT",
+      "percentage": 50,
+      "cooldown": 2,
+      "stat": "essence",
+      "duration": 2
+    }
+  ]
+}

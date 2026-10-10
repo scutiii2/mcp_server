@@ -1,0 +1,52 @@
+{
+  "id": "guardian",
+  "name": "Guardian",
+  "starter": true,
+  "forbidden": false,
+  "base_price": 100,
+  "base": {
+    "hp": 150,
+    "essence": 20,
+    "speed": 15
+  },
+  "growth": {
+    "hp": 15,
+    "essence": 2,
+    "speed": 1.5
+  },
+  "passive": {
+    "kind": "defense_extension",
+    "params": {
+      "protected_attacks": 2,
+      "rounds": 2
+    }
+  },
+  "abilities": [
+    {
+      "id": "guardian_bulwark",
+      "name": "Bulwark",
+      "unlock_level": 1,
+      "category": "DEFENSE",
+      "percentage": 200,
+      "cooldown": 1
+    },
+    {
+      "id": "guardian_rally",
+      "name": "Rally",
+      "unlock_level": 10,
+      "category": "SUPPORT",
+      "percentage": 50,
+      "cooldown": 2,
+      "stat": "essence",
+      "duration": 2
+    },
+    {
+      "id": "guardian_heavy_blow",
+      "name": "Heavy Blow",
+      "unlock_level": 20,
+      "category": "ATTACK",
+      "percentage": 150,
+      "cooldown": 2
+    }
+  ]
+}

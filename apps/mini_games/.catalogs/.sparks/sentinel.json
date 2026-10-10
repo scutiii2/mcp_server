@@ -1,0 +1,51 @@
+{
+  "id": "sentinel",
+  "name": "Sentinel",
+  "starter": false,
+  "forbidden": false,
+  "base_price": 140,
+  "base": {
+    "hp": 180,
+    "essence": 18,
+    "speed": 10
+  },
+  "growth": {
+    "hp": 18,
+    "essence": 1.8,
+    "speed": 1
+  },
+  "passive": {
+    "kind": "defense_rating_bonus",
+    "params": {
+      "essence_fraction": 0.5
+    }
+  },
+  "abilities": [
+    {
+      "id": "sentinel_stone_guard",
+      "name": "Stone Guard",
+      "unlock_level": 1,
+      "category": "DEFENSE",
+      "percentage": 300,
+      "cooldown": 1
+    },
+    {
+      "id": "sentinel_hold_fast",
+      "name": "Hold Fast",
+      "unlock_level": 10,
+      "category": "SUPPORT",
+      "percentage": 50,
+      "cooldown": 2,
+      "stat": "essence",
+      "duration": 2
+    },
+    {
+      "id": "sentinel_shield_bash",
+      "name": "Shield Bash",
+      "unlock_level": 20,
+      "category": "ATTACK",
+      "percentage": 125,
+      "cooldown": 2
+    }
+  ]
+}

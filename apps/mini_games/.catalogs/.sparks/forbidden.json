@@ -1,0 +1,52 @@
+{
+  "id": "forbidden",
+  "name": "Forbidden",
+  "starter": false,
+  "forbidden": true,
+  "base_price": 1000,
+  "base": {
+    "hp": 200,
+    "essence": 40,
+    "speed": 30
+  },
+  "growth": {
+    "hp": 20,
+    "essence": 4,
+    "speed": 3
+  },
+  "passive": {
+    "kind": "cooldown_reduction",
+    "params": {
+      "rounds": 1,
+      "minimum": 1
+    }
+  },
+  "abilities": [
+    {
+      "id": "forbidden_ruin",
+      "name": "Ruin",
+      "unlock_level": 1,
+      "category": "ATTACK",
+      "percentage": 200,
+      "cooldown": 2
+    },
+    {
+      "id": "forbidden_dread_ward",
+      "name": "Dread Ward",
+      "unlock_level": 10,
+      "category": "DEFENSE",
+      "percentage": 300,
+      "cooldown": 2
+    },
+    {
+      "id": "forbidden_ascendance",
+      "name": "Ascendance",
+      "unlock_level": 20,
+      "category": "SUPPORT",
+      "percentage": 100,
+      "cooldown": 3,
+      "stat": "essence",
+      "duration": 2
+    }
+  ]
+}

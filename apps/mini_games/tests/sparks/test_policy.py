@@ -1,13 +1,11 @@
 import random
-from pathlib import Path
 
 import pytest
 
-from src.sparks.catalog import Catalog
 from src.sparks.models import Action, PersonalityInstance
 from src.sparks.policy import ActionPolicy, Mood, PolicyContext, Situation
+from tests.sparks.env import CATALOG
 
-CATALOG = Catalog.load(Path(__file__).resolve().parents[2] / "configs" / "spark_catalog.json")
 policy = ActionPolicy(CATALOG.policy)
 mood = Mood(CATALOG)
 

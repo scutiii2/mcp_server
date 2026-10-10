@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
 from pathlib import Path
 
 from src.sparks.catalog import Catalog
@@ -17,7 +18,17 @@ from src.sparks.runtime import RandomSource, SeededRandom
 from src.sparks.shop import ShopService
 from tests.sparks.helpers import FixedClock
 
-CATALOG = Catalog.load(Path(__file__).resolve().parents[2] / "configs" / "spark_catalog.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CATALOG_PATH = PROJECT_ROOT / "configs" / "spark_catalog.json"
+SPARKS_PATH = PROJECT_ROOT / ".catalogs" / ".sparks"
+CATALOG = Catalog.load(CATALOG_PATH, SPARKS_PATH)
+
+
+def load_raw() -> dict:
+    """The shipped catalog as the raw dict Catalog() takes: the rules plus the Sparks, by file name."""
+    raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    raw["sparks"] = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(SPARKS_PATH.glob("*.json"), key=lambda f: f.name)]
+    return raw
 COOLDOWN = 30.0
 FAINT = 300.0
 PROMPT = 5.0

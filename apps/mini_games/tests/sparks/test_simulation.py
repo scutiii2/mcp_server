@@ -1,14 +1,12 @@
 import asyncio
-from pathlib import Path
 
 import pytest
 
-from src.sparks.catalog import Catalog
 from src.sparks.models import PLAYER, WILD
 from src.sparks.simulation import BattleSimulator, Combatant, personality_set
 from src.sparks.situation import HeuristicSituationReader
+from tests.sparks.env import CATALOG
 
-CATALOG = Catalog.load(Path(__file__).resolve().parents[2] / "configs" / "spark_catalog.json")
 sim = BattleSimulator(CATALOG)
 reader = HeuristicSituationReader(CATALOG.policy.default_aggression)
 
