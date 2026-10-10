@@ -44,6 +44,7 @@ MUTATIONS: list[tuple[str, str, dict[str, Any], str, Any, int]] = [
         {"instance_ids": ["p1", "p2"]},
         200,
     ),
+    ("POST", "/api/emberlings/profile/reset", {}, "/sparks/profile/reset", {"confirm": True}, 200),
     ("POST", "/api/emberlings/encounters", {}, "/sparks/encounters", None, 201),
     ("POST", "/api/emberlings/encounters/enc_1/decline", {}, "/sparks/encounters/enc_1/decline", None, 200),
     ("POST", "/api/emberlings/battles", START, "/sparks/battles", START, 201),
@@ -284,6 +285,7 @@ def test_only_changes_of_value_are_audited(client: TestClient, emberlings: FakeE
         "emberlings.battle_forfeit",
         "emberlings.battle_start",
         "emberlings.profile_create",
+        "emberlings.profile_reset",
         "emberlings.shop_buy",
         "emberlings.shop_buy",
         "emberlings.spark_sell",
@@ -320,7 +322,7 @@ def emberlings_routes(client: TestClient) -> list[tuple[str, str]]:
 
 
 def test_the_route_walk_sees_the_whole_api(client: TestClient) -> None:
-    assert len(emberlings_routes(client)) == 18
+    assert len(emberlings_routes(client)) == 19
 
 
 def test_every_route_is_401_logged_out(client: TestClient, emberlings: FakeEmberlings) -> None:
@@ -345,7 +347,7 @@ def test_every_route_is_403_without_emberlings_play(
 def test_every_change_without_a_key_is_400_and_never_forwarded(client: TestClient, emberlings: FakeEmberlings) -> None:
     as_admin(client)
     changes = [(m, p) for m, p in emberlings_routes(client) if m in ("POST", "PUT", "PATCH", "DELETE")]
-    assert len(changes) == 12
+    assert len(changes) == 13
 
     for method, path in changes:
         response = client.request(method, path, json={})
@@ -360,3 +362,68 @@ def test_a_forfeit_is_audited_with_its_battle_id(client: TestClient, emberlings:
     assert client.post("/api/emberlings/battles/b_9-x/forfeit", json={}, headers=KEY).status_code == 200
 
     assert [e["message"] for e in action_log(client)] == ["Forfeited battle b_9-x"]
+
+
+# --- reset ----------------------------------------------------------------------
+
+
+def test_a_reset_sends_confirm_itself_and_is_audited_once(client: TestClient, emberlings: FakeEmberlings) -> None:
+    as_admin(client)
+    emberlings.responses[("POST", "/sparks/profile/reset")] = {"reset": True}
+
+    response = client.post("/api/emberlings/profile/reset", json={}, headers={"Idempotency-Key": "reset-1"})
+
+    assert (response.status_code, response.json()) == (200, {"reset": True})
+    assert emberlings.calls == [
+        {
+            "method": "POST",
+            "path": "/sparks/profile/reset",
+            "owner": str(my_id(client)),
+            "json": {"confirm": True},
+            "params": None,
+            "key": "reset-1",
+        }
+    ]
+    assert [(e["source"], e["message"]) for e in action_log(client)] == [
+        ("emberlings.profile_reset", "Reset all Emberlings progress")
+    ]
+
+
+def test_a_reset_ignores_a_body_from_the_browser(client: TestClient, emberlings: FakeEmberlings) -> None:
+    as_admin(client)
+
+    response = client.post("/api/emberlings/profile/reset", json={"confirm": False}, headers=KEY)
+
+    assert response.status_code == 200
+    assert emberlings.calls[0]["json"] == {"confirm": True}
+
+
+@pytest.mark.parametrize("headers", [{}, {"Idempotency-Key": "bad key!"}, {"Idempotency-Key": "x" * 201}])
+def test_a_reset_needs_a_valid_key(client: TestClient, emberlings: FakeEmberlings, headers) -> None:
+    as_admin(client)
+
+    assert client.post("/api/emberlings/profile/reset", json={}, headers=headers).status_code == 400
+    assert emberlings.calls == []
+
+
+@pytest.mark.parametrize(("status", "message"), [(404, "no profile yet"), (409, "finish or forfeit your battle first")])
+def test_a_refused_reset_keeps_its_message_and_is_not_audited(
+    client: TestClient, emberlings: FakeEmberlings, status, message
+) -> None:
+    as_admin(client)
+    emberlings.refuse = (status, message)
+
+    response = client.post("/api/emberlings/profile/reset", json={}, headers=KEY)
+
+    assert (response.status_code, response.json()["detail"]) == (status, message)
+    assert action_log(client) == []
+
+
+def test_an_unavailable_reset_is_502_and_not_audited(client: TestClient, emberlings: FakeEmberlings) -> None:
+    as_admin(client)
+    emberlings.unavailable = True
+
+    response = client.post("/api/emberlings/profile/reset", json={}, headers=KEY)
+
+    assert (response.status_code, response.json()["detail"]) == (502, UNAVAILABLE_MESSAGE)
+    assert action_log(client) == []

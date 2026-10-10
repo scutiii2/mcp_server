@@ -37,6 +37,7 @@ _ROUTES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
         ("GET", r"/sparks/catalog"),
         ("GET", r"/sparks/profile"),
         ("POST", r"/sparks/profile"),
+        ("POST", r"/sparks/profile/reset"),
         ("GET", rf"/sparks/sparks/{_ID}/personalities"),
         ("GET", rf"/sparks/sparks/{_ID}/presets/[1-5]"),
         ("PUT", rf"/sparks/sparks/{_ID}/presets/[1-5]"),
@@ -53,7 +54,7 @@ _ROUTES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
 # Path words kept in traffic counter names; everything else (ids, slots) becomes {id}.
 _WORDS = frozenset(
     "sparks catalog profile personalities presets encounters decline battles actions emblem advance mode "
-    "forfeit shop purchases sales".split()
+    "forfeit shop purchases sales reset".split()
 )
 
 
@@ -80,6 +81,8 @@ class EmberlingsApi(Protocol):
         params: dict[str, int | str] | None = None,
         idempotency_key: str | None = None,
     ) -> Any: ...
+
+    async def reset_profile(self, account: Account, idempotency_key: str) -> Any: ...
 
 
 def is_allowed(method: str, path: str) -> bool:
@@ -116,6 +119,12 @@ class EmberlingsGateway:
         if idempotency_key is not None:
             headers["Idempotency-Key"] = idempotency_key
         return headers
+
+    async def reset_profile(self, account: Account, idempotency_key: str) -> Any:
+        """Wipe the account's Emberlings progress. `confirm` is sent here, never taken from the browser."""
+        return await self.request(
+            "POST", "/sparks/profile/reset", account, json={"confirm": True}, idempotency_key=idempotency_key
+        )
 
     async def request(
         self,

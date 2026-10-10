@@ -70,6 +70,26 @@ def test_sends_the_owner_id_token_key_and_body() -> None:
     }
 
 
+def test_reset_profile_posts_confirm_with_owner_token_and_key() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"reset": True})
+
+    async def run() -> Any:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await EmberlingsGateway(client, BASE, "tok", TrafficRecorder()).reset_profile(ACCOUNT, "key-9")
+
+    assert asyncio.run(run()) == {"reset": True}
+    sent = seen[0]
+    assert (sent.method, str(sent.url)) == ("POST", "http://games.internal:8060/sparks/profile/reset")
+    assert sent.headers["X-Requester-Username"] == "7"
+    assert sent.headers["X-Internal-Token"] == "tok"
+    assert sent.headers["Idempotency-Key"] == "key-9"
+    assert json.loads(sent.content) == {"confirm": True}
+
+
 def test_sends_a_query_and_leaves_out_headers_it_does_not_have() -> None:
     _, seen = call(
         lambda r: httpx.Response(200, json={"items": [], "next_cursor": None}),
@@ -140,6 +160,7 @@ def test_no_connection_is_unavailable() -> None:
     [
         ("GET", "/sparks/catalog"),
         ("POST", "/sparks/profile"),
+        ("POST", "/sparks/profile/reset"),
         ("GET", "/sparks/profile"),
         ("GET", "/sparks/sparks/guardian/personalities"),
         ("GET", "/sparks/sparks/guardian/presets/1"),

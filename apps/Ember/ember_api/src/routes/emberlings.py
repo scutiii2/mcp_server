@@ -7,7 +7,7 @@ Idempotency-Key on every change and forwards the call through the
 EmberlingsGateway, which adds the owner (the account id as text) and the
 internal token itself. Bad input is a 400 here and never reaches mini_games.
 
-Changes of value (a new profile, a battle started or forfeited, a purchase,
+Changes of value (a new profile, a reset, a battle started or forfeited, a purchase,
 a sale) are written to the activity log after they succeeded. Round actions
 and advance are not: one line per round would flood the log, and mini_games
 records every finished battle itself."""
@@ -212,6 +212,19 @@ async def create_profile(
         game.request("POST", "/sparks/profile", account, json=body.model_dump(exclude_none=True), idempotency_key=key)
     )
     await logs.action(account, "emberlings.profile_create", f"Started Emberlings with the starter '{body.starter_spark_id}'")
+    return result
+
+
+@router.post("/profile/reset")
+async def reset_profile(
+    account: Account = Depends(require_play),
+    key: str = Depends(idempotency_key),
+    game: EmberlingsApi = Depends(get_emberlings),
+    logs: LogWriter = Depends(get_log_writer),
+) -> Any:
+    # No body: the gateway sends confirm itself, so the browser cannot skip it.
+    result = await _forward(game.reset_profile(account, key))
+    await logs.action(account, "emberlings.profile_reset", "Reset all Emberlings progress")
     return result
 
 
