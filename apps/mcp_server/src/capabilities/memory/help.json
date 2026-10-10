@@ -1,0 +1,24 @@
+{
+  "summary": "Short notes the assistant keeps about you between chats: save a fact or preference, search your notes, forget one.",
+  "tools": [
+    {"name": "tool_mem_save", "purpose": "Save one short note that outlives the chat", "connection": "Local SQLite", "commands": ["save"]},
+    {"name": "tool_mem_search", "purpose": "Search your notes; an empty query lists the newest", "connection": "Local SQLite", "commands": ["search"]},
+    {"name": "tool_mem_forget", "purpose": "Delete one of your notes by id", "connection": "Local SQLite", "commands": ["forget"]}
+  ],
+  "commands": [
+    {"name": "save", "tool": "tool_mem_save", "params": [
+      {"name": "text", "required": true, "default": null, "description": "One short fact, preference or instruction (max 500 characters)."}
+    ]},
+    {"name": "search", "tool": "tool_mem_search", "params": [
+      {"name": "query", "required": false, "default": "", "description": "Words to look for; empty lists the newest notes."}
+    ]},
+    {"name": "forget", "tool": "tool_mem_forget", "params": [
+      {"name": "note_id", "required": true, "default": null, "description": "Id of the note to delete, as shown by search."}
+    ]}
+  ],
+  "workflow": [
+    {"sequence": "1", "tool": "tool_mem_search", "ai_only_step": false, "explanation": "Look up saved notes at the start of a conversation."},
+    {"sequence": "2", "tool": "tool_mem_save", "ai_only_step": false, "explanation": "Save a fact or preference the user stated."},
+    {"sequence": "3", "tool": "tool_mem_forget", "ai_only_step": false, "explanation": "Delete a note that is wrong or no longer wanted."}
+  ]
+}
