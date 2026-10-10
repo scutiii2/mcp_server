@@ -54,6 +54,56 @@ def _find_pid_on_port(port: int) -> int | None:
     return None
 
 
+def _process_table() -> dict[int, tuple[int, str]]:
+    """pid -> (parent pid, exe name) for every running process, from one
+    ToolHelp snapshot (no subprocess, no extra dependency)."""
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", wintypes.LONG), ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    table: dict[int, tuple[int, str]] = {}
+    if snapshot in (None, wintypes.HANDLE(-1).value):
+        return table
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(ProcessEntry)
+        ok = kernel32.Process32FirstW(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+        while ok:
+            table[entry.th32ProcessID] = (entry.th32ParentProcessID, entry.szExeFile.lower())
+            ok = kernel32.Process32NextW(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(wintypes.HANDLE(snapshot))
+    return table
+
+
+def _topmost_python_ancestor(pid: int, table: dict[int, tuple[int, str]] | None = None) -> int:
+    """`pid` itself, or its highest ancestor that is still a python process.
+    A server that runs children (ai_agent's supervisor runs one process per
+    agent, each on its own port) shows up on netstat as a child; stopping
+    only that child leaves the supervisor to respawn it and the other agents
+    running. The venv's python.exe shim is also a python parent, so the walk
+    covers it too. Stops at the first non-python parent (cmd, the launcher)
+    or a parent that no longer exists (a detached, orphaned supervisor)."""
+    table = _process_table() if table is None else table
+    seen = {pid}
+    while True:
+        parent = table.get(pid, (0, ""))[0]
+        if parent in seen or parent not in table or not table[parent][1].startswith("python"):
+            return pid
+        seen.add(parent)
+        pid = parent
+
+
 def _pid_alive(pid: int) -> bool:
     """Shells out to `tasklist` - blocking, ~tens of ms. Only ever called
     from Instance's own background liveness-watcher thread for an adopted

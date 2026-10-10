@@ -17,7 +17,9 @@ from .discovery import refreshed_spec, templates_from_specs
 from .group_editor import GroupEditor
 from .instance import Instance
 from .models import GroupMember, LaunchSpec, Preset, ServerGroup, ServerTemplate
-from .processes import _find_free_port, _find_pid_on_port, _kill_pid_tree, _port_in_use, _spawn_detached
+from .processes import (
+    _find_free_port, _find_pid_on_port, _kill_pid_tree, _port_in_use, _spawn_detached, _topmost_python_ancestor,
+)
 from .runtimes import runtime_warning
 from .storage import (
     _load_and_clear_kept_running, _delete_saved_spec, _load_groups, _load_presets, _load_saved_specs, _save_groups,
@@ -911,6 +913,8 @@ class LauncherWindow:
         pid = _find_pid_on_port(port)
         if pid is None:
             return False
+        if template.runtime == "python":
+            pid = _topmost_python_ancestor(pid)  # stop/restart must reach the whole tree, not one child
         instance = Instance(template, port, {}, "", adopted_pid=pid)
         self._wire_instance(instance)
         self.instances[instance.id] = instance

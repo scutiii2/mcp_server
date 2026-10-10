@@ -886,3 +886,15 @@ class InstanceSidebarTests(unittest.TestCase):
             launcher._render_sidebar()
 
         self.assertEqual(card.call_args.kwargs["secondary"], ":8123")
+
+
+def test_topmost_python_ancestor_walks_to_supervisor():
+    from src.processes import _topmost_python_ancestor
+
+    table = {
+        10: (1, "cmd.exe"), 20: (10, "python.exe"), 21: (20, "python.exe"),  # supervisor + venv shim
+        30: (21, "python.exe"), 31: (30, "python.exe"),  # agent child + its real interpreter
+    }
+    assert _topmost_python_ancestor(31, table) == 20
+    assert _topmost_python_ancestor(20, table) == 20
+    assert _topmost_python_ancestor(99, table) == 99  # unknown pid is left alone
