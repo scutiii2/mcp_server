@@ -97,6 +97,7 @@ class SparkTransaction(Protocol):
     async def add_round(self, battle_id: str, round_number: int, record: dict[str, Any]) -> None: ...
     async def get_idempotent(self, owner: str, key: str) -> IdempotencyRecord | None: ...
     async def put_idempotent(self, owner: str, key: str, request_hash: str, response: dict[str, Any], now: float) -> None: ...
+    async def delete_player_data(self, owner: str) -> None: ...
 
 
 class SparkRepository(Protocol):
@@ -337,6 +338,20 @@ class _SqliteTransaction:
             "INSERT INTO idempotency (owner, key, request_hash, response, created_at) VALUES (?, ?, ?, ?, ?)",
             (owner, key, request_hash, _dumps(response), now),
         )
+
+    # -- reset ---------------------------------------------------------------------
+
+    async def delete_player_data(self, owner: str) -> None:
+        # Rounds carry no owner, so they go first, through the owner's battle ids.
+        await self._run("DELETE FROM rounds WHERE battle_id IN (SELECT id FROM battles WHERE owner = ?)", (owner,))
+        await self._run("DELETE FROM battles WHERE owner = ?", (owner,))
+        await self._run("DELETE FROM encounters WHERE owner = ?", (owner,))
+        await self._run("DELETE FROM presets WHERE owner = ?", (owner,))
+        await self._run("DELETE FROM personalities WHERE owner = ?", (owner,))
+        await self._run("DELETE FROM sparks WHERE owner = ?", (owner,))
+        await self._run("DELETE FROM emblems WHERE owner = ?", (owner,))
+        await self._run("DELETE FROM players WHERE owner = ?", (owner,))
+        await self._run("DELETE FROM idempotency WHERE owner = ?", (owner,))
 
 
 class SqliteSparkRepository:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.sparks.catalog import Catalog
-from src.sparks.errors import AlreadyInitialized, InvalidRequest, NotFound
+from src.sparks.errors import AlreadyInitialized, BattleInProgress, InvalidRequest, NotFound
 from src.sparks.idempotency import IdempotentWriter
 from src.sparks.records import PersonalityRecord, PresetRecord, SparkRecord
 from src.sparks.repository import SparkRepository, SparkTransaction
@@ -82,6 +82,18 @@ class CollectionService:
             return await self.profile_view(tx, owner)
 
         return await self._writer.commit(owner, key, "profile.initialize", {"starter": starter_spark_id}, work)
+
+    async def reset(self, owner: str, key: str) -> dict[str, Any]:
+        """Delete all of the player's progress, so they can choose a starter again."""
+        async def work(tx: SparkTransaction) -> dict[str, Any]:
+            if await tx.get_player(owner) is None:
+                raise NotFound("no profile yet; choose a starter first")
+            if await tx.active_battle(owner) is not None:
+                raise BattleInProgress("finish or forfeit your battle before resetting")
+            await tx.delete_player_data(owner)
+            return {"reset": True}
+
+        return await self._writer.commit(owner, key, "profile.reset", {}, work)
 
     # -- personalities and presets -------------------------------------------------
 

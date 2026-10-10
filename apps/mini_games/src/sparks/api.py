@@ -12,14 +12,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, StrictInt
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt
 
 from src.auth import requester
 from src.sparks.catalog import Catalog, CatalogError
 from src.sparks.collection import CollectionService
 from src.sparks.coordinator import RoundCoordinator
 from src.sparks.encounters import EncounterService
-from src.sparks.errors import EncounterCooldown, SparkError
+from src.sparks.errors import EncounterCooldown, InvalidRequest, SparkError
 from src.sparks.shop import ShopService
 
 
@@ -38,6 +38,10 @@ class _Body(BaseModel):
 
 class InitializeBody(_Body):
     starter_spark_id: str
+
+
+class ResetBody(_Body):
+    confirm: StrictBool
 
 
 class PresetBody(_Body):
@@ -120,6 +124,12 @@ def build_router(services: SparkServices) -> APIRouter:
     @router.post("/profile", status_code=201)
     async def create_profile(body: InitializeBody, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
         return await collection.initialize(owner, key, body.starter_spark_id)
+
+    @router.post("/profile/reset")
+    async def reset_profile(body: ResetBody, owner: str = Depends(requester), key: str = Depends(idempotency_key)):
+        if not body.confirm:
+            raise InvalidRequest("send confirm: true to reset all progress")
+        return await collection.reset(owner, key)
 
     @router.get("/profile")
     async def get_profile(owner: str = Depends(requester)):

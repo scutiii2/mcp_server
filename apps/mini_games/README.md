@@ -75,6 +75,7 @@ last saw; a stale pair is a 409.
 |---|---|
 | `GET /sparks/catalog` | Sparks, abilities, tiers, personalities, shop data |
 | `POST /sparks/profile` | Create the profile with a starter |
+| `POST /sparks/profile/reset` | Delete all of the player's progress (needs `confirm: true`) |
 | `GET /sparks/profile` | Wallet, Sparks, timers, pending encounter, active battle |
 | `GET /sparks/sparks/{id}/personalities` | Collected personality instances (paginated) |
 | `GET`/`PUT /sparks/sparks/{id}/presets/{slot}` | One of five presets (up to three instances) |
@@ -90,6 +91,8 @@ last saw; a stale pair is a 409.
 | `POST /sparks/battles/{id}/forfeit` | End as a loss |
 | `POST /sparks/shop/purchases` | Buy EMBLEMs or regular-Spark copies |
 | `POST /sparks/sparks/{id}/sales` | Sell one absorbed copy |
+
+`POST /sparks/profile/reset` deletes the player's profile, Sparks, personalities, presets, EMBLEMs, encounters and battle history so a starter can be chosen again; it needs `{"confirm": true}` and is refused with a 409 while a battle is active.
 
 Errors: 400 bad input or unknown Spark or tier, 401 bad token, 404 missing or
 someone else's record, 409 state conflict (stale revision, wrong phase, not enough

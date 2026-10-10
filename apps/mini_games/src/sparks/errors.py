@@ -29,6 +29,10 @@ class ActiveBattleExists(Conflict):
     pass
 
 
+class BattleInProgress(Conflict):
+    """The request needs the player's active battle to be over first (409)."""
+
+
 class BattleAlreadyExists(Conflict):
     """A battle with this id, or for this encounter, was already stored (409)."""
 
