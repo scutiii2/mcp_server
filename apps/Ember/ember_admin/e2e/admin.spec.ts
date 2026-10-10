@@ -7,7 +7,7 @@ test("the Ember rail moves to the bottom on mobile and remembers the theme", asy
   await page.goto("/capabilities");
   const rail = page.getByRole("complementary", { name: "Ember Admin" });
   const nav = page.getByRole("navigation", { name: "Admin sections" });
-  await expect(nav.getByRole("link")).toHaveCount(7);
+  await expect(nav.getByRole("link")).toHaveCount(8);
   await expect(nav.getByRole("link", { name: "Capabilities", exact: true })).toHaveAttribute("aria-current", "page");
   for (const width of [1280, 768, 375]) {
     await page.setViewportSize({ width, height: 800 });

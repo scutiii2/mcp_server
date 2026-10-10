@@ -16,7 +16,7 @@ async function show(permissions: string[] | null, path = "/admin") {
   setActivePinia(pinia);
   const auth = useAuthStore();
   if (permissions) auth.account = { id: 1, username: "ada", email: "ada@example.com", email_verified: true, roles: [], permissions };
-  const router = createRouter({ history: createMemoryHistory(), routes: ["/", "/profile", "/settings", "/capabilities", "/extensions", "/agents", "/analytics", "/admin", "/admin/accounts", "/admin/roles", "/admin/invites", "/admin/settings"].map(path => ({ path, component: { template: "<div />" } })) });
+  const router = createRouter({ history: createMemoryHistory(), routes: ["/", "/profile", "/settings", "/capabilities", "/extensions", "/agents", "/analytics", "/usage", "/admin", "/admin/accounts", "/admin/roles", "/admin/invites", "/admin/settings"].map(path => ({ path, component: { template: "<div />" } })) });
   await router.push(path);
   const w = mount(AdminNav, { global: { plugins: [pinia, router] } });
   await flushPromises();
@@ -70,4 +70,11 @@ it("keeps Overview reachable when every administration page is hidden", async ()
   expect(w.find("nav").exists()).toBe(false);
   expect(w.get("a[aria-label='Overview']").attributes("href")).toBe("/");
   expect(w.find("a[aria-label='Settings']").exists()).toBe(true);
+});
+
+it("exposes Usage and Overview to a usage-only observer", async () => {
+  const w = await show(["usage.all.view"], "/usage");
+  expect(w.get("a[aria-label='Usage']").attributes("aria-current")).toBe("page");
+  expect(w.get("a[aria-label='Overview']").attributes("href")).toBe("/");
+  expect(w.find("a[aria-label='Accounts']").exists()).toBe(false);
 });

@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,3 +132,41 @@ async def all_usage(
     usage: UsageService = Depends(get_usage_service),
 ) -> list[AccountUsageOut]:
     return [AccountUsageOut(**row) for row in await usage.all_accounts(days, check_since(since))]
+
+
+async def get_usage_account(
+    account_id: int = Path(gt=0),
+    _admin: Account = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+) -> Account:
+    """Authorize inspection before looking up even an inactive target account."""
+    account = await session.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+    return account
+
+
+@router.get("/api/admin/usage/{account_id}")
+async def account_usage(
+    days: int = Query(default=30, ge=1, le=366),
+    since: date | None = Query(default=None),
+    group_by: Literal["agent", "provider", "gateway", "model"] = Query(default="agent"),
+    agent: str | None = Query(default=None, max_length=120),
+    provider: str | None = Query(default=None, max_length=60),
+    account: Account = Depends(get_usage_account),
+    usage: UsageService = Depends(get_usage_service),
+) -> UsageOut:
+    return await my_usage(days, since, group_by, agent, provider, account, usage)
+
+
+@router.get("/api/admin/usage/{account_id}/records")
+async def account_usage_records(
+    days: int = Query(default=30, ge=1, le=366),
+    since: date | None = Query(default=None),
+    agent: str | None = Query(default=None, max_length=120),
+    provider: str | None = Query(default=None, max_length=60),
+    limit: int = Query(default=100, ge=1, le=500),
+    account: Account = Depends(get_usage_account),
+    usage: UsageService = Depends(get_usage_service),
+) -> list[UsageRecordOut]:
+    return await my_usage_records(days, since, agent, provider, limit, account, usage)

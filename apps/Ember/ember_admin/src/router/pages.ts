@@ -14,7 +14,7 @@ export interface AdminPage {
   permission: string | string[];
 }
 
-export const ADMIN_PERMISSIONS = ["accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "invites.manage", "settings.manage", "capabilities.manage", "extensions.manage", "agents.manage", ...ANALYTICS_PERMISSIONS];
+export const ADMIN_PERMISSIONS = ["accounts.view", "accounts.manage", "accounts.delete", "roles.view", "roles.manage", "roles.assign", "invites.manage", "settings.manage", "capabilities.manage", "extensions.manage", "agents.manage", "usage.all.view", ...ANALYTICS_PERMISSIONS];
 
 /** Administration destinations share their permission rules with nested routes. */
 export const ADMIN_SECTIONS: AdminPage[] = [
@@ -27,6 +27,7 @@ export const ADMIN_SECTIONS: AdminPage[] = [
 
 export const ADMIN_PAGES: AdminPage[] = [
   ...ADMIN_SECTIONS,
+  { to: "/usage", label: "Usage", icon: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"], permission: "usage.all.view" },
   { to: "/capabilities", label: "Capabilities", icon: ["m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z", "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65", "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"], permission: "capabilities.manage" },
   { to: "/extensions", label: "Extensions", icon: ["M12 2v6", "M8 8h8v4a4 4 0 0 1-8 0z", "M12 16v6"], permission: "extensions.manage" },
   { to: "/agents", label: "Agents", icon: ["M12 8V4H8", "M4 8h16v12H4z", "M2 14h2M20 14h2M15 13v2M9 13v2"], permission: "agents.manage" },

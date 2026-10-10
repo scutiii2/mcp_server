@@ -208,3 +208,5 @@ App icons: `public/icons/`. Regenerate both sets from their SVG logos with
 `node ../scripts/generate-pwa-icons.mjs` (from either app; uses local Chrome).
 Production browser tests cover phone layouts, installation metadata, offline shell
 loading, API cache exclusion and reconnection.
+
+Usage (/usage, usage.all.view) lists every account for a selected period, including zero-usage accounts. Select a user for rolling limits, totals, activity, annual heatmap, breakdown, recent calls and a Markdown export. It does not require chat.use or accounts.view.

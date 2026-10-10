@@ -219,8 +219,10 @@ describe("pages moved to Ember Admin", () => {
 });
 
 
-it("lands a usage observer on Usage without chat permission", async () => {
+it("does not expose personal Usage to a usage observer without chat permission", async () => {
   me.mockResolvedValue({ ...ACCOUNT, permissions: ["usage.all.view"] });
   await router.push("/");
-  expect(router.currentRoute.value.name).toBe("usage");
+  expect(router.currentRoute.value.name).toBe("no-access");
+  await router.push("/usage");
+  expect(router.currentRoute.value.name).toBe("no-access");
 });

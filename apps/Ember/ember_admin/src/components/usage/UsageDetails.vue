@@ -1,165 +1,44 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { usageClient, type MyUsage, type UsageGroupBy, type UsageRecordRow } from "../api/UsageClient";
-import ActionButton from "../components/ActionButton.vue";
-import SegmentedControl from "../components/SegmentedControl.vue";
-import LineChart from "../components/analytics/LineChart.vue";
-import UsageHeatmap from "../components/UsageHeatmap.vue";
-import { useAuthStore } from "../stores/auth";
-import { downloadText, exportFileName } from "../utils/chatExport";
-import { errorMessage, formatUtc } from "../utils/errors";
-import { usageToMarkdown } from "../utils/usageExport";
-import { parseServerTime, usagePercent as percent } from "../utils/usageFormat";
-import { favoriteAgent, hourLabel, monthStart, peakHour, utcDay } from "../utils/usageStats";
-
-const auth = useAuthStore();
-
-// "This month" runs from the 1st (UTC); the others are the last n days.
-const RANGES = [
-  { key: "month", label: "This month" },
-  { key: "7d", label: "7 days", days: 7 },
-  { key: "30d", label: "30 days", days: 30 },
-  { key: "90d", label: "90 days", days: 90 },
-  { key: "12m", label: "12 months", days: 365 },
-] as const;
-type RangeKey = (typeof RANGES)[number]["key"];
-const RANGE_OPTIONS = RANGES.map((r) => ({ value: r.key, label: r.label }));
-
-const range = ref<RangeKey>("30d");
-const currentRange = computed(() => RANGES.find((r) => r.key === range.value)!);
-
-/** What to ask ember_api for: `days`, or the 1st of this month as `since`. */
-function period(): { days: number; since?: string } {
-  const r = currentRange.value;
-  return "days" in r ? { days: r.days } : { days: 30, since: monthStart(new Date()) };
-}
-
+import { computed } from "vue";
+import type { MyUsage, UsageGroupBy, UsageRecordRow } from "../../api/UsageClient";
+import SegmentedControl from "../SegmentedControl.vue";
+import LineChart from "../analytics/LineChart.vue";
+import UsageHeatmap from "../UsageHeatmap.vue";
+import { formatUtc } from "../../utils/errors";
+import { parseServerTime, usagePercent as percent } from "../../utils/usageFormat";
+import { favoriteAgent, hourLabel, peakHour, utcDay } from "../../utils/usageStats";
+const props = defineProps<{ username: string; usage: MyUsage; year: MyUsage | null; records: UsageRecordRow[]; recordsFailed: boolean; yearFailed: boolean; loading: boolean; groupBy: UsageGroupBy }>();
+const emit = defineEmits<{ group: [value: UsageGroupBy] }>();
+const groupBy = computed({ get: () => props.groupBy, set: value => emit("group", value) });
 const today = utcDay(new Date());
-// The last 12 months for the heatmap, whatever period is chosen above.
-const year = ref<MyUsage | null>(null);
-const usage = ref<MyUsage | null>(null);
-const groupBy = ref<UsageGroupBy>("agent");
-const records = ref<UsageRecordRow[]>([]);
-const recordsFailed = ref(false);
-const loading = ref(false);
-const error = ref("");
-
-
-// Each load takes a number; a response that is no longer the latest request's
-// (the period or grouping changed meanwhile) is dropped.
-let latestLoad = 0;
-
-async function load(): Promise<void> {
-  const mine = ++latestLoad;
-  loading.value = true;
-  error.value = "";
-  try {
-    const { days, since } = period();
-    let failed = false;
-    const [report, rows] = await Promise.all([
-      auth.hasPermission("chat.use") ? usageClient.mine(days, since, { groupBy: groupBy.value }) : Promise.resolve(null),
-      (auth.hasPermission("chat.use") ? usageClient.records(days, since, { limit: 100 }) : Promise.resolve([])).catch(() => {
-        failed = true; // the list is extra: the report still shows
-        return [];
-      }),
-    ]);
-    if (mine !== latestLoad) return;
-    usage.value = report;
-    records.value = rows;
-    recordsFailed.value = failed;
-  } catch (err) {
-    if (mine === latestLoad) error.value = errorMessage(err);
-  } finally {
-    if (mine === latestLoad) loading.value = false;
-  }
-}
-
-const GROUP_OPTIONS: { value: UsageGroupBy; label: string }[] = [
-  { value: "agent", label: "Agent" },
-  { value: "model", label: "Model" },
-  { value: "provider", label: "Provider" },
-  { value: "gateway", label: "Gateway" },
-];
-const GROUP_HEADINGS = Object.fromEntries(GROUP_OPTIONS.map((o) => [o.value, o.label])) as Record<UsageGroupBy, string>;
-// The heading follows the loaded report, not the selector, which may already show the next choice.
-const groupHeading = computed(() => GROUP_HEADINGS[usage.value?.report.group_by ?? groupBy.value]);
-
-/** A naive-UTC API time as the viewer's local date and time. */
-function localTime(value: string): string {
-  return new Date(parseServerTime(value)).toLocaleString();
-}
-
-function tokens(n: number): string {
-  return n.toLocaleString();
-}
-
-// Each group's share of the grouped total, for its bar.
-const groupTotal = computed(() => Math.max(1, usage.value?.report.groups.reduce((sum, g) => sum + g.tokens, 0) ?? 0));
-
-// Include inactive UTC days so gaps in daily usage read as zero, not adjacent dates.
+const GROUP_OPTIONS: { value: UsageGroupBy; label: string }[] = [{ value: "agent", label: "Agent" }, { value: "model", label: "Model" }, { value: "provider", label: "Provider" }, { value: "gateway", label: "Gateway" }];
+const groupHeading = computed(() => GROUP_OPTIONS.find(o => o.value === props.usage.report.group_by)?.label ?? "Agent");
+const groupTotal = computed(() => Math.max(1, props.usage.report.groups.reduce((sum, g) => sum + g.tokens, 0)));
+function tokens(n: number): string { return n.toLocaleString(); }
+function localTime(value: string): string { return new Date(parseServerTime(value)).toLocaleString(); }
+const peak = computed(() => peakHour(props.usage.report.hourly));
+const favorite = computed(() => favoriteAgent(props.usage.report.by_agent));
 const activitySeries = computed(() => {
-  const report = usage.value?.report;
-  if (!report || report.daily.length === 0) return [];
-  const daily = new Map(report.daily.map((day) => [day.date, day.tokens]));
-  const first = new Date(`${report.since.slice(0, 10)}T00:00:00Z`).getTime();
-  const last = new Date(`${today}T00:00:00Z`).getTime();
+  const report = props.usage.report;
+  if (report.daily.length === 0) return [];
+  const daily = new Map(report.daily.map(day => [day.date, day.tokens]));
+  const first = new Date(report.since.slice(0, 10) + "T00:00:00Z").getTime();
+  const last = new Date(today + "T00:00:00Z").getTime();
   const series: { bucket: string; values: { tokens: number } }[] = [];
   for (let day = first; day <= last; day += 86_400_000) {
     const date = new Date(day).toISOString().slice(0, 10);
-    series.push({ bucket: `${date}T00:00:00`, values: { tokens: daily.get(date) ?? 0 } });
+    series.push({ bucket: date + "T00:00:00", values: { tokens: daily.get(date) ?? 0 } });
   }
   return series;
 });
 const ACTIVITY_LINES = [{ id: "tokens", label: "Tokens", color: "var(--accent)" }];
-
-async function loadYear(): Promise<void> {
-  if (!auth.hasPermission("chat.use")) return;
-  try {
-    year.value = await usageClient.mine(366);
-  } catch {
-    year.value = null; // the heatmap is extra: the rest of the page still works
-  }
-}
-
-const peak = computed(() => (usage.value ? peakHour(usage.value.report.hourly) : null));
-const favorite = computed(() => (usage.value ? favoriteAgent(usage.value.report.by_agent) : null));
-
-function exportReport(): void {
-  const current = usage.value;
-  if (!current) return;
-  const now = new Date();
-  const text = usageToMarkdown(current.report, {
-    username: auth.account?.username ?? "me",
-    rangeLabel: currentRange.value.label,
-    generatedAt: now,
-  });
-  downloadText(exportFileName(`usage-${range.value}-${utcDay(now)}`, "md"), text, "text/markdown");
-}
-
-watch([range, groupBy], load);
-onMounted(() => {
-  void load();
-  void loadYear();
-});
 </script>
 
 <template>
-  <section class="usage-view">
-    <div class="column page-column">
-      <div class="head">
-        <div><h2 class="page-title">Usage</h2><p class="page-description">Review your token usage and account limits.</p></div>
-        <div class="ranges" role="group" aria-label="Period">
-          <SegmentedControl v-model="range" :options="RANGE_OPTIONS" label="Period" aria-label="Period" />
-          <ActionButton icon="export" class="export" :disabled="!usage" title="Download this period as a Markdown file" @click="exportReport">
-            Export .md
-          </ActionButton>
-        </div>
-      </div>
+<section class="usage-details" :aria-label="`Usage for ${username}`">
+<h3>Usage for {{ username }}</h3>
+<p v-if="yearFailed" class="muted">Could not load annual activity.</p>
 
-      <p v-if="error" class="error">error: {{ error }}</p>
-      <p v-else-if="!usage && loading" class="muted">loading ...</p>
-
-      <template v-if="usage">
         <div class="panel limits">
           <div class="panel-head"><h3>Limits</h3><span class="muted small">Rolling windows</span></div>
           <div class="limit-grid">
@@ -255,13 +134,11 @@ onMounted(() => {
           </ul>
         </div>
 
-      </template>
 
-    </div>
-  </section>
+</section>
 </template>
-
 <style scoped>
+.usage-details { min-width: 0; overflow-wrap: anywhere; }
 .usage-view {
   flex: 1;
   min-height: 0;

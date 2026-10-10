@@ -83,16 +83,18 @@ function query(days: number, since: string | undefined, extra: Record<string, st
 }
 
 /** ember_api's usage routes. */
+export interface AccountUsage { account_id: number; username: string; tokens: number; turns: number; last_used_at: string | null; }
 export const usageClient = {
-  mine: (days: number, since?: string, options: UsageFilters & { groupBy?: UsageGroupBy } = {}) =>
+  allAccounts: (days: number, since?: string) => apiRequest<AccountUsage[]>("GET", `/api/admin/usage?${period(days, since)}`),
+  account: (accountId: number, days: number, since?: string, options: UsageFilters & { groupBy?: UsageGroupBy } = {}) =>
     apiRequest<MyUsage>(
       "GET",
-      `/api/usage?${query(days, since, { group_by: options.groupBy, agent: options.agent, provider: options.provider })}`,
+      `/api/admin/usage/${accountId}?${query(days, since, { group_by: options.groupBy, agent: options.agent, provider: options.provider })}`,
     ),
   /** This account's rows, newest first (limit 1-500). */
-  records: (days: number, since?: string, options: UsageFilters & { limit?: number } = {}) =>
+  records: (accountId: number, days: number, since?: string, options: UsageFilters & { limit?: number } = {}) =>
     apiRequest<UsageRecordRow[]>(
       "GET",
-      `/api/usage/records?${query(days, since, { agent: options.agent, provider: options.provider, limit: options.limit })}`,
+      `/api/admin/usage/${accountId}/records?${query(days, since, { agent: options.agent, provider: options.provider, limit: options.limit })}`,
     ),
 };

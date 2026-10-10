@@ -481,3 +481,5 @@ App icons: `public/icons/`. Regenerate both sets from their SVG logos with
 `node ../scripts/generate-pwa-icons.mjs` (from either app; uses local Chrome).
 Production browser tests cover phone layouts, installation metadata, offline shell
 loading, API cache exclusion and reconnection.
+
+Usage shows only the logged-in account, including for administrators. Workspace and per-user usage inspection lives in ember_admin.

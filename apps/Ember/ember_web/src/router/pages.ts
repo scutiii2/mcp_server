@@ -37,7 +37,7 @@ export const NAV_PAGES: NavPage[] = [
     description: "The AI agents behind ember: which are running, which is the entry agent, and what each is for.",
     permission: "chat.use",
   },
-  { to: "/usage", label: "Usage", icon: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"], description: "Token usage and limits.", permission: ["chat.use", "usage.all.view"] },
+  { to: "/usage", label: "Usage", icon: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"], description: "Token usage and limits.", permission: "chat.use" },
   {
     to: "/settings",
     label: "Settings",

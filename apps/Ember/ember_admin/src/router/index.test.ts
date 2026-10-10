@@ -72,3 +72,15 @@ it("lets an unverified account recover through Profile and verification", async 
   await router.push("/admin/roles");
   expect(router.currentRoute.value.name).toBe("verify-email");
 });
+
+it("opens Usage and its overview for a usage-only observer", async () => {
+  vi.mocked(authClient.me).mockResolvedValue({ id: 4, username: "observer", email: "o@example.com", email_verified: true, roles: [], permissions: ["usage.all.view"] });
+  await router.push("/");
+  expect(router.currentRoute.value.name).toBe("admin");
+  await router.push("/usage");
+  expect(router.currentRoute.value.name).toBe("usage");
+});
+it("denies Usage without the usage permission", async () => {
+  await router.replace({ path: "/usage", force: true });
+  expect(router.currentRoute.value.name).toBe("admin");
+});

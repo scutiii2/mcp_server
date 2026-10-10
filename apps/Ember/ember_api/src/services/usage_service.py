@@ -12,7 +12,7 @@ import math
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import UsageSettings
@@ -287,13 +287,12 @@ class UsageService:
                     Account.id,
                     Account.username,
                     func.sum(UsageRecord.total_tokens),
-                    func.count(func.distinct(UsageRecord.turn_id)),
+                    func.count(func.distinct(case((UsageRecord.kind != "summary", UsageRecord.turn_id)))),
                     func.max(UsageRecord.created_at),
                 )
-                .join(UsageRecord, UsageRecord.account_id == Account.id)
-                .where(UsageRecord.created_at >= since)
+                .outerjoin(UsageRecord, and_(UsageRecord.account_id == Account.id, UsageRecord.created_at >= since))
                 .group_by(Account.id, Account.username)
-                .order_by(func.sum(UsageRecord.total_tokens).desc())
+                .order_by(func.coalesce(func.sum(UsageRecord.total_tokens), 0).desc(), Account.username, Account.id)
             )
         ).all()
         return [
