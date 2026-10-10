@@ -73,7 +73,7 @@ def test_only_the_entry_agent_has_memory_recall_on():
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run (from `apps/ai_agent`): `<venv>/python -m pytest tests/test_agent_spec.py -q -p no:cacheprovider -k memory_recall or recall`
+Run (from `apps/ai_agent`): `<venv>/python -m pytest tests/test_agent_spec.py -q -p no:cacheprovider -k "recall"`
 Expected: FAIL (unknown key `memory_recall`; no such attribute).
 
 - [ ] **Step 3: Implement**
