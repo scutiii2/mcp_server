@@ -55,26 +55,43 @@ type Wrapper = Awaited<ReturnType<typeof mountView>>;
 const tab = (wrapper: Wrapper, label: string) => wrapper.findAll("button.segment").find((b) => b.text() === label)!;
 
 describe("EmberlingsView", () => {
-  it("a first visit offers the starters and keeps Battle and Shop closed", async () => {
+  it("a first visit opens the menu, then New game picks a starter and opens the collection", async () => {
     client.profile.mockRejectedValue(new ApiError(404, "no profile yet; choose a starter first"));
     const wrapper = await mountView();
 
+    expect(wrapper.find("button.segment").exists()).toBe(false);
+    expect(wrapper.findAll("nav button").map((b) => b.text())).toEqual(["New game", "How to play"]);
+
+    await wrapper.find("button.primary").trigger("click");
     expect(wrapper.text()).toContain("Choose your first Spark");
-    expect(tab(wrapper, "Battle").attributes("disabled")).toBeDefined();
-    expect(tab(wrapper, "Shop").attributes("disabled")).toBeDefined();
     expect(wrapper.findAll(".starter-name").map((n) => n.text())).toEqual(["Guardian", "Striker"]);
 
     client.createProfile.mockResolvedValue(PROFILE);
     await wrapper.findAll("button.starter")[0]!.trigger("click");
+    await wrapper.find("button.start").trigger("click");
     await flushPromises();
 
     expect(client.createProfile).toHaveBeenCalledExactlyOnceWith("guardian");
     expect(wrapper.findAll(".spark-card")).toHaveLength(1);
-    expect(tab(wrapper, "Battle").attributes("disabled")).toBeUndefined();
+    expect(tab(wrapper, "Collection").classes()).toContain("active");
+  });
+
+  it("a returning player sees the menu first; Continue and Menu move between the screens", async () => {
+    const wrapper = await mountView();
+
+    expect(wrapper.find("button.segment").exists()).toBe(false);
+    await wrapper.findAll("nav button")[0]!.trigger("click");
+    expect(tab(wrapper, "Collection").classes()).toContain("active");
+
+    await wrapper.find("button.chip").trigger("click");
+    expect(wrapper.find("button.segment").exists()).toBe(false);
+    await wrapper.findAll("nav button")[2]!.trigger("click");
+    expect(tab(wrapper, "Shop").classes()).toContain("active");
   });
 
   it("shows Insignia and EMBLEM counts in the header", async () => {
     const wrapper = await mountView();
+    await wrapper.findAll("nav button")[0]!.trigger("click");
 
     const wallet = wrapper.find(".wallet").text();
     expect(wallet).toContain("100");
@@ -96,13 +113,13 @@ describe("EmberlingsView", () => {
     const wrapper = await mountView();
 
     expect(wrapper.find(".unavailable").text()).toContain("Emberlings is not available right now");
-    expect(wrapper.find("button.segment").exists()).toBe(false);
+    expect(wrapper.find("nav").exists()).toBe(false);
 
     await wrapper.find(".unavailable button").trigger("click");
     await flushPromises();
 
     expect(wrapper.find(".unavailable").exists()).toBe(false);
-    expect(tab(wrapper, "Collection").exists()).toBe(true);
+    expect(wrapper.find("nav").exists()).toBe(true);
   });
 
   it("stops the battle loop when the page goes away", async () => {

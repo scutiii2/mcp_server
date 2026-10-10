@@ -8,23 +8,26 @@ import BattleResult from "../components/emberlings/BattleResult.vue";
 import CollectionPanel from "../components/emberlings/CollectionPanel.vue";
 import EmblemPrompt from "../components/emberlings/EmblemPrompt.vue";
 import EncounterPanel from "../components/emberlings/EncounterPanel.vue";
+import MainMenu, { type PlayTarget } from "../components/emberlings/MainMenu.vue";
 import ShopPanel from "../components/emberlings/ShopPanel.vue";
+import StarterPick from "../components/emberlings/StarterPick.vue";
 import { useEmberlingsStore } from "../stores/emberlings";
 import { titleCase } from "../utils/emberlings";
 
-/** Emberlings: collect Sparks, battle wild ones, spend Insignia. App.vue keeps
+/** Emberlings: a main menu, then collect Sparks, battle wild ones, spend Insignia. App.vue keeps
  * this page alive across tab switches, so an open battle survives; the store's
  * loop runs only while the page is attached and the browser tab is visible. */
-type Tab = "collection" | "battle" | "shop";
+type Tab = PlayTarget;
+type Screen = "menu" | "starter" | "game";
 
 const store = useEmberlingsStore();
+const screen = ref<Screen>("menu");
 const tab = ref<Tab>("collection");
-const tabs = computed<{ value: Tab; label: string; disabled?: boolean }[]>(() => [
+const tabs: { value: Tab; label: string }[] = [
   { value: "collection", label: "Collection" },
-  { value: "battle", label: "Battle", disabled: store.needsStarter },
-  { value: "shop", label: "Shop", disabled: store.needsStarter },
-]);
-const starters = computed(() => (store.catalog?.sparks ?? []).filter((s) => s.starter));
+  { value: "battle", label: "Battle" },
+  { value: "shop", label: "Shop" },
+];
 const emblemSummary = computed(() => {
   const owned = store.profile?.emblems ?? {};
   const parts = (store.catalog?.tiers ?? [])
@@ -33,19 +36,25 @@ const emblemSummary = computed(() => {
   return parts.length > 0 ? parts.join(" · ") : "none";
 });
 
-// A restored (or just started) battle, or an encounter, opens the Battle tab.
+function play(target: PlayTarget): void {
+  tab.value = target;
+  screen.value = "game";
+}
+
+// A restored (or just started) battle, or an encounter, skips the menu: an
+// open battle must not run unseen behind it.
 watch(
   () => store.battle?.id ?? store.encounter?.id ?? null,
   (id) => {
-    if (id !== null) tab.value = "battle";
+    if (id !== null) play("battle");
   },
   { immediate: true },
 );
-// Without a profile only the Collection tab (the starter pick) is open.
+// Losing the save (reset) sends the page back to the menu.
 watch(
   () => store.needsStarter,
   (needs) => {
-    if (needs) tab.value = "collection";
+    if (needs) screen.value = "menu";
   },
 );
 
@@ -58,12 +67,12 @@ onUnmounted(() => store.detach());
 <template>
   <section class="info-page emberlings-page">
     <div class="column page-column">
-      <div class="top">
+      <div v-if="screen === 'game' || !store.loaded" class="top">
         <div>
           <h2 class="page-title">Emberlings</h2>
           <p class="page-description">Collect Sparks, battle wild ones and spend Insignia in the shop.</p>
         </div>
-        <dl v-if="store.profile" class="wallet">
+        <dl v-if="store.profile && screen === 'game'" class="wallet">
           <div>
             <dt>Insignia</dt>
             <dd>{{ store.profile.insignia }}</dd>
@@ -87,29 +96,19 @@ onUnmounted(() => store.detach());
       </div>
 
       <template v-else>
-        <SegmentedControl v-model="tab" :options="tabs" aria-label="Emberlings sections" />
         <p v-if="store.reconnecting" class="muted status" role="status">Reconnecting...</p>
-        <p v-if="store.error" class="error status" role="alert">{{ store.error }}</p>
+        <MainMenu v-if="screen === 'menu'" @new-game="screen = 'starter'" @play="play" />
+        <StarterPick v-else-if="screen === 'starter'" @back="screen = 'menu'" @started="play('collection')" />
+
+        <template v-else>
+          <div class="game-nav">
+            <button type="button" class="chip" @click="screen = 'menu'">Menu</button>
+            <SegmentedControl v-model="tab" :options="tabs" aria-label="Emberlings sections" />
+          </div>
+          <p v-if="store.error" class="error status" role="alert">{{ store.error }}</p>
 
         <div v-if="tab === 'collection'" class="tab-body">
-          <section v-if="store.needsStarter" class="starters">
-            <h3>Choose your first Spark</h3>
-            <p class="muted">It stays yours. Other Sparks can be caught in battle or bought in the shop later.</p>
-            <div class="starter-grid">
-              <button
-                v-for="s in starters"
-                :key="s.id"
-                type="button"
-                class="starter"
-                :disabled="store.busy"
-                @click="store.createProfile(s.id)"
-              >
-                <span class="starter-name">{{ s.name }}</span>
-                <span class="muted">{{ s.abilities.length }} abilities · passive: {{ titleCase(s.passive.kind) }}</span>
-              </button>
-            </div>
-          </section>
-          <CollectionPanel v-else />
+          <CollectionPanel />
         </div>
 
         <div v-else-if="tab === 'battle'" class="tab-body">
@@ -125,6 +124,7 @@ onUnmounted(() => store.detach());
         </div>
 
         <ShopPanel v-else class="tab-body" />
+        </template>
       </template>
     </div>
   </section>
@@ -171,43 +171,10 @@ onUnmounted(() => store.detach());
 .tab-body {
   margin-top: 16px;
 }
-.starters h3 {
-  margin: 0 0 4px;
-}
-.starter-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-.starter {
+.game-nav {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  color: var(--text);
-  background: var(--surface);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-.starter:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-.starter:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.starter-name {
-  font-weight: 600;
-}
-@media (prefers-reduced-motion: reduce) {
-  .starter {
-    transition: none;
-  }
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }
 </style>

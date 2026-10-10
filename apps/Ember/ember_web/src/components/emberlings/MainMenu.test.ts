@@ -1,0 +1,101 @@
+import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { emberlingsClient, type Profile } from "../../api/EmberlingsClient";
+import { CATALOG, PROFILE } from "../../api/EmberlingsClient.fixtures";
+import { useEmberlingsStore } from "../../stores/emberlings";
+import MainMenu from "./MainMenu.vue";
+
+vi.mock("../../api/EmberlingsClient", () => ({ emberlingsClient: { resetProfile: vi.fn() } }));
+
+const client = vi.mocked(emberlingsClient);
+
+// jsdom has no <dialog> methods.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  };
+});
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  setActivePinia(createPinia());
+});
+
+function mountMenu(profile: Profile | null = PROFILE) {
+  const store = useEmberlingsStore();
+  store.catalog = CATALOG;
+  store.profile = profile;
+  return mount(MainMenu);
+}
+
+const labels = (wrapper: ReturnType<typeof mountMenu>) => wrapper.findAll("nav button").map((b) => b.text());
+
+describe("MainMenu", () => {
+  it("offers only New game and How to play without a save", async () => {
+    const wrapper = mountMenu(null);
+
+    expect(labels(wrapper)).toEqual(["New game", "How to play"]);
+    expect(wrapper.text()).toContain("No save found for this account");
+    await wrapper.find("button.primary").trigger("click");
+    expect(wrapper.emitted("newGame")).toHaveLength(1);
+  });
+
+  it("offers Continue, Quick battle and Shop with a save, and shows the stats", async () => {
+    const wrapper = mountMenu();
+
+    expect(labels(wrapper)).toEqual(["Continue", "Quick battle", "Shop", "How to play", "Reset progress"]);
+    expect(wrapper.find(".stats").text()).toContain("1 Sparks");
+    expect(wrapper.find(".stats").text()).toContain("100 Insignia");
+    const buttons = wrapper.findAll("nav button");
+    await buttons[0]!.trigger("click");
+    await buttons[1]!.trigger("click");
+    await buttons[2]!.trigger("click");
+    expect(wrapper.emitted("play")).toEqual([["collection"], ["battle"], ["shop"]]);
+  });
+
+  it("opens How to play in a dialog", async () => {
+    const wrapper = mountMenu(null);
+    await wrapper.findAll("nav button")[1]!.trigger("click");
+
+    const help = wrapper.findAllComponents({ name: "BaseModal" }).find((m) => m.props("title") === "How to play");
+    expect(help?.props("open")).toBe(true);
+    expect(wrapper.find(".help").exists()).toBe(true);
+  });
+});
+
+describe("reset progress", () => {
+  const resetButton = (wrapper: ReturnType<typeof mountMenu>) => wrapper.find("button.danger");
+
+  it("is disabled with a hint during a battle", () => {
+    const wrapper = mountMenu({ ...PROFILE, active_battle: "b1" });
+
+    expect((resetButton(wrapper).element as HTMLButtonElement).disabled).toBe(true);
+    expect(wrapper.text()).toContain("Finish or forfeit your battle to reset");
+  });
+
+  it("needs RESET typed, then resets once and closes", async () => {
+    client.resetProfile.mockResolvedValue({ reset: true });
+    const wrapper = mountMenu();
+    await resetButton(wrapper).trigger("click");
+
+    const confirm = () => wrapper.find("button.confirm");
+    expect((confirm().element as HTMLButtonElement).disabled).toBe(true);
+    await wrapper.find(".require input").setValue("reset");
+    expect((confirm().element as HTMLButtonElement).disabled).toBe(true);
+    await confirm().trigger("click");
+    expect(client.resetProfile).not.toHaveBeenCalled();
+
+    await wrapper.find(".require input").setValue("RESET");
+    expect((confirm().element as HTMLButtonElement).disabled).toBe(false);
+    await confirm().trigger("click");
+    await flushPromises();
+
+    expect(client.resetProfile).toHaveBeenCalledTimes(1);
+    expect(wrapper.findComponent({ name: "ConfirmModal" }).props("open")).toBe(false);
+    expect(labels(wrapper)).toEqual(["New game", "How to play"]);
+  });
+});

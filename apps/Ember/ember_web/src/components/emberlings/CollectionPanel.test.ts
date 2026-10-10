@@ -8,7 +8,7 @@ import CollectionPanel from "./CollectionPanel.vue";
 import PresetEditor from "./PresetEditor.vue";
 
 vi.mock("../../api/EmberlingsClient", () => ({
-  emberlingsClient: { personalities: vi.fn(), preset: vi.fn(), savePreset: vi.fn(), resetProfile: vi.fn() },
+  emberlingsClient: { personalities: vi.fn(), preset: vi.fn(), savePreset: vi.fn() },
 }));
 
 const client = vi.mocked(emberlingsClient);
@@ -87,47 +87,6 @@ describe("CollectionPanel", () => {
     expect(client.personalities).toHaveBeenLastCalledWith("guardian", 7, 50);
     expect(wrapper.find(".details").text()).toContain("Cautious · tier 1");
     expect(wrapper.find(".details").findAll("button").some((b) => b.text() === "Show more")).toBe(false);
-  });
-});
-
-describe("reset progress", () => {
-  const resetButton = (wrapper: ReturnType<typeof mountPanel>) =>
-    wrapper.findAll("button").find((b) => b.classes().includes("reset-button"))!;
-
-  it("is hidden without a profile", () => {
-    const store = useEmberlingsStore();
-    store.catalog = CATALOG;
-    const wrapper = mount(CollectionPanel);
-
-    expect(wrapper.find(".reset-button").exists()).toBe(false);
-  });
-
-  it("is disabled with a hint during a battle", () => {
-    const wrapper = mountPanel({ ...PROFILE, active_battle: "b1" });
-
-    expect((resetButton(wrapper).element as HTMLButtonElement).disabled).toBe(true);
-    expect(wrapper.find(".reset").text()).toContain("Finish or forfeit your battle first");
-  });
-
-  it("needs RESET typed, then resets once and closes", async () => {
-    client.resetProfile.mockResolvedValue({ reset: true });
-    const wrapper = mountPanel();
-    await resetButton(wrapper).trigger("click");
-
-    const confirm = () => wrapper.find("button.confirm");
-    expect((confirm().element as HTMLButtonElement).disabled).toBe(true);
-    await wrapper.find(".require input").setValue("reset");
-    expect((confirm().element as HTMLButtonElement).disabled).toBe(true);
-    await confirm().trigger("click");
-    expect(client.resetProfile).not.toHaveBeenCalled();
-
-    await wrapper.find(".require input").setValue("RESET");
-    expect((confirm().element as HTMLButtonElement).disabled).toBe(false);
-    await confirm().trigger("click");
-    await flushPromises();
-
-    expect(client.resetProfile).toHaveBeenCalledTimes(1);
-    expect(wrapper.findComponent({ name: "ConfirmModal" }).props("open")).toBe(false);
   });
 });
 

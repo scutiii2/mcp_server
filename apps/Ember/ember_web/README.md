@@ -232,11 +232,11 @@ URL, token or key.
   offline, disabled; an icon and a word). Read-only, refreshed every 15 s: new chats
   always go to the entry agent, there is no per-agent chat.
 - Emberlings page (`/emberlings`, `emberlings.play`): the Emberlings game (collect and battle Sparks) from `apps/mini_games`, through ember_api's
-  `/api/emberlings` pass-through (the browser never learns mini_games' address or token). A header shows Insignia and
-  EMBLEM counts; tabs: Collection (Spark cards with tier badge, level, XP, copies and a faint countdown; a card opens
+  `/api/emberlings` pass-through (the browser never learns mini_games' address or token). The page opens on a main menu (New game, or Continue, Quick battle, Shop, How to play and Reset
+  progress with a save). In the game a header shows Insignia and EMBLEM counts, a Menu button goes back; tabs: Collection (Spark cards with tier badge, level, XP, copies and a faint countdown; a card opens
   its abilities, collected personalities and five presets), Battle (look for a wild Spark, decline or fight; an arena
   with health bars, round log and actions; autonomous rounds every 1.5 s; the five-second EMBLEM prompt counts down on
-  this device) and Shop (EMBLEMs, copies, selling a copy). A first visit picks a starter. The battle loop pauses while
+  this device) and Shop (EMBLEMs, copies, selling a copy). New game picks a starter. The battle loop pauses while
   the browser tab is hidden or another page is open and resumes where the battle is; a lost connection shows
   "Reconnecting..." and retries every 3 s; a stale action is refreshed, never resent. Kept alive across page switches.
   Every change sends a fresh `Idempotency-Key`.
@@ -408,7 +408,7 @@ src/
                 CopyButton, UsageChip, UsageGauges, UsageHeatmap, ElapsedTime, WelcomeCard, DownloadCards, TemplatePicker, TemplatesModal, ShareDialog, ConversationSidebar, EntryAgentTag, ToolRunForm, ToolResultPanel, ToolCard, CapabilitySection, ConfirmModal, NavRail, SidebarEditor, ChatSettingsMenu, SettingRow, AuthCard
     analytics/  shared LineChart, hover/keyboard state in useBucketCursor and chart.css, used by Usage
     infoPage.css  shared look of the Agents / Config pages
-    emberlings/   the Emberlings page: CollectionPanel, SparkCard, TierBadge, PresetEditor, EncounterPanel,
+    emberlings/   the Emberlings page: MainMenu, StarterPick, CollectionPanel, SparkCard, TierBadge, PresetEditor, EncounterPanel,
                   BattleArena, HealthBar, RoundLog, ActionBar, EmblemPrompt, BattleResult, ShopPanel
   router/       routes + access guard, safe post-login redirect, pages (nav + Overview list)
   utils/        markdown rendering, download markers, tool-schema forms, error/time formatting, chat export,

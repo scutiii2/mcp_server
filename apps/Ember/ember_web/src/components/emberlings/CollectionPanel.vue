@@ -5,7 +5,6 @@ import { useEmberlingsStore } from "../../stores/emberlings";
 import { errorMessage } from "../../utils/errors";
 import { titleCase } from "../../utils/emberlings";
 import BaseModal from "../BaseModal.vue";
-import ConfirmModal from "../ConfirmModal.vue";
 import PresetEditor from "./PresetEditor.vue";
 import SparkCard from "./SparkCard.vue";
 import TierBadge from "./TierBadge.vue";
@@ -45,13 +44,6 @@ async function loadPersonalities(cursor: number | null): Promise<void> {
   }
 }
 
-const confirmingReset = ref(false);
-const inBattle = computed(() => store.profile?.active_battle != null || store.battle?.status === "active");
-
-async function reset(): Promise<void> {
-  if (await store.resetProgress()) confirmingReset.value = false;
-}
-
 function show(spark: OwnedSpark): void {
   open.value = spark;
   personalities.value = [];
@@ -76,22 +68,6 @@ function show(spark: OwnedSpark): void {
         </li>
       </ul>
     </template>
-
-    <div v-if="store.profile" class="reset">
-      <button type="button" class="reset-button" :disabled="inBattle" @click="confirmingReset = true">Reset progress</button>
-      <p v-if="inBattle" class="muted">Finish or forfeit your battle first</p>
-    </div>
-    <ConfirmModal
-      :open="confirmingReset"
-      title="Reset all Emberlings progress?"
-      message="Every Spark, personality, preset, EMBLEM and all Insignia are deleted. This cannot be undone."
-      confirm-label="Reset progress"
-      danger
-      require-text="RESET"
-      :busy="store.busy"
-      @confirm="reset"
-      @close="confirmingReset = false"
-    />
 
     <BaseModal :open="open !== null" :title="open?.name ?? ''" @close="open = null">
       <div v-if="open" class="details">
@@ -150,31 +126,6 @@ function show(spark: OwnedSpark): void {
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
   opacity: 0.6;
-}
-.reset {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 28px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-.reset p {
-  margin: 0;
-}
-.reset-button {
-  padding: 6px 14px;
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-full);
-  color: var(--danger);
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-}
-.reset-button:disabled {
-  cursor: default;
-  opacity: 0.5;
 }
 .details h4 {
   margin: 14px 0 6px;
