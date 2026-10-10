@@ -50,6 +50,8 @@ class AgentAdmin:
 
     def _headers(self, account: Account) -> dict[str, str]:
         headers = {"X-Requester-Username": account.username, "X-Requester-Email": account.email}
+        if account.uid:
+            headers["X-Requester-Uid"] = account.uid
         if self._internal_token:
             headers["X-Internal-Token"] = self._internal_token
         return headers

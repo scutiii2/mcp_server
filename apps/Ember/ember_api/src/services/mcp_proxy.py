@@ -40,6 +40,8 @@ class McpProxy:
         # Same headers chat_app sets; mcp_server's IdentityContextMiddleware reads them.
         headers["X-Requester-Username"] = account.username
         headers["X-Requester-Email"] = account.email
+        if account.uid:
+            headers["X-Requester-Uid"] = account.uid
         if self._internal_token:
             headers["X-Internal-Token"] = self._internal_token
         return headers

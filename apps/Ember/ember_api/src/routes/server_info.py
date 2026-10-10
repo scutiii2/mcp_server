@@ -192,7 +192,7 @@ async def command_options(
     mcp_server paths; each {name} in it comes from the `arg.<name>` query
     parameter (a select that depends on another one)."""
     try:
-        declared = await tools.options_templates(Caller(username=account.username, email=account.email))
+        declared = await tools.options_templates(Caller(username=account.username, email=account.email, uid=account.uid))
     except ServerUnavailable as error:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "mcp_server is unreachable") from error
     if template not in declared or not is_server_path(template):

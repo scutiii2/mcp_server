@@ -103,7 +103,7 @@ class ExtensionOut(BaseModel):
 
 
 def _caller(account: Account) -> Caller:
-    return Caller(username=account.username, email=account.email)
+    return Caller(username=account.username, email=account.email, uid=account.uid)
 
 
 def _host(url: str) -> str:

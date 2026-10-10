@@ -16,8 +16,10 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 
-def identity_headers(username: str, email: str, internal_token: str | None) -> dict[str, str]:
+def identity_headers(username: str, email: str, internal_token: str | None, uid: str = "") -> dict[str, str]:
     headers = {"X-Requester-Username": username, "X-Requester-Email": email}
+    if uid:
+        headers["X-Requester-Uid"] = uid
     if internal_token:
         headers["X-Internal-Token"] = internal_token
     return headers

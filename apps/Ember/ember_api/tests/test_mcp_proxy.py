@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 from fastapi.testclient import TestClient
@@ -112,6 +113,7 @@ def test_initialize_is_forwarded_with_identity_and_session_id(client: TestClient
     assert str(sent.url) == AGENTS[0]["url"]
     assert sent.headers["x-requester-username"] == "root"
     assert sent.headers["x-requester-email"] == "root@example.com"
+    assert re.fullmatch(r"[0-9a-f]{32}", sent.headers["x-requester-uid"])
     assert "x-internal-token" not in sent.headers  # none configured
 
 
@@ -122,11 +124,12 @@ def test_browser_cannot_forge_identity_or_leak_its_cookie(client: TestClient, up
         client,
         AGENT_PATH,
         rpc("initialize", {}),
-        **{"X-Requester-Username": "someone-else", "X-Internal-Token": "guess", "mcp-session-id": "sess-9"},
+        **{"X-Requester-Username": "someone-else", "X-Requester-Uid": "forged", "X-Internal-Token": "guess", "mcp-session-id": "sess-9"},
     )
 
     sent = upstream.requests[-1]
     assert sent.headers["x-requester-username"] == "root"
+    assert sent.headers["x-requester-uid"] != "forged"
     assert "x-internal-token" not in sent.headers
     assert "cookie" not in sent.headers
     assert sent.headers["mcp-session-id"] == "sess-9"  # MCP headers do pass through
