@@ -60,7 +60,7 @@ describe("EmberlingsView", () => {
     const wrapper = await mountView();
 
     expect(wrapper.find("button.segment").exists()).toBe(false);
-    expect(wrapper.findAll("nav button").map((b) => b.text())).toEqual(["New game", "How to play"]);
+    expect(wrapper.findAll("nav .t").map((t) => t.text())).toEqual(["New game", "How to play"]);
 
     await wrapper.find("button.primary").trigger("click");
     expect(wrapper.text()).toContain("Choose your first Spark");

@@ -1,20 +1,47 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useEmberlingsStore } from "../../stores/emberlings";
+import { titleCase } from "../../utils/emberlings";
 import BaseModal from "../BaseModal.vue";
 import ConfirmModal from "../ConfirmModal.vue";
 
-/** The Emberlings main menu, the first screen. Without a save it offers New
- * game; with one it offers Continue, Quick battle and Shop. Reset progress
- * lives here, behind a type-to-confirm. */
+/** The Emberlings main menu, the first screen: a title, large menu rows and a
+ * Spark showcase. Without a save it offers New game and previews the starters;
+ * with one it offers Continue, Quick battle and Shop and shows your team.
+ * Reset progress lives here, behind a type-to-confirm. */
 export type PlayTarget = "collection" | "battle" | "shop";
 const emit = defineEmits<{ newGame: []; play: [target: PlayTarget] }>();
+
+// 24x24 stroke icons, as path data.
+const ICON = {
+  play: ["M7 4v16l13-8z"],
+  swords: ["M14.5 17.5L3 6V3h3l11.5 11.5", "M13 19l6-6", "M16 16l4 4", "M19 21l2-2"],
+  shop: ["M3 21h18", "M3 7h18l-2-4H5z", "M5 21V10", "M19 21V10", "M9 21v-5h6v5"],
+  book: ["M4 5a8 8 0 0 1 8 1.5A8 8 0 0 1 20 5v13a8 8 0 0 0-8 1.5A8 8 0 0 0 4 18z", "M12 6.5v13"],
+  reset: ["M20 11a8 8 0 0 0-15.5-2", "M4 5v4h4", "M4 13a8 8 0 0 0 15.5 2", "M20 19v-4h-4"],
+  chevron: ["M9 6l6 6-6 6"],
+};
+const SHOWCASE_SIZE = 3;
 
 const store = useEmberlingsStore();
 const hasSave = computed(() => store.profile !== null);
 const inBattle = computed(() => store.profile?.active_battle != null || store.battle?.status === "active");
 const confirmingReset = ref(false);
 const showingHelp = ref(false);
+
+/** The three Sparks beside the menu: your first ones, or the starters to pick from. */
+const showcase = computed(() => {
+  if (store.profile !== null) {
+    return store.profile.sparks
+      .slice(0, SHOWCASE_SIZE)
+      .map((s) => ({ id: s.spark_id, name: s.name, note: `Level ${s.level}` }));
+  }
+  return (store.catalog?.sparks ?? [])
+    .filter((s) => s.starter)
+    .slice(0, SHOWCASE_SIZE)
+    .map((s) => ({ id: s.id, name: s.name, note: titleCase(s.passive.kind) }));
+});
+const sparkCount = computed(() => store.profile?.sparks.length ?? 0);
 
 async function reset(): Promise<void> {
   if (await store.resetProgress()) confirmingReset.value = false;
@@ -23,32 +50,69 @@ async function reset(): Promise<void> {
 
 <template>
   <section class="menu">
-    <header class="hero">
-      <h2 class="page-title">Emberlings</h2>
-      <p class="muted">{{ hasSave ? "Welcome back" : "Collect Sparks. Battle wild ones." }}</p>
-    </header>
+    <div class="intro">
+      <p class="eyebrow">{{ hasSave ? "Welcome back" : "Collect · battle · grow" }}</p>
+      <h2 class="title">Emberlings</h2>
+      <p class="tagline">
+        {{ hasSave ? "Your Sparks are rested and ready." : "Catch Sparks, train them, and take on wild ones." }}
+      </p>
 
-    <p v-if="store.error" class="error" role="alert">{{ store.error }}</p>
+      <p v-if="store.error" class="error" role="alert">{{ store.error }}</p>
 
-    <nav class="buttons" aria-label="Main menu">
-      <template v-if="hasSave">
-        <button type="button" class="primary" @click="emit('play', 'collection')">Continue</button>
-        <button type="button" @click="emit('play', 'battle')">Quick battle</button>
-        <button type="button" @click="emit('play', 'shop')">Shop</button>
-      </template>
-      <button v-else type="button" class="primary" @click="emit('newGame')">New game</button>
-      <button type="button" @click="showingHelp = true">How to play</button>
-      <button v-if="hasSave" type="button" class="danger" :disabled="inBattle" @click="confirmingReset = true">
-        Reset progress
-      </button>
-    </nav>
+      <nav class="rows" aria-label="Main menu">
+        <template v-if="hasSave">
+          <button type="button" class="row primary" @click="emit('play', 'collection')">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.play" :key="d" :d="d" /></svg>
+            <span class="text"><span class="t">Continue</span><span class="d">Open your collection</span></span>
+            <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
+          </button>
+          <button type="button" class="row" @click="emit('play', 'battle')">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.swords" :key="d" :d="d" /></svg>
+            <span class="text"><span class="t">Quick battle</span><span class="d">Find a wild Spark</span></span>
+            <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
+          </button>
+          <button type="button" class="row" @click="emit('play', 'shop')">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.shop" :key="d" :d="d" /></svg>
+            <span class="text"><span class="t">Shop</span><span class="d">Spend your Insignia</span></span>
+            <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
+          </button>
+        </template>
+        <button v-else type="button" class="row primary" @click="emit('newGame')">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.play" :key="d" :d="d" /></svg>
+          <span class="text"><span class="t">New game</span><span class="d">Choose your first Spark</span></span>
+          <svg class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
+        </button>
 
-    <p v-if="hasSave && inBattle" class="muted note">Finish or forfeit your battle to reset</p>
-    <p v-if="hasSave" class="muted stats">
-      <span>{{ store.profile?.sparks.length }} Sparks</span>
-      <span>{{ store.profile?.insignia }} Insignia</span>
-    </p>
-    <p v-else class="muted stats">No save found for this account</p>
+        <div :class="hasSave ? 'pair' : 'single'">
+          <button type="button" class="row" @click="showingHelp = true">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.book" :key="d" :d="d" /></svg>
+            <span class="text"><span class="t">How to play</span><span v-if="!hasSave" class="d">Two minutes to learn</span></span>
+            <svg v-if="!hasSave" class="ico go" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.chevron" :key="d" :d="d" /></svg>
+          </button>
+          <button v-if="hasSave" type="button" class="row danger" :disabled="inBattle" @click="confirmingReset = true">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path v-for="d in ICON.reset" :key="d" :d="d" /></svg>
+            <span class="text"><span class="t">Reset progress</span></span>
+          </button>
+        </div>
+      </nav>
+      <p v-if="hasSave && inBattle" class="muted note">Finish or forfeit your battle to reset</p>
+    </div>
+
+    <aside class="side" :aria-label="hasSave ? 'Your team' : 'Starter Sparks'">
+      <p v-if="hasSave" class="muted side-title">Your team</p>
+      <ul class="showcase">
+        <li v-for="(spark, i) in showcase" :key="spark.id" class="spark" :class="{ mid: i === 1 }">
+          <span class="orb" aria-hidden="true">{{ spark.name.slice(0, 1) }}</span>
+          <span class="spark-name">{{ spark.name }}</span>
+          <span class="muted spark-note">{{ spark.note }}</span>
+        </li>
+      </ul>
+      <p v-if="hasSave" class="muted stats">
+        <span><b>{{ sparkCount }}</b> {{ sparkCount === 1 ? "Spark" : "Sparks" }}</span>
+        <span><b>{{ store.profile?.insignia }}</b> Insignia</span>
+      </p>
+      <p v-else class="muted stats">No save found for this account</p>
+    </aside>
 
     <ConfirmModal
       :open="confirmingReset"
@@ -76,47 +140,184 @@ async function reset(): Promise<void> {
 
 <style scoped>
 .menu {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 32px;
   align-items: center;
   padding: 24px 0;
 }
-.hero {
-  text-align: center;
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
-.hero p {
-  margin: 4px 0 0;
+.title {
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: 600;
+  line-height: 1.1;
 }
-.buttons {
+.tagline {
+  margin: 8px 0 22px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.rows {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   width: 100%;
-  max-width: 260px;
-  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
 }
-.buttons button {
-  height: 40px;
+.row:hover:not(:disabled) {
+  border-color: var(--accent);
 }
-.danger {
-  color: var(--danger);
-  border-color: var(--danger);
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
-.danger:disabled {
+.row:disabled {
+  cursor: default;
   opacity: 0.5;
 }
-.note,
-.stats {
-  margin: 10px 0 0;
+.row.primary {
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.ico {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted);
+}
+.row.primary .ico {
+  color: inherit;
+}
+.ico.go {
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.t {
+  font-weight: 600;
+}
+.d {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.row.primary .d {
+  color: inherit;
+  opacity: 0.85;
+}
+.danger,
+.danger .ico {
+  color: var(--danger);
+}
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.note {
+  margin: 8px 0 0;
   font-size: 0.85em;
+}
+.side-title {
+  margin: 0 0 8px;
+  font-size: 0.85em;
+}
+.showcase {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.spark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+}
+.spark.mid {
+  border-color: var(--accent);
+  transform: translateY(-10px);
+}
+.orb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-full);
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+.spark-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.spark-note {
+  font-size: 0.75rem;
 }
 .stats {
   display: flex;
-  gap: 16px;
+  gap: 18px;
+  margin: 16px 0 0;
+  font-size: 0.85em;
+}
+.stats b {
+  color: var(--text);
+  font-weight: 600;
 }
 .help {
   margin: 0;
   padding-left: 18px;
   line-height: 1.6;
+}
+@media (max-width: 640px) {
+  .menu {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    transition: none;
+  }
 }
 </style>

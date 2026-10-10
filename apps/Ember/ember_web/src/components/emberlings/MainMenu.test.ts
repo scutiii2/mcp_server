@@ -32,7 +32,7 @@ function mountMenu(profile: Profile | null = PROFILE) {
   return mount(MainMenu);
 }
 
-const labels = (wrapper: ReturnType<typeof mountMenu>) => wrapper.findAll("nav button").map((b) => b.text());
+const labels = (wrapper: ReturnType<typeof mountMenu>) => wrapper.findAll("nav .t").map((t) => t.text());
 
 describe("MainMenu", () => {
   it("offers only New game and How to play without a save", async () => {
@@ -48,13 +48,22 @@ describe("MainMenu", () => {
     const wrapper = mountMenu();
 
     expect(labels(wrapper)).toEqual(["Continue", "Quick battle", "Shop", "How to play", "Reset progress"]);
-    expect(wrapper.find(".stats").text()).toContain("1 Sparks");
+    expect(wrapper.find(".stats").text()).toContain("1 Spark");
     expect(wrapper.find(".stats").text()).toContain("100 Insignia");
     const buttons = wrapper.findAll("nav button");
     await buttons[0]!.trigger("click");
     await buttons[1]!.trigger("click");
     await buttons[2]!.trigger("click");
     expect(wrapper.emitted("play")).toEqual([["collection"], ["battle"], ["shop"]]);
+  });
+
+  it("previews the starters without a save and shows your team with one", () => {
+    const names = (w: ReturnType<typeof mountMenu>) => w.findAll(".spark-name").map((n) => n.text());
+
+    expect(names(mountMenu(null))).toEqual(["Guardian", "Striker"]);
+    const team = mountMenu();
+    expect(names(team)).toEqual(["Guardian"]);
+    expect(team.find(".spark-note").text()).toBe("Level 3");
   });
 
   it("opens How to play in a dialog", async () => {
