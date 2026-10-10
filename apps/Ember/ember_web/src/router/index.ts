@@ -65,6 +65,12 @@ export const router = createRouter({
       meta: { permission: "chat.use" },
     },
     {
+      path: "/emberlings",
+      name: "emberlings",
+      component: () => import("../views/EmberlingsView.vue"),
+      meta: { permission: "emberlings.play" },
+    },
+    {
       path: "/config-issues",
       name: "config-issues",
       component: () => import("../views/ConfigIssuesView.vue"),
