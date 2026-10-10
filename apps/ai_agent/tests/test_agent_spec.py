@@ -326,3 +326,18 @@ def test_app_monitor_has_existing_tools_without_stop_or_restart_access():
     }
     assert not spec.tools.allows("tool_srv_stopApp")
     assert not spec.tools.allows("tool_srv_restartApp")
+
+
+def test_reviewer_cannot_use_memory_tools_but_keeps_everything_else():
+    app_dir = Path(__file__).resolve().parents[1]
+    spec = agent_spec.load_file(app_dir / "agents" / "reviewer.json")
+    tool_path = app_dir.parent / "mcp_server" / "src" / "capabilities" / "memory" / "tool.py"
+    memory_tools = [
+        node.name for node in ast.parse(tool_path.read_text(encoding="utf-8")).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("tool_")
+    ]
+
+    assert memory_tools  # the real tool names, so a rename cannot silently defeat the deny glob
+    assert not any(spec.tools.allows(name) for name in memory_tools)
+    assert spec.tools.allow == ()  # still every other tool
+    assert spec.tools.allows("tool_srv_listApps")
