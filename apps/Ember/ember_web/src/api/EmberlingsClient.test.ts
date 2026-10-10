@@ -49,6 +49,7 @@ describe("emberlingsClient", () => {
     await emberlingsClient.buyEmblems("normal", 3, "k");
     await emberlingsClient.buyCopies("bruiser", "rare", "k");
     await emberlingsClient.sellCopy("guardian", "k");
+    await emberlingsClient.resetProfile("k");
 
     expect(request.mock.calls).toEqual([
       ["POST", "/api/emberlings/profile", { starter_spark_id: "guardian" }, KEY],
@@ -65,6 +66,7 @@ describe("emberlingsClient", () => {
       ["POST", "/api/emberlings/shop/purchases", { kind: "emblem", tier: "normal", quantity: 3 }, KEY],
       ["POST", "/api/emberlings/shop/purchases", { kind: "copies", spark_id: "bruiser", tier: "rare" }, KEY],
       ["POST", "/api/emberlings/sparks/guardian/sales", undefined, KEY],
+      ["POST", "/api/emberlings/profile/reset", {}, KEY],
     ]);
   });
 
@@ -79,6 +81,20 @@ describe("emberlingsClient", () => {
     expect(request.mock.calls.map((call) => call[3])).toEqual([
       { "Idempotency-Key": "00000000-0000-4000-8000-000000000001" },
       { "Idempotency-Key": "00000000-0000-4000-8000-000000000002" },
+    ]);
+  });
+
+  it("makes a fresh key for each reset", async () => {
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000001")
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000002");
+
+    await emberlingsClient.resetProfile();
+    await emberlingsClient.resetProfile();
+
+    expect(request.mock.calls).toEqual([
+      ["POST", "/api/emberlings/profile/reset", {}, { "Idempotency-Key": "00000000-0000-4000-8000-000000000001" }],
+      ["POST", "/api/emberlings/profile/reset", {}, { "Idempotency-Key": "00000000-0000-4000-8000-000000000002" }],
     ]);
   });
 

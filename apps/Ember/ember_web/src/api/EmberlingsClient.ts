@@ -272,6 +272,9 @@ export const emberlingsClient = {
   profile: () => apiRequest<Profile>("GET", `${BASE}/profile`),
   createProfile: (starterSparkId: string, key: string = newIdempotencyKey()) =>
     apiRequest<Profile>("POST", `${BASE}/profile`, { starter_spark_id: starterSparkId }, withKey(key)),
+  /** Deletes every Spark, personality, preset, EMBLEM and Insignia. 404: no profile; 409: a battle is active. */
+  resetProfile: (key: string = newIdempotencyKey()) =>
+    apiRequest<{ reset: boolean }>("POST", `${BASE}/profile/reset`, {}, withKey(key)),
   personalities: (sparkId: string, cursor: number | null = null, limit?: number) => {
     const query = new URLSearchParams();
     if (limit !== undefined) query.set("limit", String(limit));

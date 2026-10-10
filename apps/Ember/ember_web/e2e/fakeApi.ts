@@ -522,6 +522,11 @@ export async function installFakeApi(page: Page, options: { admin?: boolean; emb
       api.emberlings.profile = emberlingsProfile(starter_spark_id);
       return json(route, api.emberlings.profile, 201);
     }
+    if (method === "POST" && path === "/api/emberlings/profile/reset") {
+      api.emberlings.keys.push(request.headers()["idempotency-key"] ?? "");
+      api.emberlings.profile = null;
+      return json(route, { reset: true });
+    }
 
     api.unexpected.push(`${method} ${path}`);
     return json(route, { detail: "not part of the fake" }, 404);

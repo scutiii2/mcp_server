@@ -403,6 +403,29 @@ export const useEmberlingsStore = defineStore("emberlings", () => {
     return mutate(() => emberlingsClient.sellCopy(sparkId), () => refreshProfile());
   }
 
+  /** Deletes all progress. Resolves false (state kept) when another change is
+   * running or the server refuses, e.g. 409 while a battle is active. */
+  async function resetProgress(): Promise<boolean> {
+    if (busy.value) return false;
+    clearTimers();
+    const result = await mutate(
+      () => emberlingsClient.resetProfile(),
+      () => {
+        profile.value = null;
+        encounter.value = null;
+        battle.value = null;
+        needsStarter.value = true;
+        reconnecting.value = false;
+        promptRemaining.value = 0;
+        promptTotal.value = 0;
+        promptRevision = null;
+      },
+    );
+    // A refused reset leaves the battle as it was: let its loop carry on.
+    if (result === null && !unavailable.value) schedule();
+    return result !== null;
+  }
+
   watch(
     () => auth.account?.id ?? null,
     () => {
@@ -453,6 +476,7 @@ export const useEmberlingsStore = defineStore("emberlings", () => {
     buyEmblems,
     buyCopies,
     sellCopy,
+    resetProgress,
     act,
     answerEmblem,
     setMode,

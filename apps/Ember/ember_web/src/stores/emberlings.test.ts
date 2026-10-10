@@ -28,6 +28,7 @@ vi.mock("../api/EmberlingsClient", () => ({
     buyEmblems: vi.fn(),
     buyCopies: vi.fn(),
     sellCopy: vi.fn(),
+    resetProfile: vi.fn(),
   },
 }));
 
@@ -269,5 +270,71 @@ describe("the EMBLEM prompt", () => {
 
     expect(client.advance).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 4 });
     expect(s.battle?.revision).toBe(5);
+  });
+});
+
+describe("resetting progress", () => {
+  it("clears profile, encounter and battle, asks for a starter and stops the loop", async () => {
+    const s = await attachedWith(battleView({ mode: "autonomous" }));
+    s.encounter = ENCOUNTER;
+    client.resetProfile.mockResolvedValue({ reset: true });
+
+    await expect(s.resetProgress()).resolves.toBe(true);
+
+    expect(client.resetProfile).toHaveBeenCalledTimes(1);
+    expect(s.profile).toBeNull();
+    expect(s.encounter).toBeNull();
+    expect(s.battle).toBeNull();
+    expect(s.needsStarter).toBe(true);
+    expect(s.busy).toBe(false);
+    await vi.advanceTimersByTimeAsync(ROUND_PACE_MS * 5);
+    expect(client.advance).not.toHaveBeenCalled();
+  });
+
+  it("keeps everything and says why when the server refuses", async () => {
+    const s = await attached();
+    client.resetProfile.mockRejectedValue(new ApiError(409, "finish or forfeit your battle before resetting"));
+
+    await expect(s.resetProgress()).resolves.toBe(false);
+
+    expect(s.error).toBe("finish or forfeit your battle before resetting");
+    expect(s.profile).toEqual(PROFILE);
+    expect(s.needsStarter).toBe(false);
+    expect(s.busy).toBe(false);
+  });
+
+  it("keeps the autonomous loop running after a refused reset", async () => {
+    const s = await attachedWith(battleView({ mode: "autonomous" }));
+    client.resetProfile.mockRejectedValue(new ApiError(409, "finish or forfeit your battle before resetting"));
+    client.advance.mockResolvedValue(battleView({ round: 2, revision: 2 }));
+
+    await s.resetProgress();
+    await vi.advanceTimersByTimeAsync(ROUND_PACE_MS);
+
+    expect(client.advance).toHaveBeenCalledTimes(1);
+    expect(s.battle).not.toBeNull();
+  });
+
+  it("marks the page unavailable on a 502 and keeps the state", async () => {
+    const s = await attached();
+    client.resetProfile.mockRejectedValue(new ApiError(502, "down"));
+
+    await expect(s.resetProgress()).resolves.toBe(false);
+
+    expect(s.unavailable).toBe(true);
+    expect(s.profile).toEqual(PROFILE);
+  });
+
+  it("ignores a reset while another change is running", async () => {
+    const s = await attached();
+    let finish: (value: { reset: boolean }) => void = () => undefined;
+    client.resetProfile.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+
+    const first = s.resetProgress();
+    await expect(s.resetProgress()).resolves.toBe(false);
+    expect(client.resetProfile).toHaveBeenCalledTimes(1);
+
+    finish({ reset: true });
+    await expect(first).resolves.toBe(true);
   });
 });
