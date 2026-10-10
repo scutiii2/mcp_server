@@ -39,14 +39,22 @@ function messageOf(data: unknown, fallback: string): string {
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export async function apiRequest<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+export async function apiRequest<T>(
+  method: HttpMethod,
+  path: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+): Promise<T> {
   // Every POST is JSON, even with no payload: ember_api rejects anything
   // else as a CSRF guard. Other methods send a body only when given one.
+  // `headers` adds request headers such as an Idempotency-Key.
   const init: RequestInit = { method, credentials: "same-origin" };
+  const sent: Record<string, string> = { ...headers };
   if (method === "POST" || body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
+    sent["Content-Type"] = "application/json";
     init.body = JSON.stringify(body ?? {});
   }
+  if (Object.keys(sent).length > 0) init.headers = sent;
   const response = await fetch(path, init);
   if (response.status === 204) return undefined as T;
   const data: unknown = await response.json().catch(() => null);
