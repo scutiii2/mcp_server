@@ -27,11 +27,11 @@
   --em-card-ink: #14202b;
 
   /* Tiers and ability categories: fixed colours, each also named in text */
-  --em-tier-normal: #bdc7d0;
+  --em-tier-common: #bdc7d0;
   --em-tier-rare: #9ad5ac;
-  --em-tier-legendary: #94c7ff;
-  --em-tier-royalty: #d4b1ff;
-  --em-tier-ascended: #f0cc85;
+  --em-tier-unique: #94c7ff;
+  --em-tier-royal: #d4b1ff;
+  --em-tier-legendary: #f0cc85;
   --em-tier-forbidden: #ff9b9b;
   --em-cat-attack: #ff9b9b;
   --em-cat-defense: #94c7ff;

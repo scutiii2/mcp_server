@@ -70,7 +70,7 @@ def test_non_object_catalog_is_a_catalog_error():
 
 def test_negative_copies_clamp_to_the_lowest_tier():
     catalog = Catalog.load(CATALOG_PATH, SPARKS_PATH)
-    assert catalog.tier_for_copies("sentinel", -5) == "normal"
+    assert catalog.tier_for_copies("sentinel", -5) == "common"
 
 
 @pytest.fixture

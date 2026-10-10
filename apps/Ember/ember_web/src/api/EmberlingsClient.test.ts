@@ -46,7 +46,7 @@ describe("emberlingsClient", () => {
     await emberlingsClient.setMode("b1", AT, "autonomous", null, "k");
     await emberlingsClient.setMode("b1", AT, "autonomous", "rare", "k");
     await emberlingsClient.forfeit("b1", "k");
-    await emberlingsClient.buyEmblems("normal", 3, "k");
+    await emberlingsClient.buyEmblems("common", 3, "k");
     await emberlingsClient.buyCopies("bruiser", "rare", "k");
     await emberlingsClient.sellCopy("guardian", "k");
     await emberlingsClient.resetProfile("k");
@@ -63,7 +63,7 @@ describe("emberlingsClient", () => {
       ["POST", "/api/emberlings/battles/b1/mode", { round: 3, revision: 7, mode: "autonomous" }, KEY],
       ["POST", "/api/emberlings/battles/b1/mode", { round: 3, revision: 7, mode: "autonomous", emblem_limit: "rare" }, KEY],
       ["POST", "/api/emberlings/battles/b1/forfeit", undefined, KEY],
-      ["POST", "/api/emberlings/shop/purchases", { kind: "emblem", tier: "normal", quantity: 3 }, KEY],
+      ["POST", "/api/emberlings/shop/purchases", { kind: "emblem", tier: "common", quantity: 3 }, KEY],
       ["POST", "/api/emberlings/shop/purchases", { kind: "copies", spark_id: "bruiser", tier: "rare" }, KEY],
       ["POST", "/api/emberlings/sparks/guardian/sales", undefined, KEY],
       ["POST", "/api/emberlings/profile/reset", {}, KEY],

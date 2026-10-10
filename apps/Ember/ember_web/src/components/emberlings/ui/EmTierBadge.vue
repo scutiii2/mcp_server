@@ -9,7 +9,7 @@ const text = computed(() => props.label ?? titleCase(props.tierId));
 </script>
 
 <template>
-  <span class="em-tier" :style="{ '--tier': `var(--em-tier-${tierId}, var(--em-tier-normal))` }">{{ text }}</span>
+  <span class="em-tier" :style="{ '--tier': `var(--em-tier-${tierId}, var(--em-tier-common))` }">{{ text }}</span>
 </template>
 
 <style scoped>

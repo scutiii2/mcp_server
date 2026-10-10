@@ -15,7 +15,7 @@ def roll(highest, *draws):
 
 # -- the draws -----------------------------------------------------------------------
 
-@pytest.mark.parametrize("u,tier", [(0.3, "normal"), (0.7, "rare"), (0.9, "legendary"), (0.97, "royalty"), (0.995, "ascended"), (0.9995, "forbidden")])
+@pytest.mark.parametrize("u,tier", [(0.3, "common"), (0.7, "rare"), (0.9, "unique"), (0.97, "royal"), (0.995, "legendary"), (0.9995, "forbidden")])
 def test_tier_follows_the_encounter_probabilities(u, tier):
     assert roll(10, u, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).tier_id == tier
 
@@ -69,9 +69,9 @@ def test_distribution_over_many_rolls_matches_the_tables():
         tiers[rolled.tier_id] = tiers.get(rolled.tier_id, 0) + 1
         for instance in rolled.personalities:
             instance_tiers[instance.tier] += 1
-    assert tiers["normal"] / n == pytest.approx(0.60, abs=0.02)
+    assert tiers["common"] / n == pytest.approx(0.60, abs=0.02)
     assert tiers["rare"] / n == pytest.approx(0.25, abs=0.02)
-    assert tiers["legendary"] / n == pytest.approx(0.10, abs=0.015)
+    assert tiers["unique"] / n == pytest.approx(0.10, abs=0.015)
     total = sum(instance_tiers.values())
     assert instance_tiers[1] / total == pytest.approx(0.6, abs=0.02) and instance_tiers[3] / total == pytest.approx(0.1, abs=0.015)
 

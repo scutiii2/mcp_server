@@ -42,15 +42,15 @@ def test_emblems_accumulate_and_cannot_go_negative(db_path):
     async def scenario():
         repo = SqliteSparkRepository(db_path)
         async with repo.transaction() as tx:
-            await tx.add_emblems("ann", "normal", 5)
-            await tx.add_emblems("ann", "normal", -2)
+            await tx.add_emblems("ann", "common", 5)
+            await tx.add_emblems("ann", "common", -2)
             await tx.add_emblems("ann", "rare", 1)
             await tx.add_emblems("ann", "rare", -1)
             counts = await tx.emblem_counts("ann")
-        assert counts == {"normal": 3}
+        assert counts == {"common": 3}
         with pytest.raises(sqlite3.IntegrityError):
             async with repo.transaction() as tx:
-                await tx.add_emblems("ann", "normal", -4)
+                await tx.add_emblems("ann", "common", -4)
         await repo.close()
 
     run(scenario())
@@ -117,7 +117,7 @@ def test_encounters_are_owner_safe_and_one_pending_at_a_time_is_read(db_path):
         wild = (PersonalityInstance("w1", "COWARD", 2),)
         async with repo.transaction() as tx:
             await tx.add_encounter(EncounterRecord("e1", "ann", "scout", "rare", 7, "pending", wild, 1.0))
-            await tx.add_encounter(EncounterRecord("e2", "ann", "scout", "normal", 3, "pending", wild, 2.0))
+            await tx.add_encounter(EncounterRecord("e2", "ann", "scout", "common", 3, "pending", wild, 2.0))
             newest = await tx.pending_encounter("ann")
             await tx.set_encounter_status("e2", "declined")
             after = await tx.pending_encounter("ann")
@@ -203,7 +203,7 @@ def test_a_failed_transaction_rolls_back_everything(db_path):
         with pytest.raises(RuntimeError):
             async with repo.transaction() as tx:
                 await tx.create_player("ann", 1.0)
-                await tx.add_emblems("ann", "normal", 5)
+                await tx.add_emblems("ann", "common", 5)
                 raise RuntimeError("boom")
         async with repo.transaction() as tx:
             assert await tx.get_player("ann") is None and await tx.emblem_counts("ann") == {}

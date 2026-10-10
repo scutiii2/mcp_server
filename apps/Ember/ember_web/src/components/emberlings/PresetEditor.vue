@@ -78,7 +78,7 @@ async function save(): Promise<void> {
     <ul v-else class="choices">
       <li v-for="p in personalities" :key="p.id">
         <EmSwitch :model-value="chosen.includes(p.id)" :label="titleCase(p.type)" :disabled="!chosen.includes(p.id) && full" @update:model-value="toggle(p.id, $event)">
-          <EmTierBadge tier-id="normal" :label="`Tier ${p.tier}`" class="badge" />
+          <EmTierBadge tier-id="common" :label="`Tier ${p.tier}`" class="badge" />
         </EmSwitch>
       </li>
     </ul>

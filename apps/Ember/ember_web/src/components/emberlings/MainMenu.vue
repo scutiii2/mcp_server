@@ -39,7 +39,7 @@ const hand = computed(() => {
       : catalog
           .filter((c) => c.starter)
           .slice(0, HAND_SIZE)
-          .map((c) => ({ id: c.id, info: c, level: 1, tierId: "normal" }));
+          .map((c) => ({ id: c.id, info: c, level: 1, tierId: "common" }));
   return entries.flatMap((e, i) => {
     if (e.info === undefined) return [];
     const offset = i - (entries.length - 1) / 2;

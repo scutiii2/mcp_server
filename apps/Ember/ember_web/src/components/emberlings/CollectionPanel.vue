@@ -105,7 +105,7 @@ function show(spark: OwnedSpark): void {
           <ul v-if="personalities.length" class="personalities">
             <li v-for="p in personalities" :key="p.id">
               <strong>{{ titleCase(p.type) }}</strong>
-              <EmTierBadge tier-id="normal" :label="`Tier ${p.tier}`" />
+              <EmTierBadge tier-id="common" :label="`Tier ${p.tier}`" />
             </li>
           </ul>
           <p v-else-if="!loadingMore" class="muted">None collected yet.</p>

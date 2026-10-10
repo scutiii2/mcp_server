@@ -50,15 +50,15 @@ describe("SparkTemplateCard", () => {
     expect(wrapper.find(".passive").text()).toBe("Steady");
   });
 
-  it("tints the frame for every tier but Normal", () => {
+  it("tints the frame for every tier but Common", () => {
     const tintOf = (tierId: string) => {
       const tint = mount(SparkTemplateCard, { props: { spark: striker, tierId } }).find(".tint");
       return tint.exists() ? (tint.element as HTMLElement).style.background : null;
     };
 
-    expect(tintOf("normal")).toBeNull();
+    expect(tintOf("common")).toBeNull();
     expect(tintOf("unknown")).toBeNull();
-    const tints = ["rare", "legendary", "royalty", "ascended", "forbidden"].map(tintOf);
+    const tints = ["rare", "unique", "royal", "legendary", "forbidden"].map(tintOf);
     expect(tints.every((t) => t)).toBe(true);
     expect(new Set(tints).size).toBe(5);
   });
@@ -75,9 +75,9 @@ describe("SparkTemplateCard", () => {
   });
 
   it("the small card has a tier plate, no ability slots, and its own portrait focus", () => {
-    const wrapper = mount(SparkTemplateCard, { props: { spark: sparkInfo("sentinel"), tierId: "royalty", compact: true } });
+    const wrapper = mount(SparkTemplateCard, { props: { spark: sparkInfo("sentinel"), tierId: "royal", compact: true } });
 
-    expect(wrapper.find(".tier-plate").text()).toBe("Royalty");
+    expect(wrapper.find(".tier-plate").text()).toBe("Royal");
     expect(wrapper.find(".ability").exists()).toBe(false);
     expect(wrapper.findAll(".behind")).toHaveLength(1);
     expect((wrapper.find("img.portrait").element as HTMLElement).style.objectPosition).toBe("50% 14%");

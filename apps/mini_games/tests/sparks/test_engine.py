@@ -14,7 +14,7 @@ FLEE = Action("flee", "FEAR")
 CATCH_WILD = Action("catch", "INTERCEPT")
 
 
-def catch(tier="normal"):
+def catch(tier="common"):
     return Action("catch", "INTERCEPT", emblem_tier=tier)
 
 
@@ -29,9 +29,9 @@ def play(s, pa, wa, *draws, state=None):
 # -- setup ---------------------------------------------------------------------------
 
 def test_build_fighter_unlocks_abilities_by_level():
-    assert len(engine.build_fighter(PLAYER, "guardian", "normal", 1).abilities) == 1
-    assert len(engine.build_fighter(PLAYER, "guardian", "normal", 10).abilities) == 2
-    assert len(engine.build_fighter(PLAYER, "guardian", "normal", 20).abilities) == 3
+    assert len(engine.build_fighter(PLAYER, "guardian", "common", 1).abilities) == 1
+    assert len(engine.build_fighter(PLAYER, "guardian", "common", 10).abilities) == 2
+    assert len(engine.build_fighter(PLAYER, "guardian", "common", 20).abilities) == 3
 
 
 def test_build_fighter_applies_tier_to_stats():
@@ -40,7 +40,7 @@ def test_build_fighter_applies_tier_to_stats():
 
 
 def test_scout_starts_with_a_speed_buff_from_unbuffed_essence():
-    s = BattleSetup(engine.build_fighter(PLAYER, "scout", "normal", 1), engine.build_fighter(WILD, "guardian", "normal", 1))
+    s = BattleSetup(engine.build_fighter(PLAYER, "scout", "common", 1), engine.build_fighter(WILD, "guardian", "common", 1))
     state = engine.start_state(s)
     assert engine.stat(s.player, state.player, "speed") == 35 + 11  # 50% of 22 ESSENCE
     assert engine.stat(s.wild, state.wild, "speed") == 15 and state.round == 1

@@ -136,10 +136,10 @@ describe("ActionBar", () => {
 
     await wrapper.findAll("button.action")[3]!.trigger("click");
     expect(client.action).not.toHaveBeenCalled();
-    await wrapper.findAll("button").find((b) => b.text() === "Normal (2)")!.trigger("click");
+    await wrapper.findAll("button").find((b) => b.text() === "Common (2)")!.trigger("click");
     await flushPromises();
 
-    expect(client.action).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 1 }, { kind: "catch", emblem_tier: "normal" });
+    expect(client.action).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 1 }, { kind: "catch", emblem_tier: "common" });
   });
 });
 
@@ -190,7 +190,7 @@ describe("EmblemPrompt", () => {
     battleView({
       phase: "awaiting_emblem",
       revision: 4,
-      prompt: { deadline: 0, seconds_left: 5, permitted_tiers: ["normal"], owned: { normal: 2 } },
+      prompt: { deadline: 0, seconds_left: 5, permitted_tiers: ["common"], owned: { common: 2 } },
     });
 
   it("offers the permitted tiers with their counts while time is left", async () => {
@@ -202,10 +202,10 @@ describe("EmblemPrompt", () => {
 
     expect(wrapper.find(".em-ring").text()).toBe("4s");
     expect(wrapper.text()).toContain("4 s left");
-    await wrapper.findAll("button.tier").find((b) => b.text().startsWith("Normal"))!.trigger("click");
+    await wrapper.findAll("button.tier").find((b) => b.text().startsWith("Common"))!.trigger("click");
     await flushPromises();
 
-    expect(client.emblem).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 4 }, "normal");
+    expect(client.emblem).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 4 }, "common");
   });
 
   it("disables the tiers at zero", () => {
@@ -216,7 +216,7 @@ describe("EmblemPrompt", () => {
     const wrapper = mount(EmblemPrompt);
 
     expect(wrapper.text()).toContain("Time is up");
-    expect(wrapper.findAll("button.tier").find((b) => b.text().startsWith("Normal"))!.attributes("disabled")).toBeDefined();
+    expect(wrapper.findAll("button.tier").find((b) => b.text().startsWith("Common"))!.attributes("disabled")).toBeDefined();
     expect(wrapper.text()).toContain("Your Spark will decide this turn.");
   });
 });

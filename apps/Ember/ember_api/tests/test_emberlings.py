@@ -49,16 +49,16 @@ MUTATIONS: list[tuple[str, str, dict[str, Any], str, Any, int]] = [
     ("POST", "/api/emberlings/encounters/enc_1/decline", {}, "/sparks/encounters/enc_1/decline", None, 200),
     ("POST", "/api/emberlings/battles", START, "/sparks/battles", START, 201),
     ("POST", "/api/emberlings/battles/b1/actions", ACTION, "/sparks/battles/b1/actions", ACTION, 200),
-    ("POST", "/api/emberlings/battles/b1/emblem", {**ROUND, "tier": "normal"}, "/sparks/battles/b1/emblem", {**ROUND, "tier": "normal"}, 200),
+    ("POST", "/api/emberlings/battles/b1/emblem", {**ROUND, "tier": "common"}, "/sparks/battles/b1/emblem", {**ROUND, "tier": "common"}, 200),
     ("POST", "/api/emberlings/battles/b1/advance", ROUND, "/sparks/battles/b1/advance", ROUND, 200),
     ("POST", "/api/emberlings/battles/b1/mode", {**ROUND, "mode": "manual"}, "/sparks/battles/b1/mode", {**ROUND, "mode": "manual"}, 200),
     ("POST", "/api/emberlings/battles/b1/forfeit", {}, "/sparks/battles/b1/forfeit", None, 200),
     (
         "POST",
         "/api/emberlings/shop/purchases",
-        {"kind": "emblem", "tier": "normal", "quantity": 2},
+        {"kind": "emblem", "tier": "common", "quantity": 2},
         "/sparks/shop/purchases",
-        {"kind": "emblem", "tier": "normal", "quantity": 2},
+        {"kind": "emblem", "tier": "common", "quantity": 2},
         201,
     ),
     (
@@ -226,7 +226,7 @@ def test_only_limit_and_cursor_are_forwarded(client: TestClient, emberlings: Fak
         ("/api/emberlings/battles/b1/advance", {"round": True, "revision": 2}, "round"),
         ("/api/emberlings/battles/b1/actions", {**ROUND, "action": {"kind": "steal"}}, "kind"),
         ("/api/emberlings/shop/purchases", {"kind": "copies", "tier": "rare"}, "spark_id"),
-        ("/api/emberlings/shop/purchases", {"kind": "emblem", "tier": "normal", "quantity": 100}, "quantity"),
+        ("/api/emberlings/shop/purchases", {"kind": "emblem", "tier": "common", "quantity": 100}, "quantity"),
         ("/api/emberlings/battles", {**START, "spark_id": "../profile"}, "spark_id"),
     ],
 )
@@ -272,7 +272,7 @@ def action_log(client: TestClient) -> list[dict[str, Any]]:
 def test_only_changes_of_value_are_audited(client: TestClient, emberlings: FakeEmberlings) -> None:
     as_admin(client)
     emberlings.responses[("POST", "/sparks/battles")] = {"id": "b1", "wild": {"name": "Bruiser", "level": 4}}
-    emberlings.responses[("POST", "/sparks/shop/purchases")] = {"kind": "emblems", "tier_id": "normal", "quantity": 2, "price": 20}
+    emberlings.responses[("POST", "/sparks/shop/purchases")] = {"kind": "emblems", "tier_id": "common", "quantity": 2, "price": 20}
     emberlings.responses[("POST", "/sparks/sparks/guardian/sales")] = {"kind": "sale", "spark_id": "guardian", "value": 12}
 
     for method, path, body, *_ in MUTATIONS:

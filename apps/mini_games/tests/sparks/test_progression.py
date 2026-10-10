@@ -38,7 +38,7 @@ def test_forbidden_levels_to_fifty():
     assert progression.add_xp("forbidden", 30, 0, 100) == (30, 100)
 
 
-@pytest.mark.parametrize("level,tier,xp,insignia", [(10, "normal", 200, 100), (10, "legendary", 300, 150), (1, "rare", 25, 12), (30, "forbidden", 2400, 1200)])
+@pytest.mark.parametrize("level,tier,xp,insignia", [(10, "common", 200, 100), (10, "unique", 300, 150), (1, "rare", 25, 12), (30, "forbidden", 2400, 1200)])
 def test_reward_formulas(level, tier, xp, insignia):
     assert progression.rewards_for(level, tier) == (xp, insignia)
 
@@ -50,9 +50,9 @@ def test_forbidden_copies_cap_at_one_hundred():
 
 # -- applying a terminal result ------------------------------------------------------
 
-def build_battle(player_spark="guardian", wild_spark="scout", wild_tier="normal", wild_level=10, wild_instances=None):
+def build_battle(player_spark="guardian", wild_spark="scout", wild_tier="common", wild_level=10, wild_instances=None):
     setup = BattleSetup(
-        engine.build_fighter(PLAYER, player_spark, "normal", 5),
+        engine.build_fighter(PLAYER, player_spark, "common", 5),
         engine.build_fighter(WILD, wild_spark, wild_tier, wild_level),
     )
     record = battle_record()
@@ -98,7 +98,7 @@ def test_capturing_an_unowned_spark_starts_it_at_level_one_with_the_tiers_copies
     result, sparks, player, personalities = run(apply("captured", battle, FIGHTER, 0.5))
     new = sparks["channeler"]
     assert (new.level, new.xp, new.copies) == (1, 0, 2)  # Rare grants 2 copies
-    assert result["copies_granted"] == 2 and result["tier_id"] == "normal"
+    assert result["copies_granted"] == 2 and result["tier_id"] == "common"
     assert player.insignia == 125  # Rare level 10: 10 * 10 * 1.25
     assert [p.type_id for p in personalities["channeler"]] == ["BOLD"]  # draw 0.5 of 3 -> index 1
     assert result["awarded_personality"]["type"] == "BOLD"

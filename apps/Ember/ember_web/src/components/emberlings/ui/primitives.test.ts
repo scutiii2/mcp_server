@@ -80,7 +80,7 @@ describe("EmTabs", () => {
 
 describe("EmTierBadge", () => {
   it("writes the tier's name", () => {
-    expect(mount(EmTierBadge, { props: { tierId: "legendary" } }).text()).toBe("Legendary");
+    expect(mount(EmTierBadge, { props: { tierId: "unique" } }).text()).toBe("Unique");
   });
 });
 

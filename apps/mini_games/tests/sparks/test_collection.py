@@ -19,9 +19,9 @@ def test_initialize_creates_the_starter_setup(tmp_path):
         return profile, presets, pool
 
     profile, preset, pool = run(scenario())
-    assert profile["insignia"] == 0 and profile["emblems"] == {"normal": 5}
+    assert profile["insignia"] == 0 and profile["emblems"] == {"common": 5}
     [spark] = profile["sparks"]
-    assert (spark["spark_id"], spark["level"], spark["copies"], spark["tier_id"]) == ("scout", 1, 0, "normal")
+    assert (spark["spark_id"], spark["level"], spark["copies"], spark["tier_id"]) == ("scout", 1, 0, "common")
     assert pool["items"][0]["type"] == "AGGRESSIVE" and pool["items"][0]["tier"] == 1
     assert preset["instance_ids"] == [pool["items"][0]["id"]]
 

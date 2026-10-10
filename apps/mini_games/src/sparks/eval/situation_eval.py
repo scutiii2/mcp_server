@@ -81,7 +81,7 @@ def random_combatant(catalog: Catalog, rng: random.Random, reader: SituationRead
     spec = rng.choice(catalog.regular_sparks())
     types = list(catalog.personalities)
     instances = tuple(PersonalityInstance(f"e{n}", rng.choice(types), rng.randint(1, 3)) for n in range(rng.randint(1, 3)))
-    return Combatant(spec.id, "normal", rng.randint(3, 25), instances, reader)
+    return Combatant(spec.id, "common", rng.randint(3, 25), instances, reader)
 
 
 async def collect_views(simulator: BattleSimulator, catalog: Catalog, count: int, seed: int) -> list[SituationView]:

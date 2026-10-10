@@ -177,7 +177,7 @@ const ADMIN_PERMISSIONS = [
 const EMBERLINGS_CATALOG = {
   version: 1,
   tiers: [
-    { id: "normal", stat_multiplier: 1, copy_threshold: 0, copy_reward: 1, emblem_strength: 1, emblem_price: 10 },
+    { id: "common", stat_multiplier: 1, copy_threshold: 0, copy_reward: 1, emblem_strength: 1, emblem_price: 10 },
     { id: "rare", stat_multiplier: 1.2, copy_threshold: 3, copy_reward: 2, emblem_strength: 1.5, emblem_price: 40 },
   ],
   levels: { regular_cap: 30, forbidden_cap: 50 },
@@ -202,7 +202,7 @@ function emberlingsProfile(starter: string): Record<string, unknown> {
   return {
     owner: "1",
     insignia: 0,
-    emblems: { normal: 3 },
+    emblems: { common: 3 },
     sparks: [
       {
         spark_id: starter,
@@ -212,7 +212,7 @@ function emberlingsProfile(starter: string): Record<string, unknown> {
         xp_needed: 100,
         level_cap: 30,
         copies: 0,
-        tier_id: "normal",
+        tier_id: "common",
         faint_until: null,
         fainted: false,
       },

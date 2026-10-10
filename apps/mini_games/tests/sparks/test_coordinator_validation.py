@@ -42,7 +42,7 @@ def test_lock_table_does_not_grow_for_unknown_battle_ids(tmp_path):
             with pytest.raises(NotFound):
                 await coord.set_mode("ann", env.key(), bid, round=1, revision=1, mode="manual", emblem_limit=None)
             with pytest.raises(NotFound):
-                await coord.answer_emblem("ann", env.key(), bid, round=1, revision=1, tier="normal")
+                await coord.answer_emblem("ann", env.key(), bid, round=1, revision=1, tier="common")
         assert coord._locks == {}
         await env.close()
 

@@ -35,7 +35,7 @@ def make(tmp_path, **kwargs):
     return Env(tmp_path / "s.sqlite3", **kwargs)
 
 
-async def encounter(env, spark_id="scout", tier="normal", level=1, instances=(COWARD, BOLD), eid="e1", owner="ann"):
+async def encounter(env, spark_id="scout", tier="common", level=1, instances=(COWARD, BOLD), eid="e1", owner="ann"):
     async with env.repo.transaction() as tx:
         await tx.add_encounter(EncounterRecord(eid, owner, spark_id, tier, level, "pending", tuple(instances), env.clock.now()))
     return eid
@@ -93,7 +93,7 @@ def test_start_validates_its_inputs(tmp_path):
         await env.start_player()
         eid = await encounter(env)
         base = dict(encounter_id=eid, spark_id="guardian", preset_slot=1, mode="manual", emblem_limit=None)
-        for bad in (dict(mode="turbo"), dict(mode="autonomous", emblem_limit=None), dict(mode="autonomous", preset_slot=None, emblem_limit="normal"),
+        for bad in (dict(mode="turbo"), dict(mode="autonomous", emblem_limit=None), dict(mode="autonomous", preset_slot=None, emblem_limit="common"),
                     dict(emblem_limit="gold"), dict(spark_id="nope")):
             with pytest.raises(InvalidRequest):
                 await coord.start("ann", env.key(), **{**base, **bad})
@@ -113,7 +113,7 @@ def test_an_empty_preset_cannot_play_autonomously_but_can_play_manually(tmp_path
         await env.start_player()
         eid = await encounter(env)
         with pytest.raises(InvalidRequest, match="no personalities"):
-            await coord.start("ann", env.key(), encounter_id=eid, spark_id="guardian", preset_slot=2, mode="autonomous", emblem_limit="normal")
+            await coord.start("ann", env.key(), encounter_id=eid, spark_id="guardian", preset_slot=2, mode="autonomous", emblem_limit="common")
         view = await coord.start("ann", env.key(), encounter_id=eid, spark_id="guardian", preset_slot=2, mode="manual", emblem_limit=None)
         await env.close()
         return view
@@ -157,7 +157,7 @@ def test_the_preset_is_frozen_for_the_battle(tmp_path):
         env = make(tmp_path)
         await env.start_player()
         coord = env.coordinator()
-        view = await begin(env, coord, mode="autonomous", limit="normal")
+        view = await begin(env, coord, mode="autonomous", limit="common")
         await env.collection.put_preset("ann", env.key(), "guardian", 1, [])  # edited after the fight began
         record, _ = await coord._load("ann", view["id"])
         await env.close()
@@ -305,7 +305,7 @@ def test_a_win_pays_out_exactly_once(tmp_path):
 
     done, replay, (insignia, emblems, sparks) = run(scenario())
     assert done == replay and done["status"] == "terminal" and done["result"]["kind"] == "won"
-    assert insignia == 10 and done["result"]["xp"] == 20 and sparks["guardian"].faint_until is None and emblems == {"normal": 5}
+    assert insignia == 10 and done["result"]["xp"] == 20 and sparks["guardian"].faint_until is None and emblems == {"common": 5}
 
 
 def test_a_knockout_faints_the_fighter_for_five_minutes_without_copy_loss(tmp_path):
@@ -353,12 +353,12 @@ def test_a_capture_reveals_every_source_personality_and_spends_the_emblem(tmp_pa
         await env.start_player()
         await strong_guardian(env)
         async with env.repo.transaction() as tx:
-            await tx.add_emblems("ann", "ascended", 40)
+            await tx.add_emblems("ann", "legendary", 40)
         coord = env.coordinator(ScriptedPolicy())  # the wild Spark only attacks, so nothing preempts the attempt
         view = await begin(env, coord, spark_id="channeler", level=1)
         outcome = view
         for _ in range(100):
-            outcome = await act(coord, env, view, "catch", emblem_tier="ascended")
+            outcome = await act(coord, env, view, "catch", emblem_tier="legendary")
             if outcome["status"] == "terminal":
                 break
             view = outcome
@@ -373,7 +373,7 @@ def test_a_capture_reveals_every_source_personality_and_spends_the_emblem(tmp_pa
     assert result["kind"] == "captured" and {p["type"] for p in result["revealed_personalities"]} == {"COWARD", "BOLD"}
     assert len(pool) == 1 and result["awarded_personality"]["type"] in {"COWARD", "BOLD"}
     assert sparks["channeler"].level == 1 and sparks["channeler"].copies == 1 and insignia == 10
-    assert emblems["ascended"] == 40 - len(outcome["history"])  # one EMBLEM per attempt, win or lose
+    assert emblems["legendary"] == 40 - len(outcome["history"])  # one EMBLEM per attempt, win or lose
 
 
 def test_a_failed_collection_attempt_still_costs_the_emblem(tmp_path):
@@ -383,13 +383,13 @@ def test_a_failed_collection_attempt_still_costs_the_emblem(tmp_path):
         await strong_guardian(env)  # 1462 HP survives one hit from the level-50 Forbidden Spark
         coord = env.coordinator(ScriptedPolicy())
         view = await begin(env, coord, spark_id="forbidden", tier="forbidden", level=50)
-        after = await act(coord, env, view, "catch", emblem_tier="normal")  # 100 / (100 + 12800): about 0.8%
+        after = await act(coord, env, view, "catch", emblem_tier="common")  # 100 / (100 + 12800): about 0.8%
         counts = (await stats(env))[1]
         await env.close()
         return after, counts
 
     after, counts = run(scenario())
-    assert counts == {"normal": 4}
+    assert counts == {"common": 4}
     assert after["status"] == "active" and after["result"] is None and len(after["history"]) == 1
 
 
@@ -463,7 +463,7 @@ def test_an_autonomous_round_plays_without_input(tmp_path):
         env = make(tmp_path)
         await env.start_player()
         coord = env.coordinator(ScriptedPolicy(player=["attack"], wild=["flee"]))
-        view = await begin(env, coord, mode="autonomous", limit="normal")
+        view = await begin(env, coord, mode="autonomous", limit="common")
         with pytest.raises(WrongPhase):
             await act(coord, env, view)
         after = await advance(coord, env, view)
@@ -480,10 +480,10 @@ def catch_battle(tmp_path, *, laya=None, emblems=None, limit="rare", reader_poli
         await env.start_player()
         await strong_guardian(env)  # survives the wild attack, so the CATCH is never preempted
         async with env.repo.transaction() as tx:
-            for tier, count in (emblems or {"rare": 2, "royalty": 1}).items():
+            for tier, count in (emblems or {"rare": 2, "royal": 1}).items():
                 await tx.add_emblems("ann", tier, count)
         coord = env.coordinator(ScriptedPolicy(player=["catch"], wild=["attack"]), laya=laya)
-        view = await begin(env, coord, mode="autonomous", limit=limit, spark_id="channeler", tier="normal", level=1)
+        view = await begin(env, coord, mode="autonomous", limit=limit, spark_id="channeler", tier="common", level=1)
         return env, coord, view
 
     return setup()
@@ -499,7 +499,7 @@ def test_an_autonomous_catch_opens_a_five_second_prompt(tmp_path):
 
     view, prompt, again = run(scenario())
     assert prompt["phase"] == "awaiting_emblem" and prompt["prompt"]["seconds_left"] == 5.0
-    assert prompt["prompt"]["permitted_tiers"] == ["normal", "rare"] and prompt["history"] == []
+    assert prompt["prompt"]["permitted_tiers"] == ["common", "rare"] and prompt["history"] == []
     assert again == prompt  # still waiting for the player: nothing changes before the deadline
     assert not any(word in json.dumps(prompt) for word in SECRET_WORDS + ("wild_action",))
 
@@ -509,13 +509,13 @@ def test_the_player_can_answer_with_any_owned_emblem_even_above_the_limit(tmp_pa
         env, coord, view = await catch_battle(tmp_path)
         prompt = await advance(coord, env, view)
         env.clock.advance(2)
-        done = await coord.answer_emblem("ann", env.key(), view["id"], round=1, revision=prompt["revision"], tier="royalty")
+        done = await coord.answer_emblem("ann", env.key(), view["id"], round=1, revision=prompt["revision"], tier="royal")
         counts = (await stats(env))[1]
         await env.close()
         return done, counts
 
     done, counts = run(scenario())
-    assert "royalty" not in counts and done["history"][0]["actions"]["player"][0] == "catch"
+    assert "royal" not in counts and done["history"][0]["actions"]["player"][0] == "catch"
 
 
 def test_a_late_answer_is_refused(tmp_path):
@@ -529,7 +529,7 @@ def test_a_late_answer_is_refused(tmp_path):
         await env.close()
         return counts
 
-    assert run(scenario()) == {"normal": 5, "rare": 2, "royalty": 1}
+    assert run(scenario()) == {"common": 5, "rare": 2, "royal": 1}
 
 
 def test_an_answer_needs_an_owned_emblem(tmp_path):
@@ -537,7 +537,7 @@ def test_an_answer_needs_an_owned_emblem(tmp_path):
         env, coord, view = await catch_battle(tmp_path)
         prompt = await advance(coord, env, view)
         with pytest.raises(InsufficientEmblems):
-            await coord.answer_emblem("ann", env.key(), view["id"], round=1, revision=prompt["revision"], tier="ascended")
+            await coord.answer_emblem("ann", env.key(), view["id"], round=1, revision=prompt["revision"], tier="legendary")
         await env.close()
 
     run(scenario())
@@ -554,7 +554,7 @@ def test_after_the_deadline_laya_picks_within_the_limit(tmp_path):
         return done, counts
 
     done, counts = run(scenario())
-    assert done["history"][0]["actions"]["player"][0] == "catch" and counts["rare"] == 1 and counts["royalty"] == 1
+    assert done["history"][0]["actions"]["player"][0] == "catch" and counts["rare"] == 1 and counts["royal"] == 1
 
 
 def FakeEngineWith(pick):
@@ -579,7 +579,7 @@ def test_when_laya_cannot_choose_the_catch_becomes_basic_attack_and_nothing_is_s
         return done, counts
 
     done, counts = run(scenario())
-    assert done["history"][0]["actions"]["player"] == ["attack", "ATTACK"] and counts == {"normal": 5, "rare": 2, "royalty": 1}
+    assert done["history"][0]["actions"]["player"] == ["attack", "ATTACK"] and counts == {"common": 5, "rare": 2, "royal": 1}
 
 
 def test_with_no_permitted_emblem_at_the_deadline_it_falls_back_to_attack(tmp_path):
@@ -588,7 +588,7 @@ def test_with_no_permitted_emblem_at_the_deadline_it_falls_back_to_attack(tmp_pa
         prompt = await advance(coord, env, view)
         async with env.repo.transaction() as tx:  # the permitted EMBLEMs vanish while the prompt is open
             await tx.add_emblems("ann", "rare", -1)
-            await tx.add_emblems("ann", "normal", -5)
+            await tx.add_emblems("ann", "common", -5)
         env.clock.advance(6)
         done = await advance(coord, env, prompt)
         await env.close()
@@ -624,7 +624,7 @@ def test_closing_the_view_pauses_a_battle_and_reopening_resumes_it(tmp_path):
         env = make(tmp_path)
         await env.start_player()
         coord = env.coordinator(ScriptedPolicy(wild=["flee"] * 4))
-        view = await begin(env, coord, mode="autonomous", limit="normal")
+        view = await begin(env, coord, mode="autonomous", limit="common")
         after = await advance(coord, env, view)
         await env.close()
         env2 = Env(tmp_path / "s.sqlite3")
@@ -679,7 +679,7 @@ def test_a_battle_without_personalities_cannot_go_autonomous(tmp_path):
         coord = env.coordinator()
         view = await begin(env, coord, slot=2)  # an empty preset
         with pytest.raises(InvalidRequest):
-            await coord.set_mode("ann", env.key(), view["id"], round=1, revision=1, mode="autonomous", emblem_limit="normal")
+            await coord.set_mode("ann", env.key(), view["id"], round=1, revision=1, mode="autonomous", emblem_limit="common")
         await env.close()
 
     run(scenario())
@@ -692,7 +692,7 @@ def test_a_restart_between_rounds_gives_the_same_battle_as_not_restarting(tmp_pa
         env = Env(path / "s.sqlite3")
         await env.start_player()
         coord = env.coordinator()  # the real policy and situation reader, driven by the saved seed
-        view = await begin(env, coord, mode="autonomous", limit="normal", spark_id="sentinel", level=3)
+        view = await begin(env, coord, mode="autonomous", limit="common", spark_id="sentinel", level=3)
         view = await advance(coord, env, view)
         if restart:
             await env.close()

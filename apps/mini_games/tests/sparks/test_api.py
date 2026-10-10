@@ -86,7 +86,7 @@ def test_profile_creation_is_once_and_idempotent(client):
     assert first.status_code == again.status_code == 201 and first.json() == again.json()
     assert other.status_code == 409 and clash.status_code == 409
     profile = client.get("/sparks/profile", headers=headers()).json()
-    assert profile["emblems"] == {"normal": 5} and profile["insignia"] == 0 and profile["sparks"][0]["spark_id"] == "scout"
+    assert profile["emblems"] == {"common": 5} and profile["insignia"] == 0 and profile["sparks"][0]["spark_id"] == "scout"
 
 
 def test_a_bad_starter_and_unknown_fields_are_400(client):
@@ -182,7 +182,7 @@ def test_illegal_actions_and_wrong_modes(client):
 
 
 def test_autonomous_advance_and_mode_switch(client):
-    view = open_battle(client, mode="autonomous", emblem_limit="normal")
+    view = open_battle(client, mode="autonomous", emblem_limit="common")
     played = client.post(f"/sparks/battles/{view['id']}/advance", json={"round": 1, "revision": 1}, headers=headers())
     assert played.status_code == 200
     data = played.json()
@@ -216,7 +216,7 @@ def test_shop_over_http(client):
     start_profile(client)
     poor = client.post("/sparks/shop/purchases", json={"kind": "emblem", "tier": "rare", "quantity": 1}, headers=headers())
     assert poor.status_code == 409
-    assert client.post("/sparks/shop/purchases", json={"kind": "copies", "spark_id": "sentinel", "tier": "normal"}, headers=headers()).status_code == 409
+    assert client.post("/sparks/shop/purchases", json={"kind": "copies", "spark_id": "sentinel", "tier": "common"}, headers=headers()).status_code == 409
     assert client.post("/sparks/shop/purchases", json={"kind": "stock", "tier": "rare"}, headers=headers()).status_code == 400
     assert client.post("/sparks/shop/purchases", json={"kind": "emblem", "tier": "gold", "quantity": 1}, headers=headers()).status_code == 400
     assert client.post("/sparks/sparks/guardian/sales", headers=headers()).status_code == 409  # nothing to sell

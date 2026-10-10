@@ -38,7 +38,7 @@ watch(
           v-for="tier in prompt.permitted_tiers"
           :key="tier"
           class="tier"
-          :style="{ '--tier': `var(--em-tier-${tier}, var(--em-tier-normal))` }"
+          :style="{ '--tier': `var(--em-tier-${tier}, var(--em-tier-common))` }"
           :disabled="expired || store.battleBusy || (prompt.owned[tier] ?? 0) === 0"
           @click="store.answerEmblem(tier)"
         >

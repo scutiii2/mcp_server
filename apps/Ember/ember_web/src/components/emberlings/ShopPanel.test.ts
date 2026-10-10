@@ -41,25 +41,25 @@ describe("ShopPanel", () => {
   it("disables EMBLEMs the Insignia does not cover", async () => {
     const { wrapper } = mountShop(25);
 
-    expect(buyIn(wrapper, "normal").attributes("disabled")).toBeUndefined();
+    expect(buyIn(wrapper, "common").attributes("disabled")).toBeUndefined();
     expect(buyIn(wrapper, "rare").attributes("disabled")).toBeDefined();
 
-    await wrapper.find('[data-tier="normal"] input').setValue("3");
+    await wrapper.find('[data-tier="common"] input').setValue("3");
 
-    expect(buyIn(wrapper, "normal").text()).toBe("Buy for 30");
-    expect(buyIn(wrapper, "normal").attributes("disabled")).toBeDefined();
+    expect(buyIn(wrapper, "common").text()).toBe("Buy for 30");
+    expect(buyIn(wrapper, "common").attributes("disabled")).toBeDefined();
   });
 
   it("buys EMBLEMs and says what it bought", async () => {
-    client.buyEmblems.mockResolvedValue({ kind: "emblems", tier_id: "normal", quantity: 2, price: 20 });
+    client.buyEmblems.mockResolvedValue({ kind: "emblems", tier_id: "common", quantity: 2, price: 20 });
     const { wrapper } = mountShop(25);
 
-    await wrapper.find('[data-tier="normal"] input').setValue("2");
-    await buyIn(wrapper, "normal").trigger("click");
+    await wrapper.find('[data-tier="common"] input').setValue("2");
+    await buyIn(wrapper, "common").trigger("click");
     await flushPromises();
 
-    expect(client.buyEmblems).toHaveBeenCalledExactlyOnceWith("normal", 2);
-    expect(wrapper.find(".notice").text()).toBe("Bought 2 Normal EMBLEMs for 20 Insignia.");
+    expect(client.buyEmblems).toHaveBeenCalledExactlyOnceWith("common", 2);
+    expect(wrapper.find(".notice").text()).toBe("Bought 2 Common EMBLEMs for 20 Insignia.");
   });
 
   it("leaves the copy price to the server and keeps its refusal", async () => {
@@ -79,7 +79,7 @@ describe("ShopPanel", () => {
   });
 
   it("sells one copy after confirming", async () => {
-    client.sellCopy.mockResolvedValue({ kind: "sale", spark_id: "guardian", value: 12, copies: 1, tier_id: "normal", downgraded: false });
+    client.sellCopy.mockResolvedValue({ kind: "sale", spark_id: "guardian", value: 12, copies: 1, tier_id: "common", downgraded: false });
     const { wrapper } = mountShop();
 
     await wrapper.find('[data-sell="guardian"] button').trigger("click");

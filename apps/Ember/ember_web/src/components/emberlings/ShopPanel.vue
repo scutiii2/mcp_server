@@ -87,7 +87,7 @@ async function sell(): Promise<void> {
         <p class="em-eyebrow">Your wallet</p>
         <h3 class="em-pixel em-num amount">{{ insignia }} Insignia</h3>
       </div>
-      <div v-for="t in tiers" :key="t.id" class="count" :style="{ '--tier': `var(--em-tier-${t.id}, var(--em-tier-normal))` }">
+      <div v-for="t in tiers" :key="t.id" class="count" :style="{ '--tier': `var(--em-tier-${t.id}, var(--em-tier-common))` }">
         <strong class="em-pixel em-num">{{ store.profile?.emblems[t.id] ?? 0 }}</strong>
         <span>{{ titleCase(t.id) }} EMBLEMs</span>
       </div>

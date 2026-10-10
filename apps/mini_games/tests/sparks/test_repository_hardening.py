@@ -188,7 +188,7 @@ def test_pending_encounter_ties_break_on_insertion_order(tmp_path):
         repo = SqliteSparkRepository(tmp_path / "s.sqlite3")
         async with repo.transaction() as tx:
             for eid in ("e1", "e2", "e3"):
-                await tx.add_encounter(EncounterRecord(eid, "ann", "guardian", "normal", 1, "pending", (), 5.0))
+                await tx.add_encounter(EncounterRecord(eid, "ann", "guardian", "common", 1, "pending", (), 5.0))
             assert (await tx.pending_encounter("ann")).id == "e3"
         await repo.close()
 

@@ -2,7 +2,7 @@
   "version": 1,
   "tiers": [
     {
-      "id": "normal",
+      "id": "common",
       "stat_multiplier": 1.0,
       "capture_multiplier": 1,
       "hp_floor": 0.1,
@@ -24,7 +24,7 @@
       "copy_reward": 2
     },
     {
-      "id": "legendary",
+      "id": "unique",
       "stat_multiplier": 1.5,
       "capture_multiplier": 4,
       "hp_floor": 0.35,
@@ -35,7 +35,7 @@
       "copy_reward": 3
     },
     {
-      "id": "royalty",
+      "id": "royal",
       "stat_multiplier": 2.0,
       "capture_multiplier": 8,
       "hp_floor": 0.5,
@@ -46,7 +46,7 @@
       "copy_reward": 4
     },
     {
-      "id": "ascended",
+      "id": "legendary",
       "stat_multiplier": 2.5,
       "capture_multiplier": 16,
       "hp_floor": 0.65,
@@ -81,7 +81,7 @@
     "forbidden_copy_cap": 100,
     "base_capture_resistance": 100,
     "starter_emblems": {
-      "normal": 5
+      "common": 5
     },
     "starter_personality_tier": 1,
     "encounter_level_window": 2,

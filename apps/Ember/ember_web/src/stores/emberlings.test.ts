@@ -34,7 +34,7 @@ vi.mock("../api/EmberlingsClient", () => ({
 
 const client = vi.mocked(emberlingsClient);
 // The server's deadline is deliberately nonsense: only seconds_left may count.
-const PROMPT: EmblemPromptState = { deadline: 0, seconds_left: 5, permitted_tiers: ["normal"], owned: { normal: 2 } };
+const PROMPT: EmblemPromptState = { deadline: 0, seconds_left: 5, permitted_tiers: ["common"], owned: { common: 2 } };
 
 let visibility: DocumentVisibilityState = "visible";
 let store: ReturnType<typeof useEmberlingsStore> | null = null;
@@ -250,10 +250,10 @@ describe("the EMBLEM prompt", () => {
     const s = await attachedWith(battleView({ phase: "awaiting_emblem", revision: 4, prompt: PROMPT }));
     client.emblem.mockResolvedValue(battleView({ mode: "manual", round: 2, revision: 5 }));
 
-    await s.answerEmblem("normal");
+    await s.answerEmblem("common");
     await vi.advanceTimersByTimeAsync(6000);
 
-    expect(client.emblem).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 4 }, "normal");
+    expect(client.emblem).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 4 }, "common");
     expect(client.advance).not.toHaveBeenCalled();
   });
 
@@ -265,7 +265,7 @@ describe("the EMBLEM prompt", () => {
     );
     client.advance.mockResolvedValue(battleView({ mode: "manual", round: 2, revision: 5 }));
 
-    await s.answerEmblem("normal");
+    await s.answerEmblem("common");
     await vi.advanceTimersByTimeAsync(0);
 
     expect(client.advance).toHaveBeenCalledExactlyOnceWith("b1", { round: 1, revision: 4 });

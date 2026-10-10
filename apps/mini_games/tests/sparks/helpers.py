@@ -39,7 +39,7 @@ def fighter(
     abilities: tuple[AbilitySpec, ...] = (),
     passive: PassiveSpec | None = None,
     spark_id: str = "guardian",
-    tier_id: str = "normal",
+    tier_id: str = "common",
     level: int = 1,
 ) -> Fighter:
     return Fighter(side, spark_id, tier_id, level, hp, essence, speed, abilities, passive or PassiveSpec("none"))

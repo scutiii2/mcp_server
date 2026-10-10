@@ -19,7 +19,7 @@ import { sparkArt } from "./sparkArt";
  * or 150 px compact). */
 const props = withDefaults(defineProps<{ spark: SparkInfo; level?: number; tierId?: string; compact?: boolean; showLevel?: boolean }>(), {
   level: 1,
-  tierId: "normal",
+  tierId: "common",
   compact: false,
   showLevel: false,
 });
@@ -47,13 +47,13 @@ const ABILITY_SLOTS = [box(101, 972, 960, 1057), box(101, 1090, 960, 1177), box(
 /** The Emberlings plate, redrawn on top so the tier tint leaves it alone. */
 const PLATE_CLIP = "inset(86% 30% 2% 30%)";
 
-/** The tint laid over the frame's grey metal for each tier; Normal keeps the grey. */
+/** The tint laid over the frame's grey metal for each tier; Common keeps the grey. */
 const TIER_TINTS: Record<string, string> = {
-  rare: "#2fa05a",
-  legendary: "#3a7bd5",
-  royalty: "#8a55d6",
-  ascended: "#d4a017",
-  forbidden: "#d03b3b",
+  rare: "#4caf50",
+  unique: "#2196f3",
+  royal: "#9c27b0",
+  legendary: "#ffd700",
+  forbidden: "#f44336",
 };
 /** Behind an ability's slot, by its category. */
 const CATEGORY_FILLS: Record<string, string> = {
@@ -101,7 +101,7 @@ const tintStyle = computed(() => ({
 }));
 const art = computed(() => sparkArt(props.spark.id));
 const artPosition = computed(() => `50% ${(props.compact ? art.value?.focusCompact : art.value?.focus) ?? 50}%`);
-const tierVar = computed(() => `var(--em-tier-${props.tierId}, var(--em-tier-normal))`);
+const tierVar = computed(() => `var(--em-tier-${props.tierId}, var(--em-tier-common))`);
 const passiveName = computed(() => titleCase(props.spark.passive.kind));
 const passive = computed(() => passiveText(props.spark.passive.kind, props.spark.passive.params));
 const abilities = computed(() =>

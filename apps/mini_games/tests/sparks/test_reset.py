@@ -20,8 +20,8 @@ async def populate(env, owner, suffix):
     await env.start_player(owner)
     wild = (PersonalityInstance("w1", "COWARD", 2),)
     async with env.repo.transaction() as tx:
-        await tx.add_encounter(EncounterRecord(f"e-{suffix}", owner, "scout", "normal", 3, "pending", wild, 1.0))
-        await tx.add_encounter(EncounterRecord(f"e-done-{suffix}", owner, "scout", "normal", 3, "consumed", wild, 1.0))
+        await tx.add_encounter(EncounterRecord(f"e-{suffix}", owner, "scout", "common", 3, "pending", wild, 1.0))
+        await tx.add_encounter(EncounterRecord(f"e-done-{suffix}", owner, "scout", "common", 3, "consumed", wild, 1.0))
         await tx.add_battle(battle_record(owner, f"b-{suffix}", f"e-done-{suffix}", status="terminal"))
         await tx.add_round(f"b-{suffix}", 1, {"n": 1})
 
