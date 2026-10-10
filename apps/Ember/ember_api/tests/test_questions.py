@@ -203,6 +203,8 @@ def test_a_valid_answer_reaches_the_agent_and_lets_the_turn_finish(client: TestC
     assert response.status_code == 200
     assert response.json() == {"answered": True}
     assert agent.answers[0][1:] == ("q1", GOOD, False)
+    account_id = client.get("/api/auth/me").json()["id"]
+    wait_until(lambda: client.app.state.turns.get(account_id, chat_id).status != "running")
     stream = events(client, chat_id)
     assert [e["type"] for e in stream if e["type"] in ("question_resolved", "final")] == ["question_resolved", "final"]
     assert next(e for e in stream if e["type"] == "question_resolved")["outcome"] == "answered"
@@ -217,6 +219,8 @@ def test_skipping_needs_no_answers(client: TestClient, agent: FakeAgent) -> None
 
     assert response.status_code == 200
     assert agent.answers[0][1:] == ("q1", [], True)
+    account_id = client.get("/api/auth/me").json()["id"]
+    wait_until(lambda: client.app.state.turns.get(account_id, chat_id).status != "running")
     stream = events(client, chat_id)
     assert next(e for e in stream if e["type"] == "question_resolved")["outcome"] == "skipped"
 

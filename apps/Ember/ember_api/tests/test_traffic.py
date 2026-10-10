@@ -4,13 +4,21 @@ and the upstream timing around the proxy, the agent gateway and the server tools
 from __future__ import annotations
 
 import asyncio
+import socket
+import threading
+import time
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
 import httpx
 import pytest
+import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 from sqlalchemy import select
 
 from src.db import Database
@@ -30,10 +38,38 @@ from tests.conftest import FakeUpstream
 from tests.test_agent_gateway import CALLER, agent_url  # noqa: F401 - a real fake agent server
 from tests.test_mcp_proxy import AGENT_PATH, SERVER_PATH, post, rpc
 from tests.test_registration import as_admin
-from tests.test_watchers import _free_port, server_url  # noqa: F401 - a real fake mcp_server
 
 HOUR = datetime(2026, 10, 5, 14, 0)
 NOW = datetime(2026, 10, 5, 14, 37, 12, 345)
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+@pytest.fixture(scope="module")
+def server_url() -> Iterator[str]:
+    mcp = FastMCP("fake-mcp-server")
+
+    @mcp.tool()
+    def tool_deploy_start(app: Annotated[str, Field(json_schema_extra={"options_url": "/options/apps"})] = "") -> str:
+        return "started"
+
+    port = _free_port()
+    server = uvicorn.Server(
+        uvicorn.Config(mcp.streamable_http_app(), host="127.0.0.1", port=port, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started:
+        assert time.monotonic() < deadline, "fake mcp_server didn't start"
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}/mcp"
+    server.should_exit = True
+    thread.join(timeout=5)
 
 
 def recorder(database: Database | None = None, now: datetime = NOW) -> TrafficRecorder:
@@ -357,8 +393,9 @@ def test_the_real_gateway_counts_an_unreachable_agent_as_failed() -> None:
 def test_the_real_server_tools_count_a_call(server_url: str) -> None:  # noqa: F811
     counter = recorder()
 
-    asyncio.run(McpServerTools(server_url, None, counter).options_templates(Caller("alice", "a@example.com")))
+    templates = asyncio.run(McpServerTools(server_url, None, counter).options_templates(Caller("alice", "a@example.com")))
 
+    assert templates == {"/options/apps"}
     assert upstream_seen(counter) == {("mcp_server options_templates", "ok")}
 
 
@@ -367,9 +404,9 @@ def test_the_real_server_tools_count_an_unreachable_server_as_failed() -> None:
     tools = McpServerTools(f"http://127.0.0.1:{_free_port()}/mcp", None, counter)
 
     with pytest.raises(ServerUnavailable):
-        asyncio.run(tools.watchers(Caller("alice", "alice@example.com")))
+        asyncio.run(tools.options_templates(Caller("alice", "alice@example.com")))
 
-    assert upstream_seen(counter) == {("mcp_server watchers", "failed")}
+    assert upstream_seen(counter) == {("mcp_server options_templates", "failed")}
 
 
 def test_server_info_counts_by_first_path_segment() -> None:
