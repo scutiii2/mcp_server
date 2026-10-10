@@ -1,5 +1,8 @@
 """Owner-scoped memory notes in SQLite with FTS5 search."""
 
+import sqlite3
+from contextlib import closing
+
 import pytest
 
 from src.services import memory_store as store
@@ -105,10 +108,46 @@ def test_reading_a_missing_database_creates_nothing(db):
 
 @pytest.mark.parametrize("owner", ["", "   ", None])
 def test_every_operation_refuses_without_an_owner(db, owner):
-    with pytest.raises(store.MemoryStoreError, match="signed-in user"):
+    with pytest.raises(store.MemoryStoreError, match="account identity"):
         store.save(db, owner, "note")
-    with pytest.raises(store.MemoryStoreError, match="signed-in user"):
+    with pytest.raises(store.MemoryStoreError, match="account identity"):
         store.search(db, owner)
-    with pytest.raises(store.MemoryStoreError, match="signed-in user"):
+    with pytest.raises(store.MemoryStoreError, match="account identity"):
         store.forget(db, owner, 1)
     assert not db.exists()
+
+
+def test_purge_owner_removes_only_that_owners_notes_from_both_tables(db, monkeypatch):
+    store.save(db, "uid-a", "alpha one")
+    store.save(db, "uid-a", "alpha two")
+    keep = store.save(db, "uid-b", "beta keeps this")
+
+    selecting_in_transaction = []
+    connect = store._connect
+
+    def traced_connect(path):
+        conn = connect(path)
+        conn.set_trace_callback(
+            lambda sql: selecting_in_transaction.append(conn.in_transaction)
+            if sql.startswith("SELECT id FROM notes WHERE owner") else None
+        )
+        return conn
+
+    monkeypatch.setattr(store, "_connect", traced_connect)
+    assert store.purge_owner(db, "uid-a") == 2
+    assert selecting_in_transaction == [True]
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("SELECT id FROM notes").fetchall() == [(keep.id,)]
+        assert conn.execute("SELECT rowid FROM notes_fts").fetchall() == [(keep.id,)]
+
+    assert store.search(db, "uid-a") == []
+    assert store.search(db, "uid-a", "alpha") == []
+    assert [n.id for n in store.search(db, "uid-b", "beta")] == [keep.id]
+    assert store.purge_owner(db, "uid-a") == 0
+
+
+def test_purge_owner_creates_nothing_and_refuses_an_empty_owner(db):
+    assert store.purge_owner(db, "uid-a") == 0
+    assert not db.exists()
+    with pytest.raises(store.MemoryStoreError, match="account identity"):
+        store.purge_owner(db, "")
