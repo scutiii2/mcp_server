@@ -14,6 +14,7 @@ import asyncio
 import importlib.util
 import math
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -115,6 +116,14 @@ class LayaClient:
         self._timeout = timeout
         self._min_confidence = min_confidence
         self._lock = threading.Lock()
+        # Laya's own single worker: a stuck model call can never starve the SQLite or default threads.
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="laya")
+        self._busy = False  # a timed-out call may still be running on the worker
+        self._load_error: LayaError | None = None
+
+    def close(self) -> None:
+        """Release the worker thread. A call still running is not waited for."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def is_available(self) -> bool:
         return self._engine is not None or importlib.util.find_spec("laya") is not None
@@ -122,11 +131,18 @@ class LayaClient:
     def _load(self) -> Any:
         # Called only while holding _lock, including during inference.
         if self._engine is None:
+            if self._load_error is not None:  # a failed load is not retried; restart to try again
+                raise LayaUnavailable(str(self._load_error))
             try:
                 import laya
             except ImportError as error:
-                raise LayaUnavailable('Laya needs the optional dependency: pip install -e ".[laya]"') from error
-            self._engine = laya.load(DEFAULT_MODEL)
+                self._load_error = LayaUnavailable('Laya needs the optional dependency: pip install -e ".[laya]"')
+                raise self._load_error from error
+            try:
+                self._engine = laya.load(DEFAULT_MODEL)
+            except Exception as error:
+                self._load_error = LayaUnavailable(f"Laya could not be loaded: {error}")
+                raise self._load_error from error
         return self._engine
 
     def prepare(self) -> None:
@@ -158,10 +174,22 @@ class LayaClient:
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise LayaError("Laya returned an invalid result") from error
 
+    def _release(self, _future: Any) -> None:
+        self._busy = False
+
     async def ask(self, text: str, questions: dict[str, dict[str, Any]]) -> dict[str, LayaAnswer]:
         """All answers or a LayaError. Individual answers may be `uncertain`."""
+        if self._busy:
+            raise LayaError("busy")  # the worker is still on an earlier (timed-out) call; do not queue behind it
+        self._busy = True
         try:
-            return await asyncio.wait_for(asyncio.to_thread(self._ask_sync, text, questions), self._timeout)
+            future = self._executor.submit(self._ask_sync, text, questions)
+        except BaseException:
+            self._busy = False
+            raise
+        future.add_done_callback(self._release)  # fires when the work really ends, not when we stop waiting
+        try:
+            return await asyncio.wait_for(asyncio.wrap_future(future), self._timeout)
         except asyncio.TimeoutError as error:
             raise LayaError(f"Laya timed out after {self._timeout}s") from error
 

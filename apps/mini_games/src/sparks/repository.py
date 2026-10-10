@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncContextManager, AsyncIterator, Protocol
@@ -102,11 +103,11 @@ class SparkRepository(Protocol):
     def transaction(self) -> AsyncContextManager[SparkTransaction]: ...
 
 
-async def _in_thread(fn: Any, *args: Any) -> Any:
-    """Run blocking `fn` in a worker thread and, if the caller is cancelled meanwhile,
-    still wait for the thread to finish before re-raising, so the shared connection is
+async def _in_thread(executor: Executor, fn: Any, *args: Any) -> Any:
+    """Run blocking `fn` on the repository's own worker and, if the caller is cancelled
+    meanwhile, still wait for it to finish before re-raising, so the shared connection is
     never used by a worker after its owner (and the transaction lock) has moved on."""
-    task = asyncio.ensure_future(asyncio.to_thread(fn, *args))
+    task = asyncio.ensure_future(asyncio.get_running_loop().run_in_executor(executor, fn, *args))
     try:
         return await asyncio.shield(task)
     except asyncio.CancelledError:
@@ -127,8 +128,9 @@ def _instances(raw: str) -> tuple[PersonalityInstance, ...]:
 
 
 class _SqliteTransaction:
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, executor: Executor) -> None:
         self._conn = conn
+        self._executor = executor
 
     async def _run(self, sql: str, params: tuple = (), mode: str = "none") -> Any:
         def work() -> Any:
@@ -139,7 +141,7 @@ class _SqliteTransaction:
                 return cursor.fetchall()
             return cursor.rowcount
 
-        return await _in_thread(work)
+        return await _in_thread(self._executor, work)
 
     # -- players and wallet --------------------------------------------------------
 
@@ -342,6 +344,13 @@ class SqliteSparkRepository:
         self._path = str(path)
         self._conn: sqlite3.Connection | None = None
         self._lock = asyncio.Lock()
+        self._executor: ThreadPoolExecutor | None = None
+
+    def _pool(self) -> ThreadPoolExecutor:
+        """One worker, like the one connection: other pools (Laya's, the default) can never starve it."""
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sparks-sqlite")
+        return self._executor
 
     def _open(self) -> sqlite3.Connection:
         if self._path != ":memory:":
@@ -391,20 +400,23 @@ class SqliteSparkRepository:
     async def transaction(self) -> AsyncIterator[SparkTransaction]:
         async with self._lock:
             if self._conn is None:
-                await _in_thread(self._connect)
+                await _in_thread(self._pool(), self._connect)
             conn = self._conn
             try:
-                await _in_thread(self._begin, conn)
-                yield _SqliteTransaction(conn)
+                await _in_thread(self._pool(), self._begin, conn)
+                yield _SqliteTransaction(conn, self._pool())
             except BaseException:
-                await _in_thread(self._rollback, conn)
+                await _in_thread(self._pool(), self._rollback, conn)
                 raise
             else:
                 # Commit or roll back as one step the lock outlives, even if the caller is cancelled.
-                await _in_thread(self._commit, conn)
+                await _in_thread(self._pool(), self._commit, conn)
 
     async def close(self) -> None:
         async with self._lock:
             if self._conn is not None:
-                await _in_thread(self._conn.close)
+                await _in_thread(self._pool(), self._conn.close)
                 self._conn = None
+            if self._executor is not None:
+                self._executor.shutdown(wait=True)
+                self._executor = None
