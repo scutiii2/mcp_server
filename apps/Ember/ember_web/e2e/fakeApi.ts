@@ -129,6 +129,8 @@ export interface FakeApi {
   turns: Record<string, unknown>[];
   chats: Map<string, StoredChat>;
   folders: Map<number, StoredFolder>;
+  /** Emberlings (an account with emberlings.play only): the profile once a starter is chosen, and the Idempotency-Keys sent. */
+  emberlings: { profile: Record<string, unknown> | null; keys: string[] };
 }
 
 const NO_USAGE = {
@@ -171,6 +173,56 @@ const ADMIN_PERMISSIONS = [
   { name: "extensions.manage", description: "Add and remove mcp_server extensions (other MCP servers offered to every client)" },
 ];
 
+/** A small Emberlings catalog: two starters, two tiers. */
+const EMBERLINGS_CATALOG = {
+  version: 1,
+  tiers: [
+    { id: "normal", stat_multiplier: 1, copy_threshold: 0, copy_reward: 1, emblem_strength: 1, emblem_price: 10 },
+    { id: "rare", stat_multiplier: 1.2, copy_threshold: 3, copy_reward: 2, emblem_strength: 1.5, emblem_price: 40 },
+  ],
+  levels: { regular_cap: 30, forbidden_cap: 50 },
+  sparks: ["guardian", "striker"].map((id) => ({
+    id,
+    name: id.charAt(0).toUpperCase() + id.slice(1),
+    starter: true,
+    forbidden: false,
+    base: { hp: 100, essence: 10, speed: 10 },
+    growth: { hp: 5, essence: 1, speed: 1 },
+    base_price: 50,
+    passive: { kind: "steady", params: {} },
+    abilities: [
+      { id: `${id}_strike`, name: "Strike", unlock_level: 1, category: "ATTACK", percentage: 120, cooldown: 1, stat: null, duration: null },
+    ],
+  })),
+  personalities: [{ id: "AGGRESSIVE", categories: ["ATTACK"] }],
+};
+
+/** The profile mini_games makes for a new player with this starter. */
+function emberlingsProfile(starter: string): Record<string, unknown> {
+  return {
+    owner: "1",
+    insignia: 0,
+    emblems: { normal: 3 },
+    sparks: [
+      {
+        spark_id: starter,
+        name: starter.charAt(0).toUpperCase() + starter.slice(1),
+        level: 1,
+        xp: 0,
+        xp_needed: 100,
+        level_cap: 30,
+        copies: 0,
+        tier_id: "normal",
+        faint_until: null,
+        fainted: false,
+      },
+    ],
+    pending_encounter: null,
+    active_battle: null,
+    next_roll_at: null,
+  };
+}
+
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
@@ -193,7 +245,7 @@ const event = (sequence: number, body: Record<string, unknown>) =>
 export const ANSWER_PIECES = ["The capital ", "of France ", "is Paris."];
 export const ANSWER = ANSWER_PIECES.join("");
 
-export async function installFakeApi(page: Page, options: { admin?: boolean } = {}): Promise<FakeApi> {
+export async function installFakeApi(page: Page, options: { admin?: boolean; emberlings?: boolean } = {}): Promise<FakeApi> {
   const api: FakeApi = {
     accountCapabilities: { capabilities: new Set(), extensions: new Set() },
     userExtensions: new Map(),
@@ -207,8 +259,10 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
     turns: [],
     chats: new Map(),
     folders: new Map(),
+    emberlings: { profile: null, keys: [] },
   };
-  const account = options.admin ? ADMIN_ACCOUNT : ACCOUNT;
+  const base = options.admin ? ADMIN_ACCOUNT : ACCOUNT;
+  const account = options.emberlings ? { ...base, permissions: [...base.permissions, "emberlings.play"] } : base;
   if (options.admin) {
     for (const a of ADMIN_ACCOUNTS) api.accounts.set(a.id, { ...a });
     for (const r of ADMIN_ROLES) api.roles.set(r.id, { ...r });
@@ -455,6 +509,18 @@ export async function installFakeApi(page: Page, options: { admin?: boolean } = 
       }
       if (method === "POST" && tail === "/turns") return startTurn(route, api, id!);
       if (method === "GET" && tail === "/events") return streamTurn(route, api, id!);
+    }
+
+    if (method === "GET" && path === "/api/emberlings/catalog") return json(route, EMBERLINGS_CATALOG);
+    if (method === "GET" && path === "/api/emberlings/profile") {
+      if (api.emberlings.profile) return json(route, api.emberlings.profile);
+      return json(route, { detail: "no profile yet; choose a starter first" }, 404);
+    }
+    if (method === "POST" && path === "/api/emberlings/profile") {
+      api.emberlings.keys.push(request.headers()["idempotency-key"] ?? "");
+      const { starter_spark_id } = request.postDataJSON() as { starter_spark_id: string };
+      api.emberlings.profile = emberlingsProfile(starter_spark_id);
+      return json(route, api.emberlings.profile, 201);
     }
 
     api.unexpected.push(`${method} ${path}`);
